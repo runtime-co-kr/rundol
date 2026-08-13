@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "documentTypes": {
+    "prd": {
+      "label": "Rundol 제품 요구사항"
+    }
+  },
+  "documentStates": {}
+}

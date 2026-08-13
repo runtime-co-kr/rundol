@@ -16,11 +16,11 @@ aliases:
 related: []
 documentProfile:
   schemaVersion: 2
-  revision: 1
+  revision: 2
   name: lean
   enforcement: checkpoint
   traits: []
-  history: [lean]
+  history: [lean, lean]
   policy:
     required: [PRD, REQ]
     recommended: []
@@ -50,8 +50,7 @@ documentProfile:
   omissions:
     SCR:
       absorbedBy: REQ
-      sections: [사용자 흐름, 화면 상태, 접근성]
-
+      sections: [사용자 흐름, 화면 상태, 입력과 검증, 접근성]
 ---
 
 # Rundol
