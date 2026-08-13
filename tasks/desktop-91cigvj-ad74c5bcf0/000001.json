@@ -161,6 +161,46 @@
       "statusChangedAt": "2026-08-13T04:53:34.256Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSR1M4VCA198099F4F7AFECA": {
+      "title": "사설 레지스트리와 폐쇄망 설치 검증 구축",
+      "summary": "사설 npm registry, 폐쇄망 tarball 반입과 기업 proxy 환경에서 재현 가능한 설치 검증 절차와 증거 형식을 구축한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-007",
+        "REQ-009",
+        "RUN-001",
+        "TST-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "사설 registry에서 통합 및 개별 package 설치 절차가 검증된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "checksum이 확인된 tarball 묶음으로 public network 없이 설치와 doctor가 통과한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "proxy, 인증, DNS와 TLS 실패를 구분하고 안전한 복구 절차를 확인한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "환경별 실행 명령, version, checksum과 결과를 남기는 acceptance 양식이 제공된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T04:53:34.631Z",
+      "updatedAt": "2026-08-13T04:53:34.631Z",
+      "statusChangedAt": "2026-08-13T04:53:34.631Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
