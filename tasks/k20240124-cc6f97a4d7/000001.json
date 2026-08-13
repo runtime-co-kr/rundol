@@ -236,6 +236,35 @@
       "statusChangedAt": "2026-08-13T20:07:35.416Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS06LS2D5D168A10B01387C": {
+      "title": "문서 계약 기본 섹션 카탈로그 보강",
+      "summary": "문서 유형별 기본 흡수 대상과 필수 섹션을 실제 계약 데이터로 제공한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "모든 정규 문서 유형에 의미 있는 기본 섹션 세트가 정의된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "계약 API가 UI에서 사용할 선택 카탈로그를 반환한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T21:01:16.608Z",
+      "updatedAt": "2026-08-13T21:01:16.608Z",
+      "statusChangedAt": "2026-08-13T21:01:16.608Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
