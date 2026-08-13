@@ -13,6 +13,8 @@ Every canonical Markdown artifact keeps these fields: `id`, `type`, `kind`, `tit
 
 Each project is registered by `projects/project-<project-key>.yaml` in the `rundol/workspace` branch and owns a separate `rundol/<project-key>` branch mounted at `projects/<project-key>/`. This mount is also the project's Obsidian Vault. Project-local `.rundol/state` and `.rundol/logs` are Git-ignored execution data; shared Client manifests and lease events belong to `rundol/workspace`. Do not combine independent projects into one state branch.
 
+New canonical documents also carry the CLI-authored boundary contract: `granularity: bounded-v1`, one concrete `scope`, and one or more `excludes`. The scope states one independently reviewable responsibility. Split same-type material when owner or approver, acceptance criteria, lifecycle or review cadence, or primary consumers differ. Contract type presence is inventory state, not evidence that the subject area is complete.
+
 ## Project charter sections
 
 Every discovered `projects/<project-key>/project.md` always contains: `미션`, `목표`, `범위`, `역할`, `프로젝트 팀원`, `이해관계자`, `책임 매트릭스`, `의사결정과 에스컬레이션`, `위험과 제약`, `협업 리듬`, and `완료 정의`.

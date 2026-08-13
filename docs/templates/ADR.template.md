@@ -4,6 +4,10 @@ type: document
 kind: adr
 title: <결정 제목>
 description: <선택한 대안과 가장 중요한 이유를 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Decision Owner]]"
 state: proposed
 tags:

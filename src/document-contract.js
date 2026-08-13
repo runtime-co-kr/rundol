@@ -7,6 +7,7 @@ const {
   REGULAR_TYPES, POLICY_STATES, PROFILE_NAMES, ENFORCEMENTS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS, normalizeProfile, migrateProfile,
   parseDocumentProfile, validateDocumentProfile, applyToProject, profileImpact
 } = require('./document-profile');
+const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
 
 function documentContractCatalog() {
   const templateRoot = path.resolve(__dirname, '..', 'docs', 'templates');
@@ -22,6 +23,12 @@ function documentContractCatalog() {
     policyStates: POLICY_STATES,
     profiles: PROFILE_NAMES,
     enforcements: ENFORCEMENTS,
+    granularity: {
+      version: BOUNDARY_VERSION,
+      requiredFields: ['scope', 'excludes'],
+      typeResponsibilities: TYPE_GUIDANCE,
+      splitWhen: SPLIT_SIGNALS
+    },
     sections,
     defaultOmissions: DEFAULT_OMISSIONS
   }));

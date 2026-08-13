@@ -4,6 +4,10 @@ type: document
 kind: model
 title: <데이터 영역 제목>
 description: <이 모델이 표현하는 데이터와 핵심 불변식을 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Data Engineering Owner]]"
 state: draft
 tags:

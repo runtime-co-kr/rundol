@@ -32,9 +32,12 @@ try {
   assert(initialized.contract.evaluation.ready.some((item) => item.type === 'PRD'));
   const shown = run(['contract', 'show', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(shown.revision, 1);
+  assert.strictEqual(shown.catalog.granularity.version, 'bounded-v1');
+  assert(shown.catalog.granularity.typeResponsibilities.REQ.includes('독립 검증'));
+  assert(shown.catalog.granularity.splitWhen.length >= 4);
   const next = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
   assert(next.ready.some((item) => item.type === 'PRD'));
-  const guidedReq = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--related', 'project:demo', '--project', 'demo', '--root', root, '--json'], root);
+  const guidedReq = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--scope', '사용자가 항목을 등록하는 동작', '--exclude', '항목 조회와 삭제', '--related', 'project:demo', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(guidedReq.type, 'REQ');
   const afterReq = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(afterReq.blocked.length, 0);

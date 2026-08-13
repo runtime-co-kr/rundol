@@ -61,7 +61,10 @@ try {
   assert(updated.impact.length > 0);
   const reparsed = profile.parseDocumentProfile(fs.readFileSync(file, 'utf8'));
   assert.deepStrictEqual(reparsed, updated.profile);
-  assert(profile.missingActions(reparsed, ['PRD']).find((item) => item.type === 'REQ').command.includes('--related <ARTIFACT-ID>'));
+  const nextRequirement = profile.missingActions(reparsed, ['PRD']).find((item) => item.type === 'REQ').command;
+  assert(nextRequirement.includes('--scope "<단일 책임>"'));
+  assert(nextRequirement.includes('--exclude "<제외 범위>"'));
+  assert(nextRequirement.includes('--related <ARTIFACT-ID>'));
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

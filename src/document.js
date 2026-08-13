@@ -7,6 +7,7 @@ const { readCollaboration } = require('./collaboration');
 const { reserveDocumentId } = require('./document-sequence');
 const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
+const { assertBoundaryInput } = require('./document-boundary');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
 const RELATED_REQUIRED = new Set(['REQ', 'SCR', 'MOD', 'API', 'TST', 'RUN']);
@@ -65,6 +66,7 @@ function createDocument(start, input) {
   const project = selectProject(layout, input.project, true);
   const contract = assertDocumentCreationAllowed(layout.root, project.key, type);
   const title = safeTitle(input.title);
+  const boundary = type === 'NTE' ? null : assertBoundaryInput(type, { scope: input.scope, excludes: input.excludes });
   const collaboration = readCollaboration(layout.root, project.key);
   const owner = collaboration.members.find((member) => member.id === input.owner);
   if (!owner) throw new Error(`project.md에 등록된 --owner <MEMBER-ID>가 필요합니다: ${input.owner || '(없음)'}`);
@@ -86,12 +88,18 @@ function createDocument(start, input) {
     .replaceAll('<domain>', input.domain || project.key)
     .replaceAll('<feature>', input.feature || title.filename.toLowerCase())
     .replaceAll('<topic>', input.feature || title.filename.toLowerCase());
+  if (boundary) source = source.replace(/^scope:\s*.*$/mu, `scope: ${yamlQuote(boundary.scope)}`)
+    .replace(/^excludes:\s*\r?\n(?:\s{2}-[^\r\n]*\r?\n?)+/mu, `excludes:\n${boundary.excludes.map((value) => `  - ${yamlQuote(value)}`).join('\n')}\n`);
   const titleTokens = ['<프로젝트명>', '<제품명>', '<요구사항 제목>', '<화면 또는 상호작용 제목>', '<데이터 영역 제목>', '<인터페이스 제목>', '<결정 제목>', '<검증 범위 제목>', '<서비스/작업 운영 절차>', '<노트 제목>'];
   for (const token of titleTokens) source = source.replaceAll(token, title.title);
   source = source.replace(/<([^>]+)>/g, (_, hint) => `작성 필요 — ${hint}`);
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
-  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status };
+  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, granularityGuidance: boundary ? boundary.guidance : null };
+}
+
+function yamlQuote(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 module.exports = { TYPES, registry, createDocument };

@@ -37,7 +37,8 @@ rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner 
 rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
 rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
 rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
-rdl doc create <TYPE> <제목> --owner <MEMBER-ID> [--related <ARTIFACT-ID>] [--project <key>] [--json]
+rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
+               [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
 rdl doc migrate [--project <key>] [--apply] [--json]
 rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
 rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
@@ -290,11 +291,11 @@ rdl conflict resolve --project memo --strategy ours
 `rdl init --guided`는 UI, data, API, component, operations, security/regulation, terminology 신호를 질문하고 최종 traits와 policy만 `project.md`에 저장한다. 같은 설정을 자동화할 때는 `--profile`과 반복 가능한 `--trait`를 사용한다. `rdl project profile --json` 결과에는 revision/history, 누락 required 유형과 다음 `rdl doc create` 명령이 포함된다. 정책을 직접 override할 때는 네 상태 옵션을 모두 지정하고 모든 정규 유형을 정확히 한 번 포함해야 한다.
 
 ```bash
-rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001
-rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --related PRD-001
+rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001 --scope "메모 제품의 사용자 문제와 성공 기준" --exclude "개별 메모 작성 동작"
+rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --scope "저장된 메모를 조건으로 검색하는 동작" --exclude "메모 작성과 삭제" --related PRD-001
 ```
 
-지원 유형은 PRD, GLS, ARC, REQ, SCR, MOD, API, ADR, TST, RUN, NTE다. CLI는 다음 3자리 번호, 한글 중심 파일명, 실제 등록 멤버 owner, 실제 파일명을 사용한 Wiki link와 필수 태그를 적용한다. REQ·SCR·MOD·API·TST·RUN은 `--related`가 필요하다. 본문에서 아직 결정하지 못한 값은 필드를 삭제하지 않고 `작성 필요`로 남긴다.
+지원 유형은 PRD, GLS, ARC, REQ, SCR, MOD, API, ADR, TST, RUN, NTE다. CLI는 다음 3자리 번호, 한글 중심 파일명, 실제 등록 멤버 owner, 실제 파일명을 사용한 Wiki link와 필수 태그를 적용한다. NTE를 제외한 새 정규 문서는 `--scope`로 하나의 독립 검토 책임을, 반복 가능한 `--exclude`로 인접하지만 책임지지 않는 범위를 선언한다. 소유자·수용 기준·변경 주기·소비자가 달라지면 같은 유형이어도 별도 문서로 분리한다. REQ·SCR·MOD·API·TST·RUN은 `--related`가 필요하다. 본문에서 아직 결정하지 못한 값은 필드를 삭제하지 않고 `작성 필요`로 남긴다.
 
 ## Debug와 토큰 사용량
 

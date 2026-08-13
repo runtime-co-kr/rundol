@@ -4,6 +4,10 @@ type: document
 kind: architecture
 title: 시스템 아키텍처
 description: 시스템 경계, 주요 컴포넌트, 배포 구조와 비기능 제약을 정의한다.
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Engineering Lead]]"
 state: draft
 tags:

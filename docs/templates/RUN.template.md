@@ -4,6 +4,10 @@ type: document
 kind: runbook
 title: <서비스/작업 운영 절차>
 description: <운영 대상과 정상 운영·복구에 필요한 핵심 절차를 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Operations Owner]]"
 state: draft
 tags:

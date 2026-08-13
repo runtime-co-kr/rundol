@@ -41,7 +41,8 @@ Usage:
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
-  rdl doc create <TYPE> <제목> --owner <MEMBER-ID> [--related <ARTIFACT-ID>] [--project <key>] [--json]
+  rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
+                 [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
   rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
@@ -73,6 +74,8 @@ Options:
   --reviewer     project.md에 등록된 검토 멤버. 여러 번 지정할 수 있습니다.
   --stakeholder  project.md에 등록된 이해관계자. 여러 번 지정할 수 있습니다.
   --link         연결할 문서 또는 문서 섹션. 여러 번 지정할 수 있습니다.
+  --scope        문서가 책임지는 하나의 독립 검토 단위입니다.
+  --exclude      인접하지만 이 문서가 책임지지 않는 범위입니다. 여러 번 지정할 수 있습니다.
   --force        기존 개인 Obsidian 설정 또는 Rundol이 관리하지 않는 스킬도 덮어씁니다.
   --port <n>     Local board port. Defaults to an available random port.
   --no-open      Start the board without opening a browser.
@@ -101,7 +104,7 @@ function parseBoardArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -114,7 +117,7 @@ function parseOperationArgs(argv) {
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -126,6 +129,8 @@ function parseOperationArgs(argv) {
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
       else if (value === '--summary') options.summary = argv[i];
+      else if (value === '--scope') options.scope = argv[i];
+      else if (value === '--exclude') options.excludes.push(argv[i]);
       else if (value === '--priority') options.priority = argv[i];
       else if (value === '--reviewer') options.reviewers.push(argv[i]);
       else if (value === '--stakeholder') options.stakeholders.push(argv[i]);
@@ -605,7 +610,7 @@ async function main() {
     const options = parseOperationArgs(argv);
     const type = options.positional.shift();
     const title = options.positional.join(' ').trim();
-    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature });
+    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes });
     printOperation(result, options.json);
     if (DEBUG_CONTEXT) recordAction(options.root, { action: 'document.create', actualExecutor: 'cli', artifactId: result.id });
     return 0;

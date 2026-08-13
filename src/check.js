@@ -6,6 +6,7 @@ const { readTaskStore } = require('./tasks');
 const { parseFrontmatter } = require('./frontmatter');
 const { validateDocumentProfile } = require('./document-profile');
 const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
+const { validateBoundaryMetadata } = require('./document-boundary');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -338,6 +339,14 @@ function checkLegacyWorkspace(start, options, scope) {
     if (aliases[0] !== artifactId) diagnostic(diagnostics, { code: 'RDL-DOC-007', file: doc.relativeFile, line: doc.frontmatter.locations.aliases, artifactId, message: 'aliases의 첫 값은 문서 ID와 같아야 합니다.' });
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
     for (const namespace of ['rundol/', 'artifact/', 'domain/', 'feature/']) if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) diagnostic(diagnostics, { code: 'RDL-DOC-008', file: doc.relativeFile, line: doc.frontmatter.locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
+    for (const issue of validateBoundaryMetadata(meta)) diagnostic(diagnostics, {
+      code: issue.code,
+      category: 'granularity',
+      file: doc.relativeFile,
+      line: doc.frontmatter.locations[issue.field] || 2,
+      artifactId,
+      message: issue.message
+    });
     if (artifactId) {
       for (const alias of [artifactId].concat(aliases)) {
         if (registry.has(alias) && registry.get(alias) !== doc) diagnostic(diagnostics, { code: 'RDL-DOC-009', file: doc.relativeFile, artifactId, target: alias, message: `중복 ID 또는 alias입니다: ${alias}` });

@@ -4,6 +4,10 @@ type: document
 kind: test
 title: <검증 범위 제목>
 description: <검증할 요구사항과 가장 중요한 품질 위험을 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|QA Owner]]"
 state: draft
 tags:

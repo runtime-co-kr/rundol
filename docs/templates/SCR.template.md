@@ -4,6 +4,10 @@ type: document
 kind: screen
 title: <화면 또는 상호작용 제목>
 description: <사용자가 이 화면에서 달성하는 목표와 주요 상태를 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Product UX Owner]]"
 state: draft
 tags:

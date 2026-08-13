@@ -4,6 +4,10 @@ type: document
 kind: requirement
 title: <요구사항 제목>
 description: <사용자 또는 시스템이 달성해야 할 동작과 핵심 결과를 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Product Owner]]"
 state: draft
 tags:

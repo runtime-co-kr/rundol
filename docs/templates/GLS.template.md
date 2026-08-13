@@ -4,6 +4,10 @@ type: document
 kind: glossary
 title: 프로젝트 용어집
 description: 프로젝트에서 사용하는 업무·기술 용어와 금지 표현을 한곳에서 정의한다.
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|Product Lead]]"
 state: draft
 tags:

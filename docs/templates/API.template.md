@@ -4,6 +4,10 @@ type: document
 kind: api
 title: <인터페이스 제목>
 description: <호출자와 제공자 사이의 기능 및 호환성 계약을 한 문장으로 작성>
+granularity: bounded-v1
+scope: "<문서 책임 범위>"
+excludes:
+  - "<인접하지만 이 문서가 책임지지 않는 범위>"
 owner: "[[project#^MEMBER-001|API Owner]]"
 state: draft
 tags:

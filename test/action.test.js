@@ -33,13 +33,13 @@ try {
   assert.strictEqual(command('git', ['commit', '-m', 'initial'], temporary).status, 0);
 
   const initialized = successful(temporary, ['init', 'memo', '--name', '메모 앱'], { debug: true });
-  const prd = successful(temporary, ['doc', 'create', 'PRD', '메모 제품 요구사항', '--owner', 'MEMBER-001'], { debug: true });
+  const prd = successful(temporary, ['doc', 'create', 'PRD', '메모 제품 요구사항', '--owner', 'MEMBER-001', '--scope', '메모 제품의 사용자 문제와 성공 기준', '--exclude', '개별 메모 작성 동작'], { debug: true });
   const prdSource = fs.readFileSync(prd.file, 'utf8');
   assert(prdSource.includes('title: 메모 제품 요구사항'));
   assert(!prdSource.includes('제품 요구사항 제품 요구사항'));
-  const req = successful(temporary, ['doc', 'create', 'REQ', '메모 작성', '--owner', 'MEMBER-001', '--related', 'PRD-001'], { debug: true });
+  const req = successful(temporary, ['doc', 'create', 'REQ', '메모 작성', '--owner', 'MEMBER-001', '--scope', '사용자가 새 메모를 저장하는 동작', '--exclude', '메모 검색과 삭제', '--related', 'PRD-001'], { debug: true });
   assert.strictEqual(req.id, 'REQ-001');
-  const tst = successful(temporary, ['doc', 'create', 'TST', '메모 인수 테스트', '--owner', 'MEMBER-001', '--related', 'REQ-001'], { debug: true });
+  const tst = successful(temporary, ['doc', 'create', 'TST', '메모 인수 테스트', '--owner', 'MEMBER-001', '--scope', '새 메모 저장 요구사항의 인수 검증', '--exclude', '검색과 삭제 검증', '--related', 'REQ-001'], { debug: true });
   assert.strictEqual(tst.id, 'TST-001');
 
   const task = successful(temporary, ['task', 'add', '메모 구현', '--owner', 'MEMBER-001', '--link', 'TST-001', '--acceptance', '동작을 확인한다.'], { debug: true });
