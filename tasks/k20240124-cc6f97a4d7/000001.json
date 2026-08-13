@@ -438,6 +438,42 @@
       "statusChangedAt": "2026-08-13T21:33:47.578Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS3LWAE6AA56D76A93D9948": {
+      "title": "런돌 시스템 아키텍처 정본화",
+      "summary": "CLI, 문서 계약 evaluator, 프로젝트 브랜치와 Board의 실제 경계를 ARC-002에 정리하고 검증한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "ARC-002",
+        "REQ-010",
+        "REQ-011",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "ARC-002가 템플릿의 7개 필수 영역을 실제 구현 기준으로 설명한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "문서 계약의 비차단 추천 문맥과 DESIGN.md 책임 분류가 아키텍처 경계에 반영된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "rdl contract check, strict, structure 검사가 통과하고 프로젝트 브랜치에 동기화된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T22:37:08.917Z",
+      "updatedAt": "2026-08-13T22:37:08.917Z",
+      "statusChangedAt": "2026-08-13T22:37:08.917Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
