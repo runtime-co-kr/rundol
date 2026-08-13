@@ -9,34 +9,36 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
-        "PRD-001"
+        "PRD-001",
+        "REQ-010",
+        "TST-002"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "schemaVersion 2 계약이 policy, after, omissions, enforcement와 revision을 정규화하고 직렬화한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "모든 문서 유형의 단일 상태 배정, 선행조건 순환, 잘못된 흡수 대상과 누락 disposition을 결정적으로 거부한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "기존 schemaVersion 1 profile을 데이터 손실 없이 읽고 명시적으로 v2 계약으로 전환할 수 있다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "동일 입력은 동일 평가 결과를 반환하며 unit 회귀 테스트가 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T19:31:33.345Z",
-      "updatedAt": "2026-08-13T19:31:33.345Z",
-      "statusChangedAt": "2026-08-13T19:31:33.345Z",
+      "updatedAt": "2026-08-13T20:07:33.254Z",
+      "statusChangedAt": "2026-08-13T20:07:33.254Z",
       "externalRefs": [],
       "project": "rundol"
     },
