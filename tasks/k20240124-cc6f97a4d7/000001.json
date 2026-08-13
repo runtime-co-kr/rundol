@@ -113,6 +113,43 @@
       "statusChangedAt": "2026-08-13T19:32:31.143Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSRX0H17331A18790F9F65B0": {
+      "title": "Board에서 문서 계약 조회 영향검토 변경 제공",
+      "summary": "Board 설정과 프로젝트 상태에서 문서 계약을 표 형태로 확인하고 revision 기반으로 안전하게 변경할 수 있게 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "PRD-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "Board snapshot과 프로젝트 API가 계약 revision, enforcement, 유형별 상태, 선행조건, 흡수 대상과 현재 위반을 제공한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "계약 변경 API는 적용 전 영향 계획과 baseRevision을 요구하며 오래된 변경을 409로 거부한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "환경설정 화면에서 profile, 상태, 선행 문서와 생략 시 대상 문서 및 섹션을 조회하고 변경할 수 있다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "Board 변경 결과와 대응 CLI 평가 결과가 동일함을 검증하는 API 및 UI 회귀 테스트가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T19:32:31.673Z",
+      "updatedAt": "2026-08-13T19:32:31.673Z",
+      "statusChangedAt": "2026-08-13T19:32:31.673Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
