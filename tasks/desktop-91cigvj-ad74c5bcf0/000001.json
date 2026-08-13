@@ -81,6 +81,46 @@
       "statusChangedAt": "2026-08-13T04:53:33.537Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSR1M4AU48E34F5B35AF79C1": {
+      "title": "운영체제와 런타임 CI 매트릭스 추가",
+      "summary": "Windows, macOS, Linux와 지원 Node.js 범위에서 설치, CLI, strict 검사와 release 경로를 자동 검증한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-007",
+        "REQ-009",
+        "TST-001",
+        "RUN-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "Windows, macOS와 Linux runner를 포함한 CI matrix가 정의된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "최소 지원 Node.js와 현재 지원 Node.js 조합에서 핵심 테스트가 실행된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "각 조합에서 package 설치, CLI version, doctor와 fixture strict 검사가 통과한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "실패 artifact에 OS, runtime, commit, 명령과 종료 코드가 보존된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T04:53:33.893Z",
+      "updatedAt": "2026-08-13T04:53:33.893Z",
+      "statusChangedAt": "2026-08-13T04:53:33.893Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
