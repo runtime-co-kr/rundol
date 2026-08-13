@@ -273,30 +273,31 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
-        "REQ-011"
+        "REQ-011",
+        "TST-003"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "선행 문서는 중복 없는 체크 선택으로 편집된다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "disabled 유형만 흡수 대상과 필수 섹션을 선택할 수 있다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "키보드와 상태 안내가 제공된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T21:01:21.241Z",
-      "updatedAt": "2026-08-13T21:01:21.241Z",
-      "statusChangedAt": "2026-08-13T21:01:21.241Z",
+      "updatedAt": "2026-08-13T21:12:29.626Z",
+      "statusChangedAt": "2026-08-13T21:12:29.626Z",
       "externalRefs": [],
       "project": "rundol"
     },
