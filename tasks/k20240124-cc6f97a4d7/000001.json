@@ -429,12 +429,12 @@
         },
         "AC-003": {
           "text": "필수 구성요소가 문서 템플릿 섹션을 제안하며 사용자 정의 항목 추가와 삭제를 지원한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T21:22:20.302Z",
-      "updatedAt": "2026-08-13T21:33:46.370Z",
+      "updatedAt": "2026-08-13T21:33:47.041Z",
       "statusChangedAt": "2026-08-13T21:31:03.765Z",
       "externalRefs": [],
       "project": "rundol"
