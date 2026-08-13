@@ -511,6 +511,46 @@
       "statusChangedAt": "2026-08-13T22:41:35.376Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS412Q99730165161068171": {
+      "title": "명령줄 인공지능 스킬 보드 통합 규격 정본화",
+      "summary": "CLI, Rundol 스킬과 Local Board의 책임·권한·설계 순서를 REQ-012와 Mermaid 흐름으로 정리하고 검증한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-012",
+        "ARC-002",
+        "TST-002",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "REQ-012가 CLI, 스킬, Board의 책임과 핵심 인터페이스를 현재 구현 기준으로 규정한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "AI 설계 라우팅, 검증·동기화, Board 계약 변경 흐름이 Mermaid로 표현된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "TST-002와 TST-003이 REQ-012를 추적하고 strict·structure 검사가 통과한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "문서와 태스크가 Rundol 프로젝트 브랜치에 저장·동기화된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T22:48:57.104Z",
+      "updatedAt": "2026-08-13T22:48:57.104Z",
+      "statusChangedAt": "2026-08-13T22:48:57.104Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
