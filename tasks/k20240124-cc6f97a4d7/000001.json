@@ -402,6 +402,42 @@
       "statusChangedAt": "2026-08-13T21:18:47.357Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS0XOUOB03953774D8E018F": {
+      "title": "문서 추천 문맥과 자유 구성요소 편집 개선",
+      "summary": "선행 문서를 강제 의존성이 아닌 AI 추천 문맥으로 완화하고 템플릿 기반 구성요소를 자유롭게 추가·삭제한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-010",
+        "REQ-011",
+        "TST-002",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "문서 추천 문맥이 문서 생성과 checkpoint 저장을 차단하지 않는다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "보드가 선행 문서 편집 그래프를 노출하지 않고 읽기용 추천 문맥만 표시한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "필수 구성요소가 문서 템플릿 섹션을 제안하며 사용자 정의 항목 추가와 삭제를 지원한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T21:22:20.302Z",
+      "updatedAt": "2026-08-13T21:22:20.302Z",
+      "statusChangedAt": "2026-08-13T21:22:20.302Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
