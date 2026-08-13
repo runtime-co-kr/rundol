@@ -670,7 +670,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "init/attach 시 브랜치 역할을 식별하고 안전한 pre-push 경계를 설치한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "CLI save/sync는 canonical worktree와 정확한 ref 일치 여부를 검증한다.",
@@ -683,7 +683,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T23:26:41.564Z",
-      "updatedAt": "2026-08-13T23:44:48.569Z",
+      "updatedAt": "2026-08-13T23:44:52.388Z",
       "statusChangedAt": "2026-08-13T23:26:51.631Z",
       "externalRefs": [],
       "project": "rundol"
