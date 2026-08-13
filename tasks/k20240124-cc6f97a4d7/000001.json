@@ -298,6 +298,39 @@
       "statusChangedAt": "2026-08-13T21:01:21.241Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS06STJ98B073EA7FE88A76": {
+      "title": "보드 표시 설정 상속 구현",
+      "summary": "board.json 표시 어휘를 Workspace 기본값과 프로젝트 override로 병합한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "Workspace board.json과 프로젝트 board.json이 순서대로 상속된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "보드 snapshot과 화면이 유효한 표시 설정을 사용한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "Rundol 자체 Workspace와 프로젝트에 설정 파일이 존재한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T21:01:25.734Z",
+      "updatedAt": "2026-08-13T21:01:25.734Z",
+      "statusChangedAt": "2026-08-13T21:01:25.734Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
