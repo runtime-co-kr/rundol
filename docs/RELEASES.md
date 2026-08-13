@@ -68,6 +68,8 @@ npm run release:check
 
 `version:check`는 SemVer 형식, private monorepo 경계, package name 고유성, CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. `release:check`는 여기에 전체 테스트와 통합·개별 package tarball 설치 회귀 테스트를 더한다.
 
-`.github/workflows/ci.yml`은 main push와 pull request에서 Node 20과 22로 `version:check`와 전체 테스트를 실행한다. 같은 ref의 이전 실행은 취소하여 동일 commit을 중복 검사하지 않는다. `v*` tag push에서는 tag와 package version 일치를 포함한 `release:check`를 실행하며, 이때 tag 값은 `CI_COMMIT_TAG` 환경변수로 전달한다. pipeline 통과가 tag 생성을 대신하지는 않으며, 정식 배포 ref는 여전히 maintainer가 만든 변경 불가능한 tag다.
+`.github/workflows/ci.yml`은 main push와 pull request에서 Node 20과 22로 `version:check`와 전체 테스트를 실행한다. 같은 ref의 이전 실행은 취소하여 동일 commit을 중복 검사하지 않는다. tag ref는 `release.yml`이 담당한다. pipeline 통과가 tag 생성을 대신하지는 않으며, 정식 배포 ref는 여전히 maintainer가 만든 변경 불가능한 tag다.
 
-현재 자동 npm registry publish는 제공하지 않는다. registry를 사용하게 되면 같은 Git tag와 npm package version을 하나의 release pipeline에서 생성해야 한다.
+`v*` tag를 push하면 `.github/workflows/release.yml`이 tag 값을 `CI_COMMIT_TAG`로 전달해 `release:check`를 실행하고, 통과하면 workspace package를 의존 순서대로 npm에 publish한다. registry에 이미 있는 version은 건너뛰므로 재실행해도 안전하다.
+
+publish 인증은 npm trusted publishing(OIDC)을 사용한다. 저장소에 npm token을 저장하지 않으며, GitHub Actions가 발급한 단기 토큰으로 배포하고 package에 provenance가 붙는다. 새 package를 workspace에 추가하면 npm 쪽에서도 해당 package의 trusted publisher를 `runtime-co-kr/rundol`의 `release.yml`로 등록해야 한다.

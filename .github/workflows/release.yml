@@ -1,0 +1,55 @@
+name: Release
+
+# The release ref is the annotated v* tag a maintainer pushes. This workflow
+# re-runs the full release checks against that tag and then publishes the
+# workspace to npm through trusted publishing (OIDC), so no npm token is
+# stored in the repository.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      # Trusted publishing needs npm 11.5.1 or newer, which is ahead of the
+      # npm bundled with Node 22.
+      - name: Update npm
+        run: npm install -g npm@latest
+      - name: Configure git
+        run: |
+          git config --global user.name "Rundol CI"
+          git config --global user.email "ci@rundol.invalid"
+          git config --global init.defaultBranch main
+      - run: npm ci
+      - name: Run release checks
+        env:
+          CI_COMMIT_TAG: ${{ github.ref_name }}
+        run: npm run release:check
+      # Dependency order: core and protocol first, then the packages that
+      # depend on them, then the integrated distribution. Versions already on
+      # the registry are skipped so a re-run is safe.
+      - name: Publish packages
+        run: |
+          set -euo pipefail
+          for dir in core protocol board node cli rundol; do
+            name=$(node -p "require('./packages/$dir/package.json').name")
+            version=$(node -p "require('./packages/$dir/package.json').version")
+            if npm view "$name@$version" version > /dev/null 2>&1; then
+              echo "skip     $name@$version (already published)"
+              continue
+            fi
+            echo "publish  $name@$version"
+            npm publish "./packages/$dir" --provenance --access public
+          done
