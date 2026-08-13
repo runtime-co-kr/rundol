@@ -14,6 +14,44 @@ tags:
 aliases:
   - project:rundol
 related: []
+documentProfile:
+  schemaVersion: 2
+  revision: 1
+  name: lean
+  enforcement: checkpoint
+  traits: []
+  history: [lean]
+  policy:
+    required: [PRD, REQ]
+    recommended: []
+    onDemand: [ARC, MOD, API, ADR, TST, RUN, GLS]
+    disabled: [SCR]
+  rules:
+    PRD:
+      after: []
+    REQ:
+      after: [PRD]
+    ARC:
+      after: [REQ]
+    SCR:
+      after: [REQ]
+    MOD:
+      after: [REQ]
+    API:
+      after: [REQ]
+    ADR:
+      after: [ARC]
+    TST:
+      after: [REQ]
+    RUN:
+      after: [REQ]
+    GLS:
+      after: []
+  omissions:
+    SCR:
+      absorbedBy: REQ
+      sections: [사용자 흐름, 화면 상태, 접근성]
+
 ---
 
 # Rundol
