@@ -678,12 +678,12 @@
         },
         "AC-003": {
           "text": "교차 브랜치 push 거부, 정상 push 허용, 기존 사용자 hook 보존을 회귀 테스트한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T23:26:41.564Z",
-      "updatedAt": "2026-08-13T23:26:51.631Z",
+      "updatedAt": "2026-08-13T23:44:48.569Z",
       "statusChangedAt": "2026-08-13T23:26:51.631Z",
       "externalRefs": [],
       "project": "rundol"
