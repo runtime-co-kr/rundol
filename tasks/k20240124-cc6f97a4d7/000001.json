@@ -375,7 +375,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-011",
@@ -385,21 +385,21 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "Rundol 스킬이 설계 내용을 REQ, SCR, ARC, ADR과 태스크로 라우팅한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "rdl check가 DESIGN.md를 삭제하지 않고 비정본 경고로 진단한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "구조 검사가 DESIGN.md를 검토 후보로 표시하며 cleanup은 자동 삭제하지 않는다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T21:18:47.357Z",
-      "updatedAt": "2026-08-13T21:18:47.357Z",
-      "statusChangedAt": "2026-08-13T21:18:47.357Z",
+      "updatedAt": "2026-08-13T21:31:03.334Z",
+      "statusChangedAt": "2026-08-13T21:31:03.334Z",
       "externalRefs": [],
       "project": "rundol"
     },
@@ -409,7 +409,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "links": [
         "REQ-010",
@@ -421,7 +421,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "문서 추천 문맥이 문서 생성과 checkpoint 저장을 차단하지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "보드가 선행 문서 편집 그래프를 노출하지 않고 읽기용 추천 문맥만 표시한다.",
@@ -434,8 +434,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T21:22:20.302Z",
-      "updatedAt": "2026-08-13T21:22:20.302Z",
-      "statusChangedAt": "2026-08-13T21:22:20.302Z",
+      "updatedAt": "2026-08-13T21:33:45.642Z",
+      "statusChangedAt": "2026-08-13T21:31:03.765Z",
       "externalRefs": [],
       "project": "rundol"
     }
