@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { readTaskStore } = require('./tasks');
 const { parseFrontmatter } = require('./frontmatter');
+const { validateDocumentProfile } = require('./document-profile');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -492,6 +493,40 @@ function checkWorkspaceStore(diagnostics, layout) {
   }
 }
 
+function checkDocumentProfile(diagnostics, layout, project, settings) {
+  if (!project.charter || !fs.existsSync(project.charter)) return;
+  const source = fs.readFileSync(project.charter, 'utf8');
+  const validation = validateDocumentProfile(source);
+  if (!validation.present) return;
+  for (const message of validation.errors) diagnostic(diagnostics, {
+    code: 'RDL-PROFILE-001', category: 'profile', file: relative(layout.root, project.charter), project: project.key, message
+  });
+  if (validation.errors.length) return;
+  if (settings.skipProfilePolicy) return;
+  const present = new Set();
+  const roots = [project.documents, path.join(project.root, 'inbox')];
+  for (const root of roots) for (const file of listMarkdownFiles(root)) {
+    const inspected = inspectMarkdown(file, layout.root);
+    const id = inspected.frontmatter && inspected.frontmatter.data.id;
+    const match = /^([A-Z]{3})-\d{3,}$/u.exec(typeof id === 'string' ? id : '');
+    if (match) present.add(match[1]);
+  }
+  const policy = validation.profile.policy;
+  for (const type of policy.required) if (!present.has(type)) diagnostic(diagnostics, {
+    code: 'RDL-PROFILE-002', category: 'profile', severity: settings.strict ? 'error' : 'warning',
+    file: relative(layout.root, project.charter), project: project.key, target: type,
+    message: `필수 문서 유형이 없습니다: ${type}`
+  });
+  for (const type of policy.recommended) if (!present.has(type)) diagnostic(diagnostics, {
+    code: 'RDL-PROFILE-003', category: 'profile', severity: 'warning', file: relative(layout.root, project.charter),
+    project: project.key, target: type, message: `권장 문서 유형이 없습니다: ${type}`
+  });
+  for (const type of policy.disabled) if (present.has(type)) diagnostic(diagnostics, {
+    code: 'RDL-PROFILE-004', category: 'profile', severity: 'warning', file: relative(layout.root, project.charter),
+    project: project.key, target: type, message: `비활성화된 문서 유형이 존재합니다: ${type}`
+  });
+}
+
 function checkWorkspace(start, options) {
   const settings = options || {};
   const layout = workspaceLayout(start);
@@ -507,6 +542,7 @@ function checkWorkspace(start, options) {
   let tasks = 0;
   for (const project of projects) {
     checkProjectCharter(diagnostics, layout.root, project);
+    checkDocumentProfile(diagnostics, layout, project, settings);
     const result = checkLegacyWorkspace(layout.root, settings, project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
     documents += result.summary.documents + 1;

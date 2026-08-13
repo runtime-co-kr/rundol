@@ -19,11 +19,19 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        include:
+          - os: ubuntu-latest
+            node: '20'
+          - os: windows-latest
+            node: '20'
+          - os: macos-latest
+            node: '20'
+          - os: ubuntu-latest
+            node: '22'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

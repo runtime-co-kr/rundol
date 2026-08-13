@@ -8,10 +8,11 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 
 <!-- rdl-help:start -->
 ```text
-  rdl init <project-key> --name <project-name> [--root <path>] [--json]
+rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name>] [--new] [--guided] [--profile <name>] [--trait <name>] [--root <path>] [--json]
   rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
-rdl project add <project-key> --name <project-name> [--root <path>] [--json]
+rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
+rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
 rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
 rdl check --links [--root <path>]
 rdl check --tasks [--root <path>]
@@ -35,6 +36,7 @@ rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|
 rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
 rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
 rdl doc create <TYPE> <제목> --owner <MEMBER-ID> [--related <ARTIFACT-ID>] [--project <key>] [--json]
+rdl doc migrate [--project <key>] [--apply] [--json]
 rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
 rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
 rdl conflict list [--project <key>] [--json]
@@ -96,11 +98,15 @@ rdl --help
 
 ### `rdl init`
 
-기존 Git 저장소 루트에서 첫 Rundol 프로젝트를 만든다.
+기존 Git 저장소 루트에서 Rundol 상태를 먼저 발견하고 필요한 bootstrap 동작만 수행한다. JSON 결과의 `action`은 `created`, `attached`, `repaired`, `already-connected`, `needs-selection`, `conflict` 중 하나다. 발견 단계는 manifest, Rundol ref, worktree, exclude를 변경하지 않는다.
 
 ```bash
-rdl init memo --name "메모 앱"
+rdl init memo --name "메모 앱" --profile product
+rdl init --project memo --json
+rdl init --guided
 ```
+
+원격 프로젝트가 여러 개인 비대화형 실행은 `needs-selection`과 프로젝트 목록을 반환한다. `--json` 또는 비대화형 터미널에서는 질문하지 않는다. 새 프로젝트의 문서 정책은 `lean`, `product`, `service`, `platform`, `assured` 중 하나이며 `project.md`의 `documentProfile`에 저장된다. 프로필 선택은 빈 문서를 만들지 않는다.
 
 생성 대상은 제품 브랜치가 아니라 Rundol 전용 브랜치와 linked worktree다.
 
@@ -278,6 +284,8 @@ rdl conflict resolve --project memo --strategy ours
 마이그레이션은 단일 `tasks.json`을 클라이언트별 segment로 분리한다. 충돌 해결의 `ours`와 `theirs`는 기록된 충돌 전체에 같은 전략을 적용한다. 문서별·필드별 대화형 선택은 아직 제공하지 않는다. `rdl conflict clear`는 pending 기록만 제거한다.
 
 ## 문서 생성
+
+`rdl init --guided`는 UI, data, API, component, operations, security/regulation, terminology 신호를 질문하고 최종 traits와 policy만 `project.md`에 저장한다. 같은 설정을 자동화할 때는 `--profile`과 반복 가능한 `--trait`를 사용한다. `rdl project profile --json` 결과에는 revision/history, 누락 required 유형과 다음 `rdl doc create` 명령이 포함된다. 정책을 직접 override할 때는 네 상태 옵션을 모두 지정하고 모든 정규 유형을 정확히 한 번 포함해야 한다.
 
 ```bash
 rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001

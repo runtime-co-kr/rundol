@@ -11,9 +11,12 @@ const cli = path.join(root, 'bin', 'rdl.js');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-attach-'));
 const source = path.join(temporary, 'source');
 const clone = path.join(temporary, 'clone');
+const bootstrapClone = path.join(temporary, 'bootstrap-clone');
+const conflictClone = path.join(temporary, 'conflict-clone');
 const remote = path.join(temporary, 'remote.git');
 const sourceHome = path.join(temporary, 'source-home');
 const cloneHome = path.join(temporary, 'clone-home');
+const bootstrapHome = path.join(temporary, 'bootstrap-home');
 
 function command(program, args, cwd, env) {
   const result = spawnSync(program, args, { cwd, encoding: 'utf8', env: Object.assign({}, process.env, env || {}) });
@@ -49,6 +52,21 @@ try {
   assert.strictEqual(attached.workspace.branch, 'rundol/workspace');
   const audit = rdl(clone, cloneHome, ['check', '--structure', '--project', 'crm']);
   assert.strictEqual(audit.clean, true, JSON.stringify(audit.candidates, null, 2));
+
+  git(temporary, ['clone', remote, bootstrapClone]);
+  const bootstrapped = rdl(bootstrapClone, bootstrapHome, ['init', '--project', 'crm']);
+  assert.strictEqual(bootstrapped.action, 'attached');
+  assert.strictEqual(bootstrapped.attached[0].project, 'crm');
+  assert(fs.existsSync(path.join(bootstrapClone, 'projects', 'crm', 'project.md')));
+
+  git(temporary, ['clone', remote, conflictClone]);
+  fs.mkdirSync(path.join(conflictClone, 'projects', 'crm'), { recursive: true });
+  fs.writeFileSync(path.join(conflictClone, 'projects', 'crm', 'occupied.txt'), 'keep\n', 'utf8');
+  const failed = spawnSync(process.execPath, [cli, 'init', '--project', 'crm', '--root', conflictClone, '--json'], { cwd: root, encoding: 'utf8' });
+  assert.notStrictEqual(failed.status, 0);
+  assert(failed.stderr.includes('비어 있지 않습니다'), failed.stderr);
+  assert(!fs.existsSync(path.join(conflictClone, 'projects', 'workspace')));
+  assert.strictEqual(git(conflictClone, ['for-each-ref', '--format=%(refname)', 'refs/heads/rundol/']), '');
   process.stdout.write('attach tests passed\n');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

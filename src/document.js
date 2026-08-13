@@ -5,11 +5,9 @@ const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readCollaboration } = require('./collaboration');
 const { reserveDocumentId } = require('./document-sequence');
+const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
-const TYPES = {
-  PRD: '', GLS: '', ARC: '', REQ: 'requirements', SCR: 'screens', MOD: 'model', API: 'api', ADR: 'adr', TST: 'tests', RUN: 'runbooks', NTE: 'inbox'
-};
 const RELATED_REQUIRED = new Set(['REQ', 'SCR', 'MOD', 'API', 'TST', 'RUN']);
 
 function markdownFiles(root, output) {
@@ -94,4 +92,4 @@ function createDocument(start, input) {
   return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/') };
 }
 
-module.exports = { TYPES, createDocument };
+module.exports = { TYPES, registry, createDocument };

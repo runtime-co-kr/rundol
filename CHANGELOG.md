@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-08-14
+
+### Added
+
+- Bootstrap discovery와 idempotent `rdl init`/`attach` repair 경로를 통합했습니다.
+- 프로젝트 `documentProfile`, guided interview, non-interactive 정책 설정을 지원합니다.
+- canonical 문서 경로와 legacy 문서 migration, 통합 QA 및 사용자 문서를 정비했습니다.
+
 ## [0.21.1] - 2026-08-12
 
 ### Added

@@ -48,10 +48,12 @@ rdl skill install
 기존 Git 저장소 루트에서 첫 프로젝트를 만든다.
 
 ```bash
-rdl init memo --name "메모 앱"
+rdl init memo --name "메모 앱" --profile product
 rdl check --project memo --strict
 rdl board --project memo
 ```
+
+`rdl init`은 먼저 로컬 manifest·ref·worktree와 원격 `rundol/*`를 읽기 전용으로 발견한다. 결과의 `action`은 `created`, `attached`, `repaired`, `already-connected`, `needs-selection`, `conflict` 중 하나다. 원격에 여러 프로젝트가 있으면 자동으로 첫 항목을 고르지 않으며 `--project <key>`로 다시 실행한다. 대화형 설정은 `--guided`, 자동화는 `--profile <lean|product|service|platform|assured>`을 사용한다.
 
 `rdl init`은 다음을 만든다.
 
@@ -65,6 +67,8 @@ rdl board --project memo
 ```bash
 rdl attach memo
 ```
+
+문서 프로필은 `project.md`에 profile·traits·policy·revision·history로 저장되며 빈 문서를 자동 생성하지 않는다. 자동화에서는 `--trait api --trait operations`를 반복 지정할 수 있고, 정책 override는 `--required`, `--recommended`, `--on-demand`, `--disabled`로 모든 유형을 정확히 한 번 분류한다. `rdl project profile --json`은 누락된 required 유형과 다음 생성 명령을 반환한다. 새 문서는 `docs/prd`, `docs/requirements`, `docs/architecture` 같은 정규 경로에 생성된다. 기존 루트 문서는 `rdl doc migrate`로 계획을 확인한 다음 `rdl doc migrate --apply`로 이동한다.
 
 같은 저장소에 프로젝트를 더 추가할 수 있다.
 
@@ -109,7 +113,7 @@ rdl doctor --json
 |---|---|
 | Workspace 연결·생성 | `rdl attach`, `rdl detach`, `rdl init`, `rdl project add` |
 | 브랜치 연결·저장 | `rdl git init`, `rdl refresh`, `rdl save` |
-| 문서·태스크 | `rdl doc create`, `rdl task add`, `rdl task set`, `rdl task acceptance`, `rdl task migrate` |
+| 문서·태스크 | `rdl doc create`, `rdl doc migrate`, `rdl project profile`, `rdl task add`, `rdl task set`, `rdl task acceptance`, `rdl task migrate` |
 | 검증·정리 | `rdl check`, `rdl check --strict`, `rdl check --structure`, `rdl cleanup`, `rdl doctor` |
 | 동기화·충돌 | `rdl sync`, `rdl sync watch`, `rdl conflict list|resolve|clear` |
 | UI·연동 | `rdl board`, `rdl obsidian init`, `rdl skill install` |

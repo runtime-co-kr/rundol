@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { runGit, refExists } = require('./git');
+const { discoverWorkspace } = require('./bootstrap');
 
 function atomicWrite(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -27,21 +28,17 @@ function gitExclude(root) {
   return { file, changed: true };
 }
 
-function fetchBranch(root, remote, branch) {
+function connectDiscoveredCommit(root, branch, commit) {
+  if (!commit || runGit(['cat-file', '-e', `${commit}^{commit}`], { cwd: root, allowFailure: true }).status !== 0) {
+    throw new Error(`발견된 ${branch} commit을 로컬 object database에서 찾지 못했습니다.`);
+  }
   const ref = `refs/heads/${branch}`;
-  const remoteRef = `refs/remotes/${remote}/${branch}`;
-  const fetched = runGit(['fetch', '--no-tags', remote, `+${ref}:${remoteRef}`], { cwd: root, allowFailure: true });
-  if (fetched.status !== 0) throw new Error(`원격 ${branch} 브랜치를 찾지 못했습니다: ${(fetched.stderr || fetched.stdout).trim()}`);
-  const commit = runGit(['rev-parse', remoteRef], { cwd: root }).stdout;
-  if (!refExists(root, ref)) {
-    runGit(['update-ref', ref, commit], { cwd: root });
-  } else {
+  if (!refExists(root, ref)) runGit(['update-ref', ref, commit], { cwd: root });
+  else {
     const local = runGit(['rev-parse', ref], { cwd: root }).stdout;
     if (local !== commit) {
       const fastForward = runGit(['merge-base', '--is-ancestor', local, commit], { cwd: root, allowFailure: true });
-      if (fastForward.status !== 0) {
-        throw new Error(`${branch} 로컬 브랜치와 원격 브랜치가 분기되었습니다. rdl sync로 충돌을 먼저 해소하세요.`);
-      }
+      if (fastForward.status !== 0) throw new Error(`${branch} 로컬 ref와 발견된 원격 commit이 분기되었습니다.`);
       runGit(['update-ref', ref, commit, local], { cwd: root });
     }
   }
@@ -57,42 +54,79 @@ function ensureWorktree(root, target, branch) {
   return true;
 }
 
-function projectKeys(settings) {
-  const directory = path.join(settings, 'projects');
-  if (!fs.existsSync(directory)) return [];
-  return fs.readdirSync(directory).filter((name) => /^project-[a-z0-9]+(?:-[a-z0-9]+)*\.yaml$/u.test(name)).map((name) => name.slice(8, -5)).sort();
+function ensureTargetsVacant(root, targets) {
+  const blocks = runGit(['worktree', 'list', '--porcelain'], { cwd: root }).stdout.trim().split(/\r?\n\r?\n/u).filter(Boolean);
+  const registered = new Map(blocks.map((block) => {
+    const lines = block.split(/\r?\n/u);
+    const pathLine = lines.find((line) => line.startsWith('worktree '));
+    const branchLine = lines.find((line) => line.startsWith('branch '));
+    return [path.resolve(pathLine.slice(9).trim()).toLowerCase(), branchLine ? branchLine.slice(7).trim() : null];
+  }));
+  for (const item of targets) {
+    const resolved = path.resolve(item.target);
+    if (registered.has(resolved.toLowerCase())) {
+      if (registered.get(resolved.toLowerCase()) !== `refs/heads/${item.branch}`) throw new Error(`Rundol worktree branch가 일치하지 않습니다: ${resolved}`);
+      continue;
+    }
+    if (!fs.existsSync(resolved)) continue;
+    if (fs.readdirSync(resolved).length) throw new Error(`Rundol worktree 대상 경로가 비어 있지 않습니다: ${resolved}`);
+  }
 }
 
 function attachWorkspace(start, options) {
   const settings = options || {};
   const remote = settings.remote || 'origin';
   const root = path.resolve(runGit(['rev-parse', '--show-toplevel'], { cwd: start }).stdout);
+  const discovery = settings.discovery || discoverWorkspace(root, { remote, project: settings.project });
+  if (discovery.action === 'already-connected') return { root, remote, action: 'already-connected', attached: [] };
+  if (discovery.action === 'repaired' && (!discovery.remote || !discovery.remote.branch)) return repairWorkspace(root, settings);
+  if (discovery.action === 'needs-selection' && !settings.project) return discovery;
+  if (discovery.action === 'conflict') throw new Error(discovery.error || 'Rundol Workspace state is conflicting.');
   const remotes = runGit(['remote'], { cwd: root }).stdout.split(/\r?\n/u).filter(Boolean);
   if (!remotes.includes(remote)) throw new Error(`Git remote가 없습니다: ${remote}`);
-  let workspaceBranch = 'rundol/workspace';
-  let workspaceCommit;
-  try { workspaceCommit = fetchBranch(root, remote, workspaceBranch); }
-  catch (error) {
-    workspaceBranch = 'rundol/settings';
-    workspaceCommit = fetchBranch(root, remote, workspaceBranch);
-  }
-  const workspace = path.join(root, 'projects', 'workspace');
-  ensureWorktree(root, workspace, workspaceBranch);
-  const available = workspaceBranch === 'rundol/workspace'
-    ? projectKeys(workspace)
-    : fs.readdirSync(path.join(workspace, 'projects')).filter((name) => name.endsWith('.yaml')).map((name) => name.slice(0, -5)).sort();
+  const workspaceBranch = discovery.remote && discovery.remote.branch;
+  if (!workspaceBranch) throw new Error(`원격 ${remote}에서 Rundol Workspace branch를 찾지 못했습니다.`);
+  const available = discovery.remote.projects;
   const selected = settings.project ? [settings.project] : available;
   if (!selected.length) throw new Error(`${workspaceBranch}에 등록된 프로젝트가 없습니다.`);
   for (const key of selected) if (!available.includes(key)) throw new Error(`프로젝트를 찾지 못했습니다: ${key}. 사용 가능: ${available.join(', ')}`);
+  const workspace = path.join(root, 'projects', 'workspace');
+  ensureTargetsVacant(root, [{ target: workspace, branch: workspaceBranch }].concat(selected.map((key) => ({ target: path.join(root, 'projects', key), branch: `rundol/${key}` }))));
+  const workspaceCommit = connectDiscoveredCommit(root, workspaceBranch, discovery.remote.commit);
+  ensureWorktree(root, workspace, workspaceBranch);
   const attached = selected.map((key) => {
     const branch = `rundol/${key}`;
-    const commit = fetchBranch(root, remote, branch);
+    const commit = connectDiscoveredCommit(root, branch, discovery.remote.projectCommits[key]);
     const target = path.join(root, 'projects', key);
     const created = ensureWorktree(root, target, branch);
     return { project: key, branch, target, commit, created };
   });
   const exclude = gitExclude(root);
-  return { root, remote, workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude };
+  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude };
+}
+
+function repairWorkspace(start, options) {
+  const settings = options || {};
+  const root = path.resolve(runGit(['rev-parse', '--show-toplevel'], { cwd: start }).stdout);
+  const discovery = settings.discovery || discoverWorkspace(root, { remote: false, project: settings.project });
+  if (discovery.action === 'already-connected') return { root, action: 'already-connected', attached: [] };
+  if (discovery.action !== 'repaired') throw new Error('복구할 수 있는 로컬 Rundol ref를 찾지 못했습니다.');
+  const workspaceBranch = discovery.local.branch;
+  const workspace = path.join(root, 'projects', 'workspace');
+  const available = discovery.local.workspaceProjects;
+  if (!settings.project && available.length > 1) return { root, action: 'needs-selection', available, attached: [] };
+  const selected = settings.project ? [settings.project] : available;
+  for (const key of selected) {
+    if (!available.includes(key) || !refExists(root, `refs/heads/rundol/${key}`)) throw new Error(`복구할 프로젝트 ref를 찾지 못했습니다: ${key}`);
+  }
+  ensureTargetsVacant(root, [{ target: workspace, branch: workspaceBranch }].concat(selected.map((key) => ({ target: path.join(root, 'projects', key), branch: `rundol/${key}` }))));
+  ensureWorktree(root, workspace, workspaceBranch);
+  const attached = selected.map((key) => {
+    const branch = `rundol/${key}`;
+    const target = path.join(root, 'projects', key);
+    return { project: key, branch, target, commit: runGit(['rev-parse', `refs/heads/${branch}`], { cwd: root }).stdout, created: ensureWorktree(root, target, branch) };
+  });
+  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root) };
 }
 
 function detachWorkspace(start, options) {
@@ -106,4 +140,4 @@ function detachWorkspace(start, options) {
   return { root, project: key, detached: true, target };
 }
 
-module.exports = { manifestSource, gitExclude, attachWorkspace, detachWorkspace, ensureWorktree };
+module.exports = { manifestSource, gitExclude, attachWorkspace, repairWorkspace, detachWorkspace, ensureWorktree, discoverWorkspace };

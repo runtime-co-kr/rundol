@@ -20,6 +20,8 @@
 
 구체적인 필수 구조는 [프로젝트 거버넌스 계약](PROJECT-GOVERNANCE.md)을 따른다. 소규모 프로젝트도 항목을 삭제하지 않으며, 미정인 정보는 확인 책임과 후속 태스크를 남긴다.
 
+`documentProfile`은 profile, traits, policy, revision, history를 정본으로 저장한다. 재설정은 기존 문서를 이동하거나 삭제하지 않고 revision/history만 전진시키며, CLI JSON은 누락된 required 유형과 다음 `rdl doc create` 명령을 반환한다.
+
 ## 문서 유형
 
 문서는 필요한 근거가 있을 때 생성한다. 모든 프로젝트에 모든 유형을 강제하지 않는다.
@@ -88,7 +90,23 @@ related:
 
 일반 산출물 ID는 `<3자리 코드>-<3자리 이상 번호>`, 파일명은 `<ID>-<한글 중심 기능명>.md` 형식이다. 예: `REQ-003-OAuth-로그인.md`.
 
-문서는 `docs/` 바로 아래 또는 유형별 하위 폴더에 둘 수 있다. 폴더는 탐색 편의를 위한 표현일 뿐 문서 유형이나 소유권을 결정하지 않는다. 폴더별 `INDEX.md`는 기본으로 만들지 않고 검색, 태그와 Obsidian graph를 사용한다.
+새 문서는 유형별 정규 경로에만 만든다.
+
+| 유형 | 정규 경로 |
+|---|---|
+| PRD | `docs/prd/` |
+| REQ | `docs/requirements/` |
+| ARC | `docs/architecture/` |
+| SCR | `docs/screens/` |
+| MOD | `docs/model/` |
+| API | `docs/api/` |
+| ADR | `docs/adr/` |
+| TST | `docs/tests/` |
+| RUN | `docs/runbooks/` |
+| GLS | `docs/glossary/` |
+| NTE | `inbox/` |
+
+기존 `docs/` 루트와 과거 하위 폴더의 문서는 계속 읽을 수 있다. `rdl doc migrate`는 이동·링크 변경 계획만 출력하고, `rdl doc migrate --apply`가 프로젝트 단위 rollback을 보장하며 적용한다. 중복 ID는 자동 병합하지 않는다. 폴더별 `INDEX.md`는 기본으로 만들지 않고 검색, 태그와 Obsidian graph를 사용한다.
 
 Obsidian link 대상에는 alias가 아니라 실제 물리 파일명을 사용한다. 프로젝트 사람과 역할은 `[[project#^MEMBER-001|이름]]`, `[[project#^ROLE-001|역할명]]`, `[[project#^STAKEHOLDER-001|이름]]`으로 연결한다.
 

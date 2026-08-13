@@ -12,10 +12,11 @@ function usage() {
   return `rdl ${VERSION}
 
 Usage:
-  rdl init <project-key> --name <project-name> [--root <path>] [--json]
+  rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name>] [--new] [--guided] [--profile <name>] [--trait <name>] [--root <path>] [--json]
   rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
-  rdl project add <project-key> --name <project-name> [--root <path>] [--json]
+  rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
+  rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
@@ -39,6 +40,7 @@ Usage:
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> [--related <ARTIFACT-ID>] [--project <key>] [--json]
+  rdl doc migrate [--project <key>] [--apply] [--json]
   rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
   rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
   rdl conflict list [--project <key>] [--json]
@@ -59,6 +61,9 @@ Options:
   --project <key>  Select a project. Required when the Workspace has multiple projects.
   --name <name>  Project display name used by init and project add.
   --json         Print a stable machine-readable result.
+  --new          Explicitly create a new Rundol workspace when discovery finds none.
+  --guided       Interview for new-project settings in an interactive terminal.
+  --profile      Select lean, product, service, platform, or assured document policy.
   --strict       Treat unresolved body wiki links as errors.
   --links        Print only reference-integrity diagnostics.
   --tasks        Print only task diagnostics.
@@ -94,10 +99,12 @@ function parseBoardArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, status: undefined, owner: undefined, summary: '', priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
+    else if (value === '--guided') options.guided = true;
+    else if (value === '--new') options.new = true;
     else if (value === '--no-push') options.push = false;
     else if (value === '--force') options.force = true;
     else if (value === '--apply') options.apply = true;
@@ -105,12 +112,13 @@ function parseOperationArgs(argv) {
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
-    else if (['--root', '--project', '--name', '--type', '--remote', '--status', '--owner', '--summary', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
       else if (value === '--project') options.project = argv[i];
       else if (value === '--name') options.name = argv[i];
+      else if (value === '--profile') options.profile = argv[i];
       else if (value === '--remote') options.remote = argv[i];
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
@@ -121,6 +129,12 @@ function parseOperationArgs(argv) {
       else if (value === '--link') options.links.push(argv[i]);
       else if (value === '--acceptance') options.acceptance.push(argv[i]);
       else if (value === '--related') options.related.push(argv[i]);
+      else if (value === '--trait') options.traits.push(argv[i]);
+      else if (['--required', '--recommended', '--on-demand', '--disabled'].includes(value)) {
+        const state = value === '--on-demand' ? 'onDemand' : value.slice(2);
+        options.policy[state].push(...argv[i].split(',').filter(Boolean));
+        options.policySpecified = true;
+      }
       else options[value.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = argv[i];
     } else if (value.startsWith('-')) throw new Error(`알 수 없는 옵션: ${value}`);
     else options.positional.push(value);
@@ -225,20 +239,67 @@ async function main() {
   const { installSkill } = require('../src/skill');
   const { initializeWorkspace, addProject } = require('../src/init');
   const { createDocument } = require('../src/document');
+  const { discoverWorkspace } = require('../src/bootstrap');
+  const { applyToProject, reconfigureProject, PROFILE_NAMES, missingActions } = require('../src/document-profile');
+  const { migrateProject } = require('../src/document-migration');
+  const { guidedProjectInput, selectProject: selectGuidedProject } = require('../src/guided');
   const { readConflict, resolveConflict, clearConflict } = require('../src/conflict');
   const { recordTokens, debugSummary } = require('../src/debug');
   const { resolveAction, recordAction } = require('../src/action');
   const { migrateSettings, saveSettings } = require('../src/settings');
-  const { attachWorkspace, detachWorkspace } = require('../src/attach');
+  const { attachWorkspace, repairWorkspace, detachWorkspace } = require('../src/attach');
   const { auditStructure, cleanupStructure } = require('../src/structure');
   const { listClients, getClient, registerClient, setClientStatus, appendLease, listLeases } = require('../src/collaboration-store');
   if (command === 'init') {
     const options = parseOperationArgs(argv);
+    if (options.positional.length > 1) throw new Error('rdl init에는 프로젝트 키를 하나만 지정할 수 있습니다.');
+    if (options.guided && options.json) throw new Error('--guided와 --json은 함께 사용할 수 없습니다. 자동화에서는 --profile을 지정하세요.');
+    let selectedProject = options.project || options.positional[0] || null;
+    const discovery = discoverWorkspace(options.root, { remote: options.remote, project: selectedProject });
+    if (discovery.action === 'conflict') throw new Error(discovery.error || 'Rundol Workspace 상태가 충돌합니다.');
+    if (discovery.action === 'needs-selection' && options.guided) {
+      selectedProject = await selectGuidedProject(discovery.available);
+      const selectedDiscovery = discoverWorkspace(options.root, { remote: options.remote, project: selectedProject });
+      const connected = selectedDiscovery.action === 'repaired'
+        ? repairWorkspace(options.root, { project: selectedProject, discovery: selectedDiscovery })
+        : attachWorkspace(options.root, { project: selectedProject, remote: options.remote, discovery: selectedDiscovery });
+      for (const item of connected.attached || []) initObsidian(connected.root, { project: item.project, force: false });
+      printOperation(connected, options.json);
+      return 0;
+    }
+    if (discovery.action === 'needs-selection' || discovery.action === 'already-connected') {
+      printOperation(discovery, options.json);
+      return 0;
+    }
+    if (discovery.action === 'repaired') {
+      const repaired = repairWorkspace(options.root, { project: selectedProject, discovery });
+      for (const item of repaired.attached || []) initObsidian(repaired.root, { project: item.project, force: false });
+      printOperation(repaired, options.json);
+      return 0;
+    }
+    if (discovery.action === 'attached') {
+      const attached = attachWorkspace(options.root, { project: selectedProject, remote: options.remote, discovery });
+      for (const item of attached.attached) initObsidian(attached.root, { project: item.project, force: false });
+      printOperation(attached, options.json);
+      return 0;
+    }
+    if (options.guided) {
+      const guided = await guidedProjectInput({ key: options.positional[0], name: options.name, profile: options.profile, traits: options.traits });
+      options.positional = [guided.key];
+      options.name = guided.name;
+      options.profile = guided.profile;
+      options.traits = guided.traits;
+    }
+    if (!options.new && options.positional.length === 0) throw new Error('새 Workspace 생성에는 --new 또는 위치 프로젝트 키가 필요합니다.');
+    if ((options.traits.length || options.policySpecified) && !options.profile) throw new Error('--trait 또는 policy override를 사용하려면 --profile이 필요합니다.');
+    if (options.profile && !PROFILE_NAMES.includes(options.profile)) throw new Error(`지원하지 않는 문서 프로필입니다: ${options.profile}`);
     if (options.positional.length !== 1) throw new Error('rdl init에는 프로젝트 키 하나가 필요합니다.');
     const initialized = initializeWorkspace(options.root, options.positional[0], options.name);
+    let configuredProfile = null;
+    if (options.profile) configuredProfile = applyToProject(path.join(initialized.projectRoot, 'project.md'), { name: options.profile, traits: options.traits, policy: options.policySpecified ? options.policy : undefined }).profile;
     const git = initState(initialized.root, { project: initialized.project });
     initObsidian(initialized.root, { project: initialized.project, force: false });
-    printOperation(Object.assign({}, initialized, { branch: git.branch, worktree: git.worktree }), options.json);
+    printOperation(Object.assign({ action: 'created', profile: options.profile || null, traits: configuredProfile ? configuredProfile.traits : [], missing: configuredProfile ? missingActions(configuredProfile, []) : [] }, initialized, { branch: git.branch, worktree: git.worktree }), options.json);
     return 0;
   }
   if (command === 'attach' || command === 'detach') {
@@ -248,16 +309,36 @@ async function main() {
     const result = command === 'attach'
       ? attachWorkspace(options.root, { project, remote: options.remote })
       : detachWorkspace(options.root, { project, remote: options.remote });
-    if (command === 'attach') for (const item of result.attached) initObsidian(result.root, { project: item.project, force: false });
+    if (command === 'attach') for (const item of result.attached || []) initObsidian(result.root, { project: item.project, force: false });
     printOperation(result, options.json);
     return 0;
   }
   if (command === 'project') {
     const subcommand = argv.shift();
-    if (subcommand !== 'add') throw new Error('지원하는 project 하위 명령은 rdl project add입니다.');
+    if (subcommand === 'profile') {
+      const profileOptions = parseOperationArgs(argv);
+      if (profileOptions.positional.length) throw new Error('rdl project profile은 위치 인수를 사용하지 않습니다.');
+      if (!PROFILE_NAMES.includes(profileOptions.profile)) throw new Error('--profile <lean|product|service|platform|assured>가 필요합니다.');
+      const { workspaceLayout, selectProject } = require('../src/workspace');
+      const layout = workspaceLayout(profileOptions.root);
+      const selected = selectProject(layout, profileOptions.project, true);
+      const updated = reconfigureProject(selected.charter, profileOptions.profile, {
+        traits: profileOptions.traits.length ? profileOptions.traits : undefined,
+        policy: profileOptions.policySpecified ? profileOptions.policy : undefined
+      });
+      const registry = require('../src/document').registry(selected);
+      const present = Array.from(registry.keys()).map((id) => /^([A-Z]{3})-/u.exec(id)).filter(Boolean).map((match) => match[1]);
+      printOperation({ root: layout.root, project: selected.key, profile: updated.profile.name, traits: updated.profile.traits, revision: updated.profile.revision, history: updated.profile.history, legacyUnconfigured: updated.legacyUnconfigured, file: updated.file, missing: missingActions(updated.profile, present) }, profileOptions.json);
+      return 0;
+    }
+    if (subcommand !== 'add') throw new Error('지원하는 project 하위 명령은 add와 profile입니다.');
     const options = parseOperationArgs(argv);
     if (options.positional.length !== 1) throw new Error('rdl project add에는 프로젝트 키 하나가 필요합니다.');
     const added = addProject(options.root, options.positional[0], options.name);
+    if (options.profile) {
+      if (!PROFILE_NAMES.includes(options.profile)) throw new Error(`지원하지 않는 문서 프로필입니다: ${options.profile}`);
+      applyToProject(path.join(added.projectRoot, 'project.md'), { name: options.profile });
+    }
     const git = initState(options.root, { project: added.project });
     initObsidian(options.root, { project: added.project, force: false });
     const settings = saveSettings(options.root);
@@ -460,7 +541,28 @@ async function main() {
   }
   if (command === 'doc') {
     const subcommand = argv.shift();
-    if (subcommand !== 'create') throw new Error('지원하는 문서 하위 명령은 rdl doc create입니다.');
+    if (subcommand === 'migrate') {
+      const migrationOptions = parseOperationArgs(argv);
+      if (migrationOptions.positional.length) throw new Error('rdl doc migrate는 위치 인수를 사용하지 않습니다.');
+      const { workspaceLayout, selectProject } = require('../src/workspace');
+      const layout = workspaceLayout(migrationOptions.root);
+      const selected = selectProject(layout, migrationOptions.project, true);
+      const migrated = migrateProject(selected.root, {
+        apply: migrationOptions.apply,
+        validate: () => {
+          const checked = checkWorkspace(layout.root, { project: selected.key, strict: true, skipProfilePolicy: true });
+          const structure = auditStructure(layout.root, { project: selected.key });
+          return Object.assign({}, checked, {
+            diagnostics: checked.diagnostics.concat(structure.candidates.filter((item) => item.kind === 'legacy-document-migration').map((item) => ({
+              severity: 'error', code: 'RDL-STRUCTURE-MIGRATION', file: item.file, message: item.reason
+            })))
+          });
+        }
+      });
+      printOperation(Object.assign({ project: selected.key }, migrated), migrationOptions.json);
+      return 0;
+    }
+    if (subcommand !== 'create') throw new Error('지원하는 문서 하위 명령은 create와 migrate입니다.');
     const options = parseOperationArgs(argv);
     const type = options.positional.shift();
     const title = options.positional.join(' ').trim();
