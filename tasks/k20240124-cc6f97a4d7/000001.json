@@ -457,7 +457,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "ARC-002가 템플릿의 7개 필수 영역을 실제 구현 기준으로 설명한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "문서 계약의 비차단 추천 문맥과 DESIGN.md 책임 분류가 아키텍처 경계에 반영된다.",
@@ -470,7 +470,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:37:08.917Z",
-      "updatedAt": "2026-08-13T22:37:25.980Z",
+      "updatedAt": "2026-08-13T22:37:44.445Z",
       "statusChangedAt": "2026-08-13T22:37:25.980Z",
       "externalRefs": [],
       "project": "rundol"
