@@ -204,34 +204,36 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "mid",
       "links": [
-        "PRD-001"
+        "PRD-001",
+        "REQ-010",
+        "TST-002"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "Rundol project.md에 검토된 최소 documentProfile v2 계약을 설정하고 CLI가 첫 작성 가능 문서를 정확히 반환한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "PRD 이후 필요한 문서를 CLI가 반환한 순서로 생성하고 생략한 유형의 내용은 선언된 대상 섹션에 포함한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "CLI와 Board에서 같은 계약 상태, 다음 문서, 누락과 변경 영향을 표시한다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "최종 rdl check --strict, 문서 구조 검사와 전체 회귀 테스트가 오류와 경고 없이 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T19:32:32.693Z",
-      "updatedAt": "2026-08-13T19:32:32.693Z",
-      "statusChangedAt": "2026-08-13T19:32:32.693Z",
+      "updatedAt": "2026-08-13T20:07:35.416Z",
+      "statusChangedAt": "2026-08-13T20:07:35.416Z",
       "externalRefs": [],
       "project": "rundol"
     }
