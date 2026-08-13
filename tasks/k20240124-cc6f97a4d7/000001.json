@@ -606,7 +606,7 @@
         },
         "AC-002": {
           "text": "런돌 스킬이 문서 생성 전에 책임 경계와 분할 여부를 명시적으로 판단하도록 안내한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "중립 fixture 회귀 테스트와 strict 검사가 통과하고 사례 프로젝트의 고유 내용이 포함되지 않는다.",
@@ -615,7 +615,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:59:23.613Z",
-      "updatedAt": "2026-08-13T23:22:00.623Z",
+      "updatedAt": "2026-08-13T23:22:05.243Z",
       "statusChangedAt": "2026-08-13T23:01:05.712Z",
       "externalRefs": [],
       "project": "rundol"
