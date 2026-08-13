@@ -1,0 +1,208 @@
+# Rundol 0.22 마이그레이션
+
+이 문서는 Rundol `0.21.1`, `0.21.2`, `0.21.3` Workspace를 `0.22.0`으로 직접 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로와 `documentProfile` 전환 단계만 달라진다.
+
+## 변경 요약
+
+| 출발 버전 | 기존 상태 | 0.22.0에서 필요한 작업 |
+|---|---|---|
+| 0.21.1 | 문서 프로필 없음, PRD·GLS·ARC가 `docs/` 루트에 생성될 수 있음 | 연결 재발견, legacy 문서 경로 이전, schemaVersion 2 계약 설정 |
+| 0.21.2 | schemaVersion 1 프로필, canonical 문서 경로와 bootstrap 지원 | v1 정책·traits를 보존해 schemaVersion 2로 전환 |
+| 0.21.3 | 데이터 계약은 0.21.2와 같고 Unix 전역 설치 경로만 보완 | schemaVersion 2로 전환 |
+
+0.22.0의 schemaVersion 2 계약은 기존 policy에 다음 항목을 추가한다.
+
+- `enforcement`: `advisory` 또는 `checkpoint`
+- `rules.<TYPE>.after`: 문서 작성 선행조건
+- `omissions.<TYPE>`: 비활성 문서의 흡수 대상과 필수 섹션 또는 적용 제외 사유
+- revision 기반 CLI·Board 계약 변경
+
+`checkpoint`에서는 필수 문서, 선행조건 또는 생략 계약 위반이 `rdl save`와 `rdl sync`를 차단한다. 따라서 기존 프로젝트는 먼저 `advisory`로 전환한 뒤 계약 위반을 해소하고 `checkpoint`를 적용한다.
+
+## 1. 업그레이드 전 백업
+
+제품 브랜치와 Rundol 프로젝트 브랜치의 변경을 먼저 확인한다.
+
+```powershell
+rdl --version
+git status --short
+git branch --list "rundol/*"
+rdl check --strict --project <key> --json
+rdl save --project <key> --json
+```
+
+각 프로젝트 브랜치와 Workspace 브랜치에 복구용 ref를 만든다. `<date>`는 `20260814` 같은 고정 날짜 문자열로 바꾼다.
+
+```powershell
+git branch backup/rundol-workspace-<date> rundol/workspace
+git branch backup/rundol-<key>-<date> rundol/<key>
+```
+
+원격이 협업 정본이면 기존 Rundol 브랜치도 동기화한다.
+
+```powershell
+rdl sync --project <key> --json
+```
+
+동기화가 실패하면 업그레이드를 진행하지 말고 충돌 또는 원격 인증 문제를 먼저 해결한다.
+
+## 2. CLI와 스킬 업그레이드
+
+```powershell
+npm install --global rundol@0.22.0
+rdl --version
+rdl doctor --json
+rdl skill install --force
+```
+
+`rdl --version`이 `0.22.0`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 0.22 계약 절차를 반영한다.
+
+## 3. Workspace 재발견
+
+```powershell
+rdl init --project <key> --json
+```
+
+정상적인 기존 프로젝트는 `already-connected`, 누락된 worktree를 복구하면 `repaired`, 원격에서 새로 연결하면 `attached`를 반환한다. `needs-selection`이면 프로젝트를 명시해 다시 실행한다. `conflict`에서는 파일이나 ref를 자동 변경하지 말고 진단 내용을 먼저 해결한다.
+
+## 4. 출발 버전별 전환
+
+### 0.21.1에서 업그레이드
+
+0.21.1은 PRD, GLS, ARC 문서를 `docs/` 루트에 둘 수 있다. 먼저 dry-run으로 이동 계획을 확인한다.
+
+```powershell
+rdl doc migrate --project <key> --json
+rdl check --structure --project <key> --json
+```
+
+중복 ID, 파일명 불일치, 예상하지 않은 파일이 없을 때만 적용한다.
+
+```powershell
+rdl doc migrate --project <key> --apply --json
+```
+
+이후 프로젝트 규모에 맞는 프로필을 advisory로 설정한다.
+
+```powershell
+rdl contract plan --project <key> --profile <lean|product|service|platform|assured> --enforcement advisory --json
+rdl contract set --project <key> --profile <lean|product|service|platform|assured> --enforcement advisory --json
+```
+
+### 0.21.2 또는 0.21.3에서 업그레이드
+
+먼저 현재 v1 프로필을 확인한다.
+
+```powershell
+rdl contract show --project <key> --json
+```
+
+`status`가 `migration-required`이면 출력된 기존 profile 이름을 그대로 사용해 전환 계획을 확인한다. 이 작업은 기존 policy, traits와 문서를 보존하고 schemaVersion과 revision만 전진시킨다.
+
+```powershell
+rdl contract plan --project <key> --profile <현재-profile> --enforcement advisory --json
+rdl contract set --project <key> --profile <현재-profile> --enforcement advisory --json
+```
+
+이미 `status: valid`와 `schemaVersion: 2`가 표시되면 이 단계는 생략한다.
+
+## 5. 계약 충족
+
+현재 작성 가능한 문서와 차단된 문서를 확인한다.
+
+```powershell
+rdl contract next --project <key> --json
+rdl contract check --project <key> --json
+```
+
+- `ready`의 required 문서를 우선 작성한다.
+- `blocked` 문서는 `waitingFor`가 해결되기 전에 만들지 않는다.
+- disabled 문서는 새 파일을 만들지 않는다.
+- `absorbed` 항목은 지정된 대상 문서에 모든 필수 섹션을 작성한다.
+- `recommended-missing`은 권고이며 checkpoint에서도 저장을 차단하지 않는다.
+
+Board를 사용하는 경우 Settings의 **문서 계획 계약**에서 profile, enforcement, policy 상태, 선행조건, 흡수 대상과 필수 섹션을 확인할 수 있다.
+
+```powershell
+rdl board --project <key>
+```
+
+## 6. checkpoint 적용과 동기화
+
+advisory 상태에서 오류를 모두 해결한 후 같은 프로필을 checkpoint로 변경한다.
+
+```powershell
+rdl contract plan --project <key> --profile <현재-profile> --enforcement checkpoint --json
+rdl contract set --project <key> --profile <현재-profile> --enforcement checkpoint --json
+rdl contract check --project <key> --json
+rdl check --strict --project <key> --json
+rdl check --structure --project <key> --json
+rdl save --project <key> --json
+rdl sync --project <key> --json
+```
+
+완료 조건은 다음과 같다.
+
+- contract status가 `valid`
+- contract violations가 0건
+- strict 오류가 0건
+- structure migration 후보가 0건
+- 프로젝트 브랜치가 원격에 push됨
+
+## 자동화와 CI
+
+비대화형 환경에서는 `--guided`를 사용하지 않는다. 프로젝트를 명시하고 JSON 결과의 status와 violations를 검사한다.
+
+```powershell
+rdl init --project <key> --json
+rdl contract check --project <key> --json
+rdl check --strict --project <key> --json
+```
+
+AI 클라이언트는 업데이트된 Rundol 스킬을 설치한 후 `contract show → next → create 또는 absorb → contract check → check --strict` 순서를 따른다.
+
+## 롤백
+
+0.21.x CLI는 schemaVersion 2 계약을 완전히 이해하지 못한다. 단순히 npm package만 낮추지 말고, 업그레이드 전에 만든 프로젝트·Workspace backup ref도 함께 복원해야 한다.
+
+먼저 현재 상태를 별도 ref로 보존하고 대상 worktree가 깨끗한지 확인한다.
+
+```powershell
+git status --short
+git branch backup/rundol-after-failed-migration rundol/<key>
+```
+
+그다음 backup ref를 원래 Rundol ref로 복원하고 worktree를 갱신한다. 이 작업은 업그레이드 후 변경을 덮어쓰므로 팀과 합의하고 실행한다.
+
+```powershell
+git update-ref refs/heads/rundol/<key> refs/heads/backup/rundol-<key>-<date>
+git update-ref refs/heads/rundol/workspace refs/heads/backup/rundol-workspace-<date>
+npm install --global rundol@0.21.3
+rdl attach <key> --json
+rdl check --strict --project <key> --json
+```
+
+원격 브랜치까지 되돌려야 한다면 강제 push를 바로 사용하지 말고 별도 복구 브랜치로 push해 검토한 뒤 반영한다.
+
+## 문제 해결
+
+### save 또는 sync가 필수 문서 누락으로 실패함
+
+계약을 advisory로 낮춘 뒤 `rdl contract next`의 required 문서와 omission 섹션을 채운다.
+
+```powershell
+rdl contract set --project <key> --profile <현재-profile> --enforcement advisory --json
+rdl contract next --project <key> --json
+```
+
+### Board에서 계약 설정이 보이지 않음
+
+전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.0` 설치가 필요하다.
+
+### contract status가 legacy-unconfigured임
+
+0.21.1 프로젝트 또는 프로필을 설정하지 않은 프로젝트다. `contract plan` 결과를 검토한 뒤 advisory로 `contract set`을 실행한다.
+
+### contract status가 unsupported-schema 또는 invalid임
+
+자동 저장·동기화를 중단한다. `project.md`의 `documentProfile`을 backup ref와 비교하고, 누락 policy, 순환 after, 잘못된 omission 대상을 수정한 후 다시 검사한다.

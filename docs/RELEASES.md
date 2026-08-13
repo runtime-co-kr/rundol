@@ -40,6 +40,7 @@ SemVer의 각 숫자는 0 이상의 정수이므로 `0.1000.0`도 유효하다. 
 보호된 `main`을 직접 수정하지 않고 release MR을 사용한다.
 
 1. 변경 유형에 따라 다음 version을 정한다.
+   - `0.22.0`은 [0.21.1–0.21.3 마이그레이션](MIGRATION-0.22.md)을 릴리스 산출물에 포함한다.
 2. `package.json`과 `CHANGELOG.md`를 같은 MR에서 갱신한다.
 3. `npm run release:check`를 통과시킨다.
 4. MR을 `main`에 병합한다.

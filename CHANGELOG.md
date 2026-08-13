@@ -9,6 +9,10 @@
 - Added schemaVersion 2 document planning contracts with enforcement, authoring prerequisites, omission absorption rules, and deterministic evaluation.
 - Added `rdl contract show|next|check|plan|set` and shared contract visibility across bootstrap, document creation, validation, save/sync, the governance skill, and the Board.
 
+### Migration
+
+- Existing `0.21.1`–`0.21.3` workspaces should follow [Rundol 0.22 migration](docs/MIGRATION-0.22.md), configure the contract as advisory first, then enable checkpoint after violations are resolved.
+
 ## [0.21.3] - 2026-08-14
 
 ### Fixed
