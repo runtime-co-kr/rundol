@@ -368,6 +368,40 @@
       "statusChangedAt": "2026-08-13T21:12:31.016Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS0T4JI6804E00B489B0CFD": {
+      "title": "범용 설계문서 비정본 경고 추가",
+      "summary": "Rundol 프로젝트에서 DESIGN.md 신규 정본 생성을 억제하고 기존 파일은 안전한 migration 후보로 안내한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-011",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "Rundol 스킬이 설계 내용을 REQ, SCR, ARC, ADR과 태스크로 라우팅한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "rdl check가 DESIGN.md를 삭제하지 않고 비정본 경고로 진단한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "구조 검사가 DESIGN.md를 검토 후보로 표시하며 cleanup은 자동 삭제하지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T21:18:47.357Z",
+      "updatedAt": "2026-08-13T21:18:47.357Z",
+      "statusChangedAt": "2026-08-13T21:18:47.357Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
