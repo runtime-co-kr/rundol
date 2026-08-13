@@ -331,6 +331,40 @@
       "statusChangedAt": "2026-08-13T21:01:25.734Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS06X3566D0260B20782C1E": {
+      "title": "보드 문서 계획 실제 적용과 검증",
+      "summary": "Rundol 문서와 테스트 증거를 정비하고 strict 및 브라우저 검증을 완료한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-011",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "REQ-011과 TST-003이 구현 결과를 반영한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "계약, strict, 구조, 보드 회귀 테스트가 통과한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "일반 DESIGN.md가 정본으로 남지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T21:01:31.263Z",
+      "updatedAt": "2026-08-13T21:01:31.263Z",
+      "statusChangedAt": "2026-08-13T21:01:31.263Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
