@@ -121,6 +121,46 @@
       "statusChangedAt": "2026-08-13T04:53:33.893Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSR1M4KW30BA51F789912E5E": {
+      "title": "대규모 데이터 성능과 장시간 동기화 검증 추가",
+      "summary": "1만 entity, 10만 debug event와 장시간 sync watch를 대상으로 기본 회귀 테스트와 분리된 benchmark 및 soak suite를 구축한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-003",
+        "REQ-004",
+        "MOD-001",
+        "TST-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "1만 entity의 생성, 조회, strict 검사와 snapshot 시간을 재현 가능한 fixture로 측정한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "10만 debug event의 집계 시간과 메모리 사용량을 측정한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "sync watch 장시간 실행에서 중복 process, 누수와 변경 유실이 없음을 검증한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "측정 기준, 허용 임계치와 결과 artifact를 문서화한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T04:53:34.256Z",
+      "updatedAt": "2026-08-13T04:53:34.256Z",
+      "statusChangedAt": "2026-08-13T04:53:34.256Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
