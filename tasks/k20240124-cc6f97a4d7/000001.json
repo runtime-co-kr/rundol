@@ -165,34 +165,36 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "mid",
       "links": [
-        "PRD-001"
+        "PRD-001",
+        "REQ-010",
+        "TST-002"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "스킬은 작업 시작 시 계약 조회와 다음 문서 평가, 종료 시 계약 검사와 strict 검사를 요구한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "스킬은 disabled 문서 생성, 흡수 위치 없는 생략과 계약의 묵시적 변경을 금지한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "CLI 문서는 init, 계약 조회와 변경, doc create, save, sync의 advisory/checkpoint 동작을 실제 help와 일치하게 설명한다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "Codex, Claude와 Copilot 설치본에 같은 스킬 계약이 배포되고 문서 동기화 테스트가 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T19:32:32.189Z",
-      "updatedAt": "2026-08-13T19:32:32.189Z",
-      "statusChangedAt": "2026-08-13T19:32:32.189Z",
+      "updatedAt": "2026-08-13T20:07:34.983Z",
+      "statusChangedAt": "2026-08-13T20:07:34.983Z",
       "externalRefs": [],
       "project": "rundol"
     },
