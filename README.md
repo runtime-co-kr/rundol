@@ -143,7 +143,7 @@ npm run version:check
 npm run release:check
 ```
 
-정식 배포는 package version, CHANGELOG와 `vX.Y.Z` Git tag가 일치해야 한다. 현재 CI pipeline 설정은 없으므로 위 검사를 직접 실행한다. 상세 정책은 [버전과 릴리스](docs/RELEASES.md)를 따른다.
+정식 배포는 package version, CHANGELOG와 `vX.Y.Z` Git tag가 일치해야 한다. GitHub Actions가 main push와 pull request에서 테스트를, `v*` tag에서 전체 릴리스 검사를 실행한다. 상세 정책은 [버전과 릴리스](docs/RELEASES.md)를 따른다.
 
 ## 개발과 검증
 

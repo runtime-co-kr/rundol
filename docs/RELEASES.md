@@ -68,6 +68,6 @@ npm run release:check
 
 `version:check`는 SemVer 형식, private monorepo 경계, package name 고유성, CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. `release:check`는 여기에 전체 테스트와 통합·개별 package tarball 설치 회귀 테스트를 더한다.
 
-현재 저장소에는 CI pipeline 설정이 없다. 위 두 명령은 로컬에서 직접 실행한다. pipeline을 다시 도입하면 일반 branch에서는 `version:check`와 전체 테스트를, tag ref에서는 tag와 package version 일치를 포함한 `release:check`를 실행한다. `version:check`는 tag 값을 `CI_COMMIT_TAG` 환경변수에서 읽는다. pipeline 통과가 tag 생성을 대신하지는 않으며, 정식 배포 ref는 여전히 maintainer가 만든 변경 불가능한 tag다.
+`.github/workflows/ci.yml`은 main push와 pull request에서 Node 20과 22로 `version:check`와 전체 테스트를 실행한다. 같은 ref의 이전 실행은 취소하여 동일 commit을 중복 검사하지 않는다. `v*` tag push에서는 tag와 package version 일치를 포함한 `release:check`를 실행하며, 이때 tag 값은 `CI_COMMIT_TAG` 환경변수로 전달한다. pipeline 통과가 tag 생성을 대신하지는 않으며, 정식 배포 ref는 여전히 maintainer가 만든 변경 불가능한 tag다.
 
 현재 자동 npm registry publish는 제공하지 않는다. registry를 사용하게 되면 같은 Git tag와 npm package version을 하나의 release pipeline에서 생성해야 한다.
