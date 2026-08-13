@@ -38,7 +38,9 @@ function npm(args) {
 }
 
 function cli(name, args, options = {}) {
-  const activePrefix = options.separate ? separatePrefix : path.join(prefix, 'node_modules', '.bin');
+  const activePrefix = options.separate
+    ? (process.platform === 'win32' ? separatePrefix : path.join(separatePrefix, 'bin'))
+    : path.join(prefix, 'node_modules', '.bin');
   const executable = process.platform === 'win32'
     ? path.join(activePrefix, `${name}.cmd`)
     : path.join(activePrefix, name);
