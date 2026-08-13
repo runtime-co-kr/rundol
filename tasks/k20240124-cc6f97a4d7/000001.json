@@ -465,12 +465,12 @@
         },
         "AC-003": {
           "text": "rdl contract check, strict, structure 검사가 통과하고 프로젝트 브랜치에 동기화된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:37:08.917Z",
-      "updatedAt": "2026-08-13T22:37:45.238Z",
+      "updatedAt": "2026-08-13T22:38:16.692Z",
       "statusChangedAt": "2026-08-13T22:37:25.980Z",
       "externalRefs": [],
       "project": "rundol"
