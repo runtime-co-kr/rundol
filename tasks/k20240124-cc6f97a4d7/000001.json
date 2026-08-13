@@ -474,6 +474,42 @@
       "statusChangedAt": "2026-08-13T22:38:17.325Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS3OU1X536B2D369460A16F": {
+      "title": "문서 계약과 표시 설정 소유 경계 기록",
+      "summary": "project.md 문서 계약과 Workspace·프로젝트 board.json 표시 설정의 책임 분리를 ADR-003으로 확정한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "ADR-003",
+        "ARC-002",
+        "REQ-010",
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "ADR-003이 대안과 결정 기준을 비교하고 선택한 소유 경계를 명시한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "추천 문맥의 비차단 의미와 board.json 상속 순서가 결정에 포함된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "contract, strict, structure 검사가 통과하고 프로젝트 브랜치에 동기화된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T22:39:25.987Z",
+      "updatedAt": "2026-08-13T22:39:25.987Z",
+      "statusChangedAt": "2026-08-13T22:39:25.987Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
