@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-14
+
 ### Added
 
 - Added schemaVersion 2 document planning contracts with enforcement, authoring prerequisites, omission absorption rules, and deterministic evaluation.
