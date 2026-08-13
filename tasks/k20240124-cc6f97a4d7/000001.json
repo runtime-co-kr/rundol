@@ -538,7 +538,7 @@
         },
         "AC-003": {
           "text": "TST-002와 TST-003이 REQ-012를 추적하고 strict·structure 검사가 통과한다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "문서와 태스크가 Rundol 프로젝트 브랜치에 저장·동기화된다.",
@@ -547,7 +547,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:48:57.104Z",
-      "updatedAt": "2026-08-13T22:51:32.527Z",
+      "updatedAt": "2026-08-13T22:51:33.421Z",
       "statusChangedAt": "2026-08-13T22:49:15.947Z",
       "externalRefs": [],
       "project": "rundol"
