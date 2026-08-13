@@ -201,6 +201,46 @@
       "statusChangedAt": "2026-08-13T04:53:34.631Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSR1M55I5188B3306141F5D0": {
+      "title": "보드에 동기화 감시 상태 연결",
+      "summary": "외부 CLI로 표시되는 sync watch placeholder를 실제 process 상태, 최근 실행 시각과 결과를 제공하는 snapshot 계약으로 교체한다. 상태 계약 정의 후 UI를 연결한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-004",
+        "REQ-005",
+        "API-001",
+        "SCR-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "watch 실행 여부, 대상 project, 최근 실행 시각과 최근 결과의 안정적인 데이터 계약이 정의된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "Board Operations가 실제 watch 상태를 최신 snapshot에서 표시한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "stale process, 중복 실행과 상태 파일 손상 시 안전한 fallback을 표시한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "watch 시작, 종료, 실패와 Board 재시작 시나리오의 자동화 테스트가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T04:53:34.998Z",
+      "updatedAt": "2026-08-13T04:53:34.998Z",
+      "statusChangedAt": "2026-08-13T04:53:34.998Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
