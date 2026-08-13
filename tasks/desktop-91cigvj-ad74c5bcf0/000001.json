@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "clientId": "desktop-91cigvj-ad74c5bcf0",
+  "segment": 1,
+  "tasks": {
+    "TASK-00MSR1M3QMA5E1767B4353A22D": {
+      "title": "보드 문서 저장 한도를 정책과 일치시키기",
+      "summary": "문서 본문 512KiB 정책보다 먼저 적용되는 공통 JSON 64KiB 제한을 해소하고 API 계약과 경계 검증을 일치시킨다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-005",
+        "API-001",
+        "SCR-001",
+        "TST-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "Board API에서 512KiB 이하의 유효한 문서 본문을 저장할 수 있다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "정책 한도를 초과한 요청은 일관된 HTTP 상태와 오류 계약으로 거부된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "경계값과 초과값에 대한 자동화 테스트가 추가되고 통과한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "API와 화면 및 테스트 문서의 크기 제한 설명이 실제 구현과 일치한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T04:53:33.165Z",
+      "updatedAt": "2026-08-13T04:53:33.165Z",
+      "statusChangedAt": "2026-08-13T04:53:33.165Z",
+      "externalRefs": [],
+      "project": "rundol"
+    }
+  }
+}
