@@ -530,7 +530,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "REQ-012가 CLI, 스킬, Board의 책임과 핵심 인터페이스를 현재 구현 기준으로 규정한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "AI 설계 라우팅, 검증·동기화, Board 계약 변경 흐름이 Mermaid로 표현된다.",
@@ -547,7 +547,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:48:57.104Z",
-      "updatedAt": "2026-08-13T22:49:15.947Z",
+      "updatedAt": "2026-08-13T22:51:31.661Z",
       "statusChangedAt": "2026-08-13T22:49:15.947Z",
       "externalRefs": [],
       "project": "rundol"
