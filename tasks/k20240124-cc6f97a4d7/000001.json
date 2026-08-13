@@ -551,6 +551,74 @@
       "statusChangedAt": "2026-08-13T22:51:53.869Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS4E7KDB358D0C9F149BDDB": {
+      "title": "문서 책임 범위와 추적 단위 하네스 구현",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-012",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "CLI가 문서 유형 존재 여부뿐 아니라 과도한 통합과 추적 단위 부족을 일반 규칙으로 진단한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "런돌 스킬이 문서 생성 전에 책임 경계와 분할 여부를 명시적으로 판단하도록 안내한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "중립 fixture 회귀 테스트와 strict 검사가 통과하고 사례 프로젝트의 고유 내용이 포함되지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T22:59:09.900Z",
+      "updatedAt": "2026-08-13T22:59:09.900Z",
+      "statusChangedAt": "2026-08-13T22:59:09.900Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-00MSS4EI5AC88C26EF54284EFB": {
+      "title": "문서 책임 범위와 추적 단위 하네스 구현",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-012",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "CLI가 문서 유형 존재 여부뿐 아니라 과도한 통합과 추적 단위 부족을 일반 규칙으로 진단한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "런돌 스킬이 문서 생성 전에 책임 경계와 분할 여부를 명시적으로 판단하도록 안내한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "중립 fixture 회귀 테스트와 strict 검사가 통과하고 사례 프로젝트의 고유 내용이 포함되지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T22:59:23.613Z",
+      "updatedAt": "2026-08-13T22:59:23.613Z",
+      "statusChangedAt": "2026-08-13T22:59:23.613Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
