@@ -620,40 +620,6 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS5DB9E19EBA8000B76B271": {
-      "title": "Git 브랜치 역할 경계와 푸시 하네스 구현",
-      "summary": "빈 저장소 초기화부터 main, project, workspace 브랜치 책임을 분리하고 교차 푸시를 차단한다.",
-      "owner": "MEMBER-001",
-      "reviewers": [],
-      "stakeholders": [],
-      "status": "todo",
-      "priority": "mid",
-      "links": [
-        "REQ-012",
-        "TST-002"
-      ],
-      "deps": [],
-      "acceptanceCriteria": {
-        "AC-001": {
-          "text": "init/attach 시 브랜치 역할을 식별하고 안전한 pre-push 경계를 설치한다.",
-          "done": false
-        },
-        "AC-002": {
-          "text": "CLI save/sync는 canonical worktree와 정확한 ref 일치 여부를 검증한다.",
-          "done": false
-        },
-        "AC-003": {
-          "text": "교차 브랜치 push 거부, 정상 push 허용, 기존 사용자 hook 보존을 회귀 테스트한다.",
-          "done": false
-        }
-      },
-      "blocker": null,
-      "createdAt": "2026-08-13T23:26:27.648Z",
-      "updatedAt": "2026-08-13T23:26:27.648Z",
-      "statusChangedAt": "2026-08-13T23:26:27.648Z",
-      "externalRefs": [],
-      "project": "rundol"
-    },
     "TASK-00MSS5DLZYF7586451FC7636AA": {
       "title": "Git 브랜치 역할 경계와 푸시 하네스 구현",
       "summary": "빈 저장소 초기화부터 main, project, workspace 브랜치 책임을 분리하고 교차 푸시를 차단한다.",
