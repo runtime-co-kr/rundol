@@ -1,0 +1,479 @@
+{
+  "schemaVersion": 2,
+  "tasks": {
+    "TASK-01J000000000000000000001": {
+      "title": "Telemetry 수집 계약과 schema 확정",
+      "summary": "단말 요청·응답 계약과 중복·역순 처리 규칙을 schema와 contract fixture로 확정한다.",
+      "owner": "MEMBER-004",
+      "reviewers": [
+        "MEMBER-001"
+      ],
+      "stakeholders": [
+        "STAKEHOLDER-004"
+      ],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-004",
+        "API-001",
+        "MOD-001",
+        "TST-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정상·중복·충돌 요청 schema가 확정됐다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "API contract fixture가 TST-001 시나리오와 연결됐다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "영향받은 REQ, API, MOD 문서가 active다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-03T00:00:00Z",
+      "updatedAt": "2026-08-05T08:00:00Z",
+      "statusChangedAt": "2026-08-05T08:00:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000002": {
+      "title": "Telemetry Gateway idempotency 구현",
+      "summary": "Device message ID를 기준으로 정상 재전송과 payload 충돌을 구분해 event stream에 한 번만 기록한다.",
+      "owner": "MEMBER-004",
+      "reviewers": [
+        "MEMBER-001"
+      ],
+      "stakeholders": [
+        "STAKEHOLDER-004"
+      ],
+      "status": "doing",
+      "priority": "high",
+      "links": [
+        "REQ-004",
+        "API-001",
+        "MOD-001",
+        "ADR-001",
+        "TST-001#시나리오"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000001"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "동일 key와 payload 재전송은 기존 message ID를 반환한다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "동일 key와 다른 payload는 IDEMPOTENCY_CONFLICT를 반환한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "stream 장애 시 retryable 응답 contract test가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T09:00:00Z",
+      "updatedAt": "2026-08-06T01:10:00Z",
+      "statusChangedAt": "2026-08-05T09:00:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000003": {
+      "title": "최근 위치 projection 구현",
+      "summary": "역순 telemetry가 최근 위치를 되돌리지 않도록 vehicle별 latest position projection을 구현한다.",
+      "owner": null,
+      "reviewers": [
+        "MEMBER-005"
+      ],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-001",
+        "REQ-004",
+        "MOD-001",
+        "ADR-001",
+        "TST-001#시나리오"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000002"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "observedAt이 더 최신인 telemetry만 projection을 전진시킨다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "중복·역순 fixture에서 최신 위치가 결정론적으로 같다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "projection lag와 stale vehicle metric이 제공된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T09:10:00Z",
+      "updatedAt": "2026-08-05T09:10:00Z",
+      "statusChangedAt": "2026-08-05T09:10:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000004": {
+      "title": "Viewport 차량 조회 API 구현",
+      "summary": "권한·bounds·filter를 적용한 차량 snapshot과 cursor 기반 변경분 조회 API를 구현한다.",
+      "owner": "MEMBER-004",
+      "reviewers": [
+        "MEMBER-001",
+        "MEMBER-007"
+      ],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "links": [
+        "REQ-001",
+        "API-002",
+        "MOD-001",
+        "SCR-001"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000003"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "차량 group 권한이 snapshot과 delta 모두에 적용된다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "cursor 만료 시 명시적인 재동기화 오류를 반환한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "5,000대 viewport 조회 p95가 1초 이내다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T09:20:00Z",
+      "updatedAt": "2026-08-06T02:20:00Z",
+      "statusChangedAt": "2026-08-06T00:00:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000005": {
+      "title": "관제 지도 snapshot과 delta 반영",
+      "summary": "관제 화면이 최초 snapshot과 cursor 변경분을 ID 단위로 반영하고 stale 상태를 표시하도록 구현한다.",
+      "owner": null,
+      "reviewers": [
+        "MEMBER-003"
+      ],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-001",
+        "SCR-001",
+        "SCR-002",
+        "API-002",
+        "TST-001"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000004"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "snapshot 이후 changed와 removedIds가 marker와 목록에 반영된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "stale·offline·alert 상태가 색상 외 icon과 text로 구분된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "API 갱신 실패 시 마지막 데이터와 실패 시각을 유지한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T09:30:00Z",
+      "updatedAt": "2026-08-05T09:30:00Z",
+      "statusChangedAt": "2026-08-05T09:30:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000006": {
+      "title": "장기 정차 detector 구현",
+      "summary": "Event time 15분 저속 조건과 허용 구역을 평가해 중복 없는 장기 정차 alert를 생성한다.",
+      "owner": "MEMBER-006",
+      "reviewers": [
+        "MEMBER-002",
+        "MEMBER-009"
+      ],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "waiting",
+      "priority": "high",
+      "links": [
+        "REQ-002",
+        "MOD-001",
+        "ADR-001",
+        "TST-001#시나리오"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000003"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "15분 threshold 전후 fixture가 candidate와 open을 정확히 구분한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "같은 운행의 열린 장기 정차 alert가 하나만 존재한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "허용 정차 구역 fixture가 준비되어 오탐을 만들지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": {
+        "waitingFor": "MEMBER-002",
+        "condition": "차량 그룹별 허용 정차 구역과 기본 threshold 승인",
+        "since": "2026-08-06T01:00:00Z"
+      },
+      "createdAt": "2026-08-05T09:40:00Z",
+      "updatedAt": "2026-08-06T01:00:00Z",
+      "statusChangedAt": "2026-08-06T01:00:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000007": {
+      "title": "경로 이탈 detector 구현",
+      "summary": "계획 경로 거리와 연속 유효 관측을 평가하고 offline 상태의 잘못된 경로 이탈 확정을 방지한다.",
+      "owner": null,
+      "reviewers": [
+        "MEMBER-006"
+      ],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-002",
+        "MOD-001",
+        "TST-001#시나리오"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000003"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "500m 초과 유효 위치 3회에서 alert를 생성한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "stale·offline·invalid GPS는 연속 횟수에 포함하지 않는다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "rule version과 근거 telemetry ID가 alert에 기록된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T09:50:00Z",
+      "updatedAt": "2026-08-05T09:50:00Z",
+      "statusChangedAt": "2026-08-05T09:50:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000008": {
+      "title": "Alert 조치 상태 전이 검토",
+      "summary": "확인·담당자 지정·종료 command의 권한과 optimistic concurrency 및 감사 event 구현을 검토한다.",
+      "owner": "MEMBER-009",
+      "reviewers": [
+        "MEMBER-002",
+        "MEMBER-008"
+      ],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "review",
+      "priority": "high",
+      "links": [
+        "REQ-003",
+        "REQ-002",
+        "SCR-002",
+        "API-002",
+        "MOD-001",
+        "TST-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "허용 상태 전이와 필수 입력 테스트가 통과한다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "동일 version 동시 종료에서 하나만 성공한다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "모든 command가 append-only AlertAction을 생성한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-04T05:00:00Z",
+      "updatedAt": "2026-08-06T03:00:00Z",
+      "statusChangedAt": "2026-08-06T03:00:00Z",
+      "externalRefs": [
+        {
+          "provider": "github",
+          "repository": "example/tms",
+          "number": 42,
+          "mode": "projection"
+        }
+      ],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000009": {
+      "title": "관제 E2E fixture 자동화",
+      "summary": "정상 위치부터 장기 정차·경로 이탈·운영자 종료까지 고정 seed stream을 E2E로 자동화한다.",
+      "owner": "MEMBER-008",
+      "reviewers": [
+        "MEMBER-001",
+        "MEMBER-009"
+      ],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "TST-001",
+        "REQ-004",
+        "REQ-001",
+        "REQ-002",
+        "RUN-001"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000005",
+        "TASK-01J000000000000000000006",
+        "TASK-01J000000000000000000007",
+        "TASK-01J000000000000000000008"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "TC-001부터 TC-010까지 고정 seed fixture가 있다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "실패 시 message·vehicle·trip·alert ID를 출력한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "실행 후 테스트 partition과 업무 데이터를 정리한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T10:00:00Z",
+      "updatedAt": "2026-08-05T10:00:00Z",
+      "statusChangedAt": "2026-08-05T10:00:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000010": {
+      "title": "10,000대 관제 성능 검증",
+      "summary": "등록 10,000대·동시 운행 5,000대에서 수집·projection·viewport·detector 성능 목표를 측정한다.",
+      "owner": null,
+      "reviewers": [
+        "MEMBER-001",
+        "MEMBER-008"
+      ],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "ARC-001#품질 속성",
+        "REQ-001#비기능 요구",
+        "REQ-002#비기능 요구",
+        "TST-001#비기능 검증"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000009"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "수집 p95 300ms와 위치 신선도 p95 30초를 측정한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "viewport 조회 p95 1초와 감지 p95 3분을 측정한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "결과와 병목 profile을 TST-001 실행 증거에 연결한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T10:10:00Z",
+      "updatedAt": "2026-08-05T10:10:00Z",
+      "statusChangedAt": "2026-08-05T10:10:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    },
+    "TASK-01J000000000000000000011": {
+      "title": "Projection replay 복구 훈련",
+      "summary": "Shadow projection을 event replay로 재구축하고 검증 후 read pointer를 전환하는 복구 절차를 훈련한다.",
+      "owner": null,
+      "reviewers": [
+        "MEMBER-005",
+        "MEMBER-009"
+      ],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "ADR-001",
+        "ARC-001#실행과 배포",
+        "RUN-001#롤백과 복구",
+        "TST-001"
+      ],
+      "deps": [
+        "TASK-01J000000000000000000003",
+        "TASK-01J000000000000000000010"
+      ],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "24시간 fixture를 새 namespace에 replay한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "vehicle 수, max observedAt과 sample hash가 일치한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "30분 이내 복구하고 측정 결과를 runbook에 반영한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-05T10:20:00Z",
+      "updatedAt": "2026-08-05T10:20:00Z",
+      "statusChangedAt": "2026-08-05T10:20:00Z",
+      "externalRefs": [],
+      "project": "tms"
+    }
+  }
+}

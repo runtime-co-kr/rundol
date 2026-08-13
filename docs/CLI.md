@@ -1,0 +1,393 @@
+# RDL CLI 기능 명세
+
+Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 별칭이다. 외부 runtime dependency 없이 Node.js 14 이상과 Git에서 동작한다.
+
+## 명령 요약
+
+아래 블록은 `rdl --help`의 Usage와 항상 일치해야 한다.
+
+<!-- rdl-help:start -->
+```text
+  rdl init <project-key> --name <project-name> [--root <path>] [--json]
+  rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
+  rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
+rdl project add <project-key> --name <project-name> [--root <path>] [--json]
+rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
+rdl check --links [--root <path>]
+rdl check --tasks [--root <path>]
+rdl git init [--root <path>] [--project <key>] [--json]
+rdl refresh [--root <path>] [--project <key>] [--json]
+rdl save [--root <path>] [--project <key>] [--json]
+  rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
+  rdl check --structure [--root <path>] [--project <key>] [--json]
+  rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
+rdl skill install [--force] [--json]
+rdl settings migrate [--root <path>] [--json]
+rdl workspace show|check|sync|migrate [--root <path>] [--json]
+rdl client register <client-id> --name <name> --type <device|agent|service> --owner <MEMBER-ID> [--json]
+rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
+rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
+rdl lease list --project <key> [--json]
+rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
+                 [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
+                 [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
+rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
+rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
+rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
+rdl doc create <TYPE> <제목> --owner <MEMBER-ID> [--related <ARTIFACT-ID>] [--project <key>] [--json]
+rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
+rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
+rdl conflict list [--project <key>] [--json]
+rdl conflict resolve --strategy <ours|theirs> [--project <key>] [--json]
+rdl conflict clear [--project <key>] [--json]
+rdl action resolve <ACTION> [--json]
+rdl action record <ACTION> --actual-executor <cli|llm|hybrid> [--planned-executor <executor>]
+                  [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
+rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
+rdl debug summary [--json]
+rdl doctor [--git-url <url>] [--json]
+rdl board [--root <path>] [--project <key>] [--port <number>] [--no-open] [--json]
+rdl --version
+rdl --help
+```
+<!-- rdl-help:end -->
+
+## 공통 탐색과 프로젝트 선택
+
+- `--root`를 생략하면 현재 위치부터 부모 방향으로 Git 저장소 루트와 `projects/workspace/workspace.yaml`을 찾는다.
+- Workspace 루트와 Git 저장소 루트는 같아야 한다.
+- schemaVersion 6 프로젝트는 `rundol/workspace`의 `projects/project-<key>.yaml`에 등록된다.
+- 각 프로젝트는 `rundol/<key>` 브랜치를 `projects/<key>/`에 linked worktree로 연결한다.
+- `check`, `git init`, `refresh`, `save`, `sync`는 `--project`를 생략하면 등록 프로젝트 전체를 각각 처리한다.
+- `task add`, `task set`, `task acceptance`, `board`는 프로젝트가 하나면 자동 선택하고 여러 개면 `--project <key>`가 필요하다.
+- `--json`은 자동화와 AI 클라이언트가 사용할 안정된 JSON 결과를 출력한다.
+
+`rundol/*`는 하나의 Git 브랜치나 wildcard 작업 단위가 아니다. CLI의 전체 처리 기준은 Workspace의 프로젝트 Registry이며 각 프로젝트 브랜치를 독립적으로 처리한다.
+
+## 기능 목록
+
+| 명령 | 핵심 기능 | 로컬 변경 | 네트워크 |
+|---|---|---|---|
+| `rdl init` | Workspace와 첫 프로젝트 등록·브랜치·worktree 생성 | `rundol/workspace`, 프로젝트 브랜치 | 로컬 ref가 없고 `origin`이 있으면 fetch |
+| `rdl attach` | 원격 Workspace·프로젝트 브랜치를 연결 | `projects/*` linked worktree | fetch |
+| `rdl detach` | 선택 프로젝트 linked worktree 연결 해제 | linked worktree | 없음 |
+| `rdl project add` | 기존 Workspace에 독립 프로젝트 추가 | settings·프로젝트 브랜치 | 대응 로컬 ref가 없고 `origin`이 있으면 fetch |
+| `rdl check` | 문서·메타·링크·거버넌스·태스크·Obsidian 설정 검사 | 없음 | 없음 |
+| `rdl git init` | 등록 프로젝트 브랜치 복구 또는 생성, worktree 연결 | ref와 worktree | 로컬 ref가 없고 `origin`이 있으면 fetch |
+| `rdl refresh` | worktree와 태스크 합본을 materialize하고 엄격 검증 | 프로젝트 `.rundol/state` 갱신, 커밋 없음 | 없음 |
+| `rdl save` | 직접 편집한 프로젝트 자료 검증·커밋 | 선택 프로젝트 브랜치 커밋 | 없음 |
+| `rdl obsidian init` | 팀 공통 Obsidian 설정을 개인 Vault 설정으로 복사 | `.obsidian/*.json` | 없음 |
+| `rdl skill install` | 거버넌스 스킬을 AI 클라이언트 개인 skills 폴더에 설치 | 클라이언트 `skills/` 디렉터리 | 없음 |
+| `rdl settings migrate` | 기존 schemaVersion 3 등록·Obsidian 설정을 settings 브랜치로 이전 | 기존 Workspace와 settings 브랜치 | 없음 |
+| `rdl task add` | 완료조건이 있는 태스크 생성 | 태스크 샤드, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
+| `rdl task set` | 태스크 상태 또는 담당자 변경 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
+| `rdl task acceptance` | 완료조건의 완료·미완료 상태 변경 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
+| `rdl task migrate` | 단일 `tasks.json`을 클라이언트 샤드로 전환 | settings와 프로젝트 브랜치 커밋 | 없음 |
+| `rdl doc create` | 등록 멤버와 실제 관련 문서로 표준 문서 생성 | 프로젝트 브랜치 작업 트리 | 없음 |
+| `rdl sync` | save, fetch, fast-forward/3-way 병합, 검증, push | 프로젝트 브랜치 커밋·병합 | fetch, 기본 push |
+| `rdl sync watch` | 지정 주기로 Sync 반복 | `rdl sync`와 같음 | fetch, 기본 push |
+| `rdl conflict` | pending 충돌 조회·전략 해결·기록 정리 | 해결 커밋 또는 pending | 없음 |
+| `rdl debug` | 명령 진단과 클라이언트 제공 토큰 사용량 기록·요약 | 로컬 JSONL 로그 | 없음 |
+| `rdl action` | CLI·LLM·혼합 실행 주체 권장, 실제 선택과 fallback 기록 | 로컬 JSONL 로그 | 없음 |
+| `rdl doctor` | 설치·PATH·버전·스킬과 선택적 Git URL 진단 | 없음 | `--git-url`일 때 ls-remote |
+| `rdl board` | 로컬 태스크·협업 보드 실행 | UI 작업에 따라 프로젝트 파일 변경 | 서버 자체는 없음; Sync 버튼은 원격 사용 |
+
+## Workspace와 프로젝트 생성
+
+### `rdl init`
+
+기존 Git 저장소 루트에서 첫 Rundol 프로젝트를 만든다.
+
+```bash
+rdl init memo --name "메모 앱"
+```
+
+생성 대상은 제품 브랜치가 아니라 Rundol 전용 브랜치와 linked worktree다.
+
+```text
+projects/workspace/           # rundol/workspace linked worktree
+├─ workspace.yaml
+├─ clients/
+├─ projects/
+└─ events/
+projects/memo/                # rundol/memo linked worktree
+├─ project.md
+├─ tasks/<client-id>/000001.json
+├─ docs/
+└─ .obsidian/*.json           # 로컬 개인 설정, Git 비추적
+```
+
+프로젝트 브랜치는 main에서 분기하지 않는 orphan commit으로 시작한다. `origin`에 `rundol/memo`가 이미 있으면 새 브랜치를 만들지 않고 원격 커밋을 사용한다. 인증·DNS·TLS·연결 오류는 “원격 브랜치 없음”으로 취급하지 않고 초기화를 중단한다.
+
+제품 저장소의 `.rundol`, `.gitignore`, 제품 파일은 만들거나 수정하지 않는다. `projects/*/` 숨김 규칙은 로컬 `.git/info/exclude`에만 기록한다.
+
+### `rdl project add`
+
+```bash
+rdl project add tms --name "차량 관제"
+```
+
+Workspace의 `projects/project-tms.yaml`, `rundol/tms`, `projects/tms/`를 추가한다. 프로젝트 키는 영문 소문자·숫자·하이픈만 허용하며 `workspace`는 예약어다.
+
+## 검사
+
+```bash
+rdl check
+rdl check --project memo --strict
+rdl check REQ-001
+rdl check --links
+rdl check --tasks
+rdl check --json
+```
+
+검사 범위:
+
+- `project.md`와 일반 Markdown의 필수 frontmatter
+- 3자리 문서 코드, 번호, 한글 중심 제목과 파일명
+- `rundol/`, `artifact/`, `domain/`, `feature/` 태그
+- 실제 Obsidian 파일명·heading·block을 대상으로 하는 Wiki link
+- `project.md`의 미션, 목표, 범위, 역할, 멤버, 이해관계자, RACI, 의사결정, 위험, 협업 리듬, 완료 정의
+- ROLE·MEMBER·STAKEHOLDER block 필드
+- 프로젝트별 태스크 샤드 또는 기존 `tasks.json`의 필드, 상태, 할당, 의존성, blocker, 완료조건과 문서 연결
+- 프로젝트 Vault의 로컬 `.obsidian/` 설정
+
+본문의 미해결 Wiki link는 기본 경고이며 `--strict`에서는 오류다. canonical metadata와 태스크 참조 오류는 항상 오류다. `ARTIFACT-ID`, `--links`, `--tasks`는 출력 진단을 필터링한다.
+
+## Git 상태 명령
+
+### `rdl settings migrate`
+
+구형 schemaVersion 3을 settings 구조로 전환하는 호환 명령이다. 신규 전환은 `rdl workspace migrate`를 사용한다.
+
+### `rdl workspace migrate`
+
+schemaVersion 5의 `rundol/settings` Registry를 schemaVersion 6 `rundol/workspace`로 복사하고 `projects/workspace/` worktree를 만든다. 프로젝트 파일은 `project-<key>.yaml` 패턴으로 변환한다. 기존 settings 브랜치는 자동 삭제하지 않는다.
+
+### Client와 문서 임대
+
+```bash
+rdl client register laptop-a --name "업무 노트북" --type device --owner MEMBER-001
+rdl client list
+rdl lease acquire REQ-001 --project crm --client-id laptop-a
+rdl lease renew REQ-001 --project crm --client-id laptop-a
+rdl lease release REQ-001 --project crm --client-id laptop-a
+```
+
+Client는 사람 자체가 아니라 장치·Agent·Service 실행 주체다. 임대는 Workspace의 `events/lease-<scope>-<client>-<segment>.jsonl`에 Client별로 기록한다. Git-only 임대는 충돌을 예방하는 소프트 임대이며 문자 단위 공동 편집이나 강한 상호 배제를 제공하지 않는다.
+
+### `rdl git init`
+
+등록된 각 프로젝트에 대해 다음 순서를 적용한다.
+
+1. 로컬 `rundol/<key>` ref가 있으면 재사용한다.
+2. 로컬 ref가 없으면 `origin`의 같은 ref를 fetch한다.
+3. 원격 ref가 명시적으로 없고 로컬 seed가 있을 때만 orphan branch를 만든다.
+4. `projects/<key>/`에 linked worktree를 연결한다.
+
+반복 실행해도 기존 ref와 커밋을 바꾸지 않는 멱등 명령이다.
+
+### `rdl refresh`
+
+원격 통신 없이 worktree 상태와 프로젝트 연결을 엄격 검사한다. 호환용 태스크 합본은 프로젝트 `.rundol/state/tasks.json`에 materialize하며 자동 커밋하지 않는다.
+
+### `rdl save`
+
+선택한 프로젝트의 `project.md`, 설계문서와 태스크 원본 변경을 `rdl check --strict` 수준으로 검사한 뒤 `rdl: update workspace` 커밋을 만든다. 변경이 없으면 커밋하지 않는다.
+
+### `rdl sync`
+
+```bash
+rdl sync --project memo
+rdl sync --project memo --no-push
+rdl sync --project memo --remote upstream
+```
+
+동작 순서:
+
+1. `save`
+2. 원격 `rundol/<key>` fetch
+3. fast-forward 또는 공통 base 기반 3-way 병합
+4. 문서와 태스크 전체 검증
+5. `--no-push`가 아니면 같은 ref로 push
+
+샤드 태스크와 문서는 Git으로 병합한다. 기존 단일 `tasks.json` 프로젝트는 태스크 필드 단위 의미 병합을 유지한다. 충돌하면 push하지 않고 다음 파일에 기록한다.
+
+```text
+projects/<project-key>/.rundol/state/pending/merge-conflicts.json
+```
+
+강제 push와 공통 이력이 없는 브랜치의 자동 병합은 수행하지 않는다. `--project`를 생략한 전체 sync는 등록 목록을 순차 처리하는 독립 연산이며 하나의 원자적 Git 트랜잭션이 아니다.
+
+Rundol이 실행하는 HTTP Git 명령은 자체 호스팅 GitLab reverse proxy의 HTTP/2 reset을 피하기 위해 명령 단위로 `http.version=HTTP/1.1`을 사용한다. 사용자 전역 Git 설정은 바꾸지 않는다.
+
+## 태스크
+
+### `rdl task add`
+
+```bash
+rdl task add "검색 구현" \
+  --project memo \
+  --summary "메모 본문을 검색한다." \
+  --owner MEMBER-001 \
+  --reviewer MEMBER-002 \
+  --stakeholder STAKEHOLDER-001 \
+  --priority high \
+  --link REQ-001 \
+  --acceptance "제목으로 검색된다." \
+  --acceptance "본문으로 검색된다."
+```
+
+- 초기 상태는 `todo`다.
+- `--acceptance`는 하나 이상 필요하며 반복 지정할 수 있다.
+- `--reviewer`, `--stakeholder`, `--link`도 반복 지정할 수 있다.
+- 담당자·검토자·이해관계자는 선택 프로젝트의 `project.md`에 등록돼야 한다.
+- 변경 검증 후 클라이언트 태스크 샤드와 operation 기록을 쓰고 프로젝트 브랜치에 즉시 커밋한다. 기존 프로젝트는 `tasks.json`을 계속 지원한다.
+
+### `rdl task set`
+
+```bash
+rdl task set TASK-01J000000000000000000003 --project memo --status doing --owner MEMBER-001
+rdl task set TASK-01J000000000000000000003 --project memo --owner null
+```
+
+현재 직접 변경 가능한 필드는 `status`와 `owner`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
+
+태스크 변경 operation은 다음 위치에 기록된다.
+
+```text
+projects/<project-key>/.rundol/state/pending/OP-*.json
+```
+
+### `rdl task acceptance`
+
+```bash
+rdl task acceptance TASK-01J000000000000000000003 AC-001 --done --project memo
+rdl task acceptance TASK-01J000000000000000000003 AC-001 --undone --project memo
+```
+
+등록된 수용조건 하나의 `done` 값만 변경하고 operation과 commit을 남긴다. 모든 수용조건을 완료한 뒤 `rdl task set --status done`을 실행한다. 존재하지 않는 태스크나 수용조건은 변경하지 않는다.
+
+### 태스크 마이그레이션과 충돌
+
+```bash
+rdl task migrate --project memo --client-id laptop-a --max-items 500
+rdl conflict list --project memo
+rdl conflict resolve --project memo --strategy ours
+```
+
+마이그레이션은 단일 `tasks.json`을 클라이언트별 segment로 분리한다. 충돌 해결의 `ours`와 `theirs`는 기록된 충돌 전체에 같은 전략을 적용한다. 문서별·필드별 대화형 선택은 아직 제공하지 않는다. `rdl conflict clear`는 pending 기록만 제거한다.
+
+## 문서 생성
+
+```bash
+rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001
+rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --related PRD-001
+```
+
+지원 유형은 PRD, GLS, ARC, REQ, SCR, MOD, API, ADR, TST, RUN, NTE다. CLI는 다음 3자리 번호, 한글 중심 파일명, 실제 등록 멤버 owner, 실제 파일명을 사용한 Wiki link와 필수 태그를 적용한다. REQ·SCR·MOD·API·TST·RUN은 `--related`가 필요하다. 본문에서 아직 결정하지 못한 값은 필드를 삭제하지 않고 `작성 필요`로 남긴다.
+
+## Debug와 토큰 사용량
+
+```bash
+rdl check --debug
+rdl debug record --provider openai --model gpt-example --input-tokens 1200 --output-tokens 300
+rdl debug record --provider openai --model not-reported --input-tokens 0 --output-tokens 0 --unreported
+rdl debug summary
+```
+
+`--debug` 또는 `RUNDOL_DEBUG=1`은 명령명·소요시간·종료 코드와 성공 여부를 프로젝트 `.rundol/logs/debug.jsonl`에 남긴다. 여러 프로젝트에서는 `--project`가 필요하다. 프롬프트와 문서 본문은 기록하지 않는다. Rundol 자체는 모델 공급자의 토큰을 추정하지 않으며 AI 클라이언트가 보고한 수치만 집계한다.
+
+## CLI·LLM 액션 라우팅
+
+```bash
+rdl action resolve document.create --json
+rdl action resolve document.edit --json
+rdl action record document.edit --actual-executor hybrid --artifact-id REQ-001
+rdl action record document.create --actual-executor llm --artifact-id REQ-001 --fallback-reason "기존 비표준 문서 변환"
+```
+
+`resolve`는 표준 액션에 대해 `cli`, `llm`, `hybrid` 권장 executor와 command hint를 반환한다. `record`는 권장·실제 executor, artifact/task ID와 fallback 이유를 본문 없이 기록한다. 권장 executor와 다른 방식을 사용하면 `--fallback-reason`이 필수다.
+
+디버그 모드의 `rdl doc create`, `rdl task add`, `rdl task set`, `rdl task acceptance`는 실제 CLI action event를 자동 기록한다. `rdl debug summary`는 planned/actual executor 건수, fallback, 채택 건수와 채택률을 반환한다.
+
+## 설치 진단
+
+```bash
+rdl doctor
+rdl doctor --json
+rdl doctor --git-url https://gitlab.example.com/group/rundol.git
+```
+
+Node.js·npm·Git 최소 버전, 패키지 필수 파일, postinstall 격리, PATH launcher, AI 클라이언트 스킬을 확인한다. `--git-url`을 지정하면 credential prompt 없이 읽기 접근을 검사하고 인증·HTTP reset·DNS·TLS·저장소 없음 오류를 구분한다. 상세 설치와 복구 명령은 [Git 저장소 설치와 복구](INSTALLATION.md)에 있다.
+
+## 버전과 릴리스 검사
+
+다음 명령은 Rundol 소스 저장소의 개발·배포 과정에서 사용하며 설치된 `rdl` 하위 명령은 아니다.
+
+```bash
+npm run version:check
+npm run release:check
+```
+
+`version:check`는 SemVer, workspace package name 고유성, private monorepo 경계, 같은 CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. `release:check`는 전체 테스트와 통합·개별 package tarball 설치 회귀 테스트까지 실행한다. 정책은 [버전과 릴리스](RELEASES.md)를 따른다.
+
+## Obsidian
+
+```bash
+rdl obsidian init --project memo
+rdl obsidian init --force
+```
+
+선택 프로젝트의 `projects/<key>/.obsidian/`에 기본 설정을 설치한다. Obsidian에서는 `projects/<key>/` 자체를 Vault 루트로 연다. 기본 동작은 기존 개인 설정을 보존하며 `--force`일 때만 같은 이름의 파일을 덮어쓴다.
+
+## 거버넌스 스킬 설치
+
+```bash
+rdl skill install
+rdl skill install --force
+```
+
+`rundol-project-governance` 스킬을 Codex, Claude Code와 GitHub Copilot의 개인 skills 폴더에 설치한다. 전역 설치 후 한 번 실행하고, CLI를 갱신한 뒤에도 다시 실행해 스킬을 최신 계약으로 맞춘다.
+
+`.rundol-managed.json` 마커가 없는 기존 디렉터리는 사용자가 관리하는 스킬로 보고 보존하며, 덮어쓰려면 `--force`를 지정한다.
+
+**이 작업을 npm `postinstall`로 연결하지 않는다.** npm 전역 설치가 git URL을 대상으로 할 때 `postinstall`이 있으면 npm이 패키지를 복사하지 않고 캐시의 임시 클론에 링크한다. 그 임시 클론은 곧 정리되므로 `bin/`과 `src/`가 사라진 채 설치가 끝나고, 이어서 실행된 `postinstall`이 실패하면 npm이 롤백하며 기존에 설치돼 있던 정상 버전까지 지운다.
+
+## 로컬 보드
+
+```bash
+rdl board --project memo
+rdl board --project memo --port 47231
+rdl board --project memo --no-open
+```
+
+- `127.0.0.1`에만 bind한다.
+- 기본값은 사용 가능한 임의 포트이며 브라우저를 자동 실행한다.
+- 문서 중심 3패널 Workspace, Markdown 읽기·검증 편집, Needs Attention, 태스크 목록·Board와 People·Operations·Settings 분리 화면을 제공한다.
+- 태스크 쓰기는 검증 후 즉시 프로젝트 브랜치에 커밋한다.
+- 문서 편집은 base revision을 요구하고 strict 검증 실패 시 원본을 복구한다.
+- Refresh는 로컬 검증, Sync는 선택 프로젝트의 원격 동기화를 실행한다.
+- 3초마다 문서·태스크·사람·Client·Lease·Sync 영역별 revision을 확인해 변경된 Snapshot을 반영한다.
+- API는 한 요청에서 최대 500개 태스크를 반환하고 쓰기 요청에 로컬 세션 토큰을 요구한다.
+- CSP, frame 차단과 64KB 요청 제한을 적용한다.
+
+## 출력과 종료 코드
+
+사람용 출력은 파일, 행, 진단 코드와 조치 대상을 보여준다. `--json`은 CI, LSP, Obsidian adapter와 AI가 사용할 구조화 결과를 출력한다.
+
+| 종료 코드 | 의미 |
+|---:|---|
+| `0` | 명령 성공 또는 검증 오류 없음. 경고는 있을 수 있음 |
+| `1` | `check`가 검증 오류를 발견함 |
+| `2` | 잘못된 인자, Workspace 탐색 실패, Git/파일/내부 실행 오류 |
+
+## 현재 제공하지 않는 기능
+
+- Markdown formatter와 자동 `--fix`
+- 태스크 삭제와 임의 필드 수정을 위한 범용 CLI
+- 충돌을 문서별·필드별로 선택하는 대화형 TUI
+- 프로젝트 간 태스크 의존성 qualified reference
+- LSP와 전용 Obsidian plugin
+- 여러 프로젝트 sync의 원자적 일괄 rollback
+
+이 항목들은 구현 전까지 실제 명령처럼 문서나 도움말에 표기하지 않는다.

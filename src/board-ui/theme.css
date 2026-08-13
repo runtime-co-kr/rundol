@@ -1,0 +1,24 @@
+.topbar { background: var(--topbar, #0d120fee); }
+.brand-mark { color: var(--brand-text, #082414); }
+.markdown-body pre { background: var(--code-bg, #070a08); }
+
+body.theme-light,
+body.theme-system {
+  --topbar: #ffffffee;
+  --code-bg: #f1f1f1;
+  --brand-text: #fff;
+}
+
+body.theme-dark {
+  --topbar: #0d120fee;
+  --code-bg: #070a08;
+  --brand-text: #082414;
+}
+
+@media (prefers-color-scheme: dark) {
+  body.theme-system {
+    --topbar: #0d120fee;
+    --code-bg: #070a08;
+    --brand-text: #082414;
+  }
+}

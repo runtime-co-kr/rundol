@@ -1,0 +1,12 @@
+{
+  "showTags": true,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "colorGroups": [
+    { "query": "tag:#artifact/spec", "color": { "a": 1, "rgb": 14701138 } },
+    { "query": "tag:#artifact/api", "color": { "a": 1, "rgb": 5012190 } },
+    { "query": "tag:#artifact/test", "color": { "a": 1, "rgb": 16753920 } },
+    { "query": "tag:#artifact/architecture", "color": { "a": 1, "rgb": 10040012 } }
+  ]
+}

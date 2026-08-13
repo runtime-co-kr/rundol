@@ -1,0 +1,30 @@
+{
+  "name": "@rundol/protocol",
+  "version": "0.21.1",
+  "description": "Rundol message and synchronization protocol contracts",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/runtime-co-kr/rundol.git",
+    "directory": "packages/protocol"
+  },
+  "homepage": "https://github.com/runtime-co-kr/rundol#readme",
+  "bugs": {
+    "url": "https://github.com/runtime-co-kr/rundol/issues"
+  },
+  "type": "commonjs",
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@rundol/core": "0.21.1"
+  }
+}

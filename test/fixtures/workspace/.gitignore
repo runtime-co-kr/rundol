@@ -1,0 +1,16 @@
+# rundol local projections
+/projects/
+.rundol/index.json
+.rundol/local/
+.rundol/worktrees/
+.rundol/pending/
+.rundol/logs/
+
+# Obsidian local materialization. Team defaults live in .rundol/obsidian/.
+.obsidian/
+
+# secrets and local runtime
+.env
+.env.local
+node_modules/
+dist/

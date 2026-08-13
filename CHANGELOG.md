@@ -1,0 +1,114 @@
+# 변경 이력
+
+이 문서는 사용자에게 영향을 주는 Rundol 변경을 기록한다. 버전 분류와 tag 규칙은 [버전과 릴리스 정책](docs/RELEASES.md)을 따른다.
+
+## [Unreleased]
+
+## [0.21.1] - 2026-08-12
+
+### Added
+
+- 태스크 완료조건을 Board에서 직접 체크하고 revision 충돌을 검증해 저장한다.
+- 설정 화면에 기본 색상과 고대비 흑백 모드를 추가한다.
+- Markdown의 Mermaid 코드 블록을 로컬 번들로 SVG 렌더링한다.
+
+### Fixed
+
+- 루트를 private monorepo로 전환하고 `packages/rundol`만 배포 이름을 소유하게 해 Git URL 설치에서 발생하던 dangling package Junction을 제거했다.
+- 오른쪽 Context 패널을 접은 뒤 펼치기 버튼이 잘려 복구할 수 없던 레이아웃을 수정한다.
+- 데스크톱 접힘과 모바일 오버레이 상태가 동시에 남지 않도록 패널 상태를 정규화한다.
+- 설정 버튼의 화면 이동과 테마 상태 표시를 회귀 테스트한다.
+
+## [0.21.0] - 2026-08-12
+
+### Added
+
+- Navigation·Main·Context 3패널 Board Shell과 Documents 1급 탐색·읽기 화면
+- 영역별 revision을 포함한 Workspace Snapshot과 Needs Attention 파생 상태
+- base revision 및 strict validation 롤백을 적용한 Markdown 문서 편집 API와 UI
+- People, Operations, Settings 분리 화면과 모바일 Navigation·Context drawer
+
+### Changed
+
+- Home을 단순 태스크 개수에서 최근 문서와 조치 필요 항목 중심으로 재구성했다.
+- Tasks를 목록 우선으로 제공하고 Board를 선택 가능한 보기로 변경했다.
+
+## [0.20.1] - 2026-08-12
+
+### Added
+
+- Workspace JSONL 이벤트와 Git CAS 재시도로 동시 문서 번호를 중복 없이 예약한다.
+
+### Changed
+
+- Workspace와 프로젝트 동시 fetch가 공용 `FETCH_HEAD`를 덮어쓰지 않도록 브랜치별 원격 ref를 사용한다.
+- README와 상세 문서의 저장 경로, 설치, Obsidian, 명령 예제와 릴리스 정책을 일관되게 정리했다.
+
+## [0.20.0] - 2026-08-11
+
+### Added
+
+- schemaVersion 6 Workspace, Client Registry와 분할 JSONL 문서 임대 이벤트
+- 프로젝트 로컬 `.rundol/state`, `.rundol/logs` 실행 상태와 Workspace·Client·Lease CLI
+- 멀티 프로젝트 Board Home, 프로젝트 전환, 문서·동기화·임대·Client API와 통합 snapshot
+- 태스크 엔티티 revision 및 오래된 수정의 `409 Conflict` 처리
+
+### Changed
+
+- Workspace 공통 상태를 `projects/workspace/`, 프로젝트 상태를 `projects/<key>/`에 연결한다.
+- Git safe-directory 판별을 실제 저장소 루트 기준으로 수행한다.
+
+## [0.19.0] - 2026-08-11
+
+### Added
+
+- 저장소 내부 `.rundol` 없이 OS 사용자 runtime state를 사용하는 schemaVersion 5 Workspace
+- 원격 `rundol/settings`와 `rundol/<project-key>`를 복원하는 `rdl attach` 및 `rdl detach`
+- 프로젝트별 Obsidian Vault와 `rdl check --structure`, `rdl cleanup --apply`
+- npm workspaces 기반 `core`, `protocol`, `cli`, `node`, `board`, 통합 `rundol` 패키지 경계
+
+### Changed
+
+- 신규 프로젝트의 Obsidian Vault 루트를 `projects/<project-key>`로 변경
+- main `.gitignore` 대신 로컬 `.git/info/exclude`로 프로젝트 worktree를 숨김
+- 빈 `.gitkeep` 기본 생성을 제거하고 선택 디렉터리를 필요할 때 로컬 생성
+
+## [0.18.0] - 2026-08-11
+
+### Added
+
+- CLI·LLM·혼합 액션 라우팅과 실제 executor·fallback·채택률 debug 집계
+- `rdl task acceptance`를 통한 완료조건 상태 변경
+- 미보고 LLM 토큰 이벤트의 명시적 구분
+
+### Fixed
+
+- 종료 코드가 0이 아닌 검증 결과를 debug 성공으로 기록하던 문제
+- PRD 입력 제목에 `제품 요구사항` 접미사를 중복 추가하던 문제
+
+## [0.17.0] - 2026-08-11
+
+### Added
+
+- `rdl doctor` 구조화 설치 진단과 독립 `scripts/install-doctor.js`
+- GitHub·GitLab HTTPS/SSH 설치, HTTP/1.1 fallback, PATH와 손상 설치 복구 문서
+- tarball·Git URL 전역 설치와 손상 package 감지 회귀 테스트
+
+## [0.16.0] - 2026-08-11
+
+### Added
+
+- `rundol/settings` 브랜치와 schemaVersion 4 Workspace
+- client ID 기반 최대 500건 태스크 샤드와 단일 `tasks.json` 마이그레이션
+- `rdl sync watch`, 충돌 조회·해결 CLI, 표준 문서 생성, debug token 집계
+- Board 자동 갱신, 빠른 태스크 생성, drag/drop과 확장된 협업 정보 UI
+
+### Changed
+
+- AI 클라이언트 거버넌스 스킬이 settings와 태스크 샤드 구조를 따르도록 갱신됐다.
+
+## [0.15.0] - 2026-08-11
+
+### Changed
+
+- 중복된 SPC 문서 체계를 REQ로 통합하고 CLI·문서 표준을 정리했다.

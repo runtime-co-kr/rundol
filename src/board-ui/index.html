@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="rdl-token" content="__RUNDOL_TOKEN__">
+  <title>Rundol Workspace</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/theme.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark">R</span><span><b>Rundol</b><small>Workspace</small></span></a>
+    <nav class="primary-nav" aria-label="주요 화면">
+      <button data-view="home" class="nav-item active">홈</button>
+      <button data-view="documents" class="nav-item">문서</button>
+      <button data-view="tasks" class="nav-item">태스크</button>
+    </nav>
+    <div class="top-actions">
+      <button id="menu-button" class="mobile-only" aria-label="탐색 열기">☰</button>
+      <label class="sr-only" for="project-switcher">프로젝트</label>
+      <select id="project-switcher"></select>
+      <label class="sr-only" for="current-member">현재 사용자</label>
+      <select id="current-member" title="현재 사용자"><option value="">사용자 선택</option></select>
+      <button id="health" class="health" data-view="operations"><span class="health-dot"></span><span id="health-label">상태 확인</span></button>
+      <button id="refresh" aria-label="로컬 새로고침">↻</button>
+      <button id="settings-button" data-view="settings" aria-label="설정">⚙</button>
+      <button id="context-button" class="mobile-only" aria-label="Context 열기">◫</button>
+    </div>
+  </header>
+
+  <div class="workspace-shell">
+    <aside class="navigation-panel" aria-label="Workspace 탐색">
+      <div class="panel-title"><span>탐색</span><button id="collapse-nav" aria-label="탐색 접기">‹</button></div>
+      <label class="search"><span>⌕</span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
+      <section><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
+      <section><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
+      <section class="utility-nav"><h2>관리</h2><button data-view="people">사람과 역할</button><button data-view="operations">Operations <span id="operation-count" class="badge"></span></button><button data-view="settings">Settings</button></section>
+    </aside>
+
+    <main class="main-content" tabindex="-1">
+      <div id="message" role="status" aria-live="polite"></div>
+      <section id="home-view" class="view">
+        <header class="page-heading"><div><p class="eyebrow">WORKSPACE HOME</p><h1>오늘 확인할 작업</h1><p>문서, 검토 요청과 동기화 상태를 한곳에서 확인합니다.</p></div></header>
+        <div class="metric-grid" id="metrics"></div>
+        <section class="content-section"><div class="section-heading"><h2>Needs Attention</h2><span id="attention-count" class="badge"></span></div><div id="attention-list" class="attention-list"></div></section>
+        <section class="content-section"><div class="section-heading"><h2>최근 문서</h2><button data-view="documents">모두 보기</button></div><div id="home-documents" class="card-grid"></div></section>
+      </section>
+
+      <section id="documents-view" class="view" hidden>
+        <header class="page-heading"><div><p class="eyebrow">DOCUMENTS</p><h1>프로젝트 문서</h1><p>Markdown 정본을 유형과 관계를 따라 탐색합니다.</p></div><div class="segmented"><button id="document-list-mode" class="active">목록</button><button id="document-tree-mode">파일 트리</button></div></header>
+        <div id="documents-list" class="document-list"></div>
+      </section>
+
+      <section id="document-view" class="view" hidden>
+        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
+        <article id="document-body" class="markdown-body"></article>
+        <textarea id="document-editor" class="document-editor" hidden aria-label="Markdown 문서 편집"></textarea>
+      </section>
+
+      <section id="tasks-view" class="view" hidden>
+        <header class="page-heading"><div><p class="eyebrow">TASKS</p><h1 id="tasks-heading">전체 태스크</h1><p id="tasks-description">프로젝트의 모든 작업을 목록과 Board로 확인합니다.</p></div><div class="segmented"><button id="task-list-mode" class="active">목록</button><button id="task-board-mode">Board</button></div></header>
+        <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
+        <div class="toolbar"><select id="owner"><option value="">모든 담당자</option></select><select id="priority"><option value="">모든 우선순위</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select><button id="new-task" class="primary">+ 새 태스크</button></div>
+        <div id="task-list" class="task-table"></div><div id="board" hidden></div>
+      </section>
+
+      <section id="task-view" class="view" hidden>
+        <header class="reader-heading"><div id="task-breadcrumb" class="breadcrumb"></div><h1 id="task-detail-title"></h1><p id="task-detail-summary"></p><div id="task-detail-badges" class="chip-row"></div></header>
+        <div class="task-detail-grid"><div><section class="content-section"><h2>완료 조건</h2><div id="task-acceptance-list" class="acceptance-list"></div></section><section class="content-section"><h2>연관 문서</h2><div id="task-documents" class="card-grid"></div></section><section class="content-section"><h2>의존 태스크</h2><div id="task-dependencies" class="task-table"></div></section></div><aside class="task-detail-side"><section><h2>차단 사유</h2><p id="task-blocker"></p></section><section><h2>외부 참조</h2><div id="task-external-refs"></div></section><section><h2>변경 시각</h2><dl id="task-timestamps"></dl></section></aside></div>
+      </section>
+
+      <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="card-grid"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="card-grid"></div></section></div></section>
+      <section id="operations-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">OPERATIONS</p><h1>상태와 복구</h1></div></header><div id="operation-status" class="operation-grid"></div><section class="content-section"><h2>편집 임대</h2><div id="leases" class="card-grid"></div></section></section>
+      <section id="settings-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header><div class="settings-grid"><section><h2>화면 모드</h2><p>운영체제 설정을 따르거나 다크·라이트 모드를 고정합니다.</p><div class="theme-options"><button id="theme-system">시스템</button><button id="theme-dark">다크</button><button id="theme-light">라이트</button></div></section><section><h2>Clients</h2><div id="clients" class="card-grid"></div></section><section><h2>동기화 정책</h2><p>현재 원격은 <code>origin</code>입니다. 자동 push 정책은 CLI 설정을 따릅니다.</p><button id="sync">변경 저장·동기화</button></section></div></section>
+    </main>
+
+    <aside class="context-panel" aria-label="현재 항목 Context">
+      <div class="panel-title"><span>Context</span><button id="collapse-context" aria-label="Context 접기">›</button></div>
+      <div id="context-empty" class="empty-state">문서나 태스크를 선택하면 속성, 연결과 검증 정보를 표시합니다.</div>
+      <div id="context-content" hidden></div>
+    </aside>
+  </div>
+
+  <div id="scrim" class="scrim" hidden></div>
+  <dialog id="task-dialog" aria-labelledby="task-form-heading">
+    <form id="task-form" method="dialog">
+      <div class="dialog-heading"><div><p id="task-id" class="eyebrow">NEW TASK</p><h2 id="task-form-heading">태스크 추가</h2></div><button id="close-dialog" value="cancel" aria-label="닫기">×</button></div>
+      <label>제목<input id="task-title" required maxlength="160"></label><label>설명<textarea id="task-summary" rows="4"></textarea></label>
+      <div class="form-grid"><label>상태<select id="task-status"></select></label><label>우선순위<select id="task-priority"><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label><label>담당자<select id="task-owner"><option value="">미지정</option></select></label></div>
+      <label>완료조건<textarea id="task-acceptance" rows="3" placeholder="한 줄에 하나씩 입력"></textarea></label><label>연결 문서<textarea id="task-links" rows="2" placeholder="REQ-001"></textarea></label>
+      <div class="dialog-actions"><button value="cancel">취소</button><button id="save-task" class="primary" value="default">저장</button></div>
+    </form>
+  </dialog>
+  <script src="/dompurify.js"></script>
+  <script src="/marked.js"></script>
+  <script src="/mermaid.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

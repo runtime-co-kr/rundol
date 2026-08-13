@@ -1,0 +1,7 @@
+interface:
+  display_name: "Rundol Project Governance"
+  short_description: "Protect required project roles and accountability"
+  default_prompt: "Use $rundol-project-governance to create or revise this Rundol workspace without omitting required governance."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,14 @@
+schemaVersion: 3
+mount: projects
+
+projects:
+  path: .rundol/projects
+
+cache:
+  path: .rundol
+  tracked: false
+
+clients:
+  obsidian:
+    vaultRoot: .
+    settingsPath: .obsidian

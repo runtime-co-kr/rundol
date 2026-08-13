@@ -1,0 +1,28 @@
+'use strict';
+
+const os = require('os');
+const path = require('path');
+process.env.RUNDOL_HOME = path.join(os.tmpdir(), `rundol-test-runtime-${process.pid}`);
+
+require('./check.test');
+require('./cli-doc.test');
+require('./init.test');
+require('./attach.test');
+require('./git.test');
+require('./collaboration.test');
+require('./collaboration-store.test');
+require('./skill-install.test');
+require('./obsidian.test');
+require('./features.test');
+require('./doctor.test');
+require('./release.test');
+require('./docs.test');
+require('./action.test');
+require('./packages.test');
+require('./board-data.test');
+require('./board-ui.test');
+
+Promise.all([require('./board.test'), require('./board-workspace.test')]).catch((error) => {
+  process.stderr.write(`${error.stack || error.message}\n`);
+  process.exitCode = 1;
+});

@@ -1,0 +1,11 @@
+schemaVersion: 1
+revision: 1
+key: <프로젝트키>
+name: <프로젝트 이름>
+mount: projects/<프로젝트키>
+ref: refs/heads/rundol/<프로젝트키>
+
+tasks:
+  storage: sharded
+  path: tasks
+  maxItemsPerShard: 500

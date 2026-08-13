@@ -1,0 +1,17 @@
+schemaVersion: 6
+id: workspace
+name: Rundol Workspace
+mount: projects
+
+workspace:
+  ref: refs/heads/rundol/workspace
+
+paths:
+  clients: clients
+  projects: projects
+  events: events
+
+clients:
+  obsidian:
+    vaultRoot: project
+    settingsPath: .obsidian

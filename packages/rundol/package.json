@@ -1,0 +1,35 @@
+{
+  "name": "rundol",
+  "version": "0.21.1",
+  "description": "Integrated Rundol distribution",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/runtime-co-kr/rundol.git",
+    "directory": "packages/rundol"
+  },
+  "homepage": "https://github.com/runtime-co-kr/rundol#readme",
+  "bugs": {
+    "url": "https://github.com/runtime-co-kr/rundol/issues"
+  },
+  "type": "commonjs",
+  "bin": {
+    "rdl": "bin/rdl.js",
+    "rundol": "bin/rdl.js",
+    "rundol-node": "bin/rundol-node.js"
+  },
+  "files": [
+    "bin",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@rundol/cli": "0.21.1",
+    "@rundol/node": "0.21.1"
+  }
+}

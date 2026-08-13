@@ -1,0 +1,34 @@
+{
+  "name": "@rundol/monorepo",
+  "version": "0.21.1",
+  "description": "Git-based project analysis, design and task validation CLI",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/runtime-co-kr/rundol.git"
+  },
+  "homepage": "https://github.com/runtime-co-kr/rundol#readme",
+  "bugs": {
+    "url": "https://github.com/runtime-co-kr/rundol/issues"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "skill:install": "node scripts/install-global-skill.js --force",
+    "check:fixture": "node bin/rdl.js check --root test/fixtures/workspace",
+    "test": "node test/run.js",
+    "test:packages": "node test/packages.test.js",
+    "test:install": "node test/install.test.js",
+    "version:check": "node scripts/version-check.js",
+    "release:check": "npm run version:check && npm test && npm run test:install"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "mermaid": "^11.12.2"
+  }
+}
