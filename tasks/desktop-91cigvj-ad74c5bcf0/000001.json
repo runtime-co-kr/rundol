@@ -60,7 +60,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "360px, 720px, 1050px와 1440px viewport에서 핵심 화면의 자동화 검증이 실행된다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "키보드만으로 탐색, 문서 편집, 태스크 조작과 dialog 취소가 가능함을 검증한다.",
@@ -77,7 +77,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T04:53:33.537Z",
-      "updatedAt": "2026-08-13T04:53:33.537Z",
+      "updatedAt": "2026-08-13T18:56:15.850Z",
       "statusChangedAt": "2026-08-13T04:53:33.537Z",
       "externalRefs": [],
       "project": "rundol"
