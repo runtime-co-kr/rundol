@@ -1,0 +1,11 @@
+schemaVersion: 1
+revision: 1
+key: rundol
+name: Rundol
+mount: projects/rundol
+ref: refs/heads/rundol/rundol
+
+tasks:
+  storage: sharded
+  path: tasks
+  maxItemsPerShard: 500
