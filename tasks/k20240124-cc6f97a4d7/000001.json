@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "clientId": "k20240124-cc6f97a4d7",
+  "segment": 1,
+  "tasks": {
+    "TASK-00MSRWZ80Y6525CE5CBC8CBC88": {
+      "title": "documentProfile v2 문서 계획 계약과 공용 evaluator 구현",
+      "summary": "기존 네 상태 정책에 작성 선행조건, 생략 문서 흡수 규칙과 advisory/checkpoint 집행 설정을 추가하고 CLI와 Board가 공유할 결정적 evaluator를 구현한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "PRD-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "schemaVersion 2 계약이 policy, after, omissions, enforcement와 revision을 정규화하고 직렬화한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "모든 문서 유형의 단일 상태 배정, 선행조건 순환, 잘못된 흡수 대상과 누락 disposition을 결정적으로 거부한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "기존 schemaVersion 1 profile을 데이터 손실 없이 읽고 명시적으로 v2 계약으로 전환할 수 있다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "동일 입력은 동일 평가 결과를 반환하며 unit 회귀 테스트가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T19:31:33.345Z",
+      "updatedAt": "2026-08-13T19:31:33.345Z",
+      "statusChangedAt": "2026-08-13T19:31:33.345Z",
+      "externalRefs": [],
+      "project": "rundol"
+    }
+  }
+}
