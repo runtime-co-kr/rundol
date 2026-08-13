@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { runGit, refExists } = require('./git');
 const { discoverWorkspace } = require('./bootstrap');
+const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
 function atomicWrite(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -46,11 +47,17 @@ function connectDiscoveredCommit(root, branch, commit) {
 }
 
 function ensureWorktree(root, target, branch) {
-  if (fs.existsSync(path.join(target, '.git'))) return false;
+  const role = branch === 'rundol/workspace' || branch === 'rundol/settings' ? 'workspace' : 'project';
+  const project = role === 'project' ? branch.replace(/^rundol\//u, '') : null;
+  if (fs.existsSync(path.join(target, '.git'))) {
+    assertWorktreeBoundary({ root, worktree: target, branch, role, project, canonical: branch !== 'rundol/settings' });
+    return false;
+  }
   if (fs.existsSync(target) && fs.readdirSync(target).length) throw new Error(`worktree 대상 경로가 비어 있지 않습니다: ${target}`);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   runGit(['worktree', 'prune'], { cwd: root });
   runGit(['worktree', 'add', '--force', target, branch], { cwd: root });
+  assertWorktreeBoundary({ root, worktree: target, branch, role, project, canonical: branch !== 'rundol/settings' });
   return true;
 }
 
@@ -78,7 +85,7 @@ function attachWorkspace(start, options) {
   const remote = settings.remote || 'origin';
   const root = path.resolve(runGit(['rev-parse', '--show-toplevel'], { cwd: start }).stdout);
   const discovery = settings.discovery || discoverWorkspace(root, { remote, project: settings.project });
-  if (discovery.action === 'already-connected') return { root, remote, action: 'already-connected', attached: [] };
+  if (discovery.action === 'already-connected') return { root, remote, action: 'already-connected', attached: [], boundary: installBranchBoundary(root, { remote, project: settings.project }) };
   if (discovery.action === 'repaired' && (!discovery.remote || !discovery.remote.branch)) return repairWorkspace(root, settings);
   if (discovery.action === 'needs-selection' && !settings.project) return discovery;
   if (discovery.action === 'conflict') throw new Error(discovery.error || 'Rundol Workspace state is conflicting.');
@@ -102,14 +109,15 @@ function attachWorkspace(start, options) {
     return { project: key, branch, target, commit, created };
   });
   const exclude = gitExclude(root);
-  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude };
+  const boundary = installBranchBoundary(root, { remote, project: settings.project });
+  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude, boundary };
 }
 
 function repairWorkspace(start, options) {
   const settings = options || {};
   const root = path.resolve(runGit(['rev-parse', '--show-toplevel'], { cwd: start }).stdout);
   const discovery = settings.discovery || discoverWorkspace(root, { remote: false, project: settings.project });
-  if (discovery.action === 'already-connected') return { root, action: 'already-connected', attached: [] };
+  if (discovery.action === 'already-connected') return { root, action: 'already-connected', attached: [], boundary: installBranchBoundary(root, { project: settings.project }) };
   if (discovery.action !== 'repaired') throw new Error('복구할 수 있는 로컬 Rundol ref를 찾지 못했습니다.');
   const workspaceBranch = discovery.local.branch;
   const workspace = path.join(root, 'projects', 'workspace');
@@ -126,7 +134,7 @@ function repairWorkspace(start, options) {
     const target = path.join(root, 'projects', key);
     return { project: key, branch, target, commit: runGit(['rev-parse', `refs/heads/${branch}`], { cwd: root }).stdout, created: ensureWorktree(root, target, branch) };
   });
-  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root) };
+  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root), boundary: installBranchBoundary(root, { project: settings.project }) };
 }
 
 function detachWorkspace(start, options) {

@@ -18,7 +18,7 @@ rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|
 rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
 rdl check --links [--root <path>]
 rdl check --tasks [--root <path>]
-rdl git init [--root <path>] [--project <key>] [--json]
+rdl git init|boundary [--root <path>] [--project <key>] [--json]
 rdl refresh [--root <path>] [--project <key>] [--json]
 rdl save [--root <path>] [--project <key>] [--json]
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
@@ -78,7 +78,8 @@ rdl --help
 | `rdl detach` | 선택 프로젝트 linked worktree 연결 해제 | linked worktree | 없음 |
 | `rdl project add` | 기존 Workspace에 독립 프로젝트 추가 | settings·프로젝트 브랜치 | 대응 로컬 ref가 없고 `origin`이 있으면 fetch |
 | `rdl check` | 문서·메타·링크·거버넌스·태스크·Obsidian 설정 검사 | 없음 | 없음 |
-| `rdl git init` | 등록 프로젝트 브랜치 복구 또는 생성, worktree 연결 | ref와 worktree | 로컬 ref가 없고 `origin`이 있으면 fetch |
+| `rdl git init` | 등록 프로젝트 브랜치 복구 또는 생성, worktree 연결, push 경계 설치 | ref·worktree·`.git/hooks/pre-push` | 로컬 ref가 없고 `origin`이 있으면 fetch |
+| `rdl git boundary` | 코드·Workspace·프로젝트 branch/worktree 및 pre-push 경계 진단 | 없음 | 없음 |
 | `rdl refresh` | worktree와 태스크 합본을 materialize하고 엄격 검증 | 프로젝트 `.rundol/state` 갱신, 커밋 없음 | 없음 |
 | `rdl save` | 직접 편집한 프로젝트 자료 검증·커밋 | 선택 프로젝트 브랜치 커밋 | 없음 |
 | `rdl obsidian init` | 팀 공통 Obsidian 설정을 개인 Vault 설정으로 복사 | `.obsidian/*.json` | 없음 |
@@ -192,8 +193,13 @@ Client는 사람 자체가 아니라 장치·Agent·Service 실행 주체다. �
 2. 로컬 ref가 없으면 `origin`의 같은 ref를 fetch한다.
 3. 원격 ref가 명시적으로 없고 로컬 seed가 있을 때만 orphan branch를 만든다.
 4. `projects/<key>/`에 linked worktree를 연결한다.
+5. `push.default=simple`과 같은 이름의 upstream을 설정하고 관리형 `pre-push` hook을 설치한다.
 
-반복 실행해도 기존 ref와 커밋을 바꾸지 않는 멱등 명령이다.
+관리형 hook은 로컬 ref와 원격 ref 이름이 다른 교차 push 및 브랜치 삭제를 차단한다. 기존 `pre-push` hook은 `pre-push.rundol-user`로 보존하고 먼저 실행한다. 반복 실행해도 기존 ref와 커밋을 바꾸지 않는 멱등 명령이다.
+
+### `rdl git boundary`
+
+루트 worktree의 코드 브랜치, `projects/workspace`의 `rundol/workspace`, `projects/<key>`의 `rundol/<key>` 연결을 확인한다. worktree 경로·브랜치·관리형 push hook 중 하나라도 어긋나면 종료 코드 1과 `violations`를 반환한다.
 
 ### `rdl refresh`
 

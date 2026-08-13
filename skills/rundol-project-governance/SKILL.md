@@ -9,7 +9,7 @@ Treat lightweight delivery as an implementation choice, never as permission to r
 
 ## Workflow
 
-1. Run `rdl init --json` first. Treat `created`, `already-connected`, `attached`, and `repaired` as connected states; select explicitly for `needs-selection`; stop on `conflict`.
+1. Run `rdl init --json` first. Treat `created`, `already-connected`, `attached`, and `repaired` as connected states; select explicitly for `needs-selection`; stop on `conflict`. Read the returned `boundary` and run `rdl git boundary --project <key> --json`; do not continue while it reports violations.
 2. For a new project, select a profile with guided setup or `--profile`. New projects always receive schemaVersion 2 `documentProfile`; never create an unconfigured project.
 3. Before planning documents, run `rdl contract show --project <key> --json` and `rdl contract next --project <key> --json`. Read `catalog.granularity.typeResponsibilities` and `splitWhen` before choosing artifact boundaries. The CLI evaluator is authoritative; do not duplicate or reinterpret its rules in the skill.
 4. Preserve every regular type (`PRD`, `REQ`, `ARC`, `SCR`, `MOD`, `API`, `ADR`, `TST`, `RUN`, `GLS`) in exactly one policy state. Preserve `enforcement`, every `rules.<TYPE>.after` AI context recommendation, and every disabled type's omission disposition.
@@ -25,5 +25,7 @@ Treat lightweight delivery as an implementation choice, never as permission to r
 14. Use `rdl task add`, `rdl task acceptance`, and the Board for tasks. Route only the 2–4 most relevant documents into an AI coding context.
 15. Run `rdl check <ARTIFACT-ID> --strict` immediately after authoring, then `rdl contract check --project <key>` and `rdl check --strict`. Advisory findings guide the work; checkpoint violations block save, sync, and completion.
 16. Run `rdl check --structure`; treat an existing `DESIGN.md` as a manual migration candidate and never delete it automatically. Apply cleanup only after reviewing every candidate.
+17. Keep branch roles strict: application code belongs to the repository root's primary code branch, project documents and tasks belong only to `rundol/<project-key>` through its linked worktree, and registries, clients, leases, and Workspace presentation belong only to `rundol/workspace`. Never edit another role's files from the current worktree.
+18. Use `rdl save` and `rdl sync` for Rundol branches. Never redirect a local ref to a differently named remote ref, bypass the managed `pre-push` hook, or use force push. Run `rdl git boundary --json` again before the final sync.
 
 One person may hold multiple roles, but roles, members, stakeholders, responsibilities, and decision boundaries remain explicit.

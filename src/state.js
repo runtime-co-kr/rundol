@@ -11,6 +11,7 @@ const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore } = require('./tasks');
 const { initSettings, saveSettings, syncSettings } = require('./settings');
 const { runtimeWorkspace } = require('./runtime');
+const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
 function atomicWrite(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -196,7 +197,17 @@ function ensureWorktree(config) {
 
 function ensureWorkspaceWorktree(config) {
   if (config.schemaVersion < 2) return ensureWorktree(config);
-  if (validWorktree(config)) return false;
+  if (validWorktree(config)) {
+    assertWorktreeBoundary({
+      root: config.root,
+      worktree: config.worktree,
+      branch: config.branch,
+      role: config.project ? 'project' : 'workspace',
+      project: config.project || null,
+      canonical: config.schemaVersion >= 6
+    });
+    return false;
+  }
   let backup = null;
   if (fs.existsSync(config.worktree) && fs.readdirSync(config.worktree).length > 0) {
     backup = path.join(config.runtime ? config.runtime.state : os.tmpdir(), `rundol-mount-backup-${process.pid}-${Date.now()}`);
@@ -227,6 +238,14 @@ function ensureWorkspaceWorktree(config) {
     }
     throw error;
   }
+  assertWorktreeBoundary({
+    root: config.root,
+    worktree: config.worktree,
+    branch: config.branch,
+    role: config.project ? 'project' : 'workspace',
+    project: config.project || null,
+    canonical: config.schemaVersion >= 6
+  });
   return true;
 }
 
@@ -258,7 +277,8 @@ function initState(start, options) {
   const settingsSaved = saveSettings(start);
   if (settings && settingsSaved) settings = Object.assign(settings, { saved: settingsSaved.changed, commit: settingsSaved.commit });
   const results = workspaceStateConfigs(start, project).map(initProjectState);
-  return results.length === 1 ? Object.assign(results[0], { settings }) : { root: results[0].root, settings, projects: results };
+  const boundary = installBranchBoundary(results[0].root, options || {});
+  return results.length === 1 ? Object.assign(results[0], { settings, boundary }) : { root: results[0].root, settings, boundary, projects: results };
 }
 
 function refreshProjectState(config) {

@@ -13,6 +13,8 @@ Every canonical Markdown artifact keeps these fields: `id`, `type`, `kind`, `tit
 
 Each project is registered by `projects/project-<project-key>.yaml` in the `rundol/workspace` branch and owns a separate `rundol/<project-key>` branch mounted at `projects/<project-key>/`. This mount is also the project's Obsidian Vault. Project-local `.rundol/state` and `.rundol/logs` are Git-ignored execution data; shared Client manifests and lease events belong to `rundol/workspace`. Do not combine independent projects into one state branch.
 
+The repository root's primary branch owns application code and release assets. The `rundol/workspace` branch owns only cross-project registry and collaboration state. Each `rundol/<project-key>` branch owns only that project's charter, canonical documents, Board presentation, and tasks. `rdl git init` installs a managed pre-push boundary across all linked worktrees; `rdl git boundary` must be valid before persistence or synchronization. A local ref must push only to the identically named remote ref.
+
 New canonical documents also carry the CLI-authored boundary contract: `granularity: bounded-v1`, one concrete `scope`, and one or more `excludes`. The scope states one independently reviewable responsibility. Split same-type material when owner or approver, acceptance criteria, lifecycle or review cadence, or primary consumers differ. Contract type presence is inventory state, not evidence that the subject area is complete.
 
 ## Project charter sections

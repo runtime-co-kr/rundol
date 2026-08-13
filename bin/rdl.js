@@ -22,7 +22,7 @@ Usage:
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
-  rdl git init [--root <path>] [--project <key>] [--json]
+  rdl git init|boundary [--root <path>] [--project <key>] [--json]
   rdl refresh [--root <path>] [--project <key>] [--json]
   rdl save [--root <path>] [--project <key>] [--json]
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
@@ -257,6 +257,7 @@ async function main() {
   const { resolveAction, recordAction } = require('../src/action');
   const { migrateSettings, saveSettings } = require('../src/settings');
   const { attachWorkspace, repairWorkspace, detachWorkspace } = require('../src/attach');
+  const { branchBoundaryStatus, installBranchBoundary } = require('../src/branch-boundary');
   const { auditStructure, cleanupStructure } = require('../src/structure');
   const { listClients, getClient, registerClient, setClientStatus, appendLease, listLeases } = require('../src/collaboration-store');
   if (command === 'init') {
@@ -279,7 +280,7 @@ async function main() {
     if (discovery.action === 'needs-selection' || discovery.action === 'already-connected') {
       const contractProject = selectedProject || (discovery.available && discovery.available.length === 1 ? discovery.available[0] : null);
       const result = contractProject && discovery.action === 'already-connected'
-        ? Object.assign({}, discovery, { contract: loadDocumentContract(options.root, contractProject) })
+        ? Object.assign({}, discovery, { contract: loadDocumentContract(options.root, contractProject), boundary: installBranchBoundary(options.root, { remote: options.remote, project: contractProject }) })
         : discovery;
       printOperation(result, options.json);
       return 0;
@@ -315,7 +316,7 @@ async function main() {
     const git = initState(initialized.root, { project: initialized.project });
     initObsidian(initialized.root, { project: initialized.project, force: false });
     const contract = loadDocumentContract(initialized.root, initialized.project);
-    printOperation(Object.assign({ action: 'created', profile: selectedProfile, traits: configuredProfile.traits, missing: missingActions(configuredProfile, []), contract }, initialized, { branch: git.branch, worktree: git.worktree }), options.json);
+    printOperation(Object.assign({ action: 'created', profile: selectedProfile, traits: configuredProfile.traits, missing: missingActions(configuredProfile, []), contract }, initialized, { branch: git.branch, worktree: git.worktree, boundary: git.boundary }), options.json);
     return 0;
   }
   if (command === 'attach' || command === 'detach') {
@@ -363,7 +364,7 @@ async function main() {
     const git = initState(options.root, { project: added.project });
     initObsidian(options.root, { project: added.project, force: false });
     const settings = saveSettings(options.root);
-    printOperation(Object.assign({}, added, { branch: git.branch, commit: git.commit, settings, contract: loadDocumentContract(options.root, added.project) }), options.json);
+    printOperation(Object.assign({}, added, { branch: git.branch, commit: git.commit, settings, boundary: git.boundary, contract: loadDocumentContract(options.root, added.project) }), options.json);
     return 0;
   }
   if (command === 'contract') {
@@ -413,11 +414,12 @@ async function main() {
   }
   if (command === 'git') {
     const subcommand = argv.shift();
-    if (subcommand !== 'init') throw new Error('지원하는 Git 하위 명령은 rdl git init입니다.');
+    if (!['init', 'boundary'].includes(subcommand)) throw new Error('지원하는 Git 하위 명령은 rdl git init, rdl git boundary입니다.');
     const options = parseOperationArgs(argv);
-    if (options.positional.length > 0) throw new Error('rdl git init에 위치 인수를 사용할 수 없습니다.');
-    printOperation(initState(options.root, options), options.json);
-    return 0;
+    if (options.positional.length > 0) throw new Error(`rdl git ${subcommand}에 위치 인수를 사용할 수 없습니다.`);
+    const result = subcommand === 'init' ? initState(options.root, options) : branchBoundaryStatus(options.root, options);
+    printOperation(result, options.json);
+    return subcommand === 'boundary' && !result.valid ? 1 : 0;
   }
   if (command === 'refresh') {
     const options = parseOperationArgs(argv);

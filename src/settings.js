@@ -7,6 +7,7 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue, yamlValue, safeRelative } = require('./workspace');
 const { ensureIgnore } = require('./init');
 const { runtimeWorkspace } = require('./runtime');
+const { assertWorktreeBoundary } = require('./branch-boundary');
 
 function config(start) {
   const root = findWorkspaceRoot(start);
@@ -74,7 +75,10 @@ function validWorktree(settings) {
 }
 
 function ensureWorktree(settings) {
-  if (validWorktree(settings)) return false;
+  if (validWorktree(settings)) {
+    assertWorktreeBoundary({ root: settings.root, worktree: settings.worktree, branch: settings.branch, role: 'workspace', canonical: settings.branch === 'rundol/workspace' });
+    return false;
+  }
   let backup = null;
   if (fs.existsSync(settings.worktree) && fs.readdirSync(settings.worktree).length) {
     backup = path.join(settings.runtime ? settings.runtime.state : os.tmpdir(), `rundol-workspace-backup-${process.pid}-${Date.now()}`);
@@ -90,6 +94,7 @@ function ensureWorktree(settings) {
     if (backup) fs.renameSync(backup, settings.worktree);
     throw error;
   }
+  assertWorktreeBoundary({ root: settings.root, worktree: settings.worktree, branch: settings.branch, role: 'workspace', canonical: settings.branch === 'rundol/workspace' });
   return true;
 }
 

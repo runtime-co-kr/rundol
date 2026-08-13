@@ -10,6 +10,7 @@ require('./init.test');
 require('./attach.test');
 require('./bootstrap.test');
 require('./bootstrap-cli.test');
+require('./branch-boundary.test');
 require('./guided.test');
 require('./document-profile.test');
 require('./document-boundary.test');
