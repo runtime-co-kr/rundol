@@ -119,4 +119,38 @@ el('cancel-document-edit').addEventListener('click', () => renderDocument(state.
 el('save-document').addEventListener('click', async () => { const item = state.snapshot.documents.find((value) => value.id === state.selected); if (!item) return; try { await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: el('document-editor').value }) }); await loadSnapshot(true); message('문서를 저장하고 검증했습니다.'); } catch (error) { message(error.message, true); } });
 el('task-form').addEventListener('submit', async (event) => { if (event.submitter && event.submitter.value === 'cancel') return; event.preventDefault(); const lines = el('task-acceptance').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const acceptanceCriteria = Object.fromEntries(lines.map((text, index) => [`AC-${String(index + 1).padStart(3, '0')}`, { text, done: false }])); try { await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title: el('task-title').value, summary: el('task-summary').value, status: el('task-status').value, priority: el('task-priority').value, owner: el('task-owner').value || null, links: el('task-links').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), acceptanceCriteria }) }); el('task-dialog').close(); await loadSnapshot(true); message('태스크를 생성했습니다.'); } catch (error) { message(error.message, true); } });
 el('sync').addEventListener('click', async () => { try { message('동기화를 실행하고 있습니다.'); await api(projectPath('/sync'), { method: 'POST', headers: { 'X-Rundol-Token': token } }); await loadSnapshot(true); message('동기화를 완료했습니다.'); } catch (error) { message(error.message, true); } });
+function ensureContractSettings() {
+  if (el('contract-settings')) return;
+  el('settings-view').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="content-section contract-settings"><div class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></div><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
+}
+function renderContractSettings() {
+  ensureContractSettings();
+  const contract = state.snapshot.contract;
+  if (!contract || !contract.profile) { el('contract-summary').textContent = contract ? contract.status : 'legacy-unconfigured'; el('contract-rules').innerHTML = ''; return; }
+  const profile = contract.profile;
+  el('contract-profile').value = profile.name;
+  el('contract-enforcement').value = profile.enforcement;
+  el('contract-summary').textContent = `${contract.status} · revision ${profile.revision} · 위반 ${contract.evaluation.violations.length}건`;
+  el('contract-rules').innerHTML = Object.keys(profile.rules).map((type) => {
+    const status = Object.keys(profile.policy).find((key) => profile.policy[key].includes(type));
+    const omission = profile.omissions[type] || {};
+    return `<div class="contract-row" data-contract-type="${type}"><strong>${type}</strong><label>상태<select data-contract-status><option${status === 'required' ? ' selected' : ''}>required</option><option${status === 'recommended' ? ' selected' : ''}>recommended</option><option value="onDemand"${status === 'onDemand' ? ' selected' : ''}>onDemand</option><option${status === 'disabled' ? ' selected' : ''}>disabled</option></select></label><label>선행<input data-contract-after value="${escapeHtml(profile.rules[type].after.join(', '))}"></label><label>흡수 대상<input data-contract-target value="${escapeHtml(omission.absorbedBy || '')}" placeholder="REQ"></label><label>필수 섹션<input data-contract-sections value="${escapeHtml((omission.sections || []).join(', '))}" placeholder="사용자 흐름, 접근성"></label></div>`;
+  }).join('');
+}
+function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; renderContractSettings(); }
+function contractInput() {
+  const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
+  const rules = {}; const omissions = {};
+  for (const row of document.querySelectorAll('[data-contract-type]')) {
+    const type = row.dataset.contractType; const status = row.querySelector('[data-contract-status]').value;
+    policy[status].push(type); rules[type] = { after: row.querySelector('[data-contract-after]').value.split(',').map((item) => item.trim()).filter(Boolean) };
+    if (status === 'disabled') omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value.trim(), sections: row.querySelector('[data-contract-sections]').value.split(',').map((item) => item.trim()).filter(Boolean) };
+  }
+  return { baseRevision: state.snapshot.contract.revision, name: el('contract-profile').value, enforcement: el('contract-enforcement').value, policy, rules, omissions };
+}
+document.addEventListener('click', async (event) => {
+  if (!event.target.closest('#save-contract')) return;
+  try { await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(contractInput()) }); await loadSnapshot(true); message('문서 계획 계약을 저장했습니다.'); }
+  catch (error) { message(error.message, true); }
+});
 initialize().catch((error) => message(error.message, true));

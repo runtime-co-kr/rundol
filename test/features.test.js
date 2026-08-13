@@ -51,7 +51,7 @@ function testDocumentAndDebugCommands() {
     fs.writeFileSync(path.join(temporary, 'README.md'), '# Test\n', 'utf8');
     command('git', ['add', 'README.md'], temporary);
     command('git', ['commit', '-m', 'initial'], temporary);
-    rdl(temporary, ['init', 'memo', '--name', '메모 앱']);
+    rdl(temporary, ['init', 'memo', '--name', '메모 앱', '--profile', 'lean', '--enforcement', 'advisory']);
     const prd = rdl(temporary, ['doc', 'create', 'PRD', '메모 제품 요구사항', '--owner', 'MEMBER-001']);
     assert.strictEqual(prd.id, 'PRD-001');
     assert(prd.relativeFile.includes('/docs/prd/'));

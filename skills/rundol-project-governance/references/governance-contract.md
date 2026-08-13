@@ -25,6 +25,18 @@ Each `STAKEHOLDER-*` block has `유형`, `관심`, `영향력`, `참여 방식`,
 
 The responsibility matrix identifies Responsible, Accountable, Consulted, and Informed parties for every major deliverable or decision. A solo project can assign one member to several cells, but must still state the cells.
 
+## Document planning contract
+
+`project.md` owns a schemaVersion 2 `documentProfile`. It is the single source of truth for AI clients, the CLI, and the Board.
+
+- `policy` classifies every regular type exactly once as `required`, `recommended`, `onDemand`, or `disabled`.
+- `rules.<TYPE>.after` lists the document types or satisfied omissions that must exist first.
+- `omissions.<TYPE>` records either `absorbedBy` plus required `sections`, or `notApplicable: true` plus a reason.
+- `enforcement: advisory` reports findings without blocking persistence. `checkpoint` blocks `rdl save` and `rdl sync` while non-recommended violations remain.
+- Contract changes are explicit and revisioned. Inspect impact before saving and never delete existing documents as a side effect.
+
+The mandatory AI sequence is `rdl contract show`, `rdl contract next`, author or absorb content, `rdl contract check`, and finally `rdl check --strict`.
+
 ## Non-skippable derived concerns
 
 - measurable success criteria and evidence

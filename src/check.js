@@ -5,6 +5,7 @@ const path = require('path');
 const { readTaskStore } = require('./tasks');
 const { parseFrontmatter } = require('./frontmatter');
 const { validateDocumentProfile } = require('./document-profile');
+const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -502,6 +503,29 @@ function checkDocumentProfile(diagnostics, layout, project, settings) {
     code: 'RDL-PROFILE-001', category: 'profile', file: relative(layout.root, project.charter), project: project.key, message
   });
   if (validation.errors.length) return;
+  if (validation.profile.schemaVersion === 2) {
+    if (settings.skipProfilePolicy) return;
+    const evaluation = evaluateDocumentContract(validation.profile, projectArtifacts(project));
+    const severity = evaluation.enforcement === 'checkpoint' && settings.strict ? 'error' : 'warning';
+    const codes = {
+      'required-missing': 'RDL-PROFILE-002',
+      'recommended-missing': 'RDL-PROFILE-003',
+      'disabled-present': 'RDL-PROFILE-004',
+      'after-missing': 'RDL-PROFILE-005',
+      'omission-target-missing': 'RDL-PROFILE-006',
+      'omission-section-missing': 'RDL-PROFILE-007'
+    };
+    for (const violation of evaluation.violations) diagnostic(diagnostics, {
+      code: codes[violation.code] || 'RDL-PROFILE-009', category: 'profile', severity: violation.code === 'recommended-missing' ? 'warning' : severity,
+      file: relative(layout.root, project.charter), project: project.key, target: violation.type,
+      message: violation.message
+    });
+    return;
+  }
+  diagnostic(diagnostics, {
+    code: 'RDL-PROFILE-008', category: 'profile', severity: 'warning', file: relative(layout.root, project.charter), project: project.key,
+    message: 'documentProfile schemaVersion 1은 호환 읽기만 지원합니다. project profile 명령으로 schemaVersion 2로 마이그레이션하세요.'
+  });
   if (settings.skipProfilePolicy) return;
   const present = new Set();
   const roots = [project.documents, path.join(project.root, 'inbox')];

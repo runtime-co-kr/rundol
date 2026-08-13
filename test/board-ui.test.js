@@ -14,6 +14,12 @@ assert(html.includes('id="task-documents"'), 'Task detail must expose linked doc
 assert(html.includes('id="theme-system"'), 'Settings must provide system theme mode');
 assert(html.includes('id="theme-dark"'), 'Settings must provide dark theme mode');
 assert(html.includes('id="theme-light"'), 'Settings must provide light theme mode');
+assert(app.includes('id="contract-settings"'), 'Settings must expose the document contract editor');
+assert(app.includes('data-contract-status'), 'Contract editor must expose document policy status');
+assert(app.includes('data-contract-after'), 'Contract editor must expose authoring prerequisites');
+assert(app.includes('data-contract-target'), 'Contract editor must expose omission absorption targets');
+assert(app.includes('data-contract-sections'), 'Contract editor must expose absorbed section requirements');
+assert(app.includes("projectPath('/contract')"), 'Contract editor must persist through the typed contract API');
 assert(html.includes('src="/mermaid.js"'), 'Board must load the bundled Mermaid runtime');
 assert(html.includes('src="/marked.js"'), 'Board must load the bundled Markdown parser');
 assert(html.includes('src="/dompurify.js"'), 'Board must load the bundled HTML sanitizer');

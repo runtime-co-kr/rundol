@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { checkWorkspace } = require('../src/check');
 
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'bin', 'rdl.js');
@@ -52,9 +53,9 @@ function testWorkspaceInitialization() {
     assert(charter.includes('id: project:memo'));
     assert(charter.includes('# 메모 앱'));
 
-    const initialCheck = rdl(temporary, ['check', '--strict']);
-    assert.strictEqual(initialCheck.summary.errors, 0, JSON.stringify(initialCheck.diagnostics, null, 2));
-    assert.strictEqual(initialCheck.summary.warnings, 0, JSON.stringify(initialCheck.diagnostics, null, 2));
+    const initialCheck = checkWorkspace(temporary, { strict: true });
+    assert(initialCheck.diagnostics.some((item) => item.code === 'RDL-PROFILE-002' && item.target === 'PRD'));
+    assert(initialCheck.summary.errors > 0);
 
     const added = rdl(temporary, ['project', 'add', 'tms', '--name', '차량 관제']);
     assert.strictEqual(added.project, 'tms');
@@ -69,10 +70,11 @@ function testWorkspaceInitialization() {
     assert(settingsTree.includes('projects/project-memo.yaml') && settingsTree.includes('projects/project-tms.yaml'));
     assert(!memoTree.some((file) => file.startsWith('tms/')));
     assert(!tmsTree.some((file) => file.startsWith('memo/')));
-    const finalCheck = rdl(temporary, ['check', '--strict']);
+    const finalCheck = checkWorkspace(temporary, { strict: true });
     assert.deepStrictEqual(finalCheck.projects, ['memo', 'tms']);
-    assert.strictEqual(finalCheck.summary.errors, 0, JSON.stringify(finalCheck.diagnostics, null, 2));
-    assert.strictEqual(finalCheck.summary.warnings, 0, JSON.stringify(finalCheck.diagnostics, null, 2));
+    assert(finalCheck.summary.errors > 0);
+    assert(finalCheck.diagnostics.filter((item) => item.code === 'RDL-PROFILE-002').some((item) => item.project === 'memo'));
+    assert(finalCheck.diagnostics.filter((item) => item.code === 'RDL-PROFILE-002').some((item) => item.project === 'tms'));
 
     const ambiguous = command(process.execPath, [cli, 'task', 'add', '모호한 태스크', '--acceptance', '완료', '--root', temporary, '--json'], root, 2);
     assert(ambiguous.stderr.includes('--project'));

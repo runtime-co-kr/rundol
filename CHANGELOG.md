@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added schemaVersion 2 document planning contracts with enforcement, authoring prerequisites, omission absorption rules, and deterministic evaluation.
+- Added `rdl contract show|next|check|plan|set` and shared contract visibility across bootstrap, document creation, validation, save/sync, the governance skill, and the Board.
+
 ## [0.21.3] - 2026-08-14
 
 ### Fixed

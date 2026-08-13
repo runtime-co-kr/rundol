@@ -68,7 +68,7 @@ rdl board --project memo
 rdl attach memo
 ```
 
-문서 프로필은 `project.md`에 profile·traits·policy·revision·history로 저장되며 빈 문서를 자동 생성하지 않는다. 자동화에서는 `--trait api --trait operations`를 반복 지정할 수 있고, 정책 override는 `--required`, `--recommended`, `--on-demand`, `--disabled`로 모든 유형을 정확히 한 번 분류한다. `rdl project profile --json`은 누락된 required 유형과 다음 생성 명령을 반환한다. 새 문서는 `docs/prd`, `docs/requirements`, `docs/architecture` 같은 정규 경로에 생성된다. 기존 루트 문서는 `rdl doc migrate`로 계획을 확인한 다음 `rdl doc migrate --apply`로 이동한다.
+문서 프로필은 `project.md`의 schemaVersion 2 계약으로 저장된다. policy 외에 `enforcement`, 유형별 작성 선행조건(`rules.after`), 비활성 문서의 흡수 대상과 필수 섹션(`omissions`)을 포함한다. `rdl contract show|next|check`는 CLI·스킬·Board가 공유하는 평가 결과를 제공하고, `rdl contract plan|set`은 영향 검토와 revision 기반 변경을 수행한다. 새 문서는 `docs/prd`, `docs/requirements`, `docs/architecture` 같은 정규 경로에 생성되며, 기존 루트 문서는 `rdl doc migrate` 계획을 검토한 뒤 적용한다.
 
 같은 저장소에 프로젝트를 더 추가할 수 있다.
 

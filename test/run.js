@@ -12,6 +12,7 @@ require('./bootstrap.test');
 require('./bootstrap-cli.test');
 require('./guided.test');
 require('./document-profile.test');
+require('./document-contract.test');
 require('./document-migration.test');
 require('./git.test');
 require('./collaboration.test');

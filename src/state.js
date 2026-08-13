@@ -281,8 +281,9 @@ function readCommitTasks(config, ref) {
   return JSON.parse(content);
 }
 
-function validateProjection(config) {
-  const result = checkWorkspace(config.root, { strict: true, project: config.project || null });
+function validateProjection(config, options) {
+  const settings = options || {};
+  const result = checkWorkspace(config.root, { strict: true, project: config.project || null, skipProfilePolicy: settings.skipProfilePolicy === true });
   if (result.summary.errors > 0) {
     const first = result.diagnostics.find((item) => item.severity === 'error');
     throw new Error(`workspace 변경 검증 실패: ${first ? `${first.code} ${first.message}` : '알 수 없는 오류'}`);
@@ -311,7 +312,7 @@ function persistTaskChange(config, values) {
         : updateTaskInStore(taskFile, values.taskId, values.document.tasks[values.taskId]);
     } else atomicWrite(taskFile, canonicalJson(values.document));
     materialize(config);
-    validateProjection(config);
+    validateProjection(config, { skipProfilePolicy: true });
   } catch (error) {
     if (storeChange) restoreStoreWrite(storeChange);
     else atomicWrite(taskFile, values.original);
@@ -494,9 +495,9 @@ function commitShardedMerge(config, remoteCommit) {
 function saveProjectState(config, settings) {
   if (!refExists(config.root, config.ref)) initProjectState(config);
   ensureWorkspaceWorktree(config);
+  validateProjection(config);
   const status = runGit(['status', '--porcelain'], { cwd: config.worktree }).stdout;
   if (!status) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout };
-  validateProjection(config);
   runGit(['add', '-A', '--', '.'], { cwd: config.worktree });
   runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
   return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout };

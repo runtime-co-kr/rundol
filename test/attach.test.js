@@ -37,7 +37,7 @@ try {
   git(source, ['commit', '-m', 'initial']);
   git(temporary, ['init', '--bare', remote]);
   git(source, ['remote', 'add', 'origin', remote]);
-  rdl(source, sourceHome, ['init', 'crm', '--name', '고객 관리']);
+  rdl(source, sourceHome, ['init', 'crm', '--name', '고객 관리', '--profile', 'service', '--enforcement', 'advisory']);
   rdl(source, sourceHome, ['sync', '--project', 'crm']);
   git(source, ['push', '-u', 'origin', 'main']);
 

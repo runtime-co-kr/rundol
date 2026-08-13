@@ -17,6 +17,8 @@ Usage:
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
+  rdl contract show|next|check --project <key> [--json]
+  rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
@@ -112,13 +114,14 @@ function parseOperationArgs(argv) {
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
-    else if (['--root', '--project', '--name', '--profile', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
       else if (value === '--project') options.project = argv[i];
       else if (value === '--name') options.name = argv[i];
       else if (value === '--profile') options.profile = argv[i];
+      else if (value === '--enforcement') options.enforcement = argv[i];
       else if (value === '--remote') options.remote = argv[i];
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
@@ -240,7 +243,8 @@ async function main() {
   const { initializeWorkspace, addProject } = require('../src/init');
   const { createDocument } = require('../src/document');
   const { discoverWorkspace } = require('../src/bootstrap');
-  const { applyToProject, reconfigureProject, PROFILE_NAMES, missingActions } = require('../src/document-profile');
+  const { applyToProject, reconfigureProject, PROFILE_NAMES, ENFORCEMENTS, missingActions } = require('../src/document-profile');
+  const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('../src/document-contract');
   const { migrateProject } = require('../src/document-migration');
   const { guidedProjectInput, selectProject: selectGuidedProject } = require('../src/guided');
   const { readConflict, resolveConflict, clearConflict } = require('../src/conflict');
@@ -268,18 +272,24 @@ async function main() {
       return 0;
     }
     if (discovery.action === 'needs-selection' || discovery.action === 'already-connected') {
-      printOperation(discovery, options.json);
+      const contractProject = selectedProject || (discovery.available && discovery.available.length === 1 ? discovery.available[0] : null);
+      const result = contractProject && discovery.action === 'already-connected'
+        ? Object.assign({}, discovery, { contract: loadDocumentContract(options.root, contractProject) })
+        : discovery;
+      printOperation(result, options.json);
       return 0;
     }
     if (discovery.action === 'repaired') {
       const repaired = repairWorkspace(options.root, { project: selectedProject, discovery });
       for (const item of repaired.attached || []) initObsidian(repaired.root, { project: item.project, force: false });
+      repaired.contracts = (repaired.attached || []).map((item) => loadDocumentContract(repaired.root, item.project));
       printOperation(repaired, options.json);
       return 0;
     }
     if (discovery.action === 'attached') {
       const attached = attachWorkspace(options.root, { project: selectedProject, remote: options.remote, discovery });
       for (const item of attached.attached) initObsidian(attached.root, { project: item.project, force: false });
+      attached.contracts = (attached.attached || []).map((item) => loadDocumentContract(attached.root, item.project));
       printOperation(attached, options.json);
       return 0;
     }
@@ -295,11 +305,12 @@ async function main() {
     if (options.profile && !PROFILE_NAMES.includes(options.profile)) throw new Error(`지원하지 않는 문서 프로필입니다: ${options.profile}`);
     if (options.positional.length !== 1) throw new Error('rdl init에는 프로젝트 키 하나가 필요합니다.');
     const initialized = initializeWorkspace(options.root, options.positional[0], options.name);
-    let configuredProfile = null;
-    if (options.profile) configuredProfile = applyToProject(path.join(initialized.projectRoot, 'project.md'), { name: options.profile, traits: options.traits, policy: options.policySpecified ? options.policy : undefined }).profile;
+    const selectedProfile = options.profile || 'service';
+    const configuredProfile = applyToProject(path.join(initialized.projectRoot, 'project.md'), { schemaVersion: 2, name: selectedProfile, enforcement: options.enforcement || 'checkpoint', traits: options.traits, policy: options.policySpecified ? options.policy : undefined }).profile;
     const git = initState(initialized.root, { project: initialized.project });
     initObsidian(initialized.root, { project: initialized.project, force: false });
-    printOperation(Object.assign({ action: 'created', profile: options.profile || null, traits: configuredProfile ? configuredProfile.traits : [], missing: configuredProfile ? missingActions(configuredProfile, []) : [] }, initialized, { branch: git.branch, worktree: git.worktree }), options.json);
+    const contract = loadDocumentContract(initialized.root, initialized.project);
+    printOperation(Object.assign({ action: 'created', profile: selectedProfile, traits: configuredProfile.traits, missing: missingActions(configuredProfile, []), contract }, initialized, { branch: git.branch, worktree: git.worktree }), options.json);
     return 0;
   }
   if (command === 'attach' || command === 'detach') {
@@ -309,7 +320,10 @@ async function main() {
     const result = command === 'attach'
       ? attachWorkspace(options.root, { project, remote: options.remote })
       : detachWorkspace(options.root, { project, remote: options.remote });
-    if (command === 'attach') for (const item of result.attached || []) initObsidian(result.root, { project: item.project, force: false });
+    if (command === 'attach') {
+      for (const item of result.attached || []) initObsidian(result.root, { project: item.project, force: false });
+      result.contracts = (result.attached || []).map((item) => loadDocumentContract(result.root, item.project));
+    }
     printOperation(result, options.json);
     return 0;
   }
@@ -323,26 +337,51 @@ async function main() {
       const layout = workspaceLayout(profileOptions.root);
       const selected = selectProject(layout, profileOptions.project, true);
       const updated = reconfigureProject(selected.charter, profileOptions.profile, {
+        enforcement: profileOptions.enforcement,
         traits: profileOptions.traits.length ? profileOptions.traits : undefined,
         policy: profileOptions.policySpecified ? profileOptions.policy : undefined
       });
       const registry = require('../src/document').registry(selected);
       const present = Array.from(registry.keys()).map((id) => /^([A-Z]{3})-/u.exec(id)).filter(Boolean).map((match) => match[1]);
-      printOperation({ root: layout.root, project: selected.key, profile: updated.profile.name, traits: updated.profile.traits, revision: updated.profile.revision, history: updated.profile.history, legacyUnconfigured: updated.legacyUnconfigured, file: updated.file, missing: missingActions(updated.profile, present) }, profileOptions.json);
+      printOperation({ root: layout.root, project: selected.key, profile: updated.profile.name, enforcement: updated.profile.enforcement, traits: updated.profile.traits, revision: updated.profile.revision, history: updated.profile.history, legacyUnconfigured: updated.legacyUnconfigured, migratedFrom: updated.migratedFrom, impact: updated.impact, file: updated.file, missing: missingActions(updated.profile, present), contract: loadDocumentContract(layout.root, selected.key) }, profileOptions.json);
       return 0;
     }
     if (subcommand !== 'add') throw new Error('지원하는 project 하위 명령은 add와 profile입니다.');
     const options = parseOperationArgs(argv);
     if (options.positional.length !== 1) throw new Error('rdl project add에는 프로젝트 키 하나가 필요합니다.');
     const added = addProject(options.root, options.positional[0], options.name);
+    if (!options.profile) options.profile = 'service';
     if (options.profile) {
       if (!PROFILE_NAMES.includes(options.profile)) throw new Error(`지원하지 않는 문서 프로필입니다: ${options.profile}`);
-      applyToProject(path.join(added.projectRoot, 'project.md'), { name: options.profile });
+      applyToProject(path.join(added.projectRoot, 'project.md'), { schemaVersion: 2, name: options.profile, enforcement: options.enforcement || 'checkpoint' });
     }
     const git = initState(options.root, { project: added.project });
     initObsidian(options.root, { project: added.project, force: false });
     const settings = saveSettings(options.root);
-    printOperation(Object.assign({}, added, { branch: git.branch, commit: git.commit, settings }), options.json);
+    printOperation(Object.assign({}, added, { branch: git.branch, commit: git.commit, settings, contract: loadDocumentContract(options.root, added.project) }), options.json);
+    return 0;
+  }
+  if (command === 'contract') {
+    const subcommand = argv.shift();
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl contract 명령은 위치 인수를 사용하지 않습니다.');
+    if (['show', 'next', 'check'].includes(subcommand)) {
+      const contract = loadDocumentContract(options.root, options.project);
+      const result = subcommand === 'next' ? Object.assign({ root: contract.root, project: contract.project, status: contract.status }, contract.evaluation || {}) : contract;
+      printOperation(result, options.json);
+      if (subcommand === 'check' && (contract.status === 'invalid' || contract.status === 'unsupported-schema' || (contract.enforcement === 'checkpoint' && contract.evaluation && contract.evaluation.violations.some((item) => item.code !== 'recommended-missing')))) return 1;
+      return 0;
+    }
+    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, plan, set입니다.');
+    if (!PROFILE_NAMES.includes(options.profile)) throw new Error('--profile <lean|product|service|platform|assured>가 필요합니다.');
+    if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
+    const input = { name: options.profile };
+    if (options.enforcement) input.enforcement = options.enforcement;
+    if (options.traits.length) input.traits = options.traits;
+    if (options.policySpecified) input.policy = options.policy;
+    if (subcommand === 'set') input.baseRevision = loadDocumentContract(options.root, options.project).revision;
+    const result = subcommand === 'plan' ? planDocumentContract(options.root, options.project, input) : updateDocumentContract(options.root, options.project, input);
+    printOperation(result, options.json);
     return 0;
   }
   if (command === 'check') {

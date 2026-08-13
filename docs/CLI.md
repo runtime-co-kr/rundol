@@ -13,6 +13,8 @@ rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
 rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
 rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
+rdl contract show|next|check --project <key> [--json]
+rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
 rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
 rdl check --links [--root <path>]
 rdl check --tasks [--root <path>]

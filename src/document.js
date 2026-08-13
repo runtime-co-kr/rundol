@@ -6,6 +6,7 @@ const { workspaceLayout, selectProject } = require('./workspace');
 const { readCollaboration } = require('./collaboration');
 const { reserveDocumentId } = require('./document-sequence');
 const { CANONICAL_PATHS: TYPES } = require('./document-paths');
+const { assertDocumentCreationAllowed } = require('./document-contract');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
 const RELATED_REQUIRED = new Set(['REQ', 'SCR', 'MOD', 'API', 'TST', 'RUN']);
@@ -62,6 +63,7 @@ function createDocument(start, input) {
   if (!Object.prototype.hasOwnProperty.call(TYPES, type)) throw new Error(`지원하지 않는 문서 유형입니다: ${type}`);
   const layout = workspaceLayout(start);
   const project = selectProject(layout, input.project, true);
+  const contract = assertDocumentCreationAllowed(layout.root, project.key, type);
   const title = safeTitle(input.title);
   const collaboration = readCollaboration(layout.root, project.key);
   const owner = collaboration.members.find((member) => member.id === input.owner);
@@ -89,7 +91,7 @@ function createDocument(start, input) {
   source = source.replace(/<([^>]+)>/g, (_, hint) => `작성 필요 — ${hint}`);
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
-  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/') };
+  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status };
 }
 
 module.exports = { TYPES, registry, createDocument };

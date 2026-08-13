@@ -12,6 +12,7 @@ const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, shardFiles } = require('./tasks');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus, appendLease, listLeases } = require('./collaboration-store');
+const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
 
 const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done'];
 const UI_ROOT = path.join(__dirname, 'board-ui');
@@ -183,9 +184,10 @@ function workspaceSnapshot(root, projectKey, search) {
   const leases = layout.schemaVersion >= 6 ? listLeases(root, project.key).leases : [];
   const sync = syncStatus(project);
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
+  const contract = loadDocumentContract(root, project.key);
   return {
     project: project.key,
-    revision: { workspace: boardRevision(config), tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync) },
+    revision: { workspace: boardRevision(config), tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract) },
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
@@ -194,6 +196,7 @@ function workspaceSnapshot(root, projectKey, search) {
     clients,
     leases,
     sync,
+    contract,
     runs: [],
     proposals: []
   };
@@ -221,7 +224,7 @@ function updateDocumentBody(root, projectKey, documentId, body) {
   try {
     fs.writeFileSync(temporary, `${match[1]}${nextBody.replace(/^\s+|\s+$/g, '')}\n`, 'utf8');
     fs.renameSync(temporary, file);
-    const checked = checkWorkspace(root, { project: projectKey, strict: true });
+    const checked = checkWorkspace(root, { project: projectKey, strict: true, skipProfilePolicy: true });
     if (checked.summary.errors) throw new Error(checked.diagnostics.find((item) => item.severity === 'error').message);
   } catch (error) {
     if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
@@ -327,7 +330,9 @@ function createBoardServer(start, options) {
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
-      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentMatch, projectLeasesMatch, projectLeaseActionMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch].find(Boolean);
+      const projectContractMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract$/u);
+      const projectContractPlanMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract\/plan$/u);
+      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentMatch, projectLeasesMatch, projectLeaseActionMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch].find(Boolean);
       const requestedConfig = requestedProject ? boardConfig(config.root, requestedProject[1]) : config;
       if (request.method === 'GET' && projectMatch) {
         const summary = overview(config.root).projects.find((item) => item.key === projectMatch[1]);
@@ -348,6 +353,7 @@ function createBoardServer(start, options) {
       if (request.method === 'GET' && projectSnapshotMatch) {
         return json(response, 200, workspaceSnapshot(config.root, projectSnapshotMatch[1], url.searchParams));
       }
+      if (request.method === 'GET' && projectContractMatch) return json(response, 200, loadDocumentContract(config.root, projectContractMatch[1]));
       if (request.method === 'GET' && url.pathname === '/api/tasks') return json(response, 200, queryTasks(activeConfig, url.searchParams));
       if (request.method === 'GET' && url.pathname === '/api/revision') return json(response, 200, { revision: boardRevision(activeConfig) });
       if (request.method === 'GET' && url.pathname === '/api/collaboration') return json(response, 200, readCollaboration(activeConfig.root, activeConfig.project));
@@ -381,6 +387,14 @@ function createBoardServer(start, options) {
       if (request.method === 'POST' && projectDocumentMatch) {
         const body = await requestBody(request);
         return json(response, 200, updateDocumentBody(config.root, projectDocumentMatch[1], decodeURIComponent(projectDocumentMatch[2]), body));
+      }
+      if (request.method === 'POST' && projectContractPlanMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, planDocumentContract(config.root, projectContractPlanMatch[1], body));
+      }
+      if (request.method === 'POST' && projectContractMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, updateDocumentContract(config.root, projectContractMatch[1], body));
       }
       if (request.method === 'POST' && projectLeaseActionMatch) {
         const body = await requestBody(request);
