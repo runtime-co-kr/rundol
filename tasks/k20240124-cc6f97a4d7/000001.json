@@ -497,7 +497,7 @@
         },
         "AC-002": {
           "text": "추천 문맥의 비차단 의미와 board.json 상속 순서가 결정에 포함된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "contract, strict, structure 검사가 통과하고 프로젝트 브랜치에 동기화된다.",
@@ -506,7 +506,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:39:25.987Z",
-      "updatedAt": "2026-08-13T22:40:13.050Z",
+      "updatedAt": "2026-08-13T22:40:13.855Z",
       "statusChangedAt": "2026-08-13T22:39:59.269Z",
       "externalRefs": [],
       "project": "rundol"
