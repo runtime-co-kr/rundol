@@ -501,12 +501,12 @@
         },
         "AC-003": {
           "text": "contract, strict, structure 검사가 통과하고 프로젝트 브랜치에 동기화된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:39:25.987Z",
-      "updatedAt": "2026-08-13T22:40:13.855Z",
+      "updatedAt": "2026-08-13T22:40:52.365Z",
       "statusChangedAt": "2026-08-13T22:39:59.269Z",
       "externalRefs": [],
       "project": "rundol"
