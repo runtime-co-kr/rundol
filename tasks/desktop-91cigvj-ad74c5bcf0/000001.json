@@ -42,6 +42,45 @@
       "statusChangedAt": "2026-08-13T04:53:33.165Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSR1M40YCD76A3CD44424F51": {
+      "title": "보드 접근성과 반응형 브라우저 테스트 구축",
+      "summary": "360px부터 1440px까지 Board 핵심 흐름의 시각 회귀, 키보드 조작과 접근성 검증을 실제 브라우저 기반 자동화로 구축한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-005",
+        "SCR-001",
+        "TST-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "360px, 720px, 1050px와 1440px viewport에서 핵심 화면의 자동화 검증이 실행된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "키보드만으로 탐색, 문서 편집, 태스크 조작과 dialog 취소가 가능함을 검증한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "접근 가능한 이름, focus 이동, aria 상태와 색상 대비의 주요 위반을 자동 검출한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "drawer와 Context의 breakpoint 전환 회귀 테스트가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T04:53:33.537Z",
+      "updatedAt": "2026-08-13T04:53:33.537Z",
+      "statusChangedAt": "2026-08-13T04:53:33.537Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
