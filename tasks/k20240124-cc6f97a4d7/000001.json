@@ -39,6 +39,43 @@
       "statusChangedAt": "2026-08-13T19:31:33.345Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSRX0G6341088CCA319770D0": {
+      "title": "rdl init attach project 명령에 문서 계약 점검 내장",
+      "summary": "신규 생성과 기존 연결 경계에서 같은 계약 evaluator를 사용해 계약 생성, 상태 진단과 재설정을 일관되게 제공한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "PRD-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "신규 rdl init과 project add는 선택한 profile 또는 명시적 기본값으로 완전한 문서 계약을 project.md에 기록한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "init 결과는 첫 작성 가능 문서, 차단된 문서와 생략 문서 흡수 대상을 JSON과 사람용 출력으로 제공한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "already-connected, attach와 repair는 valid, legacy-unconfigured, migration-required, invalid, unsupported-schema 상태를 구분한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "project profile 재설정은 적용 전 영향, revision과 누락 필수 문서를 반환하고 기존 문서를 자동 삭제하지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-13T19:32:30.553Z",
+      "updatedAt": "2026-08-13T19:32:30.553Z",
+      "statusChangedAt": "2026-08-13T19:32:30.553Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
