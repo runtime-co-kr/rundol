@@ -461,7 +461,7 @@
         },
         "AC-002": {
           "text": "문서 계약의 비차단 추천 문맥과 DESIGN.md 책임 분류가 아키텍처 경계에 반영된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "rdl contract check, strict, structure 검사가 통과하고 프로젝트 브랜치에 동기화된다.",
@@ -470,7 +470,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:37:08.917Z",
-      "updatedAt": "2026-08-13T22:37:44.445Z",
+      "updatedAt": "2026-08-13T22:37:45.238Z",
       "statusChangedAt": "2026-08-13T22:37:25.980Z",
       "externalRefs": [],
       "project": "rundol"
