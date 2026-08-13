@@ -243,26 +243,27 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
-        "REQ-011"
+        "REQ-011",
+        "TST-003"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "모든 정규 문서 유형에 의미 있는 기본 섹션 세트가 정의된다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "계약 API가 UI에서 사용할 선택 카탈로그를 반환한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T21:01:16.608Z",
-      "updatedAt": "2026-08-13T21:01:16.608Z",
-      "statusChangedAt": "2026-08-13T21:01:16.608Z",
+      "updatedAt": "2026-08-13T21:12:29.086Z",
+      "statusChangedAt": "2026-08-13T21:12:29.086Z",
       "externalRefs": [],
       "project": "rundol"
     },
