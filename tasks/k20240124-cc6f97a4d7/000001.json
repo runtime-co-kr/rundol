@@ -493,7 +493,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "ADR-003이 대안과 결정 기준을 비교하고 선택한 소유 경계를 명시한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "추천 문맥의 비차단 의미와 board.json 상속 순서가 결정에 포함된다.",
@@ -506,7 +506,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:39:25.987Z",
-      "updatedAt": "2026-08-13T22:39:59.269Z",
+      "updatedAt": "2026-08-13T22:40:13.050Z",
       "statusChangedAt": "2026-08-13T22:39:59.269Z",
       "externalRefs": [],
       "project": "rundol"
