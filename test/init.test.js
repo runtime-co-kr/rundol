@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { checkWorkspace } = require('../src/check');
+const { auditStructure, cleanupStructure } = require('../src/structure');
 
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'bin', 'rdl.js');
@@ -41,17 +42,28 @@ function testWorkspaceInitialization() {
     assert.strictEqual(initialized.branch, 'rundol/memo');
     assert(!fs.existsSync(path.join(temporary, '.rundol')));
     assert(fs.existsSync(path.join(temporary, 'projects', 'workspace', 'workspace.yaml')));
+    assert(fs.existsSync(path.join(temporary, 'projects', 'workspace', 'board.json')));
     assert(fs.existsSync(path.join(temporary, 'projects', 'workspace', '.git')));
     const workspaceManifest = fs.readFileSync(path.join(temporary, 'projects', 'workspace', 'workspace.yaml'), 'utf8');
     assert(!workspaceManifest.includes('policies:'));
     assert(!workspaceManifest.includes('schemas:'));
     assert(fs.existsSync(path.join(temporary, 'projects', 'memo', '.git')));
     assert(fs.existsSync(path.join(temporary, 'projects', 'memo', 'project.md')));
+    assert(fs.existsSync(path.join(temporary, 'projects', 'memo', 'board.json')));
     assert(fs.existsSync(path.join(temporary, 'projects', 'memo', '.obsidian', 'app.json')));
     assert(!fs.existsSync(path.join(temporary, 'projects', 'memo', 'docs', '.gitkeep')));
     const charter = fs.readFileSync(path.join(temporary, 'projects', 'memo', 'project.md'), 'utf8');
     assert(charter.includes('id: project:memo'));
     assert(charter.includes('# 메모 앱'));
+
+    const genericDesign = path.join(temporary, 'projects', 'memo', 'DESIGN.md');
+    fs.writeFileSync(genericDesign, '# 임시 설계\n', 'utf8');
+    const designCheck = checkWorkspace(temporary, { project: 'memo', strict: true });
+    assert(designCheck.diagnostics.some((item) => item.code === 'RDL-DOC-011' && item.severity === 'warning'));
+    assert(auditStructure(temporary, { project: 'memo' }).candidates.some((item) => item.kind === 'noncanonical-design-document'));
+    cleanupStructure(temporary, { project: 'memo', apply: true });
+    assert(fs.existsSync(genericDesign), 'cleanup must not delete DESIGN.md automatically');
+    fs.unlinkSync(genericDesign);
 
     const initialCheck = checkWorkspace(temporary, { strict: true });
     assert(initialCheck.diagnostics.some((item) => item.code === 'RDL-PROFILE-002' && item.target === 'PRD'));
@@ -65,9 +77,11 @@ function testWorkspaceInitialization() {
     const memoTree = git(temporary, ['ls-tree', '-r', '--name-only', 'refs/heads/rundol/memo']).split(/\r?\n/);
     const tmsTree = git(temporary, ['ls-tree', '-r', '--name-only', 'refs/heads/rundol/tms']).split(/\r?\n/);
     assert(memoTree.includes('project.md') && memoTree.includes('.gitignore') && !memoTree.includes('.obsidian/app.json'));
+    assert(memoTree.includes('board.json'));
     assert(tmsTree.includes('project.md') && tmsTree.includes('.gitignore') && !tmsTree.includes('.obsidian/app.json'));
     const settingsTree = git(temporary, ['ls-tree', '-r', '--name-only', 'refs/heads/rundol/workspace']).split(/\r?\n/);
     assert(settingsTree.includes('projects/project-memo.yaml') && settingsTree.includes('projects/project-tms.yaml'));
+    assert(settingsTree.includes('board.json'));
     assert(!memoTree.some((file) => file.startsWith('tms/')));
     assert(!tmsTree.some((file) => file.startsWith('memo/')));
     const finalCheck = checkWorkspace(temporary, { strict: true });

@@ -20,7 +20,7 @@
 
 구체적인 필수 구조는 [프로젝트 거버넌스 계약](PROJECT-GOVERNANCE.md)을 따른다. 소규모 프로젝트도 항목을 삭제하지 않으며, 미정인 정보는 확인 책임과 후속 태스크를 남긴다.
 
-`documentProfile` schemaVersion 2는 profile, traits, policy, revision, history에 더해 `enforcement`, 유형별 `rules.after`, 비활성 유형별 `omissions`를 정본으로 저장한다. `omissions`는 흡수 대상과 필수 섹션 또는 적용 제외 사유를 명시한다. 재설정은 기존 문서를 이동하거나 삭제하지 않고 revision/history만 전진시키며, `rdl contract show|next|check`와 Board는 같은 evaluator 결과를 표시한다.
+`documentProfile` schemaVersion 2는 profile, traits, policy, revision, history에 더해 `enforcement`, 유형별 AI 추천 문맥 `rules.after`, 비활성 유형별 `omissions`를 정본으로 저장한다. 추천 문맥은 AI가 참고하면 좋은 자료이며 누락되어도 문서 생성·저장·동기화를 막지 않는다. `omissions`는 흡수 대상과 필수 구성요소 또는 적용 제외 사유를 명시한다. 필수 구성요소는 해당 문서 템플릿의 섹션을 추천값으로 제공하되 프로젝트가 자유롭게 추가·삭제할 수 있다. 재설정은 기존 문서를 이동하거나 삭제하지 않고 revision/history만 전진시키며, `rdl contract show|next|check`와 Board는 같은 evaluator 결과를 표시한다.
 
 ## 문서 유형
 

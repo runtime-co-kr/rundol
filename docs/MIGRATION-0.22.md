@@ -1,23 +1,24 @@
 # Rundol 0.22 마이그레이션
 
-이 문서는 Rundol `0.21.1`, `0.21.2`, `0.21.3` Workspace를 `0.22.0`으로 직접 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로와 `documentProfile` 전환 단계만 달라진다.
+이 문서는 Rundol `0.21.1`, `0.21.2`, `0.21.3`, `0.22.0` Workspace를 최신 `0.22.1`로 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로와 `documentProfile` 전환 단계만 달라진다.
 
 ## 변경 요약
 
-| 출발 버전 | 기존 상태 | 0.22.0에서 필요한 작업 |
+| 출발 버전 | 기존 상태 | 0.22.1에서 필요한 작업 |
 |---|---|---|
 | 0.21.1 | 문서 프로필 없음, PRD·GLS·ARC가 `docs/` 루트에 생성될 수 있음 | 연결 재발견, legacy 문서 경로 이전, schemaVersion 2 계약 설정 |
 | 0.21.2 | schemaVersion 1 프로필, canonical 문서 경로와 bootstrap 지원 | v1 정책·traits를 보존해 schemaVersion 2로 전환 |
 | 0.21.3 | 데이터 계약은 0.21.2와 같고 Unix 전역 설치 경로만 보완 | schemaVersion 2로 전환 |
+| 0.22.0 | schemaVersion 2 계약 사용 | 데이터 migration 없음, 스킬 재설치와 선택적 `board.json` 설정 |
 
 0.22.0의 schemaVersion 2 계약은 기존 policy에 다음 항목을 추가한다.
 
 - `enforcement`: `advisory` 또는 `checkpoint`
-- `rules.<TYPE>.after`: 문서 작성 선행조건
-- `omissions.<TYPE>`: 비활성 문서의 흡수 대상과 필수 섹션 또는 적용 제외 사유
+- `rules.<TYPE>.after`: AI 작성 품질을 돕는 비차단 추천 문맥
+- `omissions.<TYPE>`: 비활성 문서의 흡수 대상과 필수 구성요소 또는 적용 제외 사유
 - revision 기반 CLI·Board 계약 변경
 
-`checkpoint`에서는 필수 문서, 선행조건 또는 생략 계약 위반이 `rdl save`와 `rdl sync`를 차단한다. 따라서 기존 프로젝트는 먼저 `advisory`로 전환한 뒤 계약 위반을 해소하고 `checkpoint`를 적용한다.
+`checkpoint`에서는 필수 문서 또는 생략 계약 위반이 `rdl save`와 `rdl sync`를 차단한다. 추천 문맥의 누락은 차단 조건이 아니다. 따라서 기존 프로젝트는 먼저 `advisory`로 전환한 뒤 차단 계약 위반을 해소하고 `checkpoint`를 적용한다.
 
 ## 1. 업그레이드 전 백업
 
@@ -49,13 +50,13 @@ rdl sync --project <key> --json
 ## 2. CLI와 스킬 업그레이드
 
 ```powershell
-npm install --global rundol@0.22.0
+npm install --global rundol@0.22.1
 rdl --version
 rdl doctor --json
 rdl skill install --force
 ```
 
-`rdl --version`이 `0.22.0`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 0.22 계약 절차를 반영한다.
+`rdl --version`이 `0.22.1`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 문서 계약과 canonical design routing 절차를 반영한다.
 
 ## 3. Workspace 재발견
 
@@ -106,6 +107,26 @@ rdl contract set --project <key> --profile <현재-profile> --enforcement adviso
 
 이미 `status: valid`와 `schemaVersion: 2`가 표시되면 이 단계는 생략한다.
 
+### 0.22.0에서 업그레이드
+
+문서 계약이나 태스크 저장 포맷 migration은 필요하지 않다. 업데이트된 스킬을 설치하고 기존 프로젝트를 검사한다.
+
+```powershell
+rdl skill install --force
+rdl contract check --project <key> --json
+rdl check --strict --project <key> --json
+rdl check --structure --project <key> --json
+```
+
+`DESIGN.md`가 발견되면 파일을 자동 삭제하지 않는다. 내용을 검토해 제품·품질 요구는 REQ, 사용자 흐름과 화면 상태는 SCR, 시스템 구조는 ARC, 중요한 결정은 ADR, 구현은 연결 태스크로 이전한다. 해당 문서 유형이 disabled이면 `documentProfile.omissions`의 흡수 대상과 필수 구성요소를 따른다.
+
+문서 표시 문구를 조정하려면 다음 선택 설정 파일을 사용할 수 있다.
+
+- Workspace 공통값: `projects/workspace/board.json`
+- 프로젝트 override: `projects/<key>/board.json`
+
+설정 파일이 없으면 내장 기본값이 사용된다. 표시 설정은 label, description, order만 바꾸며 문서 ID, kind, 저장 경로와 계약 의미를 변경하지 않는다.
+
 ## 5. 계약 충족
 
 현재 작성 가능한 문서와 차단된 문서를 확인한다.
@@ -116,12 +137,12 @@ rdl contract check --project <key> --json
 ```
 
 - `ready`의 required 문서를 우선 작성한다.
-- `blocked` 문서는 `waitingFor`가 해결되기 전에 만들지 않는다.
+- 각 `ready` 항목의 `recommendedContext`와 `missingRecommendedContext`를 참고하되, 누락된 추천 문맥 때문에 작성을 멈추지 않는다.
 - disabled 문서는 새 파일을 만들지 않는다.
-- `absorbed` 항목은 지정된 대상 문서에 모든 필수 섹션을 작성한다.
+- `absorbed` 항목은 지정된 대상 문서에 계약이 선택한 모든 필수 구성요소를 작성한다.
 - `recommended-missing`은 권고이며 checkpoint에서도 저장을 차단하지 않는다.
 
-Board를 사용하는 경우 Settings의 **문서 계획 계약**에서 profile, enforcement, policy 상태, 선행조건, 흡수 대상과 필수 섹션을 확인할 수 있다.
+Board를 사용하는 경우 Settings의 **문서 계획 계약**에서 profile, enforcement, policy 상태, 읽기 전용 AI 추천 문맥, 흡수 대상과 필수 구성요소를 확인할 수 있다. 구성요소는 실제 문서 템플릿의 섹션 추천값을 추가하거나 프로젝트 고유 항목을 자유롭게 입력하고 삭제할 수 있다.
 
 ```powershell
 rdl board --project <key>
@@ -188,7 +209,7 @@ rdl check --strict --project <key> --json
 
 ### save 또는 sync가 필수 문서 누락으로 실패함
 
-계약을 advisory로 낮춘 뒤 `rdl contract next`의 required 문서와 omission 섹션을 채운다.
+계약을 advisory로 낮춘 뒤 `rdl contract next`의 required 문서와 omission 필수 구성요소를 채운다.
 
 ```powershell
 rdl contract set --project <key> --profile <현재-profile> --enforcement advisory --json
@@ -197,7 +218,7 @@ rdl contract next --project <key> --json
 
 ### Board에서 계약 설정이 보이지 않음
 
-전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.0` 설치가 필요하다.
+전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.1` 설치가 필요하다.
 
 ### contract status가 legacy-unconfigured임
 
@@ -205,4 +226,4 @@ rdl contract next --project <key> --json
 
 ### contract status가 unsupported-schema 또는 invalid임
 
-자동 저장·동기화를 중단한다. `project.md`의 `documentProfile`을 backup ref와 비교하고, 누락 policy, 순환 after, 잘못된 omission 대상을 수정한 후 다시 검사한다.
+자동 저장·동기화를 중단한다. `project.md`의 `documentProfile`을 backup ref와 비교하고, 누락 policy, 지원하지 않는 추천 문맥 유형, 잘못된 omission 대상을 수정한 후 다시 검사한다.

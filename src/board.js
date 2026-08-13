@@ -13,6 +13,7 @@ const { readTaskStore, shardFiles } = require('./tasks');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus, appendLease, listLeases } = require('./collaboration-store');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
+const { loadBoardPresentation } = require('./board-presentation');
 
 const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done'];
 const UI_ROOT = path.join(__dirname, 'board-ui');
@@ -185,9 +186,10 @@ function workspaceSnapshot(root, projectKey, search) {
   const sync = syncStatus(project);
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
   const contract = loadDocumentContract(root, project.key);
+  const presentation = loadBoardPresentation(root, project.key);
   return {
     project: project.key,
-    revision: { workspace: boardRevision(config), tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract) },
+    revision: { workspace: boardRevision(config), tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(presentation) },
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
@@ -197,6 +199,7 @@ function workspaceSnapshot(root, projectKey, search) {
     leases,
     sync,
     contract,
+    presentation,
     runs: [],
     proposals: []
   };

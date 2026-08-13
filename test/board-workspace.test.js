@@ -62,6 +62,11 @@ async function testWorkspaceBoard() {
       assert.strictEqual(snapshot.json.contract.status, 'valid');
       assert.strictEqual(snapshot.json.contract.profile.schemaVersion, 2);
       assert.strictEqual(typeof snapshot.json.revision.contract, 'string');
+      assert.strictEqual(typeof snapshot.json.revision.presentation, 'string');
+      assert.strictEqual(snapshot.json.presentation.documentTypes.requirement.label, '요구사항');
+      assert.strictEqual(snapshot.json.presentation.inheritance.workspace.configured, true);
+      assert.strictEqual(snapshot.json.presentation.inheritance.project.configured, true);
+      assert.deepStrictEqual(snapshot.json.contract.catalog.sections.SCR, ['진입', '사용자 흐름', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것']);
       const contract = await request(port, '/api/projects/crm/contract', board.token);
       assert.strictEqual(contract.status, 200);
       assert.strictEqual(contract.json.revision, 1);

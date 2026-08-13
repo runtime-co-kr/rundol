@@ -7,6 +7,7 @@ const path = require('path');
 const uiRoot = path.join(__dirname, '..', 'src', 'board-ui');
 const html = fs.readFileSync(path.join(uiRoot, 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(uiRoot, 'app.js'), 'utf8');
+const style = fs.readFileSync(path.join(uiRoot, 'style.css'), 'utf8');
 
 assert(html.includes('id="current-member"'), 'Board must expose the current-member selector');
 assert(html.includes('id="task-view"'), 'Board must provide a dedicated task detail view');
@@ -16,9 +17,16 @@ assert(html.includes('id="theme-dark"'), 'Settings must provide dark theme mode'
 assert(html.includes('id="theme-light"'), 'Settings must provide light theme mode');
 assert(app.includes('id="contract-settings"'), 'Settings must expose the document contract editor');
 assert(app.includes('data-contract-status'), 'Contract editor must expose document policy status');
-assert(app.includes('data-contract-after'), 'Contract editor must expose authoring prerequisites');
 assert(app.includes('data-contract-target'), 'Contract editor must expose omission absorption targets');
-assert(app.includes('data-contract-sections'), 'Contract editor must expose absorbed section requirements');
+assert(app.includes('data-contract-components'), 'Contract editor must expose absorbed component requirements');
+assert(!app.includes('data-contract-after'), 'Contract editor must not expose a hard prerequisite graph');
+assert(app.includes('AI 추천 문맥'), 'Contract editor must present non-blocking AI context guidance');
+assert(app.includes('data-contract-section'), 'Contract editor must expose required component values');
+assert(app.includes('data-component-input'), 'Contract editor must allow free-form required components');
+assert(app.includes('data-component-suggestion'), 'Contract editor must suggest template-derived components');
+assert(app.includes('data-component-remove'), 'Contract editor must allow required component removal');
+assert(app.includes("status === 'disabled'"), 'Omission choices must only activate for disabled document types');
+assert(!app.includes('placeholder="사용자 흐름, 접근성"'), 'Contract editor must not present placeholder text as contract data');
 assert(app.includes("projectPath('/contract')"), 'Contract editor must persist through the typed contract API');
 assert(html.includes('src="/mermaid.js"'), 'Board must load the bundled Mermaid runtime');
 assert(html.includes('src="/marked.js"'), 'Board must load the bundled Markdown parser');
@@ -41,5 +49,21 @@ assert(app.includes('window.marked.parse'), 'Markdown documents must use the sta
 assert(app.includes('window.DOMPurify.sanitize'), 'Rendered Markdown must be sanitized');
 assert(app.includes("document.body.classList.remove('context-collapsed')"), 'Opening mobile Context must recover from desktop collapse state');
 assert(app.includes("document.body.classList.remove('context-open')"), 'Desktop Context must recover from mobile open state');
+assert(app.includes("charter: '프로젝트 헌장'"), 'Document type vocabulary must include project charters');
+assert(app.includes("prd: '제품 요구사항'"), 'Document type vocabulary must include PRDs');
+assert(app.includes("draft: '초안'"), 'Document state vocabulary must map draft status');
+assert(app.includes("active: '활성'"), 'Document state vocabulary must map active status');
+assert(app.includes("state.snapshot.presentation[group]"), 'Document vocabulary must allow resolved Board presentation overrides');
+assert(app.includes('Workspace board.json'), 'Settings must show Workspace presentation inheritance');
+assert(app.includes('프로젝트 board.json'), 'Settings must show project presentation inheritance');
+assert(app.includes('documentTypeLabel(documentValue)'), 'Document cards must use the shared type vocabulary');
+assert(app.includes('documentStateLabel(documentValue.state)'), 'Document cards must use the shared state vocabulary');
+assert(html.includes('data-view="operations">운영 상태'), 'Sidebar management labels must use consistent Korean terminology');
+assert(html.includes('data-view="settings">설정'), 'Sidebar settings label must use consistent Korean terminology');
+assert(style.includes('.markdown-body{max-width:none;width:100%}'), 'Markdown documents must use the available reader width');
+assert(style.includes('#board{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));overflow:visible}'), 'Task Board columns must wrap without an inner scrollbar');
+assert(style.includes('.markdown-body code{color:var(--code-text)}'), 'Markdown code must use a theme-aware foreground token');
+assert(style.includes('body.theme-light{--code-text:#176b3a}'), 'Light theme code text must use a readable foreground');
+assert(style.includes('body.theme-dark{--code-text:#aeeec6}'), 'Dark theme code text must preserve the dark foreground');
 
 console.log('board UI tests passed');

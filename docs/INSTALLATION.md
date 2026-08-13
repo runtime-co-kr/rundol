@@ -55,7 +55,7 @@ npm install --global rundol
 검증된 통합 tarball을 사용하는 경우:
 
 ```powershell
-npm install --global .\rundol-0.22.0.tgz
+npm install --global .\rundol-0.22.1.tgz
 rdl --version
 rdl doctor --json
 ```

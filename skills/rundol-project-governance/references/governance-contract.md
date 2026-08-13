@@ -30,12 +30,24 @@ The responsibility matrix identifies Responsible, Accountable, Consulted, and In
 `project.md` owns a schemaVersion 2 `documentProfile`. It is the single source of truth for AI clients, the CLI, and the Board.
 
 - `policy` classifies every regular type exactly once as `required`, `recommended`, `onDemand`, or `disabled`.
-- `rules.<TYPE>.after` lists the document types or satisfied omissions that must exist first.
+- `rules.<TYPE>.after` lists document types that are useful AI authoring context. Missing recommendations never block document creation, save, or sync.
 - `omissions.<TYPE>` records either `absorbedBy` plus required `sections`, or `notApplicable: true` plus a reason.
 - `enforcement: advisory` reports findings without blocking persistence. `checkpoint` blocks `rdl save` and `rdl sync` while non-recommended violations remain.
 - Contract changes are explicit and revisioned. Inspect impact before saving and never delete existing documents as a side effect.
 
 The mandatory AI sequence is `rdl contract show`, `rdl contract next`, author or absorb content, `rdl contract check`, and finally `rdl check --strict`.
+
+## Canonical design routing
+
+In a Rundol-governed project, a generic `DESIGN.md` is not a canonical artifact. Route design intent by responsibility:
+
+- product behavior and quality constraints → `REQ`
+- user flows, screen states, input validation, and accessibility → `SCR`
+- system boundaries, components, and deployment structure → `ARC`
+- important decisions, alternatives, rationale, and consequences → `ADR`
+- implementation and verification work → Rundol tasks linked to `REQ` and `TST`
+
+When a target type is disabled, use its `omissions.<TYPE>.absorbedBy` document and required sections. Existing `DESIGN.md` files are migration inputs: preserve them, create a follow-up task, and move their content only after review.
 
 ## Non-skippable derived concerns
 

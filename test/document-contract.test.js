@@ -34,9 +34,10 @@ try {
   assert.strictEqual(shown.revision, 1);
   const next = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
   assert(next.ready.some((item) => item.type === 'PRD'));
-  const blockedReq = spawnSync(node, [cli, 'doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--related', 'PRD-001', '--project', 'demo', '--root', root, '--json'], { cwd: repository, encoding: 'utf8' });
-  assert.notStrictEqual(blockedReq.status, 0);
-  assert(blockedReq.stderr.includes('PRD'));
+  const guidedReq = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--related', 'project:demo', '--project', 'demo', '--root', root, '--json'], root);
+  assert.strictEqual(guidedReq.type, 'REQ');
+  const afterReq = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
+  assert.strictEqual(afterReq.blocked.length, 0);
   const planned = run(['contract', 'plan', '--profile', 'lean', '--enforcement', 'advisory', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(planned.profile.enforcement, 'advisory');
   assert.strictEqual(shown.revision, 1);

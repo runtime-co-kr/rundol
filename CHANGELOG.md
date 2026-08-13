@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-08-14
+
+### Added
+
+- Added template-derived component catalogs, non-blocking AI context guidance, and freely editable omission requirements in Board document contract settings.
+- Added inherited Board presentation settings from built-in defaults through Workspace and project `board.json` files, including consistent document type and state labels.
+- Added Rundol skill routing and CLI/structure diagnostics that treat generic `DESIGN.md` files as preserved migration inputs rather than canonical documents.
+
+### Fixed
+
+- Expanded Markdown reading width, removed the task Board's inner horizontal scroll, and improved inline-code contrast in light and dark themes.
+- Unified document type and state vocabulary across navigation, recent documents, cards, lists, and document details.
+
+### Migration
+
+- Existing 0.22.0 projects need no contract or storage migration. Reinstall the governance skill to receive canonical design routing; optional `board.json` files can override presentation labels without changing document identity or paths.
+
 ## [0.22.0] - 2026-08-14
 
 ### Added

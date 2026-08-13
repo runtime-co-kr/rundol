@@ -4,9 +4,28 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const {
-  REGULAR_TYPES, POLICY_STATES, normalizeProfile, migrateProfile,
+  REGULAR_TYPES, POLICY_STATES, PROFILE_NAMES, ENFORCEMENTS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS, normalizeProfile, migrateProfile,
   parseDocumentProfile, validateDocumentProfile, applyToProject, profileImpact
 } = require('./document-profile');
+
+function documentContractCatalog() {
+  const templateRoot = path.resolve(__dirname, '..', 'docs', 'templates');
+  const sections = {};
+  for (const type of REGULAR_TYPES) {
+    const template = path.join(templateRoot, `${type}.template.md`);
+    const source = fs.existsSync(template) ? fs.readFileSync(template, 'utf8') : '';
+    const headings = source.split(/\r?\n/u).map((line) => /^##\s+(.+?)\s*#*\s*$/u.exec(line)).filter(Boolean).map((match) => match[1].trim());
+    sections[type] = headings.length ? headings : DOCUMENT_SECTION_CATALOG[type].slice();
+  }
+  return JSON.parse(JSON.stringify({
+    documentTypes: REGULAR_TYPES,
+    policyStates: POLICY_STATES,
+    profiles: PROFILE_NAMES,
+    enforcements: ENFORCEMENTS,
+    sections,
+    defaultOmissions: DEFAULT_OMISSIONS
+  }));
+}
 
 function markdownFiles(root, output) {
   const result = output || [];
@@ -67,7 +86,7 @@ function evaluateDocumentContract(profileInput, artifactInput) {
     const satisfied = targets.length > 0 && missingSections.length === 0;
     omissionStatus[type] = { type, disposition: 'absorbed', absorbedBy: omission.absorbedBy, sections: omission.sections, missingSections, satisfied };
     if (!targets.length) violations.push({ code: 'omission-target-missing', type, target: omission.absorbedBy, message: `${type} 생략 내용을 흡수할 ${omission.absorbedBy} 문서가 없습니다.` });
-    else for (const section of missingSections) violations.push({ code: 'omission-section-missing', type, target: omission.absorbedBy, section, message: `${type} 생략 내용의 필수 섹션이 ${omission.absorbedBy}에 없습니다: ${section}` });
+    else for (const section of missingSections) violations.push({ code: 'omission-section-missing', type, target: omission.absorbedBy, section, message: `${type} 생략 내용의 필수 구성요소가 ${omission.absorbedBy}에 없습니다: ${section}` });
   }
 
   function dependencySatisfied(type) {
@@ -75,31 +94,22 @@ function evaluateDocumentContract(profileInput, artifactInput) {
     if (profile.policy.disabled.includes(type)) return Boolean(omissionStatus[type] && omissionStatus[type].satisfied);
     return false;
   }
-  for (const type of REGULAR_TYPES) {
-    if (!present.has(type) || profile.policy.disabled.includes(type)) continue;
-    for (const dependency of profile.rules[type].after) if (!dependencySatisfied(dependency)) {
-      violations.push({ code: 'after-missing', type, dependency, message: `${type} 문서보다 먼저 ${dependency} 문서 또는 유효한 생략 처리가 필요합니다.` });
-    }
-  }
-
   const ready = [];
-  const blocked = [];
   for (const type of REGULAR_TYPES) {
     const state = policyState(profile, type);
     if (state === 'disabled' || present.has(type)) continue;
-    const waitingFor = profile.rules[type].after.filter((dependency) => !dependencySatisfied(dependency));
-    const item = { type, state, after: profile.rules[type].after.slice(), waitingFor };
-    if (waitingFor.length) blocked.push(item); else ready.push(item);
+    const recommendedContext = profile.rules[type].after.slice();
+    const missingRecommendedContext = recommendedContext.filter((dependency) => !dependencySatisfied(dependency));
+    ready.push({ type, state, recommendedContext, missingRecommendedContext, after: recommendedContext, waitingFor: [] });
   }
   const rank = { required: 0, recommended: 1, onDemand: 2 };
   ready.sort((left, right) => rank[left.state] - rank[right.state] || REGULAR_TYPES.indexOf(left.type) - REGULAR_TYPES.indexOf(right.type));
-  blocked.sort((left, right) => rank[left.state] - rank[right.state] || REGULAR_TYPES.indexOf(left.type) - REGULAR_TYPES.indexOf(right.type));
   return {
     enforcement: profile.enforcement,
     revision: profile.revision,
     present: Array.from(present).sort((left, right) => REGULAR_TYPES.indexOf(left) - REGULAR_TYPES.indexOf(right)),
     ready,
-    blocked,
+    blocked: [],
     absorbed: Object.values(omissionStatus),
     violations
   };
@@ -110,11 +120,12 @@ function loadDocumentContract(start, projectKey) {
   const project = selectProject(layout, projectKey, true);
   const source = fs.readFileSync(project.charter, 'utf8');
   const validation = validateDocumentProfile(source);
-  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, evaluation: null };
-  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, errors: validation.errors, evaluation: null };
+  const catalog = documentContractCatalog();
+  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, evaluation: null, catalog };
+  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, errors: validation.errors, evaluation: null, catalog };
   const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
   const evaluation = evaluateDocumentContract(profile, projectArtifacts(project));
-  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, evaluation };
+  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, evaluation, catalog };
 }
 
 function assertDocumentCreationAllowed(start, projectKey, type) {
@@ -123,8 +134,6 @@ function assertDocumentCreationAllowed(start, projectKey, type) {
   if (contract.status === 'invalid' || contract.status === 'unsupported-schema') throw new Error(`문서 계약이 ${contract.status} 상태입니다. rdl contract check로 수정하세요.`);
   const upper = String(type || '').toUpperCase();
   if (contract.profile.policy.disabled.includes(upper)) throw new Error(`문서 계약에서 ${upper} 유형은 비활성입니다. 생략 규칙의 대상 문서에 내용을 포함하세요.`);
-  const item = contract.evaluation.ready.concat(contract.evaluation.blocked).find((candidate) => candidate.type === upper);
-  if (item && item.waitingFor.length) throw new Error(`${upper} 문서를 만들기 전에 다음 문서 또는 유효한 생략 처리가 필요합니다: ${item.waitingFor.join(', ')}`);
   return contract;
 }
 
@@ -163,5 +172,5 @@ function updateDocumentContract(start, projectKey, input) {
 
 module.exports = {
   projectArtifacts, hasSection, evaluateDocumentContract, loadDocumentContract,
-  assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract
+  documentContractCatalog, assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract
 };

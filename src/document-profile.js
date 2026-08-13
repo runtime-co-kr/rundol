@@ -18,17 +18,29 @@ const DEFAULT_RULES = {
   PRD: [], REQ: ['PRD'], ARC: ['REQ'], SCR: ['REQ'], MOD: ['REQ'], API: ['REQ'],
   ADR: ['ARC'], TST: ['REQ'], RUN: ['REQ'], GLS: []
 };
+const DOCUMENT_SECTION_CATALOG = {
+  PRD: ['문제와 배경', '사용자', '목표와 성공 지표', '범위', '제약과 가정', '마일스톤'],
+  REQ: ['배경', '요구사항', '사전조건', '동작 규칙', '상태와 예외', '수용 기준', '비기능 요구', '제외 범위'],
+  ARC: ['컨텍스트와 경계', '컴포넌트', '데이터 흐름', '실행과 배포', '품질 속성', '보안과 개인정보', '알려진 제약'],
+  SCR: ['진입', '사용자 흐름', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것'],
+  MOD: ['엔티티', '관계', '불변식', '인덱스와 조회', '보존과 개인정보', '마이그레이션'],
+  API: ['엔드포인트', '오류 계약', '호환성과 버전', '제약'],
+  ADR: ['맥락', '결정 기준', '선택지', '결정', '결과'],
+  TST: ['목적과 범위', '테스트 수준', '시나리오', '비기능 검증', '테스트 데이터와 환경', '통과 기준'],
+  RUN: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구', '정기 작업'],
+  GLS: ['용어', '식별자와 코드']
+};
 const DEFAULT_OMISSIONS = {
-  PRD: { absorbedBy: 'REQ', sections: ['제품 목표', '범위'] },
-  REQ: { absorbedBy: 'PRD', sections: ['기능 요구사항', '수용 기준'] },
-  ARC: { absorbedBy: 'PRD', sections: ['아키텍처'] },
-  SCR: { absorbedBy: 'REQ', sections: ['사용자 흐름', '화면 상태', '접근성'] },
-  MOD: { absorbedBy: 'REQ', sections: ['데이터 모델'] },
-  API: { absorbedBy: 'REQ', sections: ['인터페이스 계약'] },
-  ADR: { absorbedBy: 'ARC', sections: ['설계 결정'] },
-  TST: { absorbedBy: 'REQ', sections: ['검증 전략'] },
-  RUN: { absorbedBy: 'ARC', sections: ['운영 및 복구'] },
-  GLS: { absorbedBy: 'PRD', sections: ['용어'] }
+  PRD: { absorbedBy: 'REQ', sections: ['문제와 배경', '사용자', '목표와 성공 지표', '범위'] },
+  REQ: { absorbedBy: 'PRD', sections: ['요구사항', '상태와 예외', '수용 기준', '비기능 요구'] },
+  ARC: { absorbedBy: 'REQ', sections: ['컨텍스트와 경계', '컴포넌트', '실행과 배포', '품질 속성'] },
+  SCR: { absorbedBy: 'REQ', sections: ['사용자 흐름', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것'] },
+  MOD: { absorbedBy: 'REQ', sections: ['엔티티', '관계', '불변식', '보존과 개인정보', '마이그레이션'] },
+  API: { absorbedBy: 'REQ', sections: ['엔드포인트', '오류 계약', '호환성과 버전'] },
+  ADR: { absorbedBy: 'ARC', sections: ['맥락', '선택지', '결정', '결과'] },
+  TST: { absorbedBy: 'REQ', sections: ['목적과 범위', '시나리오', '통과 기준'] },
+  RUN: { absorbedBy: 'ARC', sections: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구'] },
+  GLS: { absorbedBy: 'PRD', sections: ['용어', '식별자와 코드'] }
 };
 
 function parseList(value) {
@@ -180,25 +192,6 @@ function parseDocumentProfile(source) {
   });
 }
 
-function cycleErrors(rules) {
-  const errors = [];
-  const visiting = new Set();
-  const visited = new Set();
-  function visit(type, trail) {
-    if (visiting.has(type)) {
-      errors.push(`문서 작성 순서에 순환이 있습니다: ${trail.concat(type).join(' -> ')}`);
-      return;
-    }
-    if (visited.has(type)) return;
-    visiting.add(type);
-    for (const next of (rules[type] && rules[type].after) || []) visit(next, trail.concat(type));
-    visiting.delete(type);
-    visited.add(type);
-  }
-  for (const type of REGULAR_TYPES) visit(type, []);
-  return errors;
-}
-
 function validateDocumentProfile(source) {
   const raw = parseRawProfile(source);
   if (!raw) return { present: false, errors: [], profile: null, status: 'legacy-unconfigured' };
@@ -228,7 +221,6 @@ function validateDocumentProfile(source) {
         if (dependency === type) errors.push(`rules.${type}.after는 자기 자신을 참조할 수 없습니다.`);
       }
     }
-    errors.push(...cycleErrors(raw.rules));
     for (const type of raw.policy.disabled || []) {
       const omission = raw.omissions[type];
       if (!omission) { errors.push(`omissions.${type}의 생략 처리가 없습니다.`); continue; }
@@ -375,7 +367,7 @@ function missingActions(profile, presentTypes) {
 }
 
 module.exports = {
-  REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_OMISSIONS,
+  REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS,
   normalizeProfile, assertProfileInput, parseDocumentProfile, validateDocumentProfile, renderDocumentProfile,
   migrateProfile, applyToProject, reconfigureProject, profileImpact, missingActions
 };

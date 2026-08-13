@@ -32,7 +32,8 @@ assert.match(readme, /rundol\/workspace/);
 assert.match(readme, /rundol\/<key>/);
 
 const migration = fs.readFileSync(path.join(root, 'docs', 'MIGRATION-0.22.md'), 'utf8');
-for (const version of ['0.21.1', '0.21.2', '0.21.3', '0.22.0']) assert(migration.includes(version), `migration guide must cover ${version}`);
+for (const version of ['0.21.1', '0.21.2', '0.21.3', '0.22.0', '0.22.1']) assert(migration.includes(version), `migration guide must cover ${version}`);
+assert(migration.includes('DESIGN.md') && migration.includes('board.json'));
 for (const command of ['rdl doc migrate', 'rdl contract plan', 'rdl contract set', 'rdl contract check', 'rdl check --strict', 'rdl sync']) assert(migration.includes(command), `migration guide must include ${command}`);
 assert(migration.includes('advisory') && migration.includes('checkpoint'));
 assert(migration.includes('롤백'));

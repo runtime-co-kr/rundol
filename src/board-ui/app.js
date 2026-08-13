@@ -3,13 +3,25 @@
 const token = document.querySelector('meta[name="rdl-token"]').content;
 const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, pendingTasks: new Map() };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료' };
-const typeLabels = { project: '프로젝트', requirement: '요구사항', architecture: '아키텍처', model: '데이터 모델', screen: '화면', test: '검증', decision: '결정', runbook: '운영' };
+const typeLabels = {
+  project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
+  architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', api: 'API',
+  adr: '의사결정 기록', decision: '의사결정 기록', test: '검증', runbook: '운영 가이드',
+  glossary: '용어집', clipping: '수집 노트'
+};
+const documentStateLabels = {
+  draft: '초안', proposed: '제안', active: '활성', review: '검토 중', approved: '승인됨',
+  deprecated: '폐기 예정', archived: '보관됨', unread: '미확인'
+};
 
 function el(id) { return document.getElementById(id); }
 function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
 function message(value, error) { el('message').textContent = value || ''; el('message').style.color = error ? 'var(--red)' : ''; if (value) setTimeout(() => { if (el('message').textContent === value) el('message').textContent = ''; }, 5000); }
 async function api(path, options) { const response = await fetch(path, options); const value = await response.json(); if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`); return value; }
 function projectPath(path) { return `/api/projects/${encodeURIComponent(state.project)}${path}`; }
+function presentationLabel(group, value, fallback) { const configured = state.snapshot && state.snapshot.presentation && state.snapshot.presentation[group] && state.snapshot.presentation[group][value]; return configured && (configured.label || configured) || fallback; }
+function documentTypeLabel(item) { const value = item && (item.kind || item.type); return presentationLabel('documentTypes', value, typeLabels[value] || value || '문서'); }
+function documentStateLabel(value) { return presentationLabel('documentStates', value, documentStateLabels[value] || value || '상태 없음'); }
 
 function markdown(source) {
   if (!window.marked || !window.DOMPurify) return `<pre>${escapeHtml(source || '')}</pre>`;
@@ -50,7 +62,7 @@ function setView(view, selected) {
 }
 
 function documentCard(documentValue) {
-  return `<button class="document-card" data-document="${escapeHtml(documentValue.id)}"><span class="eyebrow">${escapeHtml(documentValue.id)}</span><strong>${escapeHtml(documentValue.title)}</strong><small>${escapeHtml(documentValue.description || documentValue.file)}</small><span class="chip-row"><span class="chip">${escapeHtml(typeLabels[documentValue.kind] || documentValue.kind || documentValue.type)}</span><span class="chip">${escapeHtml(documentValue.state || '상태 없음')}</span></span></button>`;
+  return `<button class="document-card" data-document="${escapeHtml(documentValue.id)}"><span class="eyebrow">${escapeHtml(documentValue.id)}</span><strong>${escapeHtml(documentValue.title)}</strong><small>${escapeHtml(documentValue.description || documentValue.file)}</small><span class="chip-row"><span class="chip">${escapeHtml(documentTypeLabel(documentValue))}</span><span class="chip">${escapeHtml(documentStateLabel(documentValue.state))}</span></span></button>`;
 }
 function renderHome() {
   const data = state.snapshot; const tasks = data.tasks.tasks; const documents = data.documents; const attention = data.attention;
@@ -63,14 +75,15 @@ function renderHome() {
 function renderNavigation() {
   const documents = state.snapshot.documents;
   const counts = new Map(); for (const documentValue of documents) counts.set(documentValue.kind || documentValue.type, (counts.get(documentValue.kind || documentValue.type) || 0) + 1);
-  el('document-filters').innerHTML = `<button data-document-filter="">모든 문서 <span>${documents.length}</span></button>` + Array.from(counts).map(([kind, count]) => `<button data-document-filter="${escapeHtml(kind)}">${escapeHtml(typeLabels[kind] || kind)} <span>${count}</span></button>`).join('');
-  el('recent-documents').innerHTML = documents.slice().sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)).slice(0, 5).map((item) => `<button data-document="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span></button>`).join('');
+  const order = (kind) => state.snapshot.presentation && state.snapshot.presentation.documentTypes[kind] ? state.snapshot.presentation.documentTypes[kind].order : 999;
+  el('document-filters').innerHTML = `<button data-document-filter="">모든 문서 <span>${documents.length}</span></button>` + Array.from(counts).sort((left, right) => order(left[0]) - order(right[0]) || left[0].localeCompare(right[0])).map(([kind, count]) => `<button data-document-filter="${escapeHtml(kind)}">${escapeHtml(documentTypeLabel({ kind }))} <span>${count}</span></button>`).join('');
+  el('recent-documents').innerHTML = documents.slice().sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)).slice(0, 5).map((item) => `<button data-document="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(documentTypeLabel(item))}</small></button>`).join('');
 }
 
 function renderDocuments() {
   const query = state.query.toLowerCase();
   const documents = state.snapshot.documents.filter((item) => (!state.documentFilter || (item.kind || item.type) === state.documentFilter) && (!query || `${item.id} ${item.title} ${item.description} ${item.file}`.toLowerCase().includes(query)));
-  el('documents-list').innerHTML = documents.length ? documents.map((item) => `<button class="document-row" data-document="${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description || item.file)}</small><span class="chip">${escapeHtml(item.state || typeLabels[item.kind] || item.kind)}</span></button>`).join('') : '<p class="empty-state">조건에 맞는 문서가 없습니다.</p>';
+  el('documents-list').innerHTML = documents.length ? documents.map((item) => `<button class="document-row" data-document="${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description || item.file)}</small><span class="chip">${escapeHtml(documentTypeLabel(item))} · ${escapeHtml(documentStateLabel(item.state))}</span></button>`).join('') : '<p class="empty-state">조건에 맞는 문서가 없습니다.</p>';
 }
 
 function ownerName(reference) { const match = /\|([^\]]+)\]\]/.exec(reference || ''); return match ? match[1] : reference || '미지정'; }
@@ -80,12 +93,12 @@ function renderContext(item, kind) {
   el('context-empty').hidden = true; el('context-content').hidden = false;
   if (kind === 'document') {
     const linkedTasks = state.snapshot.tasks.tasks.filter((task) => (task.links || []).includes(item.id));
-    el('context-content').innerHTML = `<section class="context-group"><h2>Properties</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>유형</dt><dd>${escapeHtml(item.kind || item.type)}</dd></div><div class="property"><dt>상태</dt><dd>${escapeHtml(item.state)}</dd></div><div class="property"><dt>소유자</dt><dd>${escapeHtml(ownerName(item.owner))}</dd></div><div class="property"><dt>파일</dt><dd>${escapeHtml(item.file)}</dd></div></dl></section><section class="context-group"><h2>연결 태스크</h2>${linkedTasks.length ? linkedTasks.map((task) => `<button data-task="${task.id}">${escapeHtml(task.title)}</button>`).join('') : '<p class="empty-state">연결된 태스크 없음</p>'}</section><section class="context-group"><h2>검증</h2><p class="chip">strict snapshot 포함</p><small>${escapeHtml(item.revision.slice(0, 12))}</small></section>`;
+    el('context-content').innerHTML = `<section class="context-group"><h2>속성</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>유형</dt><dd>${escapeHtml(documentTypeLabel(item))}</dd></div><div class="property"><dt>상태</dt><dd>${escapeHtml(documentStateLabel(item.state))}</dd></div><div class="property"><dt>소유자</dt><dd>${escapeHtml(ownerName(item.owner))}</dd></div><div class="property"><dt>파일</dt><dd>${escapeHtml(item.file)}</dd></div></dl></section><section class="context-group"><h2>연결 태스크</h2>${linkedTasks.length ? linkedTasks.map((task) => `<button data-task="${task.id}">${escapeHtml(task.title)}</button>`).join('') : '<p class="empty-state">연결된 태스크 없음</p>'}</section><section class="context-group"><h2>검증</h2><p class="chip">strict snapshot 포함</p><small>${escapeHtml(item.revision.slice(0, 12))}</small></section>`;
   } else {
     const members = [['', '미지정']].concat(state.snapshot.people.members.map((member) => [member.id, member.name])); const pending = state.pendingTasks.has(item.id); el('context-content').innerHTML = `<section class="context-group"><h2>Task</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>상태</dt><dd>${contextSelect('status', item.status, Object.entries(statusLabels))}</dd></div><div class="property"><dt>우선순위</dt><dd>${contextSelect('priority', item.priority, [['high', '높음'], ['mid', '중간'], ['low', '낮음']])}</dd></div><div class="property"><dt>소유자</dt><dd>${contextSelect('owner', item.owner, members)}</dd></div><div class="property"><dt>검토자</dt><dd>${escapeHtml((item.reviewers || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>이해관계자</dt><dd>${escapeHtml((item.stakeholders || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>저장</dt><dd><span class="save-state ${pending ? 'pending' : ''}">${pending ? '● 파일 반영 대기' : '✓ 저장됨'}</span></dd></div><div class="property"><dt>Revision</dt><dd>${escapeHtml(item.revision || '-')}</dd></div></dl></section>`;
   }
 }
-function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').textContent = `${state.project} / ${item.file}`; el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, item.kind || item.type, item.state, ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').textContent = `${state.project} / ${item.file}`; el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 function taskRow(task) { const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length; const total = Object.keys(task.acceptanceCriteria || {}).length; return `<button class="task-row" data-task="${task.id}"><span><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.id)}</small></span><span class="chip">${escapeHtml(statusLabels[task.status] || task.status)}</span><span>${escapeHtml(task.priority)}</span><span>${escapeHtml(personName(task.owner))} · ${completed}/${total}</span></button>`; }
 function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">상단에서 현재 사용자를 선택하면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)); if (state.taskMode === 'list') { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = tasks.map(taskRow).join('') || '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>'; } else { el('task-list').hidden = true; el('board').hidden = false; el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); } }
@@ -123,6 +136,25 @@ function ensureContractSettings() {
   if (el('contract-settings')) return;
   el('settings-view').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="content-section contract-settings"><div class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></div><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
+function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
+function setSuggestionState(row, value, selected) {
+  for (const suggestion of row.querySelectorAll('[data-component-suggestion]')) if (suggestion.dataset.componentSuggestion === value) suggestion.disabled = selected;
+}
+function addContractComponent(row, value) {
+  const component = String(value || '').trim();
+  if (!component) return false;
+  const values = Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection);
+  if (values.includes(component)) return false;
+  row.querySelector('[data-contract-components]').insertAdjacentHTML('beforeend', contractComponent(component));
+  setSuggestionState(row, component, true);
+  return true;
+}
+function syncContractRow(row) {
+  const disabled = row.querySelector('[data-contract-status]').value === 'disabled';
+  const omission = row.querySelector('[data-contract-omission]');
+  omission.hidden = !disabled;
+  for (const control of omission.querySelectorAll('select,input')) control.disabled = !disabled;
+}
 function renderContractSettings() {
   ensureContractSettings();
   const contract = state.snapshot.contract;
@@ -131,26 +163,62 @@ function renderContractSettings() {
   el('contract-profile').value = profile.name;
   el('contract-enforcement').value = profile.enforcement;
   el('contract-summary').textContent = `${contract.status} · revision ${profile.revision} · 위반 ${contract.evaluation.violations.length}건`;
-  el('contract-rules').innerHTML = Object.keys(profile.rules).map((type) => {
+  const catalog = contract.catalog;
+  el('contract-rules').innerHTML = catalog.documentTypes.map((type) => {
     const status = Object.keys(profile.policy).find((key) => profile.policy[key].includes(type));
-    const omission = profile.omissions[type] || {};
-    return `<div class="contract-row" data-contract-type="${type}"><strong>${type}</strong><label>상태<select data-contract-status><option${status === 'required' ? ' selected' : ''}>required</option><option${status === 'recommended' ? ' selected' : ''}>recommended</option><option value="onDemand"${status === 'onDemand' ? ' selected' : ''}>onDemand</option><option${status === 'disabled' ? ' selected' : ''}>disabled</option></select></label><label>선행<input data-contract-after value="${escapeHtml(profile.rules[type].after.join(', '))}"></label><label>흡수 대상<input data-contract-target value="${escapeHtml(omission.absorbedBy || '')}" placeholder="REQ"></label><label>필수 섹션<input data-contract-sections value="${escapeHtml((omission.sections || []).join(', '))}" placeholder="사용자 흐름, 접근성"></label></div>`;
+    const omission = profile.omissions[type] || catalog.defaultOmissions[type];
+    const selectedComponents = omission.sections || [];
+    const targetOptions = catalog.documentTypes.filter((candidate) => candidate !== type).map((candidate) => `<option value="${candidate}" ${candidate === omission.absorbedBy ? 'selected' : ''}>${candidate}</option>`).join('');
+    const recommendedContext = profile.rules[type].after;
+    const context = recommendedContext.length ? recommendedContext.map((value) => `<span class="guidance-chip">${escapeHtml(value)}</span>`).join('') : '<span class="guidance-empty">바로 작성 가능</span>';
+    const suggestions = catalog.sections[type].map((value) => `<button type="button" class="suggestion-chip" data-component-suggestion="${escapeHtml(value)}" ${selectedComponents.includes(value) ? 'disabled' : ''}>+ ${escapeHtml(value)}</button>`).join('');
+    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}><label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
   }).join('');
+  for (const row of document.querySelectorAll('[data-contract-type]')) syncContractRow(row);
 }
-function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; renderContractSettings(); }
+function renderPresentationSettings() {
+  let section = el('presentation-settings');
+  if (!section) {
+    el('settings-view').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="content-section presentation-settings"><div class="section-heading"><div><h2>문서 표시 설정</h2><p>내장 기본값 다음 Workspace와 프로젝트 board.json을 순서대로 적용합니다.</p></div></div><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-types" class="presentation-types"></div></section>');
+    section = el('presentation-settings');
+  }
+  const presentation = state.snapshot.presentation;
+  const inherited = presentation.inheritance;
+  el('presentation-inheritance').innerHTML = `<span class="inheritance-node active">내장 기본값</span><span>→</span><span class="inheritance-node ${inherited.workspace.configured ? 'active' : ''}">Workspace board.json</span><span>→</span><span class="inheritance-node ${inherited.project.configured ? 'active' : ''}">프로젝트 board.json</span>`;
+  el('presentation-types').innerHTML = Object.entries(presentation.documentTypes).sort((left, right) => left[1].order - right[1].order).map(([kind, item]) => `<article><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(kind)} · ${escapeHtml(item.description)}</small></article>`).join('');
+  section.title = `${inherited.workspace.file}\n${inherited.project.file}`;
+}
+function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; renderPresentationSettings(); renderContractSettings(); }
 function contractInput() {
   const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
   const rules = {}; const omissions = {};
   for (const row of document.querySelectorAll('[data-contract-type]')) {
     const type = row.dataset.contractType; const status = row.querySelector('[data-contract-status]').value;
-    policy[status].push(type); rules[type] = { after: row.querySelector('[data-contract-after]').value.split(',').map((item) => item.trim()).filter(Boolean) };
-    if (status === 'disabled') omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value.trim(), sections: row.querySelector('[data-contract-sections]').value.split(',').map((item) => item.trim()).filter(Boolean) };
+    policy[status].push(type); rules[type] = { after: state.snapshot.contract.profile.rules[type].after.slice() };
+    if (status === 'disabled') omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value, sections: Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection) };
   }
   return { baseRevision: state.snapshot.contract.revision, name: el('contract-profile').value, enforcement: el('contract-enforcement').value, policy, rules, omissions };
 }
+document.addEventListener('change', (event) => {
+  const status = event.target.closest('[data-contract-status]');
+  if (status) syncContractRow(status.closest('[data-contract-type]'));
+});
 document.addEventListener('click', async (event) => {
+  const row = event.target.closest('[data-contract-type]');
+  const suggestion = event.target.closest('[data-component-suggestion]');
+  if (row && suggestion) { addContractComponent(row, suggestion.dataset.componentSuggestion); return; }
+  const remove = event.target.closest('[data-component-remove]');
+  if (row && remove) { const component = remove.closest('[data-contract-section]'); const value = component.dataset.contractSection; component.remove(); setSuggestionState(row, value, false); return; }
+  const add = event.target.closest('[data-component-add]');
+  if (row && add) { const input = row.querySelector('[data-component-input]'); if (addContractComponent(row, input.value)) input.value = ''; return; }
   if (!event.target.closest('#save-contract')) return;
   try { await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(contractInput()) }); await loadSnapshot(true); message('문서 계획 계약을 저장했습니다.'); }
   catch (error) { message(error.message, true); }
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || !event.target.matches('[data-component-input]')) return;
+  event.preventDefault();
+  const row = event.target.closest('[data-contract-type]');
+  if (addContractComponent(row, event.target.value)) event.target.value = '';
 });
 initialize().catch((error) => message(error.message, true));

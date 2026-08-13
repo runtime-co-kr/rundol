@@ -5,6 +5,7 @@ const path = require('path');
 const { workspaceLayout } = require('./workspace');
 const { gitRoot } = require('./git');
 const { manifestSource, gitExclude } = require('./attach');
+const { renderWorkspaceBoardConfig, renderProjectBoardConfig } = require('./board-presentation');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
 const PROJECT_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -44,6 +45,7 @@ function writeProject(mount, key, name, schemaVersion) {
   if (fs.existsSync(root)) throw new Error(`프로젝트 경로가 이미 존재합니다: ${root}`);
   fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
   atomicWrite(path.join(root, 'project.md'), renderProject(key, name));
+  atomicWrite(path.join(root, 'board.json'), renderProjectBoardConfig());
   atomicWrite(path.join(root, '.gitignore'), '.rundol/\n.obsidian/\n');
   if (schemaVersion >= 3) fs.mkdirSync(path.join(root, 'tasks'), { recursive: true });
   const obsidian = path.join(root, '.obsidian');
@@ -82,6 +84,7 @@ function initializeWorkspace(start, key, name) {
   fs.mkdirSync(path.join(workspaceRoot, 'projects'), { recursive: true });
   fs.mkdirSync(path.join(workspaceRoot, 'events'), { recursive: true });
   atomicWrite(manifest, manifestSource());
+  atomicWrite(path.join(workspaceRoot, 'board.json'), renderWorkspaceBoardConfig());
   ensureIgnore(root);
   const mount = path.join(root, 'projects');
   fs.mkdirSync(mount, { recursive: true });

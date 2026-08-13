@@ -26,6 +26,7 @@ require('./docs.test');
 require('./action.test');
 require('./packages.test');
 require('./board-data.test');
+require('./board-presentation.test');
 require('./board-ui.test');
 
 Promise.all([require('./board.test'), require('./board-workspace.test')]).catch((error) => {

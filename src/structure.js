@@ -18,6 +18,8 @@ function auditStructure(start, options) {
     if (fs.existsSync(legacyObsidian)) candidates.push(candidate('legacy-settings', legacyObsidian, 'Obsidian 설정은 프로젝트 Vault의 .obsidian이 소유합니다.'));
   }
   for (const project of selected) {
+    const genericDesign = path.join(project.root, 'DESIGN.md');
+    if (fs.existsSync(genericDesign)) candidates.push(candidate('noncanonical-design-document', genericDesign, 'DESIGN.md는 Rundol 정본이 아닙니다. REQ, SCR, ARC, ADR 또는 태스크로 수동 이전해야 합니다.'));
     const migration = planMigration(project.root);
     if (migration.moves.length || migration.rewrites.length || migration.conflicts.length) {
       candidates.push(candidate('legacy-document-migration', project.root, `${migration.moves.length}개 이동, ${migration.rewrites.length}개 링크 수정, ${migration.conflicts.length}개 충돌을 검토해야 합니다.`));
@@ -45,7 +47,7 @@ function cleanupStructure(start, options) {
   const removed = [];
   if (apply) {
     for (const item of audit.candidates) {
-      if (item.kind === 'missing-vault-settings' || item.kind === 'legacy-document-migration') continue;
+      if (item.kind === 'missing-vault-settings' || item.kind === 'legacy-document-migration' || item.kind === 'noncanonical-design-document') continue;
       if (item.kind === 'redundant-gitkeep') fs.unlinkSync(item.file);
       else fs.rmSync(item.file, { recursive: true, force: true });
       removed.push(item.file);
