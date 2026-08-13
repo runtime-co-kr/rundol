@@ -542,12 +542,12 @@
         },
         "AC-004": {
           "text": "문서와 태스크가 Rundol 프로젝트 브랜치에 저장·동기화된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:48:57.104Z",
-      "updatedAt": "2026-08-13T22:51:33.421Z",
+      "updatedAt": "2026-08-13T22:51:53.143Z",
       "statusChangedAt": "2026-08-13T22:49:15.947Z",
       "externalRefs": [],
       "project": "rundol"
