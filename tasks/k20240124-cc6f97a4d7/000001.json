@@ -719,7 +719,7 @@
         },
         "AC-003": {
           "text": "PRD, ARC, ADR에 무인덱스 추적성, 역할별 브랜치 경계와 atomic-v1 설계 원칙이 반영된다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "contract check, strict check, implementation check와 릴리스 검사가 통과한다.",
@@ -728,7 +728,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T00:26:40.372Z",
-      "updatedAt": "2026-08-14T00:50:31.842Z",
+      "updatedAt": "2026-08-14T00:50:32.928Z",
       "statusChangedAt": "2026-08-14T00:26:52.098Z",
       "externalRefs": [],
       "project": "rundol",
