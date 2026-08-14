@@ -158,3 +158,12 @@ for (const source of [skill, reference, standard]) {
 }
 
 process.stdout.write('document diagram tests passed\n');
+
+// RDL-SCREEN-004: 다른 화면에서 출발하는 간선은 그 화면이 선언해야 한다
+const foreign = validateDocumentDiagram('SCR', screen(diagram('flowchart LR\n    SCR-002 -->|이동| SCR-003')), 'SCR-001');
+assert.deepStrictEqual(codes(foreign), ['RDL-SCREEN-004']);
+assert.strictEqual(foreign[0].target, 'SCR-002');
+assert.deepStrictEqual(validateDocumentDiagram('SCR', screen(diagram('flowchart LR\n    SCR-001 -->|이동| SCR-003')), 'SCR-001'), []);
+// artifactId를 주지 않으면 소유권을 판정하지 않는다
+assert.deepStrictEqual(validateDocumentDiagram('SCR', screen(diagram('flowchart LR\n    SCR-002 -->|이동| SCR-003'))), []);
+assert.strictEqual(diagramGuidance('SCR').codes.foreignEdge, 'RDL-SCREEN-004');

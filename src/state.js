@@ -8,7 +8,7 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore } = require('./tasks');
+const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency } = require('./tasks');
 const { initSettings, saveSettings, syncSettings } = require('./settings');
 const { runtimeWorkspace } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
@@ -368,6 +368,7 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   const parsed = readTaskStore(taskFile);
   const task = parsed.tasks && parsed.tasks[taskIdValue];
   if (!task) throw new Error(`태스크를 찾지 못했습니다: ${taskIdValue}`);
+  assertBlockerConsistency(task, changes);
   const before = {};
   const changedFields = Object.keys(changes).filter((field) => JSON.stringify(task[field]) !== JSON.stringify(changes[field]));
   if (changedFields.length === 0) {
@@ -426,6 +427,7 @@ function taskCreate(start, input) {
     task.project = project.key;
   }
   if ((task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)))) task.implementationReadiness = 'atomic-v1';
+  assertBlockerConsistency(null, task);
   parsed.tasks[id] = task;
   const commit = persistTaskChange(config, {
     document: parsed,

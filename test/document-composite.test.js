@@ -199,3 +199,12 @@ for (const line of quotedScreens.split('\n').filter((value) => value.includes('[
   assert.strictEqual((line.match(/"/g) || []).length, 2, `노드 라벨의 따옴표가 2개여야 합니다: ${line}`);
 }
 assert.match(quotedScreens, /SCR-101\["로그인 #quot;실패#quot; 화면"\]/u);
+
+// 존재하지 않는 출발 화면도 도착과 같이 보고한다 (유령 노드 방지)
+const phantom = composeScreen([
+  screenDoc('SCR-201', '가', 'flowchart LR\n    SCR-299 -->|이동| SCR-202'),
+  screenDoc('SCR-202', '나', 'flowchart LR')
+]);
+assert.deepStrictEqual(phantom.issues.map((issue) => issue.code), ['RDL-COMPOSE-002']);
+assert.strictEqual(phantom.issues[0].target, 'SCR-299');
+assert.strictEqual(phantom.transitions.length, 0, '존재하지 않는 화면의 간선은 합성하지 않는다');

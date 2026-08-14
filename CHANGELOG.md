@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [0.22.6] - 2026-08-14
+
+### Fixed
+
+- `rdl attach` and `rdl init`'s repair path reported composite generation failures only inside an object, and the human-readable printer skips objects, so a failure was invisible unless `--json` was passed. Failures now also surface as a plain line. A project skipped because its `.gitignore` lacks the entry is a deliberate omission and is not reported as a failure.
+- A composite view generated from a worktree with uncommitted changes recorded `HEAD` as its source, so checking out that commit and regenerating did not reproduce it — the reproducibility the document standard promises. The revision is now recorded only when the worktree is clean, and `rdl contract diagram` reports `dirty`.
+- The generated-view directory was skipped by name at any depth, so a legitimate `docs/views/` would have silently dropped out of every document check. It is now skipped only at the project root, where the generator actually writes.
+- `RDL-COMPOSE-002` checked only a transition's destination. An edge starting from a screen that does not exist passed and composed a phantom node; both ends are now checked.
+
+### Added
+
+- Added `RDL-SCREEN-004` for a transition that starts from another screen. The screen-owns-its-exits rule was stated in the standard but never enforced, so a document could declare a neighbour's edge and the composite graph would silently lose the completeness it claims.
+- `npm run version:check` now compares `package-lock.json` against the release version. The lockfile had drifted to `0.22.3` while the manifests moved to `0.22.5`, and nothing caught it.
+
+### Changed
+
+- The `waiting`/`blocker` invariant moved from the Board API to the shared task layer, so `rdl task set` rejects the change with a clear message instead of writing it and having projection validation roll it back with a generic `RDL-TASK-014`.
+
 ## [0.22.5] - 2026-08-14
 
 ### Added

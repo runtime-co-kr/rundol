@@ -50,6 +50,20 @@ function checkVersion(root = path.resolve(__dirname, '..'), tag = process.env.CI
     }
   }
 
+  const lockFile = path.join(root, 'package-lock.json');
+  if (fs.existsSync(lockFile)) {
+    const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    if (lock.version !== version) issues.push(`package-lock.json version ${lock.version}이 release version ${version}과 다릅니다.`);
+    const lockedPackages = lock.packages || {};
+    if (lockedPackages[''] && lockedPackages[''].version !== version) {
+      issues.push(`package-lock.json 루트 항목 version ${lockedPackages[''].version}이 release version ${version}과 다릅니다.`);
+    }
+    for (const manifest of workspaceManifests) {
+      const entry = Object.entries(lockedPackages).find(([key, value]) => key.startsWith('packages/') && value && value.name === manifest.name);
+      if (entry && entry[1].version !== version) issues.push(`package-lock.json의 ${manifest.name} version ${entry[1].version}이 release version ${version}과 다릅니다.`);
+    }
+  }
+
   if (!fs.existsSync(changelogFile)) {
     issues.push('CHANGELOG.md가 없습니다.');
   } else {

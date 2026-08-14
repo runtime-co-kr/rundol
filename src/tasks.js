@@ -23,6 +23,14 @@ function normalizeClientId(value) {
   return normalized;
 }
 
+// waiting과 blocker의 짝은 저장 계층의 불변식이다. Board API에만 두면 CLI 경로는
+// projection 검증이 RDL-TASK-014/015로 되돌릴 때까지 실패를 알 수 없다.
+function assertBlockerConsistency(current, changes) {
+  const next = Object.assign({}, current || {}, changes || {});
+  if (next.status === 'waiting' && !next.blocker) throw new Error('대기 상태로 바꾸려면 대기 대상, 해제 조건과 대기 시작 시각이 필요합니다.');
+  if (next.status !== 'waiting' && next.blocker) throw new Error('대기 상태가 아닌 태스크에는 대기 사유를 둘 수 없습니다.');
+}
+
 function clientId(root, preferred) {
   if (preferred) return normalizeClientId(preferred);
   const file = path.join(root, '.rundol', 'state', 'client-id');
@@ -147,6 +155,7 @@ function migrateTaskStore(legacyFile, directory, root, preferredClientId, maxIte
 
 module.exports = {
   MAX_TASKS_PER_SHARD,
+  assertBlockerConsistency,
   clientId,
   readTaskStore,
   shardFiles,

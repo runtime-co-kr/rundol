@@ -58,7 +58,10 @@ function listMarkdownFiles(root) {
   const result = [];
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === 'templates' || entry.name === COMPOSITE_DIRECTORY || entry.name.startsWith('.')) continue;
+      // 생성 디렉터리는 프로젝트 루트에만 있다. 이름만으로 어느 깊이에서나 건너뛰면
+      // docs/views/ 같은 정상 문서 폴더가 조용히 검사에서 빠진다.
+      if (entry.name === COMPOSITE_DIRECTORY && path.resolve(directory) === path.resolve(root)) continue;
+      if (entry.name === 'templates' || entry.name.startsWith('.')) continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) visit(full);
       else if (entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'INDEX.md') result.push(full);
@@ -70,9 +73,10 @@ function listMarkdownFiles(root) {
 
 function listVaultMarkdownFiles(root) {
   const result = [];
-  const excluded = new Set(['.git', '.obsidian', '.rundol', 'node_modules', '.npm-cache', 'templates', COMPOSITE_DIRECTORY]);
+  const excluded = new Set(['.git', '.obsidian', '.rundol', 'node_modules', '.npm-cache', 'templates']);
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name === COMPOSITE_DIRECTORY && path.resolve(directory) === path.resolve(root)) continue;
       if (excluded.has(entry.name)) continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) visit(full);
@@ -444,7 +448,7 @@ function checkLegacyWorkspace(start, options, scope) {
       message: `${code} 문서 유형은 더 이상 사용하지 않습니다. ${LEGACY_DOCUMENT_CODES.get(code)} 또는 관점별 설계문서로 이전하세요.`
     });
     if (requirements[code] && !requirements[code].some((required) => relatedIds.includes(required))) diagnostic(diagnostics, { code: 'RDL-META-003', category: 'metadata', file: doc.relativeFile, artifactId: doc.id, message: `${code} 문서는 ${requirements[code].join(' 또는 ')} 관계가 필요합니다.` });
-    for (const issue of validateDocumentDiagram(code, doc.source)) diagnostic(diagnostics, {
+    for (const issue of validateDocumentDiagram(code, doc.source, doc.id)) diagnostic(diagnostics, {
       code: issue.code,
       category: 'diagram',
       severity: 'warning',
@@ -710,6 +714,7 @@ function checkWorkspace(start, options) {
 
 module.exports = {
   checkWorkspace,
+  listMarkdownFiles,
   findWorkspaceRoot,
   readWorkspaceManifest,
   yamlNestedValue

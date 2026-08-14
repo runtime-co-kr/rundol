@@ -387,15 +387,14 @@ async function main() {
       const { workspaceLayout, selectProject } = require('../src/workspace');
       const { projectArtifacts } = require('../src/document-contract');
       const { runGit } = require('../src/git');
-      const { prepareCompositeDocuments, compositeViewState, writeCompositeViews } = require('../src/document-composite');
+      const { prepareCompositeDocuments, compositeViewState, writeCompositeViews, sourceRevision } = require('../src/document-composite');
       const layout = workspaceLayout(options.root);
       const project = selectProject(layout, options.project);
       const documents = prepareCompositeDocuments(projectArtifacts(project));
-      const head = runGit(['rev-parse', 'HEAD'], { cwd: project.root, allowFailure: true });
-      const revision = head.status === 0 ? head.stdout.trim() : '';
+      const { revision, dirty } = sourceRevision(runGit, project.root);
       const result = options.write
-        ? Object.assign({ root: layout.root, project: project.key, revision }, writeCompositeViews(project.root, documents, revision))
-        : { root: layout.root, project: project.key, revision, directory: null, views: compositeViewState(project.root, documents, revision) };
+        ? Object.assign({ root: layout.root, project: project.key, revision, dirty }, writeCompositeViews(project.root, documents, revision))
+        : { root: layout.root, project: project.key, revision, dirty, directory: null, views: compositeViewState(project.root, documents, revision) };
       printOperation(Object.assign({ action: options.write ? 'written' : 'computed' }, result), options.json);
       return 0;
     }

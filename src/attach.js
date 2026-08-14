@@ -110,7 +110,8 @@ function attachWorkspace(start, options) {
   });
   const exclude = gitExclude(root);
   const boundary = installBranchBoundary(root, { remote, project: settings.project });
-  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude, boundary, composites: generateCompositeViews(attached) };
+  const composites = generateCompositeViews(attached);
+  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude, boundary, composites, compositeFailures: compositeFailureSummary(composites) };
 }
 
 function repairWorkspace(start, options) {
@@ -134,19 +135,27 @@ function repairWorkspace(start, options) {
     const target = path.join(root, 'projects', key);
     return { project: key, branch, target, commit: runGit(['rev-parse', `refs/heads/${branch}`], { cwd: root }).stdout, created: ensureWorktree(root, target, branch) };
   });
-  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root), boundary: installBranchBoundary(root, { project: settings.project }), composites: generateCompositeViews(attached) };
+  const composites = generateCompositeViews(attached);
+  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root), boundary: installBranchBoundary(root, { project: settings.project }), composites, compositeFailures: compositeFailureSummary(composites) };
+}
+
+// 생성을 건너뛴 것과 실패한 것을 구분한다. not-ignored는 추적 파일을 바꾸지 않으려는 의도된 생략이고,
+// 나머지는 사용자가 알아야 하는 실패다. printOperation이 객체를 출력하지 않으므로 문자열로 요약한다.
+function compositeFailureSummary(composites) {
+  const failed = (composites || []).filter((item) => !item.generated && item.reason !== 'not-ignored');
+  return failed.length ? failed.map((item) => `${item.project}: ${item.reason}`).join('; ') : null;
 }
 
 function generateCompositeViews(attached) {
   const { projectArtifacts } = require('./document-contract');
-  const { compositeIgnored, prepareCompositeDocuments, writeCompositeViews } = require('./document-composite');
+  const { compositeIgnored, prepareCompositeDocuments, writeCompositeViews, sourceRevision } = require('./document-composite');
   return (attached || []).map((item) => {
     if (!item.target || !fs.existsSync(item.target)) return { project: item.project, generated: false, reason: 'missing-worktree' };
     if (!compositeIgnored(item.target)) return { project: item.project, generated: false, reason: 'not-ignored' };
     try {
-      const head = runGit(['rev-parse', 'HEAD'], { cwd: item.target, allowFailure: true });
+      const { revision } = sourceRevision(runGit, item.target);
       const documents = prepareCompositeDocuments(projectArtifacts({ root: item.target, documents: path.join(item.target, 'docs') }));
-      const result = writeCompositeViews(item.target, documents, head.status === 0 ? head.stdout.trim() : '', { ensureIgnore: false });
+      const result = writeCompositeViews(item.target, documents, revision, { ensureIgnore: false });
       return { project: item.project, generated: true, directory: result.directory, views: result.views.map((view) => view.name) };
     } catch (error) {
       return { project: item.project, generated: false, reason: error.message };
@@ -165,4 +174,4 @@ function detachWorkspace(start, options) {
   return { root, project: key, detached: true, target };
 }
 
-module.exports = { manifestSource, gitExclude, attachWorkspace, repairWorkspace, detachWorkspace, ensureWorktree, discoverWorkspace, generateCompositeViews };
+module.exports = { manifestSource, gitExclude, attachWorkspace, repairWorkspace, detachWorkspace, ensureWorktree, discoverWorkspace, generateCompositeViews, compositeFailureSummary };

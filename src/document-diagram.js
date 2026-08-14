@@ -40,7 +40,7 @@ const DIAGRAM_CONVENTIONS = Object.freeze({
     section: '전이',
     kinds: Object.freeze(['flowchart']),
     authority: 'table',
-    codes: Object.freeze({ missing: 'RDL-SCREEN-001', node: 'RDL-SCREEN-002', selfEdge: 'RDL-SCREEN-003' }),
+    codes: Object.freeze({ missing: 'RDL-SCREEN-001', node: 'RDL-SCREEN-002', selfEdge: 'RDL-SCREEN-003', foreignEdge: 'RDL-SCREEN-004' }),
     note: '다이어그램은 전이 표에서 파생한 보조 뷰이며 트리거·조건·대상의 정본은 표입니다.',
     nodeRule: '노드는 이동 대상 SCR 식별자만 사용하고 화면 안의 표시 변화는 상태 표에 남깁니다.',
     scopeRule: '다른 SCR로 나가는 간선만 그리고 같은 화면에 머무는 변화는 상태 표가 정본입니다.',
@@ -166,7 +166,7 @@ const DIAGRAM_RULES = {
     target: line,
     message: `${convention.kinds[0]} 속성 주석이 표와 중복됩니다: ${line} — ${convention.attributeRule}`
   })),
-  SCR: (block, convention) => {
+  SCR: (block, convention, artifactId) => {
     const issues = [];
     for (const edge of flowchartEdges(block)) {
       const unknown = Array.from(new Set([edge.from, edge.to].filter((node) => !SCREEN_ID_PATTERN.test(node))));
@@ -175,10 +175,21 @@ const DIAGRAM_RULES = {
         target: node,
         message: `전이 노드가 SCR 식별자가 아닙니다: ${node} — ${convention.nodeRule}`
       });
-      if (!unknown.length && edge.from === edge.to) issues.push({
-        code: convention.codes.selfEdge,
+      if (unknown.length) continue;
+      if (edge.from === edge.to) {
+        issues.push({
+          code: convention.codes.selfEdge,
+          target: edge.from,
+          message: `같은 화면으로 돌아오는 간선은 전이가 아닙니다: ${edge.from} — ${convention.scopeRule}`
+        });
+        continue;
+      }
+      // 출발이 이 문서가 아니면 그 간선은 출발 화면이 선언해야 한다. 이 검사가 없으면
+      // 화면마다 자기 출구를 선언한다는 전제가 깨져 합성 그래프에서 빠진 것을 찾을 수 없다.
+      if (artifactId && edge.from !== artifactId) issues.push({
+        code: convention.codes.foreignEdge,
         target: edge.from,
-        message: `같은 화면으로 돌아오는 간선은 전이가 아닙니다: ${edge.from} — ${convention.scopeRule}`
+        message: `다른 화면에서 출발하는 간선입니다: ${edge.from} -> ${edge.to} — ${convention.scopeRule}`
       });
     }
     return issues;
@@ -190,7 +201,7 @@ function diagramGuidance(type) {
   return convention ? Object.assign({ type: String(type).toUpperCase() }, JSON.parse(JSON.stringify(convention))) : null;
 }
 
-function validateDocumentDiagram(type, source) {
+function validateDocumentDiagram(type, source, artifactId) {
   const upper = String(type || '').toUpperCase();
   const convention = DIAGRAM_CONVENTIONS[upper];
   if (!convention) return [];
@@ -208,7 +219,7 @@ function validateDocumentDiagram(type, source) {
   const rule = DIAGRAM_RULES[upper];
   if (!rule) return [];
   const issues = [];
-  for (const block of blocks) issues.push(...rule(block, convention));
+  for (const block of blocks) issues.push(...rule(block, convention, artifactId));
   return issues;
 }
 

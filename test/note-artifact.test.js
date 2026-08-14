@@ -41,4 +41,25 @@ assert.match(check, /NOTE_TAG_NAMESPACES\s*=\s*\['rundol\/'\]/u);
 const standard = fs.readFileSync(path.join(repository, 'docs', 'DOCUMENT-STANDARD.md'), 'utf8');
 assert.ok(standard.includes('NTE'), 'DOCUMENT-STANDARD.md가 NTE를 설명해야 합니다.');
 
+// 생성 디렉터리 제외는 프로젝트 루트에만 적용된다
+const os = require('os');
+const { COMPOSITE_DIRECTORY } = require('../src/document-composite');
+const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-views-'));
+fs.mkdirSync(path.join(probe, COMPOSITE_DIRECTORY), { recursive: true });
+fs.mkdirSync(path.join(probe, 'docs', COMPOSITE_DIRECTORY), { recursive: true });
+fs.writeFileSync(path.join(probe, COMPOSITE_DIRECTORY, 'generated.md'), '# 생성물\n');
+fs.writeFileSync(path.join(probe, 'docs', COMPOSITE_DIRECTORY, 'REQ-900-정상-문서.md'), '# 정상\n');
+const { listMarkdownFiles } = require('../src/check');
+const found = listMarkdownFiles(probe).map((file) => path.relative(probe, file).split(path.sep).join('/'));
+assert.ok(!found.includes(`${COMPOSITE_DIRECTORY}/generated.md`), '루트의 생성 디렉터리는 제외한다');
+assert.ok(found.includes(`docs/${COMPOSITE_DIRECTORY}/REQ-900-정상-문서.md`), 'docs 아래 같은 이름의 폴더는 제외하지 않는다');
+fs.rmSync(probe, { recursive: true, force: true });
+
+// blocker 불변식은 공통 태스크 계층이 강제한다
+const { assertBlockerConsistency } = require('../src/tasks');
+assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting' }), /대기 대상/u);
+assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { blocker: { waitingFor: 'MEMBER-001' } }), /대기 상태가 아닌/u);
+assert.doesNotThrow(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }));
+assert.doesNotThrow(() => assertBlockerConsistency({ status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }, { status: 'doing', blocker: null }));
+
 process.stdout.write('note artifact tests passed\n');
