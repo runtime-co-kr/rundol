@@ -682,12 +682,12 @@
         },
         "AC-004": {
           "text": "원격 HEAD의 기본 브랜치를 main, master 또는 사용자 정의 이름으로 감지한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-13T23:49:00.023Z",
-      "updatedAt": "2026-08-14T00:18:01.153Z",
+      "updatedAt": "2026-08-14T00:18:02.140Z",
       "statusChangedAt": "2026-08-13T23:49:13.859Z",
       "externalRefs": [],
       "project": "rundol"
