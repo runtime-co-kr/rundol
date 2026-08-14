@@ -394,6 +394,51 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSBFTBLF35D466DDAFC7E64": {
+      "title": "[기능] rdl task delete 명령 추가",
+      "summary": "CLI에서 지정한 태스크를 프로젝트의 샤드 저장소에서 안전하게 삭제하고, 검증·감사 이력·Git 커밋 및 실패 시 원복을 일관되게 처리하는 rdl task delete 명령을 제공한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-017",
+        "REQ-018",
+        "TST-007",
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl task delete TASK-ID가 --project와 --json 옵션을 지원하고 CLI 도움말 및 지원 하위 명령 목록에 표시된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "대상 태스크를 실제 소유 샤드에서만 제거하며 다른 태스크와 샤드 데이터는 변경하지 않고, 빈 샤드 파일의 보존 또는 제거 정책을 명확히 적용한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "존재하지 않는 태스크 ID, 잘못된 프로젝트와 검증 실패에서는 명확한 오류를 반환하고 파일·ref·worktree를 원래 상태로 복구한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "삭제 작업에 task ID, 실행 시각과 작업 유형을 operation 및 Git 이력으로 남겨 삭제 사실과 복구 근거를 추적할 수 있다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "단일 태스크 삭제, 같은 샤드의 다른 태스크 보존, 존재하지 않는 ID, 검증 실패와 JSON 출력에 대한 자동화 테스트가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T02:16:22.064Z",
+      "updatedAt": "2026-08-14T02:16:22.064Z",
+      "statusChangedAt": "2026-08-14T02:16:22.064Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
