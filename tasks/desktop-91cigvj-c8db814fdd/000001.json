@@ -350,6 +350,50 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSB9PPAB71EFD8F9E635BC0": {
+      "title": "[설계] 설계 문서 병렬 작성과 오너 승인 반영 절차 정의",
+      "summary": "여러 사람이 같은 설계 문서를 동시에 작성할 때 정식 문서의 직접 경합을 줄이기 위해 REQ-001의 서브 번호를 사용하는 작업 문서, 설계 오너와 서브 작업자의 권한, 검토·승인 후 정식 문서에 반영하는 절차를 정의한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-020",
+        "ADR-005",
+        "ARC-004"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정식 문서와 병렬 작업용 서브 문서의 ID·파일명 채번 규칙 및 정본 여부를 정의한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "설계 오너, 서브 작업자와 검토자의 생성·편집·승인·반영 권한 및 책임을 정의한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "서브 문서 생성부터 검토 요청, 오너 승인, 정식 문서 병합과 서브 문서 종료까지의 상태와 전환 절차를 정의한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "동일 영역 변경, 승인 거절, 장기 미반영과 정식 문서 선행 변경이 발생했을 때 충돌 탐지·재검토·복구 규칙을 정의한다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "Git 이력, 관련 태스크와 승인 근거를 통해 누가 무엇을 제안·검토·반영했는지 추적할 수 있는 검증 시나리오를 마련한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T02:11:37.437Z",
+      "updatedAt": "2026-08-14T02:11:37.437Z",
+      "statusChangedAt": "2026-08-14T02:11:37.437Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
