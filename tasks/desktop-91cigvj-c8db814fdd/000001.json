@@ -140,12 +140,12 @@
         },
         "AC-004": {
           "text": "테마를 전환하면 현재 문서의 Mermaid 다이어그램이 선택한 테마로 정상 재렌더링된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:59.810Z",
-      "updatedAt": "2026-08-14T11:42:33.686Z",
+      "updatedAt": "2026-08-14T11:42:34.616Z",
       "statusChangedAt": "2026-08-14T11:42:30.795Z",
       "externalRefs": [],
       "project": "rundol",
