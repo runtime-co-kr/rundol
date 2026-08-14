@@ -198,6 +198,57 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSASBTJ9FF8A0866DA5F38D": {
+      "title": "[개선] Board 백그라운드 원격 동기화와 충돌 상태 실시간 반영",
+      "summary": "여러 사용자가 같은 프로젝트 문서를 commit·push하는 환경에서 Board가 설정된 주기로 원격 변경을 fetch·병합하고 검증된 로컬 변경을 정책에 따라 push하며, 최신 상태와 충돌을 화면에 안전하게 반영한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-015",
+        "REQ-021",
+        "REQ-022",
+        "TST-006",
+        "TST-011",
+        "TST-012"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "백그라운드 동기화를 활성화하면 설정된 interval에 따라 Workspace와 선택 프로젝트의 원격 변경을 확인한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "동일 프로젝트의 동기화 실행이 겹치지 않으며 진행 중 상태와 마지막 실행 결과를 Board에 표시한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "원격 변경을 안전하게 fast-forward 또는 병합한 경우 다음 화면 갱신 주기 안에 문서·태스크·동기화 상태가 반영된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "검증된 로컬 변경은 설정된 push 정책에 따라서만 원격에 반영되며 자동 강제 push를 수행하지 않는다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "충돌이나 strict 검증 실패가 발생하면 push를 중단하고 충돌 대상·원인·복구 경로를 Board에 표시한다.",
+          "done": false
+        },
+        "AC-006": {
+          "text": "사용자가 편집 중인 입력은 polling이나 원격 동기화로 묵시적으로 덮어쓰지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:58:06.294Z",
+      "updatedAt": "2026-08-14T01:58:06.294Z",
+      "statusChangedAt": "2026-08-14T01:58:06.294Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
