@@ -715,7 +715,7 @@
         },
         "AC-002": {
           "text": "TST-002~003이 각 기능 ID를 독립 검증하며 contract trace가 모든 기능을 준비 상태로 계산한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "PRD, ARC, ADR에 무인덱스 추적성, 역할별 브랜치 경계와 atomic-v1 설계 원칙이 반영된다.",
@@ -728,7 +728,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T00:26:40.372Z",
-      "updatedAt": "2026-08-14T00:50:30.804Z",
+      "updatedAt": "2026-08-14T00:50:31.842Z",
       "statusChangedAt": "2026-08-14T00:26:52.098Z",
       "externalRefs": [],
       "project": "rundol",
