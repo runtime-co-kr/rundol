@@ -72,6 +72,45 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSALPRTABC4904DE32FBA11": {
+      "title": "[버그] 대기 상태 전환에 필요한 blocker 입력 흐름 제공",
+      "summary": "Board에서 태스크 상태를 대기로 변경할 수 있지만 blocker.waitingFor, condition, since를 입력할 UI가 없어 RDL-TASK-014 검증 실패로 변경이 되돌아간다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-018",
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "대기 상태로 전환할 때 waitingFor, condition, since를 입력하거나 선택할 수 있다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "유효한 blocker 정보와 함께 대기 상태 변경이 strict 검증을 통과하고 저장된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "필수 blocker 정보가 없으면 저장 요청 전에 사용자가 이해할 수 있는 안내가 표시된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "대기 상태를 벗어날 때 blocker 처리 규칙이 적용되어 RDL-TASK-015 오류가 발생하지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:52:57.785Z",
+      "updatedAt": "2026-08-14T01:52:57.785Z",
+      "statusChangedAt": "2026-08-14T01:52:57.785Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
