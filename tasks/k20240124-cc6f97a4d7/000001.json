@@ -670,11 +670,11 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "REQ 기능 ID별 입력·출력·규칙·상태·권한·오류·감사·수용 기준의 구현 준비도를 검증한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "미확정 업무규칙과 기능별 TST 추적 누락은 완료 판정을 차단한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "별도 인덱스·추적표 문서 생성은 거부하고 직접 링크에서 계산된 추적성을 제공한다.",
@@ -687,7 +687,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T23:49:00.023Z",
-      "updatedAt": "2026-08-13T23:49:13.859Z",
+      "updatedAt": "2026-08-14T00:18:00.123Z",
       "statusChangedAt": "2026-08-13T23:49:13.859Z",
       "externalRefs": [],
       "project": "rundol"
