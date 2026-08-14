@@ -723,12 +723,12 @@
         },
         "AC-004": {
           "text": "contract check, strict check, implementation check와 릴리스 검사가 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-14T00:26:40.372Z",
-      "updatedAt": "2026-08-14T00:50:32.928Z",
+      "updatedAt": "2026-08-14T00:50:33.962Z",
       "statusChangedAt": "2026-08-14T00:26:52.098Z",
       "externalRefs": [],
       "project": "rundol",
