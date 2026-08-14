@@ -691,6 +691,48 @@
       "statusChangedAt": "2026-08-14T00:18:02.839Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSS7IQUTB01F641DA04F358A": {
+      "title": "Rundol 규격 문서 atomic-v1 전환",
+      "summary": "기능 단위 명세 하네스를 Rundol의 요구사항, 아키텍처, 결정, 검증 문서에 적용하고 계산형 추적성을 릴리스 기준으로 확정한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-010",
+        "REQ-011",
+        "REQ-012",
+        "TST-002",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "REQ-010~012가 기능 ID별 독립 구현 계약을 갖고 범위나 통합 행으로 명세하지 않는다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "TST-002~003이 각 기능 ID를 독립 검증하며 contract trace가 모든 기능을 준비 상태로 계산한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "PRD, ARC, ADR에 무인덱스 추적성, 역할별 브랜치 경계와 atomic-v1 설계 원칙이 반영된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "contract check, strict check, implementation check와 릴리스 검사가 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T00:26:40.372Z",
+      "updatedAt": "2026-08-14T00:26:40.372Z",
+      "statusChangedAt": "2026-08-14T00:26:40.372Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
