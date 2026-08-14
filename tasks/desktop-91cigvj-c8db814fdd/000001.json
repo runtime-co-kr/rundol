@@ -93,7 +93,7 @@
         },
         "AC-002": {
           "text": "유효한 blocker 정보와 함께 대기 상태 변경이 strict 검증을 통과하고 저장된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "필수 blocker 정보가 없으면 저장 요청 전에 사용자가 이해할 수 있는 안내가 표시된다.",
@@ -106,7 +106,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:57.785Z",
-      "updatedAt": "2026-08-14T11:42:36.174Z",
+      "updatedAt": "2026-08-14T11:42:37.096Z",
       "statusChangedAt": "2026-08-14T11:42:35.265Z",
       "externalRefs": [],
       "project": "rundol",
