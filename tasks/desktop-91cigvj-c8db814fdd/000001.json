@@ -132,7 +132,7 @@
         },
         "AC-002": {
           "text": "ER 다이어그램의 관계선이 다크 모드에서 정상적인 선 두께와 형태로 표시된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "두 테마 모두에서 노드명과 관계명이 배경과 충분한 대비로 읽힌다.",
@@ -145,7 +145,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:59.810Z",
-      "updatedAt": "2026-08-14T11:42:31.768Z",
+      "updatedAt": "2026-08-14T11:42:32.726Z",
       "statusChangedAt": "2026-08-14T11:42:30.795Z",
       "externalRefs": [],
       "project": "rundol",
