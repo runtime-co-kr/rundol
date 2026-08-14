@@ -759,7 +759,7 @@
         },
         "AC-003": {
           "text": "strict implementation, contract trace와 structure 검사가 오류 없이 통과한다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "다음 패치 버전이 release check를 통과하고 npm에 게시된다.",
@@ -768,7 +768,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:01:37.594Z",
-      "updatedAt": "2026-08-14T01:33:46.754Z",
+      "updatedAt": "2026-08-14T01:33:47.926Z",
       "statusChangedAt": "2026-08-14T01:01:52.283Z",
       "externalRefs": [],
       "project": "rundol"
