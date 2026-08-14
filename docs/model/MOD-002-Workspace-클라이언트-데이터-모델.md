@@ -52,6 +52,27 @@ related:
 | Client manifest | 소유 | `project.md` Member | N:1 | lease 사용 시 대상 프로젝트에 member가 존재해야 함 |
 | Client manifest | 발생 | lease event | 1:N | Client disable 후 기존 이벤트는 보존 |
 
+아래 다이어그램은 위 표와 엔티티 표에서 파생한 보조 뷰다. 카디널리티, 필드 제약과 수명주기의 정본은 표이며 두 표현이 어긋나면 표를 따른다. 본 문서의 책임 경계는 Client manifest이므로 속성은 Client manifest에만 표시하고, Member는 [[project]] charter가, lease event는 [[MOD-003-문서-리스-이벤트-데이터-모델|MOD-003]]이 정의한다.
+
+```mermaid
+erDiagram
+    WORKSPACE ||--o{ CLIENT_MANIFEST : "등록"
+    MEMBER ||--o{ CLIENT_MANIFEST : "소유"
+    CLIENT_MANIFEST ||--o{ LEASE_EVENT : "발생"
+
+    CLIENT_MANIFEST {
+        string id PK
+        integer schemaVersion
+        integer revision
+        string name
+        enum type
+        enum status
+        string owner FK
+        string registeredBy FK
+        string registeredAt
+    }
+```
+
 ## 불변조건
 
 - 동일 `id`의 manifest는 두 번 등록할 수 없다.
