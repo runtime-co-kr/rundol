@@ -300,6 +300,56 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSAW4YXF8E92DF803519293": {
+      "title": "[설계] 분리 저장소의 공통 제품 문서 정본 관리 방식 정의",
+      "summary": "프론트엔드와 백엔드가 별도 Git 저장소인 제품에서 양쪽을 함께 분석해 작성한 PRD·GLS·공통 REQ를 중복 저장하지 않고 하나의 정본으로 관리하면서, 각 저장소와 AI 클라이언트가 동일 revision의 문서를 발견·조회·추적하는 운영 방식을 결정한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "PRD-001",
+        "REQ-014",
+        "REQ-015",
+        "ARC-003",
+        "ADR-004"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "프론트엔드·백엔드 공통 문서와 저장소별 구현 문서의 소유 경계를 정의한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "모노레포, 독립 문서 저장소 또는 Workspace, 한쪽 저장소 정본과 참조 방식의 장단점·권한·동기화·장애 영향을 비교한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "PRD·GLS·공통 REQ는 복제본 두 개가 아니라 단일 정본과 고유 revision을 갖도록 선택안을 확정한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "프론트엔드와 백엔드 저장소 양쪽에서 동일 정본을 발견하고 읽으며 관련 구현·태스크와 연결하는 방법을 정의한다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "문서 변경 권한, 검토·승인, 버전 호환 관계, 충돌 처리와 저장소 접근 불가 시 동작을 정의한다.",
+          "done": false
+        },
+        "AC-006": {
+          "text": "선택 근거와 제외한 대안은 ADR에 기록하고 실제 저장소 이전·연결 작업은 후속 구현 태스크로 분리한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T02:01:04.040Z",
+      "updatedAt": "2026-08-14T02:01:04.040Z",
+      "statusChangedAt": "2026-08-14T02:01:04.040Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
