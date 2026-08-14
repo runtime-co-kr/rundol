@@ -1,16 +1,17 @@
 # Rundol 0.22 마이그레이션
 
-이 문서는 Rundol `0.21.1`부터 `0.22.1`까지의 Workspace를 최신 `0.22.2`로 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로, `documentProfile`과 기능별 구현 계약 전환 단계만 달라진다.
+이 문서는 Rundol `0.21.1`부터 `0.22.2`까지의 Workspace를 최신 `0.22.3`으로 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로, `documentProfile`과 기능별 구현 계약 전환 단계만 달라진다.
 
 ## 변경 요약
 
-| 출발 버전 | 기존 상태 | 0.22.2에서 필요한 작업 |
+| 출발 버전 | 기존 상태 | 0.22.3에서 필요한 작업 |
 |---|---|---|
 | 0.21.1 | 문서 프로필 없음, PRD·GLS·ARC가 `docs/` 루트에 생성될 수 있음 | 연결 재발견, legacy 문서 경로 이전, schemaVersion 2 계약 설정 |
 | 0.21.2 | schemaVersion 1 프로필, canonical 문서 경로와 bootstrap 지원 | v1 정책·traits를 보존해 schemaVersion 2로 전환 |
 | 0.21.3 | 데이터 계약은 0.21.2와 같고 Unix 전역 설치 경로만 보완 | schemaVersion 2로 전환 |
 | 0.22.0 | schemaVersion 2 계약 사용 | 데이터 migration 없음, 스킬 재설치와 선택적 `board.json` 설정 |
 | 0.22.1 | schemaVersion 2 계약과 Board 표시 설정 사용 | 스킬 재설치, 구현 문서 `atomic-v1` 전환과 계산형 추적성 검사 |
+| 0.22.2 | atomic-v1 구현 계약과 계산형 추적성 사용 | 데이터 변환 없음, 스킬 재설치와 책임별 문서 확장 권장 |
 
 0.22.0의 schemaVersion 2 계약은 기존 policy에 다음 항목을 추가한다.
 
@@ -51,13 +52,13 @@ rdl sync --project <key> --json
 ## 2. CLI와 스킬 업그레이드
 
 ```powershell
-npm install --global rundol@0.22.2
+npm install --global rundol@0.22.3
 rdl --version
 rdl doctor --json
 rdl skill install --force
 ```
 
-`rdl --version`이 `0.22.2`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 atomic-v1, 무인덱스 추적성과 canonical design routing 절차를 반영한다.
+`rdl --version`이 `0.22.3`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 atomic-v1, 무인덱스 추적성과 canonical design routing 절차를 반영한다.
 
 ## 3. Workspace 재발견
 
@@ -130,7 +131,7 @@ rdl check --structure --project <key> --json
 
 ### 구현 문서 atomic-v1 전환
 
-0.22.2부터 새 REQ, SCR, MOD, API, TST는 하나 이상의 `--function-id`가 필요하다. 기존 문서는 일반 strict에서 경고로 유지되므로 먼저 기능 경계를 검토한 뒤 frontmatter에 계약을 추가한다.
+0.22.2부터 새 REQ, SCR, MOD, API, TST는 하나 이상의 `--function-id`가 필요하다. 0.22.3의 Rundol 정본은 핵심 기능을 한 기능 ID당 한 REQ와 TST 파일로 더 세분화한 참고 사례를 제공한다. 기존 문서는 일반 strict에서 경고로 유지되므로 먼저 기능 경계를 검토한 뒤 frontmatter에 계약을 추가한다.
 
 ```yaml
 granularity: bounded-v1
@@ -245,7 +246,7 @@ rdl contract next --project <key> --json
 
 ### Board에서 계약 설정이 보이지 않음
 
-전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.2` 설치가 필요하다.
+전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.3` 설치가 필요하다.
 
 ### contract status가 legacy-unconfigured임
 

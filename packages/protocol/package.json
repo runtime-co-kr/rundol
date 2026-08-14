@@ -1,6 +1,6 @@
 {
   "name": "@rundol/protocol",
-  "version": "0.22.2",
+  "version": "0.22.3",
   "description": "Rundol message and synchronization protocol contracts",
   "license": "Apache-2.0",
   "repository": {
@@ -25,6 +25,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@rundol/core": "0.22.2"
+    "@rundol/core": "0.22.3"
   }
 }

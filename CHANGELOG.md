@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-08-14
+
+### Added
+
+- Expanded Rundol's canonical project specification from the recent document-contract slice to the full Workspace, synchronization, task, collaboration, Board, installation, and release lifecycle.
+- Added one-function-per-file REQ and TST pairs for 11 core capabilities, plus bounded Git, Board, data-model, API, decision, runbook, and glossary documents.
+- Replaced the placeholder Rundol project charter with explicit mission, goals, scope, responsibilities, risks, review cadence, and Definition of Done.
+
+### Changed
+
+- Rundol's own reference project now demonstrates the governance skill's preferred small-document shape without introducing a generic `DESIGN.md`, index, catalog, or persisted traceability matrix.
+
+### Migration
+
+- No runtime or storage migration is required from 0.22.2. Reinstall the governance skill and use `rdl contract trace` plus `rdl check --strict --implementation` when expanding an existing project's specifications.
+
 ## [0.22.2] - 2026-08-14
 
 ### Added
