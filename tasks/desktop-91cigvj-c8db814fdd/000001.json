@@ -62,12 +62,12 @@
         },
         "AC-003": {
           "text": "저장 버튼을 누를 때만 필수 입력 검증과 태스크 생성 요청이 실행된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:55.504Z",
-      "updatedAt": "2026-08-14T11:42:29.193Z",
+      "updatedAt": "2026-08-14T11:42:30.136Z",
       "statusChangedAt": "2026-08-14T11:42:27.319Z",
       "externalRefs": [],
       "project": "rundol",
