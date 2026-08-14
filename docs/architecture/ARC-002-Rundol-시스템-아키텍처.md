@@ -29,6 +29,8 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 
 문서 계획 계약은 프로젝트별 `project.md`의 `documentProfile`이 소유한다. `rules.<TYPE>.after`는 AI 추천 문맥일 뿐 생성·저장 순서를 강제하지 않으며, `policy`, `omissions`, `enforcement`, `revision`은 CLI·스킬·Board가 공유하는 계약이다.
 
+구현 준비도는 각 REQ·SCR·MOD·API·TST의 `implementationContract: atomic-v1`과 `functionIds`가 소유한다. 한 파일에 여러 기능을 배치해도 각 기능은 유형별 전체 필드를 독립적으로 가지며, 추적성은 이 ID와 직접 링크에서 메모리로 계산한다. INDEX·카탈로그·추적표는 별도 정본으로 저장하지 않는다.
+
 ## 컴포넌트
 
 | 컴포넌트 | 책임 | 소유 데이터 | 의존 대상 | 담당 팀/역할 |
@@ -37,6 +39,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 | Workspace·bootstrap | 로컬/원격 Rundol 상태 발견, manifest·ref·worktree 연결과 복구 | Workspace registry, project manifest | Git | 프로젝트 책임자 |
 | 프로젝트 상태·태스크 | 태스크 shard, operation, projection, save·sync와 semantic merge | `tasks/**`, `.rundol/state` 로컬 projection | Git, collaboration store | 프로젝트 책임자 |
 | 문서·계약 evaluator | 정규 문서 생성, profile 정규화, omission·checkpoint 평가 | `project.md`, `docs/**` | 문서 템플릿, frontmatter parser | 프로젝트 책임자 |
+| 구현 계약 검사기 | 기능별 유형 전용 필드, 미확정 규칙, 묶음 명세와 REQ·TST 대응 검증 | 진단과 계산형 trace | 정규 문서 registry, task links | 검토자·품질 담당자 |
 | 검증기 | 거버넌스, 태스크, 링크, 문서 계약, Vault와 구조 진단 | 진단 결과만 생성 | Workspace·문서·태스크 reader | 검토자·품질 담당자 |
 | Collaboration store | Client registry와 lease event 저장·조회 | `projects/workspace/clients`, `events` | Workspace branch | 운영 담당자 |
 | Local Board | 문서·태스크·협업·계약 snapshot과 로컬 편집 UI 제공 | UI 상태, project/Workspace `board.json` | 동일 도메인 서비스, localhost HTTP | 사용자·프로젝트 책임자 |
@@ -46,10 +49,11 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 
 1. `rdl init`은 현재 Git 저장소에서 manifest, Rundol refs와 worktree를 읽어 `created|attached|repaired|already-connected|needs-selection|conflict` 동작을 결정한다.
 2. 문서 작업 전 CLI는 `project.md` 계약과 실제 `docs/**` registry를 읽어 `ready`, 추천 문맥, omission 상태와 위반을 계산한다.
-3. `rdl doc create`는 등록 owner와 관련 산출물을 검증한 뒤 템플릿으로 정규 파일을 만든다. AI 또는 사용자는 본문을 편집하고 `rdl check --strict`로 추적성과 계약을 검증한다.
-4. 태스크 명령은 client별 shard를 갱신하고 operation과 projection을 기록한 뒤 프로젝트 브랜치에 커밋한다.
-5. `rdl save`는 Workspace 설정과 선택 프로젝트를 검증·커밋한다. `rdl sync`는 Workspace를 먼저 동기화한 뒤 프로젝트 ref를 fetch, merge, 검증, push한다.
-6. Board는 동일 reader로 snapshot을 만들고 revision 기반 쓰기 API를 제공한다. 변경 요청은 token과 baseRevision을 검사한 후 같은 파일·검증 경계를 사용한다.
+3. `rdl doc create`는 등록 owner, 관련 산출물과 function-id를 검증한 뒤 기능별 독립 계약 섹션을 가진 정규 파일을 만든다.
+4. AI 또는 사용자는 기능별 본문을 편집하고 `rdl check --strict --implementation`과 계산형 `rdl contract trace`로 구현 준비도를 검증한다.
+5. 태스크 명령은 client별 shard를 갱신하고 operation과 projection을 기록한 뒤 프로젝트 브랜치에 커밋하며 구현 태스크의 done 전환을 기능별 REQ·TST 계약으로 제한한다.
+6. `rdl save`는 Workspace 설정과 선택 프로젝트를 검증·커밋한다. `rdl sync`는 Workspace를 먼저 동기화한 뒤 프로젝트 ref를 fetch, merge, 검증, push한다.
+7. Board는 동일 reader로 snapshot을 만들고 revision 기반 쓰기 API와 atomic-v1·준비 기능 수·무인덱스 요약을 제공한다.
 
 ## 실행과 배포
 
@@ -69,6 +73,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 | 로컬 우선 | 네트워크 장애에도 작성·검증 가능 | 파일·Git 기반 도메인 서비스, 선택적 remote | offline CLI 시나리오와 init/attach 테스트 |
 | 결정성 | 같은 정본 상태에서 같은 평가 결과 | 정렬된 registry, profile 정규화, 공용 evaluator | document profile/contract deep equality 테스트 |
 | 추적성 | 요구·태스크·검증을 실제 ID와 파일로 연결 | frontmatter, Wiki link, task links, strict 검사 | `rdl check --strict` |
+| 구현 준비도 | 묶음 명세와 미확정 규칙으로 구현을 시작하지 않음 | atomic-v1 기능 섹션, task done gate, 계산형 trace | `rdl check --implementation` |
 | 안전성 | 자동 연결·migration·cleanup이 사용자 파일을 잃지 않음 | discovery-before-write, conflict preflight, dry-run과 rollback | bootstrap, migration, structure 회귀 테스트 |
 | 동시성 | Board와 다중 Client 변경의 stale write 방지 | revision, lease, semantic merge, HTTP 409 | Board workspace와 Git 통합 테스트 |
 | 배포 신뢰성 | package 경계와 버전이 항상 일치 | version-check, tarball install, OIDC trusted publishing | `npm run release:check`와 Release workflow |
