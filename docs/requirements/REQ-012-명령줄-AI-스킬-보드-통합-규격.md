@@ -17,7 +17,7 @@ functionIds:
   - HRN-04
   - HRN-05
   - HRN-06
-owner: "[[project#^MEMBER-001|작성 필요 — 프로젝트 책임자 이름]]"
+owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
   - rundol/artifact

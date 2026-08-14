@@ -4,7 +4,7 @@ type: document
 kind: architecture
 title: 런돌 시스템 아키텍처
 description: Git 기반 Workspace, 프로젝트별 상태 브랜치, CLI 문서 계약 evaluator와 로컬 Board의 경계와 실행 구조
-owner: "[[project#^MEMBER-001|작성 필요 — 프로젝트 책임자 이름]]"
+owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
   - rundol/artifact
