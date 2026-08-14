@@ -19,7 +19,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "라이트 모드에서 + 새 태스크 버튼의 레이블이 충분한 대비로 식별된다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "라이트 모드에서 태스크 추가 모달의 저장 버튼 레이블이 충분한 대비로 식별된다.",
@@ -32,7 +32,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:51.725Z",
-      "updatedAt": "2026-08-14T11:38:46.966Z",
+      "updatedAt": "2026-08-14T11:42:24.853Z",
       "statusChangedAt": "2026-08-14T11:38:46.966Z",
       "externalRefs": [],
       "project": "rundol",
