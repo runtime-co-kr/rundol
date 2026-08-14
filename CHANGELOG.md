@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-08-14
+
+### Added
+
+- Added `atomic-v1` function contracts for REQ, SCR, MOD, API, and TST documents, including type-specific standalone fields for every declared function ID.
+- Added `rdl check --implementation` readiness validation and `rdl contract trace` computed traceability with no persisted index artifact.
+- Added implementation-readiness task completion gates, Board contract visibility, and remote default-branch discovery through `origin/HEAD`.
+
+### Changed
+
+- The governance skill now forbids grouped function ranges, combined specification rows, generic `DESIGN.md`, and canonical index or traceability-matrix documents.
+- Rundol's own PRD, REQ, architecture, ADR, and TST documents now describe and verify 16 independent function contracts.
+
+### Migration
+
+- Existing 0.21.1–0.22.1 projects should follow [Rundol 0.22 migration](docs/MIGRATION-0.22.md). Existing implementation documents remain warnings under normal strict checks and must be upgraded before enabling the implementation readiness gate.
+
 ## [0.22.1] - 2026-08-14
 
 ### Added

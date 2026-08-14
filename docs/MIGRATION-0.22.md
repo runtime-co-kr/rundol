@@ -1,15 +1,16 @@
 # Rundol 0.22 마이그레이션
 
-이 문서는 Rundol `0.21.1`, `0.21.2`, `0.21.3`, `0.22.0` Workspace를 최신 `0.22.1`로 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로와 `documentProfile` 전환 단계만 달라진다.
+이 문서는 Rundol `0.21.1`부터 `0.22.1`까지의 Workspace를 최신 `0.22.2`로 업그레이드하는 절차다. 중간 버전을 순서대로 설치할 필요는 없다. 출발 버전에 따라 문서 경로, `documentProfile`과 기능별 구현 계약 전환 단계만 달라진다.
 
 ## 변경 요약
 
-| 출발 버전 | 기존 상태 | 0.22.1에서 필요한 작업 |
+| 출발 버전 | 기존 상태 | 0.22.2에서 필요한 작업 |
 |---|---|---|
 | 0.21.1 | 문서 프로필 없음, PRD·GLS·ARC가 `docs/` 루트에 생성될 수 있음 | 연결 재발견, legacy 문서 경로 이전, schemaVersion 2 계약 설정 |
 | 0.21.2 | schemaVersion 1 프로필, canonical 문서 경로와 bootstrap 지원 | v1 정책·traits를 보존해 schemaVersion 2로 전환 |
 | 0.21.3 | 데이터 계약은 0.21.2와 같고 Unix 전역 설치 경로만 보완 | schemaVersion 2로 전환 |
 | 0.22.0 | schemaVersion 2 계약 사용 | 데이터 migration 없음, 스킬 재설치와 선택적 `board.json` 설정 |
+| 0.22.1 | schemaVersion 2 계약과 Board 표시 설정 사용 | 스킬 재설치, 구현 문서 `atomic-v1` 전환과 계산형 추적성 검사 |
 
 0.22.0의 schemaVersion 2 계약은 기존 policy에 다음 항목을 추가한다.
 
@@ -50,13 +51,13 @@ rdl sync --project <key> --json
 ## 2. CLI와 스킬 업그레이드
 
 ```powershell
-npm install --global rundol@0.22.1
+npm install --global rundol@0.22.2
 rdl --version
 rdl doctor --json
 rdl skill install --force
 ```
 
-`rdl --version`이 `0.22.1`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 문서 계약과 canonical design routing 절차를 반영한다.
+`rdl --version`이 `0.22.2`인지 확인한다. 스킬은 npm 설치와 분리돼 있으므로, 이전 스킬이 설치돼 있으면 `--force`로 atomic-v1, 무인덱스 추적성과 canonical design routing 절차를 반영한다.
 
 ## 3. Workspace 재발견
 
@@ -107,7 +108,7 @@ rdl contract set --project <key> --profile <현재-profile> --enforcement adviso
 
 이미 `status: valid`와 `schemaVersion: 2`가 표시되면 이 단계는 생략한다.
 
-### 0.22.0에서 업그레이드
+### 0.22.0 또는 0.22.1에서 업그레이드
 
 문서 계약이나 태스크 저장 포맷 migration은 필요하지 않다. 업데이트된 스킬을 설치하고 기존 프로젝트를 검사한다.
 
@@ -126,6 +127,30 @@ rdl check --structure --project <key> --json
 - 프로젝트 override: `projects/<key>/board.json`
 
 설정 파일이 없으면 내장 기본값이 사용된다. 표시 설정은 label, description, order만 바꾸며 문서 ID, kind, 저장 경로와 계약 의미를 변경하지 않는다.
+
+### 구현 문서 atomic-v1 전환
+
+0.22.2부터 새 REQ, SCR, MOD, API, TST는 하나 이상의 `--function-id`가 필요하다. 기존 문서는 일반 strict에서 경고로 유지되므로 먼저 기능 경계를 검토한 뒤 frontmatter에 계약을 추가한다.
+
+```yaml
+granularity: bounded-v1
+scope: 이 문서가 책임지는 단일 검토 범위
+excludes:
+  - 인접하지만 책임지지 않는 범위
+implementationContract: atomic-v1
+functionIds:
+  - PAY-01
+  - PAY-02
+```
+
+한 파일에 여러 기능을 둘 수는 있지만 명세를 묶지 않는다. `PAY-01~02` 같은 범위, 두 기능을 한 표 행에 넣는 방식, 공통 placeholder·수용 기준·테스트 하나로 여러 기능을 대신하는 방식은 허용하지 않는다. 모든 기능 ID는 문서 유형별 필수 필드를 단독 문서와 같은 수준으로 가진다.
+
+```powershell
+rdl check --strict --implementation --project <key> --json
+rdl contract trace --project <key> --json
+```
+
+trace 결과의 모든 기능이 `ready: true`이고 `persistedIndex: false`인지 확인한다. 별도 INDEX, 문서 목록, 카탈로그나 추적성 매트릭스를 만들지 않는다. 기존 완료 태스크는 그대로 보존하며, 업데이트 후 새로 생성한 REQ·TST 연결 태스크부터 `implementationReadiness: atomic-v1` 완료 게이트가 적용된다.
 
 ## 5. 계약 충족
 
@@ -156,7 +181,8 @@ advisory 상태에서 오류를 모두 해결한 후 같은 프로필을 checkpo
 rdl contract plan --project <key> --profile <현재-profile> --enforcement checkpoint --json
 rdl contract set --project <key> --profile <현재-profile> --enforcement checkpoint --json
 rdl contract check --project <key> --json
-rdl check --strict --project <key> --json
+rdl check --strict --implementation --project <key> --json
+rdl contract trace --project <key> --json
 rdl check --structure --project <key> --json
 rdl save --project <key> --json
 rdl sync --project <key> --json
@@ -167,6 +193,7 @@ rdl sync --project <key> --json
 - contract status가 `valid`
 - contract violations가 0건
 - strict 오류가 0건
+- implementation 오류가 0건이고 계산된 모든 기능이 ready
 - structure migration 후보가 0건
 - 프로젝트 브랜치가 원격에 push됨
 
@@ -180,7 +207,7 @@ rdl contract check --project <key> --json
 rdl check --strict --project <key> --json
 ```
 
-AI 클라이언트는 업데이트된 Rundol 스킬을 설치한 후 `contract show → next → create 또는 absorb → contract check → check --strict` 순서를 따른다.
+AI 클라이언트는 업데이트된 Rundol 스킬을 설치한 후 `contract show → next → task add → 기능별 create 또는 absorb → contract check → check --strict --implementation → acceptance → save → sync` 순서를 따른다.
 
 ## 롤백
 
@@ -218,7 +245,7 @@ rdl contract next --project <key> --json
 
 ### Board에서 계약 설정이 보이지 않음
 
-전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.1` 설치가 필요하다.
+전역 CLI 버전과 Board를 실행한 프로세스의 버전을 확인한다. 소스 저장소에서 시험할 때는 `node bin/rdl.js board --project <key>`를 사용하고, 다른 컴퓨터에서는 `rundol@0.22.2` 설치가 필요하다.
 
 ### contract status가 legacy-unconfigured임
 
