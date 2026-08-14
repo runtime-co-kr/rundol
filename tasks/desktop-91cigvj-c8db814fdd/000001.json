@@ -249,6 +249,57 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSASDJJ6CA479A068C265FF": {
+      "title": "[개선] 문서 변경 이력과 변경 근거 조회 제공",
+      "summary": "설계서 등 정규 문서의 변경에 대해 누가, 언제, 무엇을, 어떻게, 왜 변경했는지 Git commit·diff·operation·관련 태스크와 결정 문서를 근거로 Board에서 추적하고 계획 간 괴리를 판단할 수 있게 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-021",
+        "REQ-022",
+        "API-002",
+        "API-003",
+        "TST-011",
+        "TST-012"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "문서 상세에서 해당 문서의 변경 이력을 최신순으로 조회할 수 있다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "각 이력에 변경 시각, Git author 또는 확인 가능한 Member·Client, commit 식별자와 변경 요약을 표시한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "선택한 이력의 이전 버전과 변경 버전 차이를 안전하게 비교할 수 있다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "변경 사유와 관련 태스크·REQ·ADR이 기록된 경우 이력에서 함께 확인하고 해당 근거로 이동할 수 있다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "변경 사유나 주체를 확인할 수 없는 과거 이력은 추측하지 않고 미기록 또는 매핑 불가로 명확히 표시한다.",
+          "done": false
+        },
+        "AC-006": {
+          "text": "별도 중복 이력 저장소를 정본으로 만들지 않고 Git·operation·revision에서 결과를 재구성한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:58:08.526Z",
+      "updatedAt": "2026-08-14T01:58:08.526Z",
+      "statusChangedAt": "2026-08-14T01:58:08.526Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
