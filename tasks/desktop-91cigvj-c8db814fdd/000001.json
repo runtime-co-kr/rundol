@@ -101,12 +101,12 @@
         },
         "AC-004": {
           "text": "대기 상태를 벗어날 때 blocker 처리 규칙이 적용되어 RDL-TASK-015 오류가 발생하지 않는다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:57.785Z",
-      "updatedAt": "2026-08-14T11:42:38.038Z",
+      "updatedAt": "2026-08-14T11:42:38.958Z",
       "statusChangedAt": "2026-08-14T11:42:35.265Z",
       "externalRefs": [],
       "project": "rundol",
