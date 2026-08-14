@@ -763,12 +763,12 @@
         },
         "AC-004": {
           "text": "다음 패치 버전이 release check를 통과하고 npm에 게시된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:01:37.594Z",
-      "updatedAt": "2026-08-14T01:33:47.926Z",
+      "updatedAt": "2026-08-14T01:40:58.576Z",
       "statusChangedAt": "2026-08-14T01:01:52.283Z",
       "externalRefs": [],
       "project": "rundol"
