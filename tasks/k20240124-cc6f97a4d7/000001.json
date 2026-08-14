@@ -733,6 +733,43 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSS8RP2Z43CAF5B5F5F3EFD9": {
+      "title": "Rundol 제품 규격 문서 전체 확장",
+      "summary": "최근 문서계약 기능에 치우친 정본을 제품 전체의 Workspace, Git, 태스크, 협업, Board, 설치와 배포 책임으로 확장한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "PRD-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "핵심 기능별 REQ와 TST가 한 기능 ID당 한 파일로 생성된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "Git, 상태 저장, Board, 데이터 모델, API, 운영과 용어 문서가 독립 책임으로 생성된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "strict implementation, contract trace와 structure 검사가 오류 없이 통과한다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "다음 패치 버전이 release check를 통과하고 npm에 게시된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:01:37.594Z",
+      "updatedAt": "2026-08-14T01:01:37.594Z",
+      "statusChangedAt": "2026-08-14T01:01:37.594Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
