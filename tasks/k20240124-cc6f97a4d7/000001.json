@@ -678,7 +678,7 @@
         },
         "AC-003": {
           "text": "별도 인덱스·추적표 문서 생성은 거부하고 직접 링크에서 계산된 추적성을 제공한다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "원격 HEAD의 기본 브랜치를 main, master 또는 사용자 정의 이름으로 감지한다.",
@@ -687,7 +687,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T23:49:00.023Z",
-      "updatedAt": "2026-08-14T00:18:00.123Z",
+      "updatedAt": "2026-08-14T00:18:01.153Z",
       "statusChangedAt": "2026-08-13T23:49:13.859Z",
       "externalRefs": [],
       "project": "rundol"
