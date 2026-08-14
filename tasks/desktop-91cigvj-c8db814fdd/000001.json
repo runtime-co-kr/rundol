@@ -58,7 +58,7 @@
         },
         "AC-002": {
           "text": "제목이 비어 있어도 취소 버튼을 누르면 검증 메시지 없이 모달이 닫힌다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "저장 버튼을 누를 때만 필수 입력 검증과 태스크 생성 요청이 실행된다.",
@@ -67,7 +67,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:55.504Z",
-      "updatedAt": "2026-08-14T11:42:28.232Z",
+      "updatedAt": "2026-08-14T11:42:29.193Z",
       "statusChangedAt": "2026-08-14T11:42:27.319Z",
       "externalRefs": [],
       "project": "rundol",
