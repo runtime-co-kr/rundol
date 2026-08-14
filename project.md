@@ -4,7 +4,7 @@ type: project
 kind: charter
 title: Rundol
 description: Git 저장소 안에서 문서, 태스크, 책임, 협업 상태와 변경 이력을 검증 가능한 프로젝트 정보로 운영하는 로컬 우선 도구를 개발한다.
-owner: "[[project#^MEMBER-001|Rundol 프로젝트 책임자]]"
+owner: "[[project#^MEMBER-001|강영준]]"
 state: active
 tags:
   - rundol/artifact
@@ -93,12 +93,20 @@ documentProfile:
 
 ## 프로젝트 팀원
 
-### Rundol 프로젝트 책임자 ^MEMBER-001
+### 강영준 ^MEMBER-001
 
 - 역할: [[project#^ROLE-001|제품·기술 책임자]], [[project#^ROLE-002|구현·검증 담당]]
-- 소속: runtime-co-kr Rundol 프로젝트
-- 업무 계정: runtime-co-kr 저장소 관리자
-- 책임 영역: 제품 범위, 아키텍처, 구현, 검증, 배포와 프로젝트 정본
+- 소속: 런타임
+- 업무 계정: y.j.kang@runtime.co.kr
+- 책임 영역: 프로젝트 전반 관리, 기술 의사결정 및 개발 총괄
+- 상태: active
+
+### 류승호 ^MEMBER-002
+
+- 역할: [[project#^ROLE-002|구현·검증 담당]]
+- 소속: 런타임
+- 업무 계정: s.h.ryu@runtime.co.kr
+- 책임 영역: UI 중심 개발과 품질 개선, 필요 시 기타 개발 지원
 - 상태: active
 
 ## 이해관계자
@@ -126,6 +134,7 @@ documentProfile:
 | 제품 범위와 요구사항 | MEMBER-001 | MEMBER-001 | STAKEHOLDER-001 | TEAM |
 | 아키텍처와 Git 경계 | MEMBER-001 | MEMBER-001 | STAKEHOLDER-001 | TEAM |
 | 구현과 자동화 검증 | MEMBER-001 | MEMBER-001 | STAKEHOLDER-001 | TEAM |
+| UI 개발과 품질 개선 | MEMBER-002 | MEMBER-001 | MEMBER-001 | TEAM |
 | npm 릴리스 | MEMBER-001 | MEMBER-001 | STAKEHOLDER-002 | STAKEHOLDER-001 |
 
 ## 의사결정과 에스컬레이션
