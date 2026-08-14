@@ -27,12 +27,12 @@
         },
         "AC-003": {
           "text": "다크 모드와 시스템 모드에서 기본 버튼의 기존 가독성이 유지된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:51.725Z",
-      "updatedAt": "2026-08-14T11:42:25.769Z",
+      "updatedAt": "2026-08-14T11:42:26.681Z",
       "statusChangedAt": "2026-08-14T11:38:46.966Z",
       "externalRefs": [],
       "project": "rundol",
