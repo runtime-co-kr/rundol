@@ -97,7 +97,7 @@
         },
         "AC-003": {
           "text": "필수 blocker 정보가 없으면 저장 요청 전에 사용자가 이해할 수 있는 안내가 표시된다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "대기 상태를 벗어날 때 blocker 처리 규칙이 적용되어 RDL-TASK-015 오류가 발생하지 않는다.",
@@ -106,7 +106,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:57.785Z",
-      "updatedAt": "2026-08-14T11:42:37.096Z",
+      "updatedAt": "2026-08-14T11:42:38.038Z",
       "statusChangedAt": "2026-08-14T11:42:35.265Z",
       "externalRefs": [],
       "project": "rundol",
