@@ -751,7 +751,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "핵심 기능별 REQ와 TST가 한 기능 ID당 한 파일로 생성된다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "Git, 상태 저장, Board, 데이터 모델, API, 운영과 용어 문서가 독립 책임으로 생성된다.",
@@ -768,7 +768,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:01:37.594Z",
-      "updatedAt": "2026-08-14T01:33:31.161Z",
+      "updatedAt": "2026-08-14T01:33:45.573Z",
       "statusChangedAt": "2026-08-14T01:01:52.283Z",
       "externalRefs": [],
       "project": "rundol"
