@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "clientId": "desktop-91cigvj-c8db814fdd",
+  "segment": 1,
+  "tasks": {
+    "TASK-00MSSALL3H6E41CD492E596302": {
+      "title": "[버그] 라이트 모드 기본 버튼의 글자 대비 수정",
+      "summary": "라이트 모드에서 + 새 태스크 및 태스크 추가 모달의 저장 버튼이 검정 배경과 검정 글자로 표시되어 레이블을 읽을 수 없다.",
+      "owner": "MEMBER-002",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-011",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "라이트 모드에서 + 새 태스크 버튼의 레이블이 충분한 대비로 식별된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "라이트 모드에서 태스크 추가 모달의 저장 버튼 레이블이 충분한 대비로 식별된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "다크 모드와 시스템 모드에서 기본 버튼의 기존 가독성이 유지된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:52:51.725Z",
+      "updatedAt": "2026-08-14T01:52:51.725Z",
+      "statusChangedAt": "2026-08-14T01:52:51.725Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    }
+  }
+}
