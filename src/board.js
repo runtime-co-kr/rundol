@@ -276,6 +276,7 @@ function taskInput(body, creating) {
     }
     if (Object.keys(result.acceptanceCriteria).length === 0) inputError('완료조건이 하나 이상 필요합니다.');
   }
+  if (Object.prototype.hasOwnProperty.call(body, 'blocker')) result.blocker = blockerInput(body.blocker);
   if (creating) {
     if (!result.title) inputError('태스크 제목이 필요합니다.');
     if (!result.acceptanceCriteria) inputError('완료조건이 하나 이상 필요합니다.');
@@ -283,11 +284,31 @@ function taskInput(body, creating) {
   return result;
 }
 
+function blockerInput(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) inputError('대기 사유 형식이 올바르지 않습니다.');
+  const waitingFor = String(value.waitingFor || '').trim();
+  const condition = String(value.condition || '').trim();
+  const since = String(value.since || '').trim();
+  if (!waitingFor || !condition || !since) inputError('대기 사유에는 대기 대상, 해제 조건과 대기 시작 시각이 모두 필요합니다.');
+  if (condition.length > 1000) inputError('해제 조건이 너무 깁니다.');
+  if (Number.isNaN(Date.parse(since))) inputError(`대기 시작 시각이 올바르지 않습니다: ${since}`);
+  return { waitingFor, condition, since: new Date(since).toISOString() };
+}
+
+function requireBlockerConsistency(current, changes) {
+  const status = Object.prototype.hasOwnProperty.call(changes, 'status') ? changes.status : current && current.status;
+  const blocker = Object.prototype.hasOwnProperty.call(changes, 'blocker') ? changes.blocker : current && current.blocker;
+  if (status === 'waiting' && !blocker) inputError('대기 상태로 바꾸려면 대기 대상, 해제 조건과 대기 시작 시각이 필요합니다.');
+  if (status !== 'waiting' && blocker) inputError('대기 상태가 아닌 태스크에는 대기 사유를 둘 수 없습니다.');
+}
+
 function validateTaskAssignments(root, input, projectKey) {
   const directory = readCollaboration(root, projectKey);
   const memberIds = new Set(directory.members.map((member) => member.id));
   const stakeholderIds = new Set(directory.stakeholders.map((stakeholder) => stakeholder.id));
   if (input.owner && !memberIds.has(input.owner)) inputError(`project.md에 등록되지 않은 담당자입니다: ${input.owner}`);
+  if (input.blocker && !memberIds.has(input.blocker.waitingFor) && !stakeholderIds.has(input.blocker.waitingFor)) inputError(`project.md에 등록되지 않은 대기 대상입니다: ${input.blocker.waitingFor}`);
   for (const reviewer of input.reviewers || []) if (!memberIds.has(reviewer)) inputError(`project.md에 등록되지 않은 검토자입니다: ${reviewer}`);
   for (const stakeholder of input.stakeholders || []) if (!stakeholderIds.has(stakeholder)) inputError(`project.md에 등록되지 않은 이해관계자입니다: ${stakeholder}`);
 }
@@ -377,13 +398,15 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const input = taskInput(body, true);
         input.project = projectTasksMatch[1];
+        requireBlockerConsistency(null, input);
         validateTaskAssignments(config.root, input, input.project);
         return json(response, 201, taskCreate(config.root, input));
       }
       if (request.method === 'POST' && projectTaskMatch) {
         const body = await requestBody(request);
-        requireRevision(requestedConfig, projectTaskMatch[2], body.baseRevision);
+        const current = requireRevision(requestedConfig, projectTaskMatch[2], body.baseRevision);
         const changes = taskInput(body, false);
+        requireBlockerConsistency(current, changes);
         validateTaskAssignments(config.root, changes, projectTaskMatch[1]);
         return json(response, 200, taskUpdate(config.root, projectTaskMatch[2], changes, projectTaskMatch[1]));
       }
@@ -409,14 +432,16 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const input = taskInput(body, true);
         input.project = activeConfig.project;
+        requireBlockerConsistency(null, input);
         validateTaskAssignments(activeConfig.root, input, activeConfig.project);
         return json(response, 201, taskCreate(activeConfig.root, input));
       }
       if (request.method === 'POST' && taskMatch) {
         const body = await requestBody(request);
-        requireRevision(activeConfig, taskMatch[1], body.baseRevision);
+        const current = requireRevision(activeConfig, taskMatch[1], body.baseRevision);
         const changes = taskInput(body, false);
         if (Object.keys(changes).length === 0) return json(response, 400, { error: '변경할 태스크 필드가 필요합니다.' });
+        requireBlockerConsistency(current, changes);
         validateTaskAssignments(activeConfig.root, changes, activeConfig.project);
         const result = taskUpdate(activeConfig.root, taskMatch[1], changes, activeConfig.project);
         return json(response, 200, result);

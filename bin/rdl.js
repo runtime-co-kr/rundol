@@ -18,6 +18,7 @@ Usage:
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
   rdl contract show|next|check|trace --project <key> [--json]
+  rdl contract diagram --project <key> [--write] [--json]
   rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
   rdl check --links [--root <path>]
@@ -105,7 +106,7 @@ function parseBoardArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -118,6 +119,7 @@ function parseOperationArgs(argv) {
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
+    else if (value === '--write') options.write = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
@@ -381,7 +383,23 @@ async function main() {
       if (subcommand === 'check' && (contract.status === 'invalid' || contract.status === 'unsupported-schema' || (contract.enforcement === 'checkpoint' && contract.evaluation && contract.evaluation.violations.some((item) => item.code !== 'recommended-missing')))) return 1;
       return 0;
     }
-    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, trace, plan, set입니다.');
+    if (subcommand === 'diagram') {
+      const { workspaceLayout, selectProject } = require('../src/workspace');
+      const { projectArtifacts } = require('../src/document-contract');
+      const { runGit } = require('../src/git');
+      const { prepareCompositeDocuments, compositeViewState, writeCompositeViews } = require('../src/document-composite');
+      const layout = workspaceLayout(options.root);
+      const project = selectProject(layout, options.project);
+      const documents = prepareCompositeDocuments(projectArtifacts(project));
+      const head = runGit(['rev-parse', 'HEAD'], { cwd: project.root, allowFailure: true });
+      const revision = head.status === 0 ? head.stdout.trim() : '';
+      const result = options.write
+        ? Object.assign({ root: layout.root, project: project.key, revision }, writeCompositeViews(project.root, documents, revision))
+        : { root: layout.root, project: project.key, revision, directory: null, views: compositeViewState(project.root, documents, revision) };
+      printOperation(Object.assign({ action: options.write ? 'written' : 'computed' }, result), options.json);
+      return 0;
+    }
+    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, trace, plan, set, diagram입니다.');
     if (!PROFILE_NAMES.includes(options.profile)) throw new Error('--profile <lean|product|service|platform|assured>가 필요합니다.');
     if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
     const input = { name: options.profile };

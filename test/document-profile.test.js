@@ -31,14 +31,14 @@ const withOmission = profile.normalizeProfile({
   policy: { required: ['PRD', 'REQ'], recommended: [], onDemand: ['ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] }
 });
 assert.strictEqual(withOmission.omissions.SCR.absorbedBy, 'REQ');
-assert.deepStrictEqual(withOmission.omissions.SCR.sections, ['사용자 흐름', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것']);
+assert.deepStrictEqual(withOmission.omissions.SCR.sections, ['사용자 흐름', '전이', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것']);
 for (const type of profile.REGULAR_TYPES) assert(profile.DOCUMENT_SECTION_CATALOG[type].length > 0, `${type} must define document sections`);
 const rendered = profile.renderDocumentProfile(withOmission);
 assert.strictEqual(profile.validateDocumentProfile(`---\n${rendered}\n---\n`).status, 'valid');
 assert.strictEqual(profile.validateDocumentProfile(`---\n${rendered.replace('      after: [PRD]', '      after: [ARC]').replace('      after: [REQ]', '      after: [REQ, PRD]')}\n---\n`).status, 'valid', 'Recommended context may be cyclic because it never blocks authoring');
 assert(profile.validateDocumentProfile(`---\n${rendered.replace(/    SCR:\n      absorbedBy:[\s\S]*?(?=\n---|$)/u, '')}\n---\n`).errors.some((message) => message.includes('생략 처리')));
 
-const completeReq = { id: 'REQ-001', type: 'REQ', source: '# 요구사항\n## 사용자 흐름\n## 바인딩\n## 상태\n## 접근성과 반응형\n## 디자인에 없는 것\n' };
+const completeReq = { id: 'REQ-001', type: 'REQ', source: '# 요구사항\n## 사용자 흐름\n## 전이\n## 바인딩\n## 상태\n## 접근성과 반응형\n## 디자인에 없는 것\n' };
 const evaluation = evaluateDocumentContract(withOmission, [{ id: 'PRD-001', type: 'PRD', source: '# PRD' }, completeReq]);
 assert.strictEqual(evaluation.violations.filter((item) => item.code !== 'recommended-missing').length, 0);
 assert.strictEqual(evaluation.absorbed[0].satisfied, true);

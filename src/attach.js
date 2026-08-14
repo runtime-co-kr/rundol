@@ -110,7 +110,7 @@ function attachWorkspace(start, options) {
   });
   const exclude = gitExclude(root);
   const boundary = installBranchBoundary(root, { remote, project: settings.project });
-  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude, boundary };
+  return { root, remote, action: discovery.action === 'repaired' ? 'repaired' : 'attached', workspace: { branch: workspaceBranch, commit: workspaceCommit, worktree: workspace }, attached, exclude, boundary, composites: generateCompositeViews(attached) };
 }
 
 function repairWorkspace(start, options) {
@@ -134,7 +134,24 @@ function repairWorkspace(start, options) {
     const target = path.join(root, 'projects', key);
     return { project: key, branch, target, commit: runGit(['rev-parse', `refs/heads/${branch}`], { cwd: root }).stdout, created: ensureWorktree(root, target, branch) };
   });
-  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root), boundary: installBranchBoundary(root, { project: settings.project }) };
+  return { root, action: 'repaired', workspace: { branch: workspaceBranch, worktree: workspace }, attached, exclude: gitExclude(root), boundary: installBranchBoundary(root, { project: settings.project }), composites: generateCompositeViews(attached) };
+}
+
+function generateCompositeViews(attached) {
+  const { projectArtifacts } = require('./document-contract');
+  const { compositeIgnored, prepareCompositeDocuments, writeCompositeViews } = require('./document-composite');
+  return (attached || []).map((item) => {
+    if (!item.target || !fs.existsSync(item.target)) return { project: item.project, generated: false, reason: 'missing-worktree' };
+    if (!compositeIgnored(item.target)) return { project: item.project, generated: false, reason: 'not-ignored' };
+    try {
+      const head = runGit(['rev-parse', 'HEAD'], { cwd: item.target, allowFailure: true });
+      const documents = prepareCompositeDocuments(projectArtifacts({ root: item.target, documents: path.join(item.target, 'docs') }));
+      const result = writeCompositeViews(item.target, documents, head.status === 0 ? head.stdout.trim() : '', { ensureIgnore: false });
+      return { project: item.project, generated: true, directory: result.directory, views: result.views.map((view) => view.name) };
+    } catch (error) {
+      return { project: item.project, generated: false, reason: error.message };
+    }
+  });
 }
 
 function detachWorkspace(start, options) {
@@ -148,4 +165,4 @@ function detachWorkspace(start, options) {
   return { root, project: key, detached: true, target };
 }
 
-module.exports = { manifestSource, gitExclude, attachWorkspace, repairWorkspace, detachWorkspace, ensureWorktree, discoverWorkspace };
+module.exports = { manifestSource, gitExclude, attachWorkspace, repairWorkspace, detachWorkspace, ensureWorktree, discoverWorkspace, generateCompositeViews };

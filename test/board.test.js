@@ -102,6 +102,40 @@ async function testBoard() {
     assert.strictEqual(unregisteredAssignee.status, 400);
     assert(JSON.parse(unregisteredAssignee.body).error.includes('등록되지 않은 담당자'));
 
+    const taskHeaders = { 'Content-Type': 'application/json', 'X-Rundol-Token': 'test-session-token' };
+    const acceptanceCriteria = { 'AC-001': { text: '검증한다.', done: false } };
+    const waitingWithoutBlocker = await request(port, '/api/tasks', {
+      method: 'POST',
+      headers: taskHeaders,
+      body: JSON.stringify({ title: '대기 전환', status: 'waiting', acceptanceCriteria })
+    });
+    assert.strictEqual(waitingWithoutBlocker.status, 400);
+    assert(JSON.parse(waitingWithoutBlocker.body).error.includes('대기 상태로 바꾸려면'));
+
+    const incompleteBlocker = await request(port, '/api/tasks', {
+      method: 'POST',
+      headers: taskHeaders,
+      body: JSON.stringify({ title: '대기 전환', status: 'waiting', blocker: { waitingFor: 'MEMBER-001' }, acceptanceCriteria })
+    });
+    assert.strictEqual(incompleteBlocker.status, 400);
+    assert(JSON.parse(incompleteBlocker.body).error.includes('대기 사유에는'));
+
+    const unregisteredWaitingFor = await request(port, '/api/tasks', {
+      method: 'POST',
+      headers: taskHeaders,
+      body: JSON.stringify({ title: '대기 전환', status: 'waiting', blocker: { waitingFor: 'MEMBER-999', condition: '승인', since: '2026-08-14T00:00:00.000Z' }, acceptanceCriteria })
+    });
+    assert.strictEqual(unregisteredWaitingFor.status, 400);
+    assert(JSON.parse(unregisteredWaitingFor.body).error.includes('등록되지 않은 대기 대상'));
+
+    const blockerWithoutWaiting = await request(port, '/api/tasks', {
+      method: 'POST',
+      headers: taskHeaders,
+      body: JSON.stringify({ title: '대기 아님', status: 'todo', blocker: { waitingFor: 'MEMBER-001', condition: '승인', since: '2026-08-14T00:00:00.000Z' }, acceptanceCriteria })
+    });
+    assert.strictEqual(blockerWithoutWaiting.status, 400);
+    assert(JSON.parse(blockerWithoutWaiting.body).error.includes('대기 상태가 아닌'));
+
     const rejected = await request(port, '/api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': 'wrong' }, body: '{}' });
     assert.strictEqual(rejected.status, 403);
   } finally {

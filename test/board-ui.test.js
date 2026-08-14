@@ -68,4 +68,24 @@ assert(style.includes('.markdown-body code{color:var(--code-text)}'), 'Markdown 
 assert(style.includes('body.theme-light{--code-text:#176b3a}'), 'Light theme code text must use a readable foreground');
 assert(style.includes('body.theme-dark{--code-text:#aeeec6}'), 'Dark theme code text must preserve the dark foreground');
 
+assert(style.includes('.primary{color:var(--primary-text)}'), 'Primary buttons must use a theme-aware foreground token');
+assert(style.includes('body.theme-light{--primary-text:#fff}'), 'Light theme primary buttons must contrast against the dark accent fill');
+assert(style.includes('body.theme-dark{--primary-text:#092515}'), 'Dark theme primary buttons must keep their original foreground');
+assert(style.includes('.markdown-body pre.mermaid{background:var(--panel)}'), 'Mermaid blocks must use the panel surface instead of the code background');
+assert(style.includes('.mermaid .marker circle{fill:var(--panel)}'), 'Mermaid cardinality markers must not keep their hardcoded white fill');
+assert(app.includes("theme: 'base', themeVariables: mermaidThemeVariables()"), 'Mermaid must render with the Board palette instead of its built-in themes');
+assert(app.includes("lineColor: themeToken('--muted')"), 'Mermaid relationship lines must follow the Board palette');
+assert(!app.includes("theme: lightTheme() ? 'default' : 'dark'"), 'Mermaid must not fall back to its unthemed built-in palettes');
+assert(html.includes('id="close-dialog" type="button"'), 'Dialog close must not submit the task form');
+assert(html.includes('<button type="button" data-dialog-cancel="task-dialog">취소</button>'), 'Task dialog cancel must not submit the task form');
+assert(!html.includes('<button value="cancel">취소</button>'), 'Cancel must not rely on form submission with required fields present');
+assert(app.includes("el(button.dataset.dialogCancel).close('cancel')"), 'Dialog cancel must close the dialog explicitly');
+assert(html.includes('id="blocker-dialog"'), 'Waiting transitions must provide a blocker input dialog');
+assert(html.includes('id="blocker-waiting-for"'), 'Blocker input must capture the waiting target');
+assert(html.includes('id="blocker-condition"'), 'Blocker input must capture the release condition');
+assert(html.includes('id="blocker-since"'), 'Blocker input must capture the waiting start time');
+assert(app.includes('requestBlocker(task.blocker)'), 'Switching a task to waiting must collect blocker details first');
+assert(app.includes('queueTaskUpdate(task, task.blocker ? { status, blocker: null } : { status })'), 'Leaving waiting must clear the blocker in the same change');
+assert(app.includes('blockerText(task.blocker)'), 'Task detail must render structured blocker information');
+
 console.log('board UI tests passed');

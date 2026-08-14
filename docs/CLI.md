@@ -14,6 +14,7 @@ rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name
 rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
 rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
 rdl contract show|next|check|trace --project <key> [--json]
+rdl contract diagram --project <key> [--write] [--json]
 rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
 rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
 rdl check --links [--root <path>]
@@ -311,6 +312,19 @@ rdl contract trace --project memo --json
 ```
 
 `--implementation`은 기능별 구현 계약과 연결된 TST를 완료 게이트로 검사한다. 추적성은 frontmatter의 기능 ID와 직접 문서 링크에서 실행 시 계산한다. `contract trace`의 `persistedIndex`는 항상 `false`이며 별도 INDEX·목록·카탈로그·추적표 문서를 정본으로 만들지 않는다.
+
+## 합성 다이어그램
+
+```bash
+rdl contract diagram --project memo --json
+rdl contract diagram --project memo --write
+```
+
+여러 문서를 합친 다이어그램은 손으로 쓰지 않고 계산한다. 모든 `MOD`의 `erDiagram`이 데이터 관계 뷰로, 모든 `SCR`의 `flowchart`가 화면 전이 뷰로 합쳐진다. 엔티티 속성은 수명주기를 소유한 문서 것을, 화면 이름은 해당 `SCR`의 `title`을 쓴다. 두 문서가 같은 엔티티의 속성을 선언하면 `RDL-COMPOSE-001`, 전이가 존재하지 않는 화면을 가리키면 `RDL-COMPOSE-002`를 보고한다.
+
+`rdl check`도 같은 합성을 시도해 `RDL-COMPOSE-001`·`RDL-COMPOSE-002`를 보고하고, 생성 파일이 현재 정본과 다르면 `RDL-COMPOSE-003`으로 재생성을 알린다. 비교는 다이어그램 본문으로 하므로 commit만 움직인 경우는 stale이 아니고 생성 파일을 손으로 고친 경우는 stale이다. `rdl attach`는 연결하면서 생성 파일을 만들되, `.gitignore`에 `views/`가 없는 기존 프로젝트에서는 연결이 추적 파일을 바꾸지 않도록 건너뛴다.
+
+`--write`는 Vault의 Git 비추적 `views/`에 생성 파일을 만들고 프로젝트 `.gitignore`에 항목이 없으면 한 번 추가한다. Obsidian이 점으로 시작하는 폴더를 인덱싱하지 않으므로 `.rundol/`이 아니라 `views/`를 쓴다. 생성 파일은 정본이 아니며 commit하지 않는다. frontmatter의 `revision`이 현재 프로젝트 commit과 다르면 `stale`로 보고하고, 같은 입력으로 다시 생성하면 항상 같은 바이트가 나오므로 삭제해도 잃는 것이 없다.
 
 ## Debug와 토큰 사용량
 

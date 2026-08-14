@@ -8,6 +8,7 @@ const { validateDocumentProfile } = require('./document-profile');
 const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
 const { validateBoundaryMetadata } = require('./document-boundary');
 const { validateDocumentDiagram } = require('./document-diagram');
+const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
@@ -18,6 +19,9 @@ const FILE_PATTERN = /^[A-Z]{3}-\d{3,}-(?=.*[\uAC00-\uD7A3])[\uAC00-\uD7A3A-Za-z
 const TASK_ID_PATTERN = /^TASK-[A-Z0-9]{20,32}$/;
 const ALLOWED_TASK_STATES = new Set(['todo', 'doing', 'waiting', 'review', 'done']);
 const LEGACY_DOCUMENT_CODES = new Map([['SPC', 'REQ']]);
+const NON_CANONICAL_CODES = new Set(['NTE']);
+const REQUIRED_TAG_NAMESPACES = ['rundol/', 'artifact/', 'domain/', 'feature/'];
+const NOTE_TAG_NAMESPACES = ['rundol/'];
 const GOVERNANCE_HEADINGS = ['미션', '목표', '범위', '역할', '프로젝트 팀원', '이해관계자', '책임 매트릭스', '의사결정과 에스컬레이션', '위험과 제약', '협업 리듬', '완료 정의'];
 const GOVERNANCE_BLOCK_FIELDS = {
   ROLE: ['미션', '결정권', '주요 산출물', '에스컬레이션'],
@@ -54,7 +58,7 @@ function listMarkdownFiles(root) {
   const result = [];
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === 'templates' || entry.name.startsWith('.')) continue;
+      if (entry.name === 'templates' || entry.name === COMPOSITE_DIRECTORY || entry.name.startsWith('.')) continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) visit(full);
       else if (entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'INDEX.md') result.push(full);
@@ -66,7 +70,7 @@ function listMarkdownFiles(root) {
 
 function listVaultMarkdownFiles(root) {
   const result = [];
-  const excluded = new Set(['.git', '.obsidian', '.rundol', 'node_modules', '.npm-cache', 'templates']);
+  const excluded = new Set(['.git', '.obsidian', '.rundol', 'node_modules', '.npm-cache', 'templates', COMPOSITE_DIRECTORY]);
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       if (excluded.has(entry.name)) continue;
@@ -364,7 +368,8 @@ function checkLegacyWorkspace(start, options, scope) {
     const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
     if (aliases[0] !== artifactId) diagnostic(diagnostics, { code: 'RDL-DOC-007', file: doc.relativeFile, line: doc.frontmatter.locations.aliases, artifactId, message: 'aliases의 첫 값은 문서 ID와 같아야 합니다.' });
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
-    for (const namespace of ['rundol/', 'artifact/', 'domain/', 'feature/']) if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) diagnostic(diagnostics, { code: 'RDL-DOC-008', file: doc.relativeFile, line: doc.frontmatter.locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
+    const requiredNamespaces = NON_CANONICAL_CODES.has(typeof artifactId === 'string' ? artifactId.slice(0, 3) : '') ? NOTE_TAG_NAMESPACES : REQUIRED_TAG_NAMESPACES;
+    for (const namespace of requiredNamespaces) if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) diagnostic(diagnostics, { code: 'RDL-DOC-008', file: doc.relativeFile, line: doc.frontmatter.locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
     for (const issue of validateBoundaryMetadata(meta)) diagnostic(diagnostics, {
       code: issue.code,
       category: 'granularity',
@@ -441,7 +446,7 @@ function checkLegacyWorkspace(start, options, scope) {
     if (requirements[code] && !requirements[code].some((required) => relatedIds.includes(required))) diagnostic(diagnostics, { code: 'RDL-META-003', category: 'metadata', file: doc.relativeFile, artifactId: doc.id, message: `${code} 문서는 ${requirements[code].join(' 또는 ')} 관계가 필요합니다.` });
     for (const issue of validateDocumentDiagram(code, doc.source)) diagnostic(diagnostics, {
       code: issue.code,
-      category: 'model',
+      category: 'diagram',
       severity: 'warning',
       file: doc.relativeFile,
       artifactId: doc.id,
@@ -579,6 +584,18 @@ function checkWorkspaceStore(diagnostics, layout) {
   }
 }
 
+function checkCompositeViews(diagnostics, layout, project) {
+  const documents = prepareCompositeDocuments(projectArtifacts(project));
+  for (const issue of compositeIssues(documents)) diagnostic(diagnostics, {
+    code: issue.code, category: 'diagram', severity: 'warning', file: null, project: project.key, target: issue.target,
+    message: issue.message
+  });
+  for (const view of compositeDrift(project.root, documents)) diagnostic(diagnostics, {
+    code: 'RDL-COMPOSE-003', category: 'diagram', severity: 'warning', file: relative(layout.root, view.file), project: project.key, target: view.name,
+    message: `${view.title}가 현재 정본과 다릅니다. rdl contract diagram --project ${project.key} --write로 다시 생성하세요.`
+  });
+}
+
 function checkDocumentProfile(diagnostics, layout, project, settings) {
   if (!project.charter || !fs.existsSync(project.charter)) return;
   const source = fs.readFileSync(project.charter, 'utf8');
@@ -651,6 +668,7 @@ function checkWorkspace(start, options) {
   for (const project of projects) {
     checkProjectCharter(diagnostics, layout.root, project);
     checkDocumentProfile(diagnostics, layout, project, settings);
+    checkCompositeViews(diagnostics, layout, project);
     const result = checkLegacyWorkspace(layout.root, settings, project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
     documents += result.summary.documents + 1;

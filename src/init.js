@@ -6,6 +6,7 @@ const { workspaceLayout } = require('./workspace');
 const { gitRoot } = require('./git');
 const { manifestSource, gitExclude } = require('./attach');
 const { renderWorkspaceBoardConfig, renderProjectBoardConfig } = require('./board-presentation');
+const { COMPOSITE_DIRECTORY } = require('./document-composite');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
 const PROJECT_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -46,7 +47,7 @@ function writeProject(mount, key, name, schemaVersion) {
   fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
   atomicWrite(path.join(root, 'project.md'), renderProject(key, name));
   atomicWrite(path.join(root, 'board.json'), renderProjectBoardConfig());
-  atomicWrite(path.join(root, '.gitignore'), '.rundol/\n.obsidian/\n');
+  atomicWrite(path.join(root, '.gitignore'), `.rundol/\n.obsidian/\n${COMPOSITE_DIRECTORY}/\n`);
   if (schemaVersion >= 3) fs.mkdirSync(path.join(root, 'tasks'), { recursive: true });
   const obsidian = path.join(root, '.obsidian');
   fs.mkdirSync(obsidian, { recursive: true });

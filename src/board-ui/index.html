@@ -85,11 +85,21 @@
   <div id="scrim" class="scrim" hidden></div>
   <dialog id="task-dialog" aria-labelledby="task-form-heading">
     <form id="task-form" method="dialog">
-      <div class="dialog-heading"><div><p id="task-id" class="eyebrow">NEW TASK</p><h2 id="task-form-heading">태스크 추가</h2></div><button id="close-dialog" value="cancel" aria-label="닫기">×</button></div>
+      <div class="dialog-heading"><div><p id="task-id" class="eyebrow">NEW TASK</p><h2 id="task-form-heading">태스크 추가</h2></div><button id="close-dialog" type="button" data-dialog-cancel="task-dialog" aria-label="닫기">×</button></div>
       <label>제목<input id="task-title" required maxlength="160"></label><label>설명<textarea id="task-summary" rows="4"></textarea></label>
       <div class="form-grid"><label>상태<select id="task-status"></select></label><label>우선순위<select id="task-priority"><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label><label>담당자<select id="task-owner"><option value="">미지정</option></select></label></div>
       <label>완료조건<textarea id="task-acceptance" rows="3" placeholder="한 줄에 하나씩 입력"></textarea></label><label>연결 문서<textarea id="task-links" rows="2" placeholder="REQ-001"></textarea></label>
-      <div class="dialog-actions"><button value="cancel">취소</button><button id="save-task" class="primary" value="default">저장</button></div>
+      <div class="dialog-actions"><button type="button" data-dialog-cancel="task-dialog">취소</button><button id="save-task" class="primary" value="default">저장</button></div>
+    </form>
+  </dialog>
+  <dialog id="blocker-dialog" aria-labelledby="blocker-form-heading">
+    <form id="blocker-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">WAITING</p><h2 id="blocker-form-heading">대기 사유</h2></div><button type="button" data-dialog-cancel="blocker-dialog" aria-label="닫기">×</button></div>
+      <p class="dialog-hint">대기 상태에는 누구를 기다리는지, 무엇이 충족되면 풀리는지, 언제부터 기다렸는지가 모두 필요합니다.</p>
+      <label>대기 대상<select id="blocker-waiting-for" required></select></label>
+      <label>해제 조건<input id="blocker-condition" required maxlength="200" placeholder="예: API-003 리뷰 승인"></label>
+      <label>대기 시작<input id="blocker-since" type="datetime-local" required></label>
+      <div class="dialog-actions"><button type="button" data-dialog-cancel="blocker-dialog">취소</button><button id="save-blocker" class="primary" value="default">확인</button></div>
     </form>
   </dialog>
   <script src="/dompurify.js"></script>

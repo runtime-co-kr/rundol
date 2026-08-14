@@ -4,6 +4,41 @@
 
 ## [Unreleased]
 
+## [0.22.5] - 2026-08-14
+
+### Added
+
+- Extended `diagram-v1` to `SCR`. A screen document now declares the moves that leave it in a `전이` section with a Mermaid `flowchart`, canonical in the transition table above it. `rdl check` reports `RDL-SCREEN-001` when the diagram is missing, `RDL-SCREEN-002` when a node is not a `SCR` identifier, and `RDL-SCREEN-003` when an edge returns to its own screen.
+- Added `rdl contract diagram --project <key> [--write] [--json]`, which merges every `MOD` `erDiagram` into one data view and every `SCR` `flowchart` into one screen view. It reports `RDL-COMPOSE-001` when two documents claim attributes on the same entity and `RDL-COMPOSE-002` when a transition points at a screen that does not exist — defects no single document can see.
+- `--write` places the composite in the Vault's Git-ignored `views/` so Obsidian readers see the same picture the Board does, and adds the ignore entry once for projects created before this release.
+- `rdl check` now runs the same composition, so attempting the merge doubles as a consistency check: `RDL-COMPOSE-001` and `RDL-COMPOSE-002` surface without asking, and `RDL-COMPOSE-003` reports a generated view that no longer matches the canonical documents. The comparison reads the diagram body rather than the frontmatter, so a new commit alone is not drift and a hand-edited generated file is.
+- `rdl attach` and `rdl init`'s repair path generate the views while connecting a project. Projects whose `.gitignore` lacks the entry are skipped so that connecting never modifies a tracked file; one explicit `rdl contract diagram --write` adds it and later attaches generate automatically.
+
+### Changed
+
+- Screen transitions and screen states now have one owner each: moving to another `SCR` is a transition, changing what the current screen displays is a state. The `SCR` template ships both sections and the boundary between them.
+- Composite views are computed, never stored as canonical artifacts. The generator is deterministic — nodes and edges sort by identifier and nothing time-varying reaches the body — so the same inputs always produce the same bytes and an old view is reproduced by checking out that commit and regenerating. Generated files record their input documents and source commit, and report themselves stale once the canonical documents move past them.
+
+### Fixed
+
+- Moving a task to `대기` in the Board now asks who is being waited on, what releases the wait, and since when, and saves the status and the blocker as one change. Leaving `대기` clears the blocker in the same change. The API rejects a `waiting` status without a blocker, a blocker on any other status, and a waiting target that `project.md` does not register, so a transition can no longer be accepted and then reverted by `RDL-TASK-014` or `RDL-TASK-015`.
+- Board primary buttons now carry their own foreground token. The light theme turns the accent into near-black, which left `+ 새 태스크` and the task dialog's save button printing black on black; the label is now white there and unchanged in the dark theme.
+- The task dialog's `×` and `취소` buttons no longer submit the form. Both sat inside a `method="dialog"` form as implicit submit buttons, so dismissing an empty dialog tripped the title field's required-input validation instead of closing. Only the save button submits, and only it validates.
+- Mermaid diagrams render in the Board's own palette instead of Mermaid's built-in `default` and `dark` themes, which painted lavender entities in the light theme and greys the surrounding surface could not carry. Entity fills, borders, relationship lines, edge labels and attribute rows all read from the active theme tokens and re-render on a theme switch.
+- ER cardinality markers no longer keep Mermaid's hardcoded white circle fill, which showed as a solid white blob over every relationship line in the dark theme. The circle now takes the diagram's surface colour, and the diagram sits on the panel surface rather than the code-block background.
+- `rdl doc create NTE` produced an unusable note. The template never closed its frontmatter, so every generated note failed `rdl check` with `RDL-DOC-001` and blocked `rdl save` for the whole project; it also carried no `owner` line, so `--owner` had nothing to fill in. The template now closes its frontmatter and ships a body.
+- A screen title containing a double quote no longer breaks the composite view. The generated node label escaped nothing, so `로그인 "실패" 화면` emitted four quotes on one line and the diagram failed to parse.
+
+### Changed (notes)
+
+- `NTE` stays outside the artifact taxonomy, so it requires only the `rundol/` tag namespace rather than `artifact/`, `domain/`, and `feature/`. Every other metadata and identifier rule still applies, so a sub-numbered identifier such as `REQ-001-01` remains invalid; a note points at its subject through the file name and `related` instead.
+
+### Migration
+
+- Existing `SCR` documents report `RDL-SCREEN-001` until a `flowchart` is added to their `전이` section. This is advisory and blocks neither `rdl save` nor `rdl sync`.
+- When adding the section, move any branch that stays on the same screen out of it. A login failure that renders an error is a state, not a transition, and belongs to the `상태` table.
+- Never recover the transition graph from `TST` scenarios. Scenarios walk representative paths, so any edge no path crosses disappears without a trace.
+
 ## [0.22.4] - 2026-08-14
 
 ### Added

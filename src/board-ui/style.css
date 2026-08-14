@@ -13,3 +13,6 @@
 body.theme-dark{--code-text:#aeeec6}
 body.theme-light{--code-text:#176b3a}
 @media(prefers-color-scheme:light){body.theme-system{--code-text:#176b3a}}
+:root{--primary-text:#092515}body.theme-dark{--primary-text:#092515}body.theme-light{--primary-text:#fff}@media(prefers-color-scheme:light){body.theme-system{--primary-text:#fff}}.primary{color:var(--primary-text)}
+.markdown-body pre.mermaid{background:var(--panel)}.mermaid .marker circle{fill:var(--panel)}
+.dialog-hint{margin:0;color:var(--muted);font-size:13px}
