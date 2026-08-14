@@ -136,7 +136,7 @@
         },
         "AC-003": {
           "text": "두 테마 모두에서 노드명과 관계명이 배경과 충분한 대비로 읽힌다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "테마를 전환하면 현재 문서의 Mermaid 다이어그램이 선택한 테마로 정상 재렌더링된다.",
@@ -145,7 +145,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T01:52:59.810Z",
-      "updatedAt": "2026-08-14T11:42:32.726Z",
+      "updatedAt": "2026-08-14T11:42:33.686Z",
       "statusChangedAt": "2026-08-14T11:42:30.795Z",
       "externalRefs": [],
       "project": "rundol",
