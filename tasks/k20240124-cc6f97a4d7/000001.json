@@ -711,7 +711,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "REQ-010~012가 기능 ID별 독립 구현 계약을 갖고 범위나 통합 행으로 명세하지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "TST-002~003이 각 기능 ID를 독립 검증하며 contract trace가 모든 기능을 준비 상태로 계산한다.",
@@ -728,7 +728,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T00:26:40.372Z",
-      "updatedAt": "2026-08-14T00:26:52.098Z",
+      "updatedAt": "2026-08-14T00:50:30.804Z",
       "statusChangedAt": "2026-08-14T00:26:52.098Z",
       "externalRefs": [],
       "project": "rundol",
