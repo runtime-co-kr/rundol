@@ -47,6 +47,30 @@ The mandatory AI sequence is `rdl contract show`, `rdl contract next`, author or
 
 Rundol never persists a document index, catalog, list, or traceability matrix as a canonical artifact. Direct IDs and links remain authoritative; `rdl contract trace` computes the current view on demand.
 
+## Diagram convention
+
+`catalog.diagrams` in `rdl contract show --json` declares which document types carry a diagram, which Mermaid kinds are accepted, and which representation is canonical. `diagram-v1` covers `MOD`.
+
+A `MOD` document places a Mermaid `erDiagram` inside its `관계` section. `rdl check` reports `RDL-MODEL-001` when that diagram is missing.
+
+The diagram is always a derived view. Cardinality, field constraints, and lifecycle meaning stay canonical in the entity and relationship tables, and the document states that precedence in prose so a later reader cannot mistake which side wins. Attributes therefore carry a type and an optional `PK` or `FK` key and nothing else; restating constraints, defaults, or lifecycle in attribute comments duplicates the entity table and drifts from it, which `rdl check` reports as `RDL-MODEL-002`.
+
+Diagram scope follows document scope. Only entities the document owns show attributes. Entities owned elsewhere appear as bare nodes on relationship lines, with their owning document linked in the surrounding prose. This makes the artifact's responsibility boundary visible in the rendered view, and keeps a model document from silently becoming a second source of truth for a neighbor's fields.
+
+`conventions.<TYPE>.selection` decides what enters the diagram, one question per element:
+
+| 요소 | 질문 | 포함 | 제외 |
+|---|---|---|---|
+| 엔티티 | 이 문서가 수명주기를 소유하는가? | 소유 엔티티는 속성 포함 | 인접 엔티티는 속성 없이 노드만 |
+| 관계 | 저장된 필드가 이 참조를 만드는가? | FK·식별자로 저장된 참조 | 재생·계산으로만 성립하는 관계 |
+| 카디널리티 | 저장 시점 제약인가 조회 시점 제약인가? | 저장 시점 제약 | 조회 시점 제약 |
+
+The entity question is about lifecycle, not count. A dependent aggregate whose parts have no independent life is one owned entity group; separate lifecycles under one document are a split signal instead.
+
+The cardinality question is the one that silently fails. Relational notation can only state what is true at write time, so a read-time limit such as "at most one currently valid" belongs to the invariant or calculation section that computes it. Never draw a stored cardinality while labeling the line with the derived concept: the line then asserts two different clocks at once, and a reader cannot tell which one the document means. When a relationship table row mixes them the same way, the table is the defect and is fixed first, because the diagram derives from it.
+
+State transitions are excluded outright. Relational notation has no place for them, and the per-function 상태와 전이 contract already states them completely; a second rendering would add a drift surface without adding information.
+
 ## Canonical design routing
 
 In a Rundol-governed project, a generic `DESIGN.md` is not a canonical artifact. Route design intent by responsibility:

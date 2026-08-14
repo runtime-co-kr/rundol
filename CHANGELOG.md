@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-08-14
+
+### Added
+
+- Added the `diagram-v1` document diagram convention. `rdl contract show --json` now publishes `catalog.diagrams` so AI clients and the Board read the accepted Mermaid kinds, the canonical representation, and the selection criterion from the CLI instead of restating them.
+- `MOD` documents now carry a Mermaid `erDiagram` in their `관계` section. `rdl check` reports `RDL-MODEL-001` when it is missing and `RDL-MODEL-002` when attribute comments duplicate the entity table.
+- Added `conventions.<TYPE>.selection`, which decides each diagram element with one question: whether this document owns the entity's lifecycle, whether a stored field creates the relationship, and whether a cardinality is enforced at write time or at read time.
+- The `MOD` template ships a conforming `erDiagram` scaffold, and the governance skill and document standard state the same selection criterion.
+
+### Changed
+
+- The diagram stays a derived view: entity and relationship tables remain canonical for cardinality, field constraints, and lifecycle, and only entities a document owns show attributes. Both findings are warnings, so existing model documents keep passing `rdl check --strict` until they are updated.
+- State transitions stay out of relational notation. The per-function `상태와 전이` contract remains their only source of truth, so no second diagram kind was introduced.
+
+### Migration
+
+- Existing `MOD` documents report `RDL-MODEL-001` until an `erDiagram` is added to their `관계` section. This is advisory and blocks neither `rdl save` nor `rdl sync`.
+- When adding the diagram, check whether a relationship row states a read-time constraint such as "at most one currently valid" as its stored cardinality. Fix the table first, because the diagram derives from it.
+
 ## [0.22.3] - 2026-08-14
 
 ### Added

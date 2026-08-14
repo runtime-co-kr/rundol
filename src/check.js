@@ -7,6 +7,7 @@ const { parseFrontmatter } = require('./frontmatter');
 const { validateDocumentProfile } = require('./document-profile');
 const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
 const { validateBoundaryMetadata } = require('./document-boundary');
+const { validateDocumentDiagram } = require('./document-diagram');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
@@ -438,6 +439,15 @@ function checkLegacyWorkspace(start, options, scope) {
       message: `${code} 문서 유형은 더 이상 사용하지 않습니다. ${LEGACY_DOCUMENT_CODES.get(code)} 또는 관점별 설계문서로 이전하세요.`
     });
     if (requirements[code] && !requirements[code].some((required) => relatedIds.includes(required))) diagnostic(diagnostics, { code: 'RDL-META-003', category: 'metadata', file: doc.relativeFile, artifactId: doc.id, message: `${code} 문서는 ${requirements[code].join(' 또는 ')} 관계가 필요합니다.` });
+    for (const issue of validateDocumentDiagram(code, doc.source)) diagnostic(diagnostics, {
+      code: issue.code,
+      category: 'model',
+      severity: 'warning',
+      file: doc.relativeFile,
+      artifactId: doc.id,
+      target: issue.target || null,
+      message: issue.message
+    });
   }
 
   const implementation = validateImplementationTrace(canonicalDocuments.filter((doc) => doc.id && ID_PATTERN.test(doc.id)).map((doc) => ({

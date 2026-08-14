@@ -9,6 +9,7 @@ const {
 } = require('./document-profile');
 const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
 const { CONTRACT_VERSION, IMPLEMENTATION_TYPES, REQUIRED_FIELDS_BY_TYPE, implementationTrace } = require('./implementation-contract');
+const { DIAGRAM_VERSION, DIAGRAM_CONVENTIONS } = require('./document-diagram');
 
 function documentContractCatalog() {
   const templateRoot = path.resolve(__dirname, '..', 'docs', 'templates');
@@ -36,6 +37,12 @@ function documentContractCatalog() {
       requiredFunctionFields: REQUIRED_FIELDS_BY_TYPE,
       grouping: '여러 기능을 한 문서에 둘 수 있지만 범위·행·수용 기준·테스트에서 기능 ID를 묶지 않고 각각 완전하게 작성합니다.',
       traceability: '기능 ID와 문서 직접 링크에서 계산하며 별도 인덱스 문서를 저장하지 않습니다.'
+    },
+    diagrams: {
+      version: DIAGRAM_VERSION,
+      types: Object.keys(DIAGRAM_CONVENTIONS),
+      conventions: DIAGRAM_CONVENTIONS,
+      authority: '다이어그램은 표에서 파생한 보조 뷰이며 표와 어긋나면 표를 따릅니다.'
     },
     sections,
     defaultOmissions: DEFAULT_OMISSIONS
