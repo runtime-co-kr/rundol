@@ -111,6 +111,45 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSALRC34A5D3332AF205643": {
+      "title": "[버그] Mermaid ER 다이어그램의 테마별 렌더링 수정",
+      "summary": "Mermaid ER 다이어그램에서 연결선이 비정상적으로 두껍게 채워지고 노드, 텍스트와 선의 대비가 라이트 및 다크 모드에서 깨진다.",
+      "owner": "MEMBER-002",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-011",
+        "TST-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "ER 다이어그램의 관계선이 라이트 모드에서 정상적인 선 두께와 형태로 표시된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "ER 다이어그램의 관계선이 다크 모드에서 정상적인 선 두께와 형태로 표시된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "두 테마 모두에서 노드명과 관계명이 배경과 충분한 대비로 읽힌다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "테마를 전환하면 현재 문서의 Mermaid 다이어그램이 선택한 테마로 정상 재렌더링된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:52:59.810Z",
+      "updatedAt": "2026-08-14T01:52:59.810Z",
+      "statusChangedAt": "2026-08-14T01:52:59.810Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
