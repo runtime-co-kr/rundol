@@ -37,6 +37,41 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSSALO0H1661FE191C3B555F": {
+      "title": "[버그] 태스크 추가 모달의 닫기와 취소 동작 수정",
+      "summary": "빈 제목 상태에서 X 또는 취소를 누르면 모달이 닫히지 않고 제목 필드의 필수 입력 검증이 실행된다. 취소 동작이 submit으로 처리되지 않도록 수정한다.",
+      "owner": "MEMBER-002",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-022",
+        "TST-012"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "제목이 비어 있어도 X 버튼을 누르면 검증 메시지 없이 모달이 닫힌다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "제목이 비어 있어도 취소 버튼을 누르면 검증 메시지 없이 모달이 닫힌다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "저장 버튼을 누를 때만 필수 입력 검증과 태스크 생성 요청이 실행된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-14T01:52:55.504Z",
+      "updatedAt": "2026-08-14T01:52:55.504Z",
+      "statusChangedAt": "2026-08-14T01:52:55.504Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
