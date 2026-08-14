@@ -134,7 +134,7 @@ el('task-form').addEventListener('submit', async (event) => { if (event.submitte
 el('sync').addEventListener('click', async () => { try { message('동기화를 실행하고 있습니다.'); await api(projectPath('/sync'), { method: 'POST', headers: { 'X-Rundol-Token': token } }); await loadSnapshot(true); message('동기화를 완료했습니다.'); } catch (error) { message(error.message, true); } });
 function ensureContractSettings() {
   if (el('contract-settings')) return;
-  el('settings-view').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="content-section contract-settings"><div class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></div><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
+  el('settings-view').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="content-section contract-settings"><div class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></div><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><p id="implementation-contract-summary" class="control-hint"></p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
 function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
 function setSuggestionState(row, value, selected) {
@@ -158,12 +158,14 @@ function syncContractRow(row) {
 function renderContractSettings() {
   ensureContractSettings();
   const contract = state.snapshot.contract;
-  if (!contract || !contract.profile) { el('contract-summary').textContent = contract ? contract.status : 'legacy-unconfigured'; el('contract-rules').innerHTML = ''; return; }
+  if (!contract || !contract.profile) { el('contract-summary').textContent = contract ? contract.status : 'legacy-unconfigured'; el('implementation-contract-summary').textContent = ''; el('contract-rules').innerHTML = ''; return; }
   const profile = contract.profile;
   el('contract-profile').value = profile.name;
   el('contract-enforcement').value = profile.enforcement;
   el('contract-summary').textContent = `${contract.status} · revision ${profile.revision} · 위반 ${contract.evaluation.violations.length}건`;
   const catalog = contract.catalog;
+  const trace = contract.traceability && contract.traceability.summary;
+  el('implementation-contract-summary').textContent = `${catalog.implementation.version} · 기능별 독립 명세(묶음 금지) · 계산된 추적성 ${trace ? `${trace.ready}/${trace.functions} 준비` : '0/0 준비'} · 별도 인덱스 없음`;
   el('contract-rules').innerHTML = catalog.documentTypes.map((type) => {
     const status = Object.keys(profile.policy).find((key) => profile.policy[key].includes(type));
     const omission = profile.omissions[type] || catalog.defaultOmissions[type];

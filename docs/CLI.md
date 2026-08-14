@@ -13,9 +13,9 @@ rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
 rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
 rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
-rdl contract show|next|check --project <key> [--json]
+rdl contract show|next|check|trace --project <key> [--json]
 rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
-rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
+rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
 rdl check --links [--root <path>]
 rdl check --tasks [--root <path>]
 rdl git init|boundary [--root <path>] [--project <key>] [--json]
@@ -38,7 +38,7 @@ rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|
 rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
 rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
 rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
-               [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
+               [--function-id <기능-ID>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
 rdl doc migrate [--project <key>] [--apply] [--json]
 rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
 rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
@@ -298,10 +298,19 @@ rdl conflict resolve --project memo --strategy ours
 
 ```bash
 rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001 --scope "메모 제품의 사용자 문제와 성공 기준" --exclude "개별 메모 작성 동작"
-rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --scope "저장된 메모를 조건으로 검색하는 동작" --exclude "메모 작성과 삭제" --related PRD-001
+rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --scope "저장된 메모를 조건으로 검색하는 동작" --exclude "메모 작성과 삭제" --function-id MEM-01 --related PRD-001
 ```
 
 지원 유형은 PRD, GLS, ARC, REQ, SCR, MOD, API, ADR, TST, RUN, NTE다. CLI는 다음 3자리 번호, 한글 중심 파일명, 실제 등록 멤버 owner, 실제 파일명을 사용한 Wiki link와 필수 태그를 적용한다. NTE를 제외한 새 정규 문서는 `--scope`로 하나의 독립 검토 책임을, 반복 가능한 `--exclude`로 인접하지만 책임지지 않는 범위를 선언한다. 소유자·수용 기준·변경 주기·소비자가 달라지면 같은 유형이어도 별도 문서로 분리한다. REQ·SCR·MOD·API·TST·RUN은 `--related`가 필요하다. 본문에서 아직 결정하지 못한 값은 필드를 삭제하지 않고 `작성 필요`로 남긴다.
+
+REQ·SCR·MOD·API·TST는 반복 가능한 `--function-id`로 구현 기능을 선언한다. 한 파일에 여러 기능을 둘 수는 있지만 명세를 묶을 수는 없다. `PAY-01~04`, `PAY-01, PAY-02` 같은 범위·통합 행은 오류이며, 모든 기능 ID가 단독 문서일 때와 같은 수준의 독립 섹션, 유형별 필수 구성요소, 수용 기준과 검증 증거를 가져야 한다. 미정 업무 규칙이나 `원본 문서 적용` 같은 위임 문구도 구현 준비 완료로 인정하지 않는다.
+
+```bash
+rdl check --project memo --strict --implementation
+rdl contract trace --project memo --json
+```
+
+`--implementation`은 기능별 구현 계약과 연결된 TST를 완료 게이트로 검사한다. 추적성은 frontmatter의 기능 ID와 직접 문서 링크에서 실행 시 계산한다. `contract trace`의 `persistedIndex`는 항상 `false`이며 별도 INDEX·목록·카탈로그·추적표 문서를 정본으로 만들지 않는다.
 
 ## Debug와 토큰 사용량
 

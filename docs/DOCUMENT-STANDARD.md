@@ -113,11 +113,15 @@ Obsidian link 대상에는 alias가 아니라 실제 물리 파일명을 사용�
 등록 멤버와 관련 문서를 검증하면서 문서를 만들려면 CLI를 사용한다.
 
 ```bash
-rdl doc create REQ "로그인 요구사항" --owner MEMBER-001 --related PRD-001 --project memo
-rdl check --project memo --strict
+rdl doc create REQ "로그인 요구사항" --owner MEMBER-001 --scope "한 사용자의 로그인 처리" --exclude "회원가입과 비밀번호 재설정" --function-id AUTH-01 --related PRD-001 --project memo
+rdl check --project memo --strict --implementation
 ```
 
 CLI는 유형별 기본 메타와 태그를 채우지만, 생성 뒤에도 수용 기준과 실제 설계 내용을 작성해야 한다. `project.md`, 역할·멤버·이해관계자는 일반 문서 생성 명령으로 대체하지 않는다.
+
+REQ·SCR·MOD·API·TST의 정본 단위는 기능 ID다. 같은 파일에 여러 기능을 배치할 수 있지만 기능 범위, 표의 한 행, 공통 설명 또는 공통 수용 기준으로 묶지 않는다. 각 기능은 단독 문서로 작성했을 때와 같은 유형별 필수 구성요소를 독립적으로 채운다. `rdl check --implementation`은 이 계약, 미확정 규칙, REQ와 TST의 기능별 연결을 검사한다.
+
+추적성은 기능 ID와 직접 링크에서 계산한다. 별도 `INDEX.md`, 문서 목록, 카탈로그 또는 추적성 매트릭스를 정본으로 만들지 않는다. 필요할 때 `rdl contract trace --project <key> --json`으로 현재 계산 결과를 조회한다.
 
 ## 기존 SPC 문서 이전
 

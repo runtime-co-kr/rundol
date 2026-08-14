@@ -7,6 +7,7 @@ const { parseFrontmatter } = require('./frontmatter');
 const { validateDocumentProfile } = require('./document-profile');
 const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
 const { validateBoundaryMetadata } = require('./document-boundary');
+const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -148,6 +149,16 @@ function resolveArtifact(registry, id) {
   return registry.get(id) || null;
 }
 
+function uniqueDocuments(documents) {
+  const seen = new Set();
+  return documents.filter((document) => {
+    const key = document.file || document.id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function checkReference(list, fileRegistry, artifactRegistry, sourceDoc, rawValue, values) {
   const target = wikiTarget(rawValue);
   if (!target) {
@@ -237,6 +248,20 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
     if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
     if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
     if (task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))) diagnostic(list, { code: 'RDL-TASK-019', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크는 TST 문서를 연결해야 합니다.' });
+    const implementationLinked = (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
+    if (task.implementationReadiness && task.implementationReadiness !== 'atomic-v1') diagnostic(list, { code: 'RDL-IMPL-023', category: 'implementation', file: taskFile, artifactId: taskId, message: `지원하지 않는 구현 준비도 계약입니다: ${task.implementationReadiness}` });
+    if (task.status === 'done' && implementationLinked && task.implementationReadiness === 'atomic-v1') {
+      const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
+      for (const issue of validateTaskImplementationReadiness(linked)) diagnostic(list, {
+        code: issue.code,
+        category: 'implementation',
+        severity: issue.severity,
+        file: taskFile,
+        artifactId: taskId,
+        target: issue.target || issue.artifactId || null,
+        message: issue.message
+      });
+    }
     if (task.status === 'review' && (!Array.isArray(task.externalRefs) || task.externalRefs.length === 0)) diagnostic(list, { code: 'RDL-TASK-020', category: 'task', file: taskFile, artifactId: taskId, message: 'review 태스크는 PR 또는 검토 대상 externalRef가 필요합니다.' });
   }
 
@@ -347,6 +372,16 @@ function checkLegacyWorkspace(start, options, scope) {
       artifactId,
       message: issue.message
     });
+    for (const issue of validateImplementationDocument(doc, options)) diagnostic(diagnostics, {
+      code: issue.code,
+      category: 'implementation',
+      severity: issue.severity,
+      file: doc.relativeFile,
+      line: issue.line || doc.frontmatter.locations.implementationContract || 2,
+      artifactId,
+      target: issue.target || null,
+      message: issue.message
+    });
     if (artifactId) {
       for (const alias of [artifactId].concat(aliases)) {
         if (registry.has(alias) && registry.get(alias) !== doc) diagnostic(diagnostics, { code: 'RDL-DOC-009', file: doc.relativeFile, artifactId, target: alias, message: `중복 ID 또는 alias입니다: ${alias}` });
@@ -405,10 +440,33 @@ function checkLegacyWorkspace(start, options, scope) {
     if (requirements[code] && !requirements[code].some((required) => relatedIds.includes(required))) diagnostic(diagnostics, { code: 'RDL-META-003', category: 'metadata', file: doc.relativeFile, artifactId: doc.id, message: `${code} 문서는 ${requirements[code].join(' 또는 ')} 관계가 필요합니다.` });
   }
 
+  const implementation = validateImplementationTrace(canonicalDocuments.filter((doc) => doc.id && ID_PATTERN.test(doc.id)).map((doc) => ({
+    id: doc.id,
+    type: doc.id.slice(0, 3),
+    file: doc.file,
+    source: doc.source
+  })), options);
+  for (const issue of implementation.issues) diagnostic(diagnostics, {
+    code: issue.code,
+    category: 'implementation',
+    severity: issue.severity,
+    file: null,
+    artifactId: issue.artifactId || null,
+    target: issue.target || null,
+    message: issue.message
+  });
+
   const canonicalPaths = new Set(canonicalDocuments.map((doc) => path.resolve(doc.file)));
   for (const doc of vaultDocuments) {
     if (canonicalPaths.has(path.resolve(doc.file))) continue;
     const artifactId = doc.frontmatter && typeof doc.frontmatter.data.id === 'string' ? doc.frontmatter.data.id : null;
+    if (isIndexArtifact(doc.frontmatter && doc.frontmatter.data.title, doc.file)) diagnostic(diagnostics, {
+      code: 'RDL-IMPL-010',
+      category: 'implementation',
+      file: doc.relativeFile,
+      artifactId,
+      message: '별도 인덱스·목록·추적표 문서는 만들지 않습니다. 직접 링크와 rdl contract trace를 사용하세요.'
+    });
     if (path.basename(doc.file).toLowerCase() === 'design.md') diagnostic(diagnostics, {
       code: 'RDL-DOC-011',
       category: 'metadata',

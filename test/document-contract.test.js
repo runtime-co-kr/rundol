@@ -37,7 +37,7 @@ try {
   assert(shown.catalog.granularity.splitWhen.length >= 4);
   const next = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
   assert(next.ready.some((item) => item.type === 'PRD'));
-  const guidedReq = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--scope', '사용자가 항목을 등록하는 동작', '--exclude', '항목 조회와 삭제', '--related', 'project:demo', '--project', 'demo', '--root', root, '--json'], root);
+  const guidedReq = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--scope', '사용자가 항목을 등록하는 동작', '--exclude', '항목 조회와 삭제', '--function-id', 'ITEM-01', '--related', 'project:demo', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(guidedReq.type, 'REQ');
   const afterReq = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(afterReq.blocked.length, 0);

@@ -82,8 +82,8 @@ rdl git init                       # settings와 등록 프로젝트 전체 연�
 
 ```bash
 # 프로젝트 문서를 표준 경로와 메타데이터로 생성
-rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001
-rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --related PRD-001
+rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001 --scope "메모 제품의 문제와 성공 기준" --exclude "개별 기능 동작"
+rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --scope "메모 검색 동작" --exclude "작성과 삭제" --function-id MEM-01 --related PRD-001
 
 # 태스크 생성과 상태 변경
 rdl task add "검색 구현" --project memo --owner MEMBER-001 \

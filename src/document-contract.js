@@ -8,6 +8,7 @@ const {
   parseDocumentProfile, validateDocumentProfile, applyToProject, profileImpact
 } = require('./document-profile');
 const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
+const { CONTRACT_VERSION, IMPLEMENTATION_TYPES, REQUIRED_FIELDS_BY_TYPE, implementationTrace } = require('./implementation-contract');
 
 function documentContractCatalog() {
   const templateRoot = path.resolve(__dirname, '..', 'docs', 'templates');
@@ -28,6 +29,13 @@ function documentContractCatalog() {
       requiredFields: ['scope', 'excludes'],
       typeResponsibilities: TYPE_GUIDANCE,
       splitWhen: SPLIT_SIGNALS
+    },
+    implementation: {
+      version: CONTRACT_VERSION,
+      types: IMPLEMENTATION_TYPES,
+      requiredFunctionFields: REQUIRED_FIELDS_BY_TYPE,
+      grouping: '여러 기능을 한 문서에 둘 수 있지만 범위·행·수용 기준·테스트에서 기능 ID를 묶지 않고 각각 완전하게 작성합니다.',
+      traceability: '기능 ID와 문서 직접 링크에서 계산하며 별도 인덱스 문서를 저장하지 않습니다.'
     },
     sections,
     defaultOmissions: DEFAULT_OMISSIONS
@@ -131,8 +139,10 @@ function loadDocumentContract(start, projectKey) {
   if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, evaluation: null, catalog };
   if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, errors: validation.errors, evaluation: null, catalog };
   const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
-  const evaluation = evaluateDocumentContract(profile, projectArtifacts(project));
-  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, evaluation, catalog };
+  const artifacts = projectArtifacts(project);
+  const evaluation = evaluateDocumentContract(profile, artifacts);
+  const traceability = implementationTrace(artifacts);
+  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, evaluation, traceability, catalog };
 }
 
 function assertDocumentCreationAllowed(start, projectKey, type) {

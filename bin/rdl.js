@@ -17,9 +17,9 @@ Usage:
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
-  rdl contract show|next|check --project <key> [--json]
+  rdl contract show|next|check|trace --project <key> [--json]
   rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
-  rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict]
+  rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
   rdl git init|boundary [--root <path>] [--project <key>] [--json]
@@ -42,7 +42,7 @@ Usage:
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
-                 [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
+                 [--function-id <기능-ID>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
   rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
@@ -76,6 +76,7 @@ Options:
   --link         연결할 문서 또는 문서 섹션. 여러 번 지정할 수 있습니다.
   --scope        문서가 책임지는 하나의 독립 검토 단위입니다.
   --exclude      인접하지만 이 문서가 책임지지 않는 범위입니다. 여러 번 지정할 수 있습니다.
+  --function-id  REQ·SCR·MOD·API·TST가 추적하는 기능 ID입니다. 여러 번 지정할 수 있습니다.
   --force        기존 개인 Obsidian 설정 또는 Rundol이 관리하지 않는 스킬도 덮어씁니다.
   --port <n>     Local board port. Defaults to an available random port.
   --no-open      Start the board without opening a browser.
@@ -104,7 +105,7 @@ function parseBoardArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -117,7 +118,7 @@ function parseOperationArgs(argv) {
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -131,6 +132,7 @@ function parseOperationArgs(argv) {
       else if (value === '--summary') options.summary = argv[i];
       else if (value === '--scope') options.scope = argv[i];
       else if (value === '--exclude') options.excludes.push(argv[i]);
+      else if (value === '--function-id') options.functionIds.push(argv[i]);
       else if (value === '--priority') options.priority = argv[i];
       else if (value === '--reviewer') options.reviewers.push(argv[i]);
       else if (value === '--stakeholder') options.stakeholders.push(argv[i]);
@@ -160,12 +162,13 @@ function printOperation(result, json) {
 }
 
 function parseArgs(argv) {
-  const options = { root: process.cwd(), project: null, json: false, strict: false, links: false, tasks: false, artifactId: null };
+  const options = { root: process.cwd(), project: null, json: false, strict: false, implementation: false, links: false, tasks: false, artifactId: null };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
     else if (value === '--strict') options.strict = true;
+    else if (value === '--implementation') options.implementation = true;
     else if (value === '--links') options.links = true;
     else if (value === '--tasks') options.tasks = true;
     else if (value === '--root' || value === '--project') {
@@ -371,14 +374,14 @@ async function main() {
     const subcommand = argv.shift();
     const options = parseOperationArgs(argv);
     if (options.positional.length) throw new Error('rdl contract 명령은 위치 인수를 사용하지 않습니다.');
-    if (['show', 'next', 'check'].includes(subcommand)) {
+    if (['show', 'next', 'check', 'trace'].includes(subcommand)) {
       const contract = loadDocumentContract(options.root, options.project);
-      const result = subcommand === 'next' ? Object.assign({ root: contract.root, project: contract.project, status: contract.status }, contract.evaluation || {}) : contract;
+      const result = subcommand === 'next' ? Object.assign({ root: contract.root, project: contract.project, status: contract.status }, contract.evaluation || {}) : subcommand === 'trace' ? Object.assign({ root: contract.root, project: contract.project }, contract.traceability) : contract;
       printOperation(result, options.json);
       if (subcommand === 'check' && (contract.status === 'invalid' || contract.status === 'unsupported-schema' || (contract.enforcement === 'checkpoint' && contract.evaluation && contract.evaluation.violations.some((item) => item.code !== 'recommended-missing')))) return 1;
       return 0;
     }
-    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, plan, set입니다.');
+    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, trace, plan, set입니다.');
     if (!PROFILE_NAMES.includes(options.profile)) throw new Error('--profile <lean|product|service|platform|assured>가 필요합니다.');
     if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
     const input = { name: options.profile };
@@ -612,7 +615,7 @@ async function main() {
     const options = parseOperationArgs(argv);
     const type = options.positional.shift();
     const title = options.positional.join(' ').trim();
-    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes });
+    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes, functionIds: options.functionIds });
     printOperation(result, options.json);
     if (DEBUG_CONTEXT) recordAction(options.root, { action: 'document.create', actualExecutor: 'cli', artifactId: result.id });
     return 0;

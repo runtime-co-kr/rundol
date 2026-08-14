@@ -18,11 +18,18 @@ function samePath(left, right) {
   return normalized(left) === normalized(right);
 }
 
-function primaryBranch(root) {
+function currentBranch(root) {
   const symbolic = runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd: root, allowFailure: true });
   if (symbolic.status === 0 && symbolic.stdout) return symbolic.stdout;
   const fallback = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root, allowFailure: true });
   return fallback.status === 0 && fallback.stdout && fallback.stdout !== 'HEAD' ? fallback.stdout : null;
+}
+
+function primaryBranch(root, remote) {
+  const remoteName = remote || 'origin';
+  const symbolic = runGit(['symbolic-ref', '--quiet', '--short', `refs/remotes/${remoteName}/HEAD`], { cwd: root, allowFailure: true });
+  if (symbolic.status === 0 && symbolic.stdout.startsWith(`${remoteName}/`)) return symbolic.stdout.slice(remoteName.length + 1);
+  return currentBranch(root);
 }
 
 function worktrees(root) {
@@ -57,10 +64,11 @@ function hookStatus(root) {
   };
 }
 
-function expectedRoles(root, projectKey) {
+function expectedRoles(root, projectKey, remote) {
   const layout = workspaceLayout(root);
-  const codeBranch = primaryBranch(root);
-  return [{ role: 'code', project: null, branch: codeBranch, worktree: layout.root }]
+  const codeBranch = currentBranch(layout.root);
+  const defaultBranch = primaryBranch(layout.root, remote);
+  return [{ role: 'code', project: null, branch: codeBranch, defaultBranch, worktree: layout.root }]
     .concat(layout.schemaVersion >= 6 ? [{ role: 'workspace', project: null, branch: 'rundol/workspace', worktree: path.join(layout.root, 'projects', 'workspace') }] : [])
     .concat(layout.projects.filter((project) => !projectKey || project.key === projectKey).map((project) => ({ role: 'project', project: project.key, branch: project.branch, worktree: project.root })));
 }
@@ -68,7 +76,7 @@ function expectedRoles(root, projectKey) {
 function branchBoundaryStatus(start, options) {
   const root = workspaceLayout(start || process.cwd()).root;
   const actual = worktrees(root);
-  const roles = expectedRoles(root, options && options.project);
+  const roles = expectedRoles(root, options && options.project, options && options.remote);
   const violations = [];
   if (roles[0] && /^rundol\//u.test(roles[0].branch || '')) violations.push({ code: 'RDL-BRANCH-005', role: 'code', actualBranch: roles[0].branch, message: '저장소 루트에는 Rundol 전용 브랜치를 체크아웃할 수 없습니다.' });
   for (const role of roles) {
@@ -85,7 +93,7 @@ function branchBoundaryStatus(start, options) {
   }
   const hook = hookStatus(root);
   if (!hook.managed) violations.push({ code: 'RDL-BRANCH-004', role: 'push', message: hook.status === 'missing' ? 'Rundol pre-push 경계가 설치되지 않았습니다.' : '관리되지 않는 pre-push hook이 경계 설치를 막고 있습니다.', hook: hook.file });
-  return { root, valid: violations.length === 0, primaryBranch: roles[0] && roles[0].branch, pushDefault: runGit(['config', '--local', '--get', 'push.default'], { cwd: root, allowFailure: true }).stdout || null, hook, roles, worktrees: actual, violations };
+  return { root, valid: violations.length === 0, primaryBranch: roles[0] && roles[0].defaultBranch, currentCodeBranch: roles[0] && roles[0].branch, pushDefault: runGit(['config', '--local', '--get', 'push.default'], { cwd: root, allowFailure: true }).stdout || null, hook, roles, worktrees: actual, violations };
 }
 
 function validatePushLines(source, options) {
@@ -175,7 +183,7 @@ function configurePush(root, remote, roles) {
 function installBranchBoundary(start, options) {
   const settings = options || {};
   const root = workspaceLayout(start || process.cwd()).root;
-  const roles = expectedRoles(root, settings.project);
+  const roles = expectedRoles(root, settings.project, settings.remote);
   const hook = installHook(root);
   configurePush(root, settings.remote || 'origin', roles);
   return Object.assign(branchBoundaryStatus(root, settings), { hook });
@@ -194,4 +202,4 @@ function assertWorktreeBoundary(input) {
   return { root, role: input.role, project: input.project || null, branch, worktree: actualRoot };
 }
 
-module.exports = { HOOK_MARKER, USER_HOOK_NAME, primaryBranch, worktrees, hookStatus, branchBoundaryStatus, validatePushLines, installBranchBoundary, assertWorktreeBoundary };
+module.exports = { HOOK_MARKER, USER_HOOK_NAME, currentBranch, primaryBranch, worktrees, hookStatus, branchBoundaryStatus, validatePushLines, installBranchBoundary, assertWorktreeBoundary };

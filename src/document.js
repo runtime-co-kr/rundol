@@ -8,6 +8,10 @@ const { reserveDocumentId } = require('./document-sequence');
 const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
 const { assertBoundaryInput } = require('./document-boundary');
+const {
+  IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, isIndexArtifact,
+  renderImplementationMetadata, renderFunctionContracts
+} = require('./implementation-contract');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
 const RELATED_REQUIRED = new Set(['REQ', 'SCR', 'MOD', 'API', 'TST', 'RUN']);
@@ -36,6 +40,7 @@ function registry(project) {
 function safeTitle(value) {
   const title = String(value || '').trim();
   if (!title) throw new Error('문서 제목이 필요합니다.');
+  if (isIndexArtifact(title)) throw new Error('별도 인덱스·목록·추적표 문서는 만들지 않습니다. 직접 링크와 rdl contract trace를 사용하세요.');
   const filename = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   if (!filename) throw new Error(`파일명으로 사용할 수 없는 문서 제목입니다: ${title}`);
   return { title, filename };
@@ -67,6 +72,9 @@ function createDocument(start, input) {
   const contract = assertDocumentCreationAllowed(layout.root, project.key, type);
   const title = safeTitle(input.title);
   const boundary = type === 'NTE' ? null : assertBoundaryInput(type, { scope: input.scope, excludes: input.excludes });
+  const functionIds = Array.from(new Set((input.functionIds || []).map((value) => String(value).trim()).filter(Boolean)));
+  if (IMPLEMENTATION_TYPES.includes(type) && functionIds.length === 0) throw new Error(`${type} 문서는 --function-id <기능-ID>가 하나 이상 필요합니다. 여러 기능을 한 문서에 담을 수 있지만 기능별 계약은 독립적으로 작성해야 합니다.`);
+  for (const functionId of functionIds) if (!FUNCTION_ID_PATTERN.test(functionId)) throw new Error(`기능 ID 형식이 잘못되었습니다: ${functionId}`);
   const collaboration = readCollaboration(layout.root, project.key);
   const owner = collaboration.members.find((member) => member.id === input.owner);
   if (!owner) throw new Error(`project.md에 등록된 --owner <MEMBER-ID>가 필요합니다: ${input.owner || '(없음)'}`);
@@ -90,12 +98,14 @@ function createDocument(start, input) {
     .replaceAll('<topic>', input.feature || title.filename.toLowerCase());
   if (boundary) source = source.replace(/^scope:\s*.*$/mu, `scope: ${yamlQuote(boundary.scope)}`)
     .replace(/^excludes:\s*\r?\n(?:\s{2}-[^\r\n]*\r?\n?)+/mu, `excludes:\n${boundary.excludes.map((value) => `  - ${yamlQuote(value)}`).join('\n')}\n`);
+  if (functionIds.length) source = source.replace(/^granularity:\s*bounded-v1\s*$/mu, `granularity: bounded-v1\n${renderImplementationMetadata(functionIds)}`);
+  if (IMPLEMENTATION_TYPES.includes(type)) source += renderFunctionContracts(type, functionIds);
   const titleTokens = ['<프로젝트명>', '<제품명>', '<요구사항 제목>', '<화면 또는 상호작용 제목>', '<데이터 영역 제목>', '<인터페이스 제목>', '<결정 제목>', '<검증 범위 제목>', '<서비스/작업 운영 절차>', '<노트 제목>'];
   for (const token of titleTokens) source = source.replaceAll(token, title.title);
   source = source.replace(/<([^>]+)>/g, (_, hint) => `작성 필요 — ${hint}`);
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
-  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, granularityGuidance: boundary ? boundary.guidance : null };
+  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null };
 }
 
 function yamlQuote(value) {

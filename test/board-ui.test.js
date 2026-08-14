@@ -25,6 +25,8 @@ assert(app.includes('data-contract-section'), 'Contract editor must expose requi
 assert(app.includes('data-component-input'), 'Contract editor must allow free-form required components');
 assert(app.includes('data-component-suggestion'), 'Contract editor must suggest template-derived components');
 assert(app.includes('data-component-remove'), 'Contract editor must allow required component removal');
+assert(app.includes('implementation-contract-summary'), 'Contract settings must expose implementation contract status');
+assert(app.includes('기능별 독립 명세(묶음 금지)'), 'Contract settings must make the no-grouping rule visible');
 assert(app.includes("status === 'disabled'"), 'Omission choices must only activate for disabled document types');
 assert(!app.includes('placeholder="사용자 흐름, 접근성"'), 'Contract editor must not present placeholder text as contract data');
 assert(app.includes("projectPath('/contract')"), 'Contract editor must persist through the typed contract API');

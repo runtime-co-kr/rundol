@@ -13,7 +13,7 @@ Every canonical Markdown artifact keeps these fields: `id`, `type`, `kind`, `tit
 
 Each project is registered by `projects/project-<project-key>.yaml` in the `rundol/workspace` branch and owns a separate `rundol/<project-key>` branch mounted at `projects/<project-key>/`. This mount is also the project's Obsidian Vault. Project-local `.rundol/state` and `.rundol/logs` are Git-ignored execution data; shared Client manifests and lease events belong to `rundol/workspace`. Do not combine independent projects into one state branch.
 
-The repository root's primary branch owns application code and release assets. The `rundol/workspace` branch owns only cross-project registry and collaboration state. Each `rundol/<project-key>` branch owns only that project's charter, canonical documents, Board presentation, and tasks. `rdl git init` installs a managed pre-push boundary across all linked worktrees; `rdl git boundary` must be valid before persistence or synchronization. A local ref must push only to the identically named remote ref.
+The repository root's current code branch owns application code and release assets. Its default branch name is discovered from the remote's `origin/HEAD`, so `main`, `master`, and custom repository standards are all valid. The `rundol/workspace` branch owns only cross-project registry and collaboration state. Each `rundol/<project-key>` branch owns only that project's charter, canonical documents, Board presentation, and tasks. `rdl git init` installs a managed pre-push boundary across all linked worktrees; `rdl git boundary` must be valid before persistence or synchronization. A local ref must push only to the identically named remote ref.
 
 New canonical documents also carry the CLI-authored boundary contract: `granularity: bounded-v1`, one concrete `scope`, and one or more `excludes`. The scope states one independently reviewable responsibility. Split same-type material when owner or approver, acceptance criteria, lifecycle or review cadence, or primary consumers differ. Contract type presence is inventory state, not evidence that the subject area is complete.
 
@@ -40,6 +40,12 @@ The responsibility matrix identifies Responsible, Accountable, Consulted, and In
 - Contract changes are explicit and revisioned. Inspect impact before saving and never delete existing documents as a side effect.
 
 The mandatory AI sequence is `rdl contract show`, `rdl contract next`, author or absorb content, `rdl contract check`, and finally `rdl check --strict`.
+
+## Atomic implementation contract
+
+`REQ`, `SCR`, `MOD`, `API`, and `TST` declare every implemented function with `functionIds` and `implementationContract: atomic-v1`. Several functions may share a file, but their specifications never share a range, combined row, placeholder, acceptance criterion, or test. Each function keeps the complete type-specific fields it would have in a standalone document. Implementation starts only after `rdl check --strict --implementation` succeeds for the linked REQ and TST.
+
+Rundol never persists a document index, catalog, list, or traceability matrix as a canonical artifact. Direct IDs and links remain authoritative; `rdl contract trace` computes the current view on demand.
 
 ## Canonical design routing
 

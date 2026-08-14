@@ -14,6 +14,7 @@ require('./branch-boundary.test');
 require('./guided.test');
 require('./document-profile.test');
 require('./document-boundary.test');
+require('./implementation-contract.test');
 require('./document-contract.test');
 require('./document-migration.test');
 require('./git.test');

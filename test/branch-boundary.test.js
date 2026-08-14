@@ -105,8 +105,31 @@ function testUnbornPrimaryBranch() {
   }
 }
 
+function testRemoteDefaultBranch() {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-boundary-default-'));
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-boundary-default-remote-'));
+  try {
+    git(remote, ['init', '--bare']);
+    initializeRepository(temporary);
+    git(temporary, ['remote', 'add', 'origin', remote]);
+    rdl(temporary, ['init', 'demo', '--name', 'Demo']);
+    for (const branch of ['master', 'trunk']) {
+      git(temporary, ['update-ref', `refs/remotes/origin/${branch}`, 'refs/heads/main']);
+      git(temporary, ['symbolic-ref', 'refs/remotes/origin/HEAD', `refs/remotes/origin/${branch}`]);
+      const status = branchBoundaryStatus(temporary, { project: 'demo', remote: 'origin' });
+      assert.strictEqual(status.primaryBranch, branch);
+      assert.strictEqual(status.currentCodeBranch, 'main');
+      assert.strictEqual(status.valid, true);
+    }
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+    fs.rmSync(remote, { recursive: true, force: true });
+  }
+}
+
 testPushValidation();
 testInstalledBoundary();
 testExistingHookPreserved();
 testUnbornPrimaryBranch();
+testRemoteDefaultBranch();
 process.stdout.write('branch boundary tests passed\n');

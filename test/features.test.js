@@ -55,7 +55,7 @@ function testDocumentAndDebugCommands() {
   const prd = rdl(temporary, ['doc', 'create', 'PRD', '메모 제품 요구사항', '--owner', 'MEMBER-001', '--scope', '메모 제품의 사용자 문제와 성공 기준', '--exclude', '개별 메모 작성 동작']);
     assert.strictEqual(prd.id, 'PRD-001');
     assert(prd.relativeFile.includes('/docs/prd/'));
-  const req = rdl(temporary, ['doc', 'create', 'REQ', '메모 작성', '--owner', 'MEMBER-001', '--scope', '사용자가 새 메모를 저장하는 동작', '--exclude', '메모 검색과 삭제', '--related', 'PRD-001']);
+  const req = rdl(temporary, ['doc', 'create', 'REQ', '메모 작성', '--owner', 'MEMBER-001', '--scope', '사용자가 새 메모를 저장하는 동작', '--exclude', '메모 검색과 삭제', '--function-id', 'MEM-01', '--related', 'PRD-001']);
     assert.strictEqual(req.id, 'REQ-001');
     assert(req.relativeFile.includes('/docs/requirements/'));
     const checked = rdl(temporary, ['check', '--strict']);

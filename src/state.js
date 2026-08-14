@@ -425,6 +425,7 @@ function taskCreate(start, input) {
     const project = selectProject(workspaceLayout(config.root), config.project || task.project, true);
     task.project = project.key;
   }
+  if ((task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)))) task.implementationReadiness = 'atomic-v1';
   parsed.tasks[id] = task;
   const commit = persistTaskChange(config, {
     document: parsed,
