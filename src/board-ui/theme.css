@@ -1,24 +1,235 @@
-.topbar { background: var(--topbar, #0d120fee); }
-.brand-mark { color: var(--brand-text, #082414); }
-.markdown-body pre { background: var(--code-bg, #070a08); }
+/* Rundol Board 토큰.
+   이 파일이 색 토큰 전부를 소유하고 style.css는 이름만 참조한다.
+   테마를 바꿀 때 컴포넌트 규칙은 한 줄도 건드리지 않는다.
 
-body.theme-light,
-body.theme-system {
-  --topbar: #ffffffee;
-  --code-bg: #f1f1f1;
-  --brand-text: #fff;
+   이름 규칙은 Huly(hcengineering/platform, EPL-2.0)를 따랐다.
+     --{역할}-{상태}-{속성}
+   속성 접미사(BackgroundColor·BorderColor·TextColor·OverlayColor)가 있어서
+   토큰을 어디에 쓰는지 이름만 보고 안다.
+
+   색조도 같은 계열을 따랐다. Huly·Plane·Linear 모두 표면은 채도가 거의 없는
+   중립 회색이고 색은 강조색에만 쓴다. Plane의 중립 램프는 hue 230이지만
+   chroma가 0.0003~0.009로 사실상 무채색이고, 브랜드만 chroma 0.10~0.17이다.
+   표면까지 물들이면 화면 전체가 탁해진다.
+
+   hover는 표면마다 색을 정하지 않고 반투명 오버레이 하나를 얹는다. */
+
+/* ── 원시 색 ──────────────────────────────────────────────
+   중립: hue 225 근처를 아주 옅게만 섞어 차가운 회색을 만든다.
+   강조: 채도는 여기에만 있다. */
+
+:root {
+  --raw-indigo-300: #a5b4fc;
+  --raw-indigo-400: #818cf8;
+  --raw-indigo-500: #6366f1;
+  --raw-indigo-600: #4f52d9;
+  --raw-indigo-700: #4338ca;
+  --raw-indigo-subtle-dark: #1e1e3a;
+  --raw-indigo-subtle-light: #eef0fe;
+
+  --raw-amber-dark: #e0b252;
+  --raw-amber-light: #92610a;
+  --raw-red-dark: #f0837e;
+  --raw-red-light: #c03d38;
+  --raw-green-dark: #57cc99;
+  --raw-green-light: #12784b;
+  --raw-blue-dark: #7ab0f5;
+  --raw-blue-light: #2f6fbd;
+
+  --raw-gray-0: #ffffff;
+  --raw-gray-25: #fbfbfc;
+  --raw-gray-50: #f7f8f9;
+  --raw-gray-100: #f0f1f4;
+  --raw-gray-200: #e5e7eb;
+  --raw-gray-300: #d5d8de;
+  --raw-gray-400: #9ba1ad;
+  --raw-gray-500: #6f7684;
+  --raw-gray-600: #565c69;
+  --raw-gray-700: #2b2f38;
+  --raw-gray-750: #23262d;
+  --raw-gray-800: #1c1f25;
+  --raw-gray-850: #17191e;
+  --raw-gray-900: #131519;
+  --raw-gray-950: #0f1113;
+  --raw-gray-1000: #0b0c0e;
 }
 
-body.theme-dark {
-  --topbar: #0d120fee;
-  --code-bg: #070a08;
-  --brand-text: #082414;
+/* ── 치수 ─────────────────────────────────────────────── */
+
+:root {
+  --spacing-0_5: 4px;
+  --spacing-1: 8px;
+  --spacing-1_5: 12px;
+  --spacing-2: 16px;
+  --spacing-3: 24px;
+  --spacing-4: 32px;
+  --spacing-6: 48px;
+
+  --min-BorderRadius: 4px;
+  --small-BorderRadius: 6px;
+  --medium-BorderRadius: 8px;
+  --large-BorderRadius: 12px;
+  --round-BorderRadius: 999px;
+
+  --control-Height: 34px;
+  --row-MinHeight: 44px;
+  --topbar-Height: 52px;
+  --nav-Width: 248px;
+  --context-Width: 300px;
+
+  --caption-FontSize: 12px;
+  --small-FontSize: 13px;
+  --body-FontSize: 15px;
+  --title-FontSize: 18px;
 }
 
-@media (prefers-color-scheme: dark) {
+/* ── 다크(기본) ───────────────────────────────────────── */
+
+:root {
+  color-scheme: dark;
+
+  --surface-00-BackgroundColor: var(--raw-gray-1000);
+  --surface-01-BackgroundColor: var(--raw-gray-900);
+  --surface-01-BorderColor: var(--raw-gray-750);
+  --surface-02-BackgroundColor: var(--raw-gray-850);
+  --surface-03-BackgroundColor: var(--raw-gray-800);
+  --surface-raised-BackgroundColor: #0f1113ee;
+  --surface-code-BackgroundColor: var(--raw-gray-1000);
+
+  /* 어떤 표면 위에든 얹는 상호작용 틴트. 표면별 hover 색을 없앤다. */
+  --ui-hover-OverlayColor: #ffffff0d;
+  --ui-active-OverlayColor: #ffffff17;
+
+  --field-BackgroundColor: var(--raw-gray-950);
+  --field-BorderColor: var(--raw-gray-700);
+  --field-hover-BorderColor: var(--raw-gray-600);
+
+  --control-BackgroundColor: var(--raw-gray-850);
+  --control-BorderColor: var(--raw-gray-700);
+
+  --accent-BackgroundColor: var(--raw-indigo-500);
+  --accent-hover-BackgroundColor: var(--raw-indigo-600);
+  --accent-subtle-BackgroundColor: var(--raw-indigo-subtle-dark);
+  --accent-BorderColor: var(--raw-indigo-500);
+  --accent-TextColor: var(--raw-indigo-300);
+  --on-accent-TextColor: #ffffff;
+
+  --primary-TextColor: #eceef2;
+  --secondary-TextColor: #9aa1ad;
+  --tertiary-TextColor: var(--raw-gray-500);
+  --code-TextColor: var(--raw-indigo-300);
+  --brand-mark-TextColor: #ffffff;
+
+  --divider-BorderColor: var(--raw-gray-750);
+  --hairline-BorderColor: #ffffff0f;
+
+  --warning-Color: var(--raw-amber-dark);
+  --danger-Color: var(--raw-red-dark);
+  --success-Color: var(--raw-green-dark);
+  --info-Color: var(--raw-blue-dark);
+
+  --focus-Ring: 0 0 0 3px #6366f14d;
+  --small-BoxShadow: 0 1px 2px #00000059;
+  --medium-BoxShadow: 0 8px 24px #00000073;
+}
+
+/* ── 라이트 ───────────────────────────────────────────────
+   라이트는 두 경우에 켜진다: 사용자가 고정했거나(theme-light),
+   system인데 운영체제가 라이트이거나. CSS에는 규칙 집합을 재사용하는 문법이
+   없어 아래 두 블록은 값이 같아야 한다. 한쪽만 고치면 어긋난다. */
+
+body.theme-light {
+  color-scheme: light;
+
+  --surface-00-BackgroundColor: var(--raw-gray-50);
+  --surface-01-BackgroundColor: var(--raw-gray-0);
+  --surface-01-BorderColor: var(--raw-gray-200);
+  --surface-02-BackgroundColor: var(--raw-gray-50);
+  --surface-03-BackgroundColor: var(--raw-gray-100);
+  --surface-raised-BackgroundColor: #ffffffee;
+  --surface-code-BackgroundColor: var(--raw-gray-100);
+
+  --ui-hover-OverlayColor: #0b0c0e0a;
+  --ui-active-OverlayColor: #0b0c0e14;
+
+  --field-BackgroundColor: var(--raw-gray-0);
+  --field-BorderColor: var(--raw-gray-300);
+  --field-hover-BorderColor: var(--raw-gray-400);
+
+  --control-BackgroundColor: var(--raw-gray-0);
+  --control-BorderColor: var(--raw-gray-300);
+
+  --accent-BackgroundColor: var(--raw-indigo-600);
+  --accent-hover-BackgroundColor: var(--raw-indigo-700);
+  --accent-subtle-BackgroundColor: var(--raw-indigo-subtle-light);
+  --accent-BorderColor: var(--raw-indigo-600);
+  --accent-TextColor: var(--raw-indigo-700);
+  --on-accent-TextColor: #ffffff;
+
+  --primary-TextColor: #16181d;
+  --secondary-TextColor: var(--raw-gray-600);
+  --tertiary-TextColor: var(--raw-gray-500);
+  --code-TextColor: var(--raw-indigo-700);
+  --brand-mark-TextColor: #ffffff;
+
+  --divider-BorderColor: var(--raw-gray-200);
+  --hairline-BorderColor: #0b0c0e12;
+
+  --warning-Color: var(--raw-amber-light);
+  --danger-Color: var(--raw-red-light);
+  --success-Color: var(--raw-green-light);
+  --info-Color: var(--raw-blue-light);
+
+  --focus-Ring: 0 0 0 3px #4f52d933;
+  --small-BoxShadow: 0 1px 2px #0b0c0e14;
+  --medium-BoxShadow: 0 8px 24px #0b0c0e1f;
+}
+
+@media (prefers-color-scheme: light) {
   body.theme-system {
-    --topbar: #0d120fee;
-    --code-bg: #070a08;
-    --brand-text: #082414;
+    color-scheme: light;
+
+    --surface-00-BackgroundColor: var(--raw-gray-50);
+    --surface-01-BackgroundColor: var(--raw-gray-0);
+    --surface-01-BorderColor: var(--raw-gray-200);
+    --surface-02-BackgroundColor: var(--raw-gray-50);
+    --surface-03-BackgroundColor: var(--raw-gray-100);
+    --surface-raised-BackgroundColor: #ffffffee;
+    --surface-code-BackgroundColor: var(--raw-gray-100);
+
+    --ui-hover-OverlayColor: #0b0c0e0a;
+    --ui-active-OverlayColor: #0b0c0e14;
+
+    --field-BackgroundColor: var(--raw-gray-0);
+    --field-BorderColor: var(--raw-gray-300);
+    --field-hover-BorderColor: var(--raw-gray-400);
+
+    --control-BackgroundColor: var(--raw-gray-0);
+    --control-BorderColor: var(--raw-gray-300);
+
+    --accent-BackgroundColor: var(--raw-indigo-600);
+    --accent-hover-BackgroundColor: var(--raw-indigo-700);
+    --accent-subtle-BackgroundColor: var(--raw-indigo-subtle-light);
+    --accent-BorderColor: var(--raw-indigo-600);
+    --accent-TextColor: var(--raw-indigo-700);
+    --on-accent-TextColor: #ffffff;
+
+    --primary-TextColor: #16181d;
+    --secondary-TextColor: var(--raw-gray-600);
+    --tertiary-TextColor: var(--raw-gray-500);
+    --code-TextColor: var(--raw-indigo-700);
+    --brand-mark-TextColor: #ffffff;
+
+    --divider-BorderColor: var(--raw-gray-200);
+    --hairline-BorderColor: #0b0c0e12;
+
+    --warning-Color: var(--raw-amber-light);
+    --danger-Color: var(--raw-red-light);
+    --success-Color: var(--raw-green-light);
+    --info-Color: var(--raw-blue-light);
+
+    --focus-Ring: 0 0 0 3px #4f52d933;
+    --small-BoxShadow: 0 1px 2px #0b0c0e14;
+    --medium-BoxShadow: 0 8px 24px #0b0c0e1f;
   }
 }

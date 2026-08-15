@@ -62,17 +62,36 @@ assert(app.includes('documentTypeLabel(documentValue)'), 'Document cards must us
 assert(app.includes('documentStateLabel(documentValue.state)'), 'Document cards must use the shared state vocabulary');
 assert(html.includes('data-view="operations">운영 상태'), 'Sidebar management labels must use consistent Korean terminology');
 assert(html.includes('data-view="settings">설정'), 'Sidebar settings label must use consistent Korean terminology');
-assert(style.includes('.markdown-body{max-width:none;width:100%}'), 'Markdown documents must use the available reader width');
-assert(style.includes('#board{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));overflow:visible}'), 'Task Board columns must wrap without an inner scrollbar');
-assert(style.includes('.markdown-body code{color:var(--code-text)}'), 'Markdown code must use a theme-aware foreground token');
-assert(style.includes('body.theme-light{--code-text:#176b3a}'), 'Light theme code text must use a readable foreground');
-assert(style.includes('body.theme-dark{--code-text:#aeeec6}'), 'Dark theme code text must preserve the dark foreground');
+const theme = fs.readFileSync(path.join(uiRoot, 'theme.css'), 'utf8');
 
-assert(style.includes('.primary{color:var(--primary-text)}'), 'Primary buttons must use a theme-aware foreground token');
-assert(style.includes('body.theme-light{--primary-text:#fff}'), 'Light theme primary buttons must contrast against the dark accent fill');
-assert(style.includes('body.theme-dark{--primary-text:#092515}'), 'Dark theme primary buttons must keep their original foreground');
-assert(style.includes('.markdown-body pre.mermaid{background:var(--panel)}'), 'Mermaid blocks must use the panel surface instead of the code background');
-assert(style.includes('.mermaid .marker circle{fill:var(--panel)}'), 'Mermaid cardinality markers must not keep their hardcoded white fill');
+// 구조 스타일시트는 색을 직접 쓰지 않는다. 하나라도 hex가 있으면 테마 전환이 그 지점에서 깨진다.
+const structuralHex = style.split('\n').filter((line) => /#[0-9a-fA-F]{3,8}\b/.test(line) && !line.trim().startsWith('/*'));
+assert.deepStrictEqual(structuralHex, [], `style.css는 색 토큰만 참조해야 합니다: ${structuralHex.join(' | ')}`);
+
+// 색 토큰은 theme.css가 소유하고 세 모드를 모두 정의한다.
+assert(theme.includes('body.theme-light'), 'theme.css must map the fixed light theme');
+assert(theme.includes('prefers-color-scheme: light'), 'theme.css must map system light through the media query');
+for (const token of ['--code-TextColor', '--on-accent-TextColor', '--surface-01-BackgroundColor', '--ui-hover-OverlayColor']) {
+  const occurrences = theme.split(token).length - 1;
+  assert(occurrences >= 3, `${token}은 다크와 라이트 두 경로 모두에서 정의되어야 합니다 (현재 ${occurrences}회)`);
+}
+
+// hover는 표면마다 색을 새로 짓지 않고 오버레이 토큰 하나를 공유한다.
+assert(style.includes('var(--ui-hover-OverlayColor)'), 'Interactive surfaces must share the hover overlay token');
+
+assert(style.includes('max-width: none'), 'Markdown documents must use the available reader width');
+assert(/#board\s*\{[^}]*grid-auto-flow:\s*row/u.test(style), 'Task Board columns must wrap without an inner scrollbar');
+assert(/#board\s*\{[^}]*overflow:\s*visible/u.test(style), 'Task Board must not add an inner scrollbar');
+assert(style.includes('.markdown-body code'), 'Markdown code must use a theme-aware foreground token');
+assert(style.includes('color: var(--code-TextColor)'), 'Markdown code colour must come from the theme');
+assert(style.includes('color: var(--on-accent-TextColor)'), 'Primary buttons must use a theme-aware foreground token');
+assert(/pre\.mermaid\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid blocks must use the panel surface instead of the code background');
+assert(/\.mermaid \.marker circle\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid cardinality markers must not keep their hardcoded white fill');
+
+// 목록 행은 겹침을 막는 두 속성이 항상 같이 있어야 한다.
+assert(/\.task-row > \*[^{]*\{[^}]*min-width:\s*0/u.test(style), 'List cells must be allowed to shrink below their content');
+assert(/\.task-row > \*[^{]*\{[^}]*text-overflow:\s*ellipsis/u.test(style), 'List cells must truncate instead of overflowing their track');
+assert(style.includes('.theme-options button.active'), 'The theme picker must show which mode is selected');
 assert(app.includes("theme: 'base', themeVariables: mermaidThemeVariables()"), 'Mermaid must render with the Board palette instead of its built-in themes');
 assert(app.includes("lineColor: themeToken('--muted')"), 'Mermaid relationship lines must follow the Board palette');
 assert(!app.includes("theme: lightTheme() ? 'default' : 'dark'"), 'Mermaid must not fall back to its unthemed built-in palettes');

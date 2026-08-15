@@ -9,36 +9,38 @@
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark">R</span><span><b>Rundol</b><small>Workspace</small></span></a>
-    <nav class="primary-nav" aria-label="주요 화면">
-      <button data-view="home" class="nav-item active">홈</button>
-      <button data-view="documents" class="nav-item">문서</button>
-      <button data-view="tasks" class="nav-item">태스크</button>
-    </nav>
-    <div class="top-actions">
-      <button id="menu-button" class="mobile-only" aria-label="탐색 열기">☰</button>
-      <label class="sr-only" for="project-switcher">프로젝트</label>
-      <select id="project-switcher"></select>
-      <label class="sr-only" for="current-member">현재 사용자</label>
-      <select id="current-member" title="현재 사용자"><option value="">사용자 선택</option></select>
-      <button id="health" class="health" data-view="operations"><span class="health-dot"></span><span id="health-label">상태 확인</span></button>
-      <button id="refresh" aria-label="로컬 새로고침">↻</button>
-      <button id="settings-button" data-view="settings" aria-label="설정">⚙</button>
-      <button id="context-button" class="mobile-only" aria-label="Context 열기">◫</button>
-    </div>
-  </header>
-
   <div class="workspace-shell">
     <aside class="navigation-panel" aria-label="Workspace 탐색">
-      <div class="panel-title"><span>탐색</span><button id="collapse-nav" aria-label="탐색 접기">‹</button></div>
+      <div class="sidebar-head">
+        <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark">R</span><span><b>Rundol</b><small>Workspace</small></span></a>
+        <button id="collapse-nav" class="icon-button" aria-label="탐색 접기">‹</button>
+      </div>
+      <label class="sr-only" for="project-switcher">프로젝트</label>
+      <select id="project-switcher"></select>
       <label class="search"><span>⌕</span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
+      <nav class="primary-nav" aria-label="주요 화면">
+        <button data-view="home" class="nav-item active">홈</button>
+        <button data-view="documents" class="nav-item">문서</button>
+        <button data-view="tasks" class="nav-item">태스크</button>
+      </nav>
       <section><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
       <section><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
-      <section class="utility-nav"><h2>관리</h2><button data-view="people">사람과 역할</button><button data-view="operations">운영 상태 <span id="operation-count" class="badge"></span></button><button data-view="settings">설정</button></section>
+      <section class="utility-nav"><h2>관리</h2><button data-view="people">사람과 역할</button><button data-view="operations">운영 상태 <span id="operation-count" class="badge"></span></button><button id="settings-button" data-view="settings">설정</button></section>
+      <div class="sidebar-foot">
+        <label class="sr-only" for="current-member">현재 사용자</label>
+        <select id="current-member" title="현재 사용자"><option value="">사용자 선택</option></select>
+        <div class="sidebar-foot-actions">
+          <button id="health" class="health" data-view="operations"><span class="health-dot"></span><span id="health-label">상태 확인</span></button>
+          <button id="refresh" class="icon-button" aria-label="로컬 새로고침">↻</button>
+        </div>
+      </div>
     </aside>
 
     <main class="main-content" tabindex="-1">
+      <div class="mobile-bar">
+        <button id="menu-button" class="icon-button mobile-only" aria-label="탐색 열기">☰</button>
+        <button id="context-button" class="icon-button mobile-only" aria-label="Context 열기">◫</button>
+      </div>
       <div id="message" role="status" aria-live="polite"></div>
       <section id="home-view" class="view">
         <header class="page-heading"><div><p class="eyebrow">WORKSPACE HOME</p><h1>오늘 확인할 작업</h1><p>문서, 검토 요청과 동기화 상태를 한곳에서 확인합니다.</p></div></header>
@@ -61,7 +63,8 @@
       <section id="tasks-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">TASKS</p><h1 id="tasks-heading">전체 태스크</h1><p id="tasks-description">프로젝트의 모든 작업을 목록과 Board로 확인합니다.</p></div><div class="segmented"><button id="task-list-mode" class="active">목록</button><button id="task-board-mode">Board</button></div></header>
         <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
-        <div class="toolbar"><select id="owner"><option value="">모든 담당자</option></select><select id="priority"><option value="">모든 우선순위</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select><button id="new-task" class="primary">+ 새 태스크</button></div>
+        <div class="toolbar"><select id="owner"><option value="">모든 담당자</option></select><select id="priority"><option value="">모든 우선순위</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select><button id="new-task">새 태스크</button></div>
+        <form id="quick-add" class="quick-add"><span class="quick-add-mark">+</span><input id="quick-add-title" maxlength="160" placeholder="제목을 입력하고 Enter를 누르면 바로 추가됩니다" aria-label="태스크 빠른 추가"><button class="primary" id="quick-add-save">추가</button></form>
         <div id="task-list" class="task-table"></div><div id="board" hidden></div>
       </section>
 
@@ -72,7 +75,38 @@
 
       <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="card-grid"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="card-grid"></div></section></div></section>
       <section id="operations-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">OPERATIONS</p><h1>상태와 복구</h1></div></header><div id="operation-status" class="operation-grid"></div><section class="content-section"><h2>편집 임대</h2><div id="leases" class="card-grid"></div></section></section>
-      <section id="settings-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header><div class="settings-grid"><section><h2>화면 모드</h2><p>운영체제 설정을 따르거나 다크·라이트 모드를 고정합니다.</p><div class="theme-options"><button id="theme-system">시스템</button><button id="theme-dark">다크</button><button id="theme-light">라이트</button></div></section><section><h2>Clients</h2><div id="clients" class="card-grid"></div></section><section><h2>동기화 정책</h2><p>현재 원격은 <code>origin</code>입니다. 자동 push 정책은 CLI 설정을 따릅니다.</p><button id="sync">변경 저장·동기화</button></section></div></section>
+      <section id="settings-view" class="view" hidden>
+        <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="설정 항목">
+            <button data-settings-section="settings-appearance" class="active">모양</button>
+            <button data-settings-section="settings-sync">동기화</button>
+            <button data-settings-section="settings-clients">Clients</button>
+            <button data-settings-section="presentation-settings">문서 표시</button>
+            <button data-settings-section="contract-settings">문서 계약</button>
+          </nav>
+          <div id="settings-panels" class="settings-panels">
+            <section id="settings-appearance" class="settings-panel">
+              <header><h2>모양</h2><p>이 브라우저에만 적용되며 Workspace 설정을 바꾸지 않습니다.</p></header>
+              <div class="setting-row">
+                <div><strong>화면 모드</strong><p>운영체제 설정을 따르거나 다크·라이트를 고정합니다.</p></div>
+                <div class="setting-control"><div class="theme-options" role="group" aria-label="화면 모드"><button id="theme-system">시스템</button><button id="theme-dark">다크</button><button id="theme-light">라이트</button></div></div>
+              </div>
+            </section>
+            <section id="settings-sync" class="settings-panel">
+              <header><h2>동기화</h2><p>자동 push 정책은 CLI 설정을 따릅니다.</p></header>
+              <div class="setting-row">
+                <div><strong>원격 저장소</strong><p>현재 원격은 <code>origin</code>입니다.</p></div>
+                <div class="setting-control"><button id="sync" class="primary">변경 저장·동기화</button></div>
+              </div>
+            </section>
+            <section id="settings-clients" class="settings-panel">
+              <header><h2>Clients</h2><p>이 Workspace에 등록된 협업 실행 주체입니다.</p></header>
+              <div class="settings-body"><div id="clients" class="card-grid"></div></div>
+            </section>
+          </div>
+        </div>
+      </section>
     </main>
 
     <aside class="context-panel" aria-label="현재 항목 Context">
