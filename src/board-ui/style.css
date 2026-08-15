@@ -381,6 +381,7 @@ button:disabled:hover {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-1_5);
+  min-width: 0;
   border-right: 1px solid var(--divider-BorderColor);
 }
 
@@ -564,6 +565,66 @@ body.view-operations .workspace-shell {
   grid-template-columns: var(--nav-Width) minmax(0, 1fr);
 }
 
+/* 접기 상태. 셸이 열 너비를 소유하므로 패널을 숨기는 것만으로는 자리가 남는다.
+   두 가지를 함께 해야 하고, 그래서 열 정의와 표시를 같은 규칙 묶음에 둔다. */
+body.nav-collapsed .workspace-shell {
+  grid-template-columns: minmax(0, 1fr) var(--context-Width);
+}
+
+body.nav-collapsed .navigation-panel {
+  display: none;
+}
+
+body.context-collapsed .workspace-shell {
+  grid-template-columns: var(--nav-Width) minmax(0, 1fr);
+}
+
+body.context-collapsed .context-panel {
+  display: none;
+}
+
+body.nav-collapsed.context-collapsed .workspace-shell,
+body.nav-collapsed.view-settings .workspace-shell,
+body.nav-collapsed.view-people .workspace-shell,
+body.nav-collapsed.view-operations .workspace-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 접으면 다시 펼 손잡이가 사라진다. 본문 위의 버튼 바를 되살려야 한 방향 동작이 되지 않는다. */
+body.nav-collapsed .mobile-bar,
+body.context-collapsed .mobile-bar {
+  display: flex;
+  gap: var(--spacing-1);
+  margin-bottom: var(--spacing-2);
+}
+
+body.nav-collapsed #menu-button,
+body.context-collapsed #context-button {
+  display: inline-flex;
+}
+
+/* 좁은 화면에서는 열 하나뿐이라 패널을 본문 위에 띄운다. */
+body.nav-open .navigation-panel,
+body.context-open .context-panel {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  width: min(320px, 86vw);
+  height: 100vh;
+  box-shadow: var(--medium-BoxShadow);
+}
+
+body.nav-open .navigation-panel {
+  left: 0;
+}
+
+body.context-open .context-panel {
+  right: 0;
+  display: block;
+}
+
 /* ── 탐색 패널 ────────────────────────────────────────── */
 
 .panel-title {
@@ -589,6 +650,7 @@ body.view-operations .workspace-shell {
   align-items: center;
   gap: var(--spacing-1);
   height: var(--control-Height);
+  min-width: 0;
   margin-bottom: var(--spacing-3);
   padding: 0 var(--spacing-1_5);
   border: 1px solid var(--field-BorderColor);
@@ -597,11 +659,26 @@ body.view-operations .workspace-shell {
   color: var(--secondary-TextColor);
 }
 
+.search > span {
+  flex: none;
+}
+
+/* input은 size 속성 기준의 기본 min-width를 갖는다. 줄이지 않으면 flex 안에서
+   248px 사이드바를 밀고 나간다. type=search의 기본 외형도 함께 지운다. */
 .search input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
   height: auto;
+  appearance: none;
   border: 0;
   background: transparent;
   padding: 0;
+}
+
+.search input::-webkit-search-decoration,
+.search input::-webkit-search-cancel-button {
+  appearance: none;
 }
 
 .search input:hover {
@@ -1043,19 +1120,24 @@ body.view-operations .workspace-shell {
 
 /* ── 태스크 Board(칸반) ───────────────────────────────── */
 
+/* 칸반은 줄바꿈되면 좌→우 진행이라는 유일한 의미를 잃는다. 상태가 여섯이 되면서
+   auto-fit 줄바꿈으로는 어느 폭에서도 한 줄에 들어가지 않아, 폭이 모자라면 접는 대신
+   가로로 스크롤한다. 스크롤은 이 요소 안에서만 일어나고 본문은 가로로 밀리지 않는다. */
 #board {
   display: grid;
-  grid-auto-flow: row;
-  grid-auto-columns: auto;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
   gap: var(--spacing-1_5);
-  overflow: visible;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: var(--spacing-1);
 }
 
 .column {
   display: grid;
   align-content: start;
   gap: var(--spacing-1);
+  min-width: 0;
   min-height: 320px;
   padding: var(--spacing-1_5);
   border: 1px solid var(--surface-01-BorderColor);
@@ -1074,6 +1156,7 @@ body.view-operations .workspace-shell {
 .task-card {
   display: grid;
   gap: var(--spacing-0_5);
+  min-width: 0;
   padding: var(--spacing-1_5);
   border: 1px solid var(--surface-01-BorderColor);
   border-radius: var(--medium-BorderRadius);
@@ -1222,6 +1305,34 @@ body.view-operations .workspace-shell {
   font-size: var(--caption-FontSize);
   letter-spacing: .1em;
   text-transform: uppercase;
+}
+
+/* peek의 첫 묶음은 속성이 아니라 내용이다. 제목은 라벨이 아니므로 대문자 변형을 되돌린다. */
+.context-lead {
+  padding-bottom: var(--spacing-2);
+  border-bottom: 1px solid var(--divider-BorderColor);
+}
+
+.context-lead h2 {
+  margin: var(--spacing-0_5) 0 var(--spacing-1);
+  color: var(--primary-TextColor);
+  font-size: var(--title-FontSize);
+  font-weight: 650;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+
+.context-summary {
+  margin: 0 0 var(--spacing-1_5);
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
+  line-height: 1.6;
+}
+
+.context-lead p:not(.context-summary):not(.eyebrow) {
+  margin: 0 0 var(--spacing-1_5);
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
 }
 
 .property {

@@ -56,7 +56,8 @@ async function testBoard() {
     assert(result.total >= 1);
     assert(result.tasks.length <= 2);
     assert(result.tasks.every((task) => task.status === 'doing'));
-    assert.strictEqual(result.statuses.length, 5);
+    // todo, doing, waiting, review, done, cancelled — 완료와 반려는 별개의 종료 상태다
+    assert.deepStrictEqual(result.statuses, ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
 
     const projects = await request(port, '/api/projects');
     assert.strictEqual(projects.status, 200);

@@ -55,6 +55,31 @@ assert.ok(!found.includes(`${COMPOSITE_DIRECTORY}/generated.md`), '루트의 생
 assert.ok(found.includes(`docs/${COMPOSITE_DIRECTORY}/REQ-900-정상-문서.md`), 'docs 아래 같은 이름의 폴더는 제외하지 않는다');
 fs.rmSync(probe, { recursive: true, force: true });
 
+// 반려는 완료 게이트를 우회하는 통로가 되면 안 되므로 사유를 같은 강도로 강제한다.
+const { assertCancellationConsistency, TERMINAL_TASK_STATES } = require('../src/tasks');
+assert.throws(() => assertCancellationConsistency({ status: 'todo', cancellation: null }, { status: 'cancelled' }), /반려 사유/u);
+assert.throws(() => assertCancellationConsistency({ status: 'todo', cancellation: null }, { cancellation: { reason: '중단', decidedBy: 'MEMBER-001', at: '2026-08-15T00:00:00.000Z' } }), /반려 상태가 아닌/u);
+for (const missing of ['reason', 'decidedBy', 'at']) {
+  const cancellation = { reason: '중단', decidedBy: 'MEMBER-001', at: '2026-08-15T00:00:00.000Z' };
+  delete cancellation[missing];
+  assert.throws(() => assertCancellationConsistency({ status: 'todo' }, { status: 'cancelled', cancellation }), new RegExp('필요합니다', 'u'), `${missing} 없이 반려되면 안 됩니다.`);
+}
+assert.doesNotThrow(() => assertCancellationConsistency({ status: 'todo' }, { status: 'cancelled', cancellation: { reason: '중단', decidedBy: 'MEMBER-001', at: '2026-08-15T00:00:00.000Z' } }));
+assert.doesNotThrow(() => assertCancellationConsistency({ status: 'cancelled', cancellation: { reason: '중단', decidedBy: 'MEMBER-001', at: '2026-08-15T00:00:00.000Z' } }, { status: 'todo', cancellation: null }));
+assert.deepStrictEqual(Array.from(TERMINAL_TASK_STATES), ['done', 'cancelled']);
+
+// 반려는 허용 상태이면서 완료 게이트(수용조건·TST link)의 대상은 아니다
+const checkSource = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
+assert.match(checkSource, /ALLOWED_TASK_STATES\s*=\s*new Set\(\['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'\]\)/u);
+assert.match(checkSource, /RDL-TASK-023/u, '사유 없는 반려를 진단해야 합니다.');
+assert.match(checkSource, /RDL-TASK-024/u, '반려가 아닌 태스크의 사유를 진단해야 합니다.');
+assert.match(checkSource, /RDL-TASK-025/u, '존재하지 않는 반려 결정자를 진단해야 합니다.');
+for (const gate of ['RDL-TASK-018', 'RDL-TASK-019']) {
+  const line = checkSource.split('\n').find((value) => value.includes(gate));
+  assert.ok(line.includes("task.status === 'done'"), `${gate}는 완료에만 적용되어야 합니다.`);
+  assert.ok(!line.includes('cancelled'), `${gate}가 반려에 적용되면 안 됩니다.`);
+}
+
 // blocker 불변식은 공통 태스크 계층이 강제한다
 const { assertBlockerConsistency } = require('../src/tasks');
 assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting' }), /대기 대상/u);

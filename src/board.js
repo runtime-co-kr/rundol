@@ -9,13 +9,13 @@ const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValu
 const { taskCreate, taskUpdate, refreshState, syncState } = require('./state');
 const { readCollaboration } = require('./collaboration');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, shardFiles, clientId } = require('./tasks');
+const { readTaskStore, shardFiles, clientId, TERMINAL_TASK_STATES } = require('./tasks');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus, appendLease, listLeases } = require('./collaboration-store');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
 const { loadBoardPresentation } = require('./board-presentation');
 
-const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done'];
+const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'];
 const UI_ROOT = path.join(__dirname, 'board-ui');
 
 function boardConfig(start, projectKey) {
@@ -168,7 +168,9 @@ function attentionItems(tasks, documents, sync) {
     if (!task.owner) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '담당자 없음' });
     if (!task.acceptanceCriteria || Object.keys(task.acceptanceCriteria).length === 0) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '완료조건 없음' });
     if (task.status === 'review' && (!task.reviewers || task.reviewers.length === 0)) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '검토자 없음' });
-    for (const dependency of task.deps || []) if (taskIds.has(dependency) && tasks.find((item) => item.id === dependency).status !== 'done') items.push({ severity: 'info', kind: 'task', id: task.id, title: task.title, reason: `선행 태스크 미완료: ${dependency}` });
+    // 반려된 선행 태스크는 끝나지 않았지만 더 이상 진행되지도 않는다. 종료로 보지 않으면
+    // 후행 태스크가 영영 막힌 것으로 표시되고 풀 방법이 없다.
+    for (const dependency of task.deps || []) if (taskIds.has(dependency) && !TERMINAL_TASK_STATES.includes(tasks.find((item) => item.id === dependency).status)) items.push({ severity: 'info', kind: 'task', id: task.id, title: task.title, reason: `선행 태스크 미완료: ${dependency}` });
     for (const link of task.links || []) if (!documentIds.has(link)) items.push({ severity: 'error', kind: 'task', id: task.id, title: task.title, reason: `깨진 문서 연결: ${link}` });
   }
   if (sync.state !== 'clean') items.push({ severity: sync.state === 'conflict' ? 'error' : 'warning', kind: 'operation', id: 'sync', title: 'Git 동기화', reason: sync.state });
@@ -312,6 +314,7 @@ function taskInput(body, creating) {
     if (Object.keys(result.acceptanceCriteria).length === 0) inputError('완료조건이 하나 이상 필요합니다.');
   }
   if (Object.prototype.hasOwnProperty.call(body, 'blocker')) result.blocker = blockerInput(body.blocker);
+  if (Object.prototype.hasOwnProperty.call(body, 'cancellation')) result.cancellation = cancellationInput(body.cancellation);
   if (creating) {
     if (!result.title) inputError('태스크 제목이 필요합니다.');
     if (!result.acceptanceCriteria) inputError('완료조건이 하나 이상 필요합니다.');
@@ -329,6 +332,18 @@ function blockerInput(value) {
   if (condition.length > 1000) inputError('해제 조건이 너무 깁니다.');
   if (Number.isNaN(Date.parse(since))) inputError(`대기 시작 시각이 올바르지 않습니다: ${since}`);
   return { waitingFor, condition, since: new Date(since).toISOString() };
+}
+
+function cancellationInput(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) inputError('반려 사유 형식이 올바르지 않습니다.');
+  const reason = String(value.reason || '').trim();
+  const decidedBy = String(value.decidedBy || '').trim();
+  const at = String(value.at || '').trim();
+  if (!reason || !decidedBy || !at) inputError('반려에는 사유, 결정자와 결정 시각이 모두 필요합니다.');
+  if (reason.length > 1000) inputError('반려 사유가 너무 깁니다.');
+  if (Number.isNaN(Date.parse(at))) inputError(`반려 결정 시각이 올바르지 않습니다: ${at}`);
+  return { reason, decidedBy, at: new Date(at).toISOString() };
 }
 
 function requireBlockerConsistency(current, changes) {

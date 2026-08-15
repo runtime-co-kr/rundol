@@ -43,6 +43,7 @@ Usage:
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                    [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
+                 반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
@@ -123,7 +124,7 @@ function parseOperationArgs(argv) {
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
     else if (value === '--write') options.write = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -135,6 +136,8 @@ function parseOperationArgs(argv) {
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
       else if (value === '--summary') options.summary = argv[i];
+      else if (value === '--reason') options.reason = argv[i];
+      else if (value === '--decided-by') options.decidedBy = argv[i];
       else if (value === '--scope') options.scope = argv[i];
       else if (value === '--exclude') options.excludes.push(argv[i]);
       else if (value === '--function-id') options.functionIds.push(argv[i]);
@@ -635,6 +638,12 @@ async function main() {
     const changes = {};
     if (options.status !== undefined) changes.status = options.status;
     if (options.owner !== undefined) changes.owner = options.owner;
+    // 반려는 결정이므로 사유를 함께 받는다. 결정자를 생략하면 taskSet이 태스크 owner로 채운다.
+    if (options.status === 'cancelled') {
+      if (!options.reason) throw new Error('반려하려면 --reason이 필요합니다.');
+      changes.cancellation = { reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
+    }
+    else if (options.reason) throw new Error('--reason은 --status cancelled에만 사용합니다.');
     if (Object.keys(changes).length === 0) throw new Error('--status 또는 --owner 중 하나가 필요합니다.');
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);

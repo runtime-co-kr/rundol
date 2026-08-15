@@ -39,6 +39,7 @@ rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner 
                  [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                  [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
 rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
+                 반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
 rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
 rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
 rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
@@ -90,7 +91,7 @@ rdl --help
 | `rdl skill install` | 거버넌스 스킬을 AI 클라이언트 개인 skills 폴더에 설치 | 클라이언트 `skills/` 디렉터리 | 없음 |
 | `rdl settings migrate` | 기존 schemaVersion 3 등록·Obsidian 설정을 settings 브랜치로 이전 | 기존 Workspace와 settings 브랜치 | 없음 |
 | `rdl task add` | 완료조건이 있는 태스크 생성 | 태스크 샤드, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
-| `rdl task set` | 태스크 상태 또는 담당자 변경 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
+| `rdl task set` | 태스크 상태 또는 담당자 변경, 사유를 남기는 반려 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
 | `rdl task acceptance` | 완료조건의 완료·미완료 상태 변경 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
 | `rdl task migrate` | 단일 `tasks.json`을 클라이언트 샤드로 전환 | settings와 프로젝트 브랜치 커밋 | 없음 |
 | `rdl doc create` | 등록 멤버와 실제 관련 문서로 표준 문서 생성 | 프로젝트 브랜치 작업 트리 | 없음 |
@@ -267,9 +268,14 @@ rdl task add "검색 구현" \
 ```bash
 rdl task set TASK-01J000000000000000000003 --project memo --status doing --owner MEMBER-001
 rdl task set TASK-01J000000000000000000003 --project memo --owner null
+rdl task set TASK-01J000000000000000000003 --project memo --status cancelled --reason "다른 방향으로 결정"
 ```
 
-현재 직접 변경 가능한 필드는 `status`와 `owner`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
+현재 직접 변경 가능한 필드는 `status`와 `owner`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`, `cancelled`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
+
+`done`과 `cancelled`는 둘 다 종료 상태지만 게이트가 반대다. `done`은 모든 수용조건 완료와 TST 문서 연결을 요구하고, `cancelled`는 그 증거가 없다는 것을 전제로 `--reason`을 요구한다. 하지 않기로 한 일을 `done`으로 닫으면 기록이 완료로 남아 뒤에 읽는 사람이 없는 산출물을 찾게 되므로 두 상태를 나눈다.
+
+`--decided-by`를 생략하면 태스크의 현재 owner가 결정한 것으로 기록한다. 반려를 되돌려 다른 상태로 바꾸면 반려 사유는 자동으로 지워진다. 종료 상태가 된 태스크는 선행 태스크로서 후행 태스크를 더 이상 막지 않는다.
 
 태스크 변경 operation은 다음 위치에 기록된다.
 

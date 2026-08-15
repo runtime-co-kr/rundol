@@ -79,7 +79,7 @@
 
       <section id="task-view" class="view" hidden>
         <header class="reader-heading"><div id="task-breadcrumb" class="breadcrumb"></div><h1 id="task-detail-title"></h1><p id="task-detail-summary"></p><div id="task-detail-badges" class="chip-row"></div></header>
-        <div class="task-detail-grid"><div><section class="content-section"><h2>완료 조건</h2><div id="task-acceptance-list" class="acceptance-list"></div></section><section class="content-section"><h2>연관 문서</h2><div id="task-documents" class="card-grid"></div></section><section class="content-section"><h2>의존 태스크</h2><div id="task-dependencies" class="task-table"></div></section></div><aside class="task-detail-side"><section><h2>차단 사유</h2><p id="task-blocker"></p></section><section><h2>외부 참조</h2><div id="task-external-refs"></div></section><section><h2>변경 시각</h2><dl id="task-timestamps"></dl></section></aside></div>
+        <div class="task-detail-grid"><div><section class="content-section"><h2>완료 조건</h2><div id="task-acceptance-list" class="acceptance-list"></div></section><section class="content-section"><h2>연관 문서</h2><div id="task-documents" class="card-grid"></div></section><section class="content-section"><h2>의존 태스크</h2><div id="task-dependencies" class="task-table"></div></section></div><aside class="task-detail-side"><section><h2>차단 사유</h2><p id="task-blocker"></p></section><section><h2>반려 사유</h2><p id="task-cancellation"></p></section><section><h2>외부 참조</h2><div id="task-external-refs"></div></section><section><h2>변경 시각</h2><dl id="task-timestamps"></dl></section></aside></div>
       </section>
 
       <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="card-grid"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="card-grid"></div></section></div></section>
@@ -147,6 +147,15 @@
       <label>해제 조건<input id="blocker-condition" required maxlength="200" placeholder="예: API-003 리뷰 승인"></label>
       <label>대기 시작<input id="blocker-since" type="datetime-local" required></label>
       <div class="dialog-actions"><button type="button" data-dialog-cancel="blocker-dialog">취소</button><button id="save-blocker" class="primary" value="default">확인</button></div>
+    </form>
+  </dialog>
+  <dialog id="cancellation-dialog" aria-labelledby="cancellation-form-heading">
+    <form id="cancellation-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">CANCELLED</p><h2 id="cancellation-form-heading">반려 사유</h2></div><button type="button" data-dialog-cancel="cancellation-dialog" aria-label="닫기">×</button></div>
+      <p class="dialog-hint">반려는 완료가 아니라 하지 않기로 한 결정입니다. 완료조건이 남아 있어도 닫히지만, 왜 접었는지는 남겨야 나중에 같은 판단을 다시 하지 않습니다.</p>
+      <label>반려 사유<textarea id="cancellation-reason" required rows="3" maxlength="1000" placeholder="예: 모노레포 전환을 하지 않기로 해 이 구조 정의가 필요 없어졌습니다"></textarea></label>
+      <label>결정자<select id="cancellation-decided-by" required></select></label>
+      <div class="dialog-actions"><button type="button" data-dialog-cancel="cancellation-dialog">취소</button><button id="save-cancellation" class="primary" value="default">반려</button></div>
     </form>
   </dialog>
   <script src="/dompurify.js"></script>

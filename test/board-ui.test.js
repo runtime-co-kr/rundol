@@ -80,8 +80,11 @@ for (const token of ['--code-TextColor', '--on-accent-TextColor', '--surface-01-
 assert(style.includes('var(--ui-hover-OverlayColor)'), 'Interactive surfaces must share the hover overlay token');
 
 assert(style.includes('max-width: none'), 'Markdown documents must use the available reader width');
-assert(/#board\s*\{[^}]*grid-auto-flow:\s*row/u.test(style), 'Task Board columns must wrap without an inner scrollbar');
-assert(/#board\s*\{[^}]*overflow:\s*visible/u.test(style), 'Task Board must not add an inner scrollbar');
+// 상태가 여섯이 되면서 줄바꿈으로는 한 줄에 담을 수 없어졌다. 칸반은 접히면 진행 순서를
+// 잃으므로 폭이 모자라면 가로로 스크롤한다. 대신 본문 자체는 가로로 밀리지 않아야 한다.
+assert(/#board\s*\{[^}]*grid-auto-flow:\s*column/u.test(style), 'Task Board must keep its columns on one row');
+assert(/#board\s*\{[^}]*overflow-x:\s*auto/u.test(style), 'Task Board must scroll inside itself instead of wrapping');
+assert(/\.task-card\s*\{[^}]*min-width:\s*0/u.test(style), 'Board cards must shrink instead of widening their column');
 assert(style.includes('.markdown-body code'), 'Markdown code must use a theme-aware foreground token');
 assert(style.includes('color: var(--code-TextColor)'), 'Markdown code colour must come from the theme');
 assert(style.includes('color: var(--on-accent-TextColor)'), 'Primary buttons must use a theme-aware foreground token');
@@ -104,7 +107,7 @@ assert(html.includes('id="blocker-waiting-for"'), 'Blocker input must capture th
 assert(html.includes('id="blocker-condition"'), 'Blocker input must capture the release condition');
 assert(html.includes('id="blocker-since"'), 'Blocker input must capture the waiting start time');
 assert(app.includes('requestBlocker(task.blocker)'), 'Switching a task to waiting must collect blocker details first');
-assert(app.includes('queueTaskUpdate(task, task.blocker ? { status, blocker: null } : { status })'), 'Leaving waiting must clear the blocker in the same change');
+assert(app.includes('task.blocker ? { blocker: null } : null'), 'Leaving waiting must clear the blocker in the same change');
 assert(app.includes('blockerText(task.blocker)'), 'Task detail must render structured blocker information');
 
 // 동기화는 되돌리기 어렵다. 무엇이 나가는지 보여주고 확인을 받은 뒤에만 실행한다.
@@ -132,7 +135,7 @@ assert(!app.includes('data-presentation-edit'), '문서 표시 규칙은 Board�
 
 // 막힘은 목록에서 바로 읽혀야 한다. blocker뿐 아니라 끝나지 않은 선행 태스크도 막힘이다.
 assert(app.includes('function taskBlockage'), '막힘 판정은 한 곳에서 계산해야 합니다');
-assert(app.includes("task.status !== 'done'"), '선행 태스크가 끝나지 않으면 막힘입니다');
+assert(app.includes('!TERMINAL_STATUSES.includes(item.status)'), '끝나지 않은 선행 태스크는 막힘입니다');
 assert(app.includes('class="task-blocked"'), '막힌 태스크는 목록에서 배지로 구분되어야 합니다');
 assert(style.includes(".task-blocked[data-blocked='deps']"), '사람 대기와 선행 대기는 구분되어야 합니다');
 
@@ -158,5 +161,36 @@ assert(app.includes('data-context-toggle'), 'AI 추천 문맥은 프로젝트마
 assert(app.includes('생성을 막지 않습니다'), 'AI 추천 문맥이 게이트가 아님을 화면에서 밝혀야 합니다');
 assert(app.includes('[data-context-toggle][aria-pressed="true"]'), '추천 문맥은 저장 payload에 실려야 합니다');
 assert(style.includes(".guidance-chip[aria-pressed='true']"), '켜진 추천 문맥은 구별되어야 합니다');
+
+// 반려는 완료와 반대 방향의 게이트다. 완료조건이 남아도 닫히지만 사유가 없으면 닫히지 않는다.
+assert(html.includes('id="cancellation-dialog"'), '반려는 사유를 받는 입력이 필요합니다');
+assert(html.includes('id="cancellation-reason"'), '반려 사유를 입력할 수 있어야 합니다');
+assert(html.includes('id="cancellation-decided-by"'), '반려 결정자를 지정할 수 있어야 합니다');
+assert(app.includes("cancelled: '반려'"), '상태 어휘에 반려가 있어야 합니다');
+assert(app.includes('requestCancellation(task.cancellation)'), '반려 전환은 사유를 먼저 받아야 합니다');
+assert(app.includes('task.cancellation ? { cancellation: null } : null'), '반려를 벗어나면 사유를 같은 변경에서 지워야 합니다');
+assert(app.includes('cancellationText(task.cancellation)'), '태스크 상세는 반려 사유를 보여야 합니다');
+assert(app.includes("const TERMINAL_STATUSES = ['done', 'cancelled']"), '완료와 반려는 함께 종료로 다뤄야 합니다');
+assert(!app.includes("task.status !== 'done')"), '종료 판정에 done만 쓰면 반려된 태스크가 열린 것으로 남습니다');
+
+// peek이 속성만 보여주면 목록에서 태스크를 눌러도 무슨 일인지 읽을 수 없다.
+assert(app.includes('context-lead'), 'Task peek은 제목과 설명을 먼저 보여야 합니다');
+assert(app.includes('context-summary'), 'Task peek은 설명을 보여야 합니다');
+assert(app.includes('data-task-full'), 'Task peek에서 상세 화면으로 갈 수 있어야 합니다');
+assert(app.includes('function redrawTask'), '낙관적 변경은 보고 있는 화면에 바로 반영되어야 합니다');
+assert(style.includes('.context-lead h2'), 'peek 제목은 속성 라벨과 다르게 보여야 합니다');
+
+// 접기 버튼은 class만 토글한다. 받는 CSS가 없으면 아무 일도 일어나지 않는다.
+for (const name of ['nav-collapsed', 'context-collapsed', 'nav-open', 'context-open']) {
+  assert(style.includes(`body.${name}`), `${name} 상태를 받는 CSS 규칙이 필요합니다`);
+}
+assert(/body\.nav-collapsed \.workspace-shell\s*\{[^}]*grid-template-columns/u.test(style), '탐색을 접으면 셸의 열 정의도 바뀌어야 합니다');
+assert(/body\.nav-collapsed \.navigation-panel\s*\{[^}]*display:\s*none/u.test(style), '접힌 탐색 패널은 숨겨져야 합니다');
+assert(style.includes('body.nav-collapsed #menu-button'), '접은 뒤 다시 펼 손잡이가 있어야 합니다');
+
+// flex/grid 자식의 기본 min-width는 내용 크기다. 줄이지 않으면 사이드바를 밀고 나간다.
+assert(/\.search\s*\{[^}]*min-width:\s*0/u.test(style), '검색 상자는 사이드바 폭 안에서 줄어야 합니다');
+assert(/\.search input\s*\{[^}]*min-width:\s*0/u.test(style), '검색 입력은 기본 min-width를 버려야 합니다');
+assert(/\.navigation-panel\s*\{[^}]*min-width:\s*0/u.test(style), '탐색 패널은 열 폭을 넘지 않아야 합니다');
 
 console.log('board UI tests passed');

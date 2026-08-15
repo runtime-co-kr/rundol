@@ -1,8 +1,10 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null };
-const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료' };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null };
+const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
+// 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
+const TERMINAL_STATUSES = ['done', 'cancelled'];
 const typeLabels = {
   project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
   architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', api: 'API',
@@ -61,8 +63,28 @@ function requestBlocker(current) {
 }
 function resolveBlocker(value) { const resolve = state.blockerResolve; state.blockerResolve = null; if (resolve) resolve(value); }
 
-function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(task.id); if (!pending) pending = { baseRevision: task.revision, changes: {}, timer: null }; Object.assign(pending.changes, changes); Object.assign(task, changes); clearTimeout(pending.timer); pending.timer = setTimeout(() => flushTaskUpdate(task.id), 500); state.pendingTasks.set(task.id, pending); if (state.view === 'task' && state.selected === task.id) renderTask(task.id); }
-async function flushTaskUpdate(taskId) { const pending = state.pendingTasks.get(taskId); if (!pending) return; pending.timer = null; try { await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, pending.changes)) }); state.pendingTasks.delete(taskId); await loadSnapshot(true); if (state.view === 'task' && state.selected === taskId) renderTask(taskId); message('태스크 변경을 파일에 저장했습니다.'); } catch (error) { state.pendingTasks.delete(taskId); await loadSnapshot(true); if (state.view === 'task' && state.selected === taskId) renderTask(taskId); message(`변경을 되돌렸습니다: ${error.message}`, true); } }
+// 반려는 완료와 반대 방향의 게이트다. 완료조건이 남아 있어도 닫히지만 사유가 없으면 닫히지 않는다.
+function cancellationText(cancellation) { return cancellation ? `${personName(cancellation.decidedBy)} 반려 · ${cancellation.reason}` : '없음'; }
+function requestCancellation(current) {
+  const members = state.snapshot.people.members;
+  el('cancellation-decided-by').replaceChildren(...members.map((item) => new Option(`${item.name} · ${item.id}`, item.id)));
+  el('cancellation-decided-by').value = (current && current.decidedBy) || state.currentMember || (members[0] ? members[0].id : '');
+  el('cancellation-reason').value = (current && current.reason) || '';
+  el('cancellation-dialog').showModal();
+  return new Promise((resolve) => { state.cancellationResolve = resolve; });
+}
+function resolveCancellation(value) { const resolve = state.cancellationResolve; state.cancellationResolve = null; if (resolve) resolve(value); }
+
+function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(task.id); if (!pending) pending = { baseRevision: task.revision, changes: {}, timer: null }; Object.assign(pending.changes, changes); Object.assign(task, changes); clearTimeout(pending.timer); pending.timer = setTimeout(() => flushTaskUpdate(task.id), 500); state.pendingTasks.set(task.id, pending); redrawTask(task.id); }
+// 낙관적 변경은 보고 있는 곳에 바로 비쳐야 한다. peek에서 완료조건을 눌렀는데 상세 화면만
+// 다시 그리면 체크가 다음 polling까지 반영되지 않아 눌리지 않은 것처럼 보인다.
+function redrawTask(taskId) {
+  if (state.selected !== taskId) return;
+  if (state.view === 'task') return renderTask(taskId);
+  const task = state.snapshot.tasks.tasks.find((item) => item.id === taskId);
+  if (task && state.view === 'tasks') renderContext(task, 'task');
+}
+async function flushTaskUpdate(taskId) { const pending = state.pendingTasks.get(taskId); if (!pending) return; pending.timer = null; try { await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, pending.changes)) }); state.pendingTasks.delete(taskId); await loadSnapshot(true); redrawTask(taskId); message('태스크 변경을 파일에 저장했습니다.'); } catch (error) { state.pendingTasks.delete(taskId); await loadSnapshot(true); redrawTask(taskId); message(`변경을 되돌렸습니다: ${error.message}`, true); } }
 
 // 화면 이름을 body에 남겨 선택 대상이 없는 화면에서 Context 패널을 접는다.
 // 표시 옵션은 지금까지 아무데도 남지 않아 새로고침마다 초기화됐다.
@@ -143,7 +165,7 @@ function renderMyQueue(tasks) {
     el('my-queue').innerHTML = '<p class="identity-prompt">사이드바 아래에서 보기 기준을 고르면 내 작업과 검토 요청을 여기 모아 보여줍니다.</p>';
     return;
   }
-  const mine = tasks.filter((task) => task.owner === state.currentMember && task.status !== 'done');
+  const mine = tasks.filter((task) => task.owner === state.currentMember && !TERMINAL_STATUSES.includes(task.status));
   const ready = mine.filter((task) => !taskBlockage(task));
   const blocked = mine.filter((task) => taskBlockage(task));
   const reviews = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember));
@@ -210,7 +232,18 @@ function renderContext(item, kind) {
     const linkedTasks = state.snapshot.tasks.tasks.filter((task) => (task.links || []).includes(item.id));
     el('context-content').innerHTML = `<section class="context-group"><h2>속성</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>유형</dt><dd>${escapeHtml(documentTypeLabel(item))}</dd></div><div class="property"><dt>상태</dt><dd>${escapeHtml(documentStateLabel(item.state))}</dd></div><div class="property"><dt>소유자</dt><dd>${escapeHtml(ownerName(item.owner))}</dd></div><div class="property"><dt>파일</dt><dd>${escapeHtml(item.file)}</dd></div></dl></section><section class="context-group"><h2>연결 태스크</h2>${linkedTasks.length ? linkedTasks.map((task) => `<button data-task="${task.id}">${escapeHtml(task.title)}</button>`).join('') : '<p class="empty-state">연결된 태스크 없음</p>'}</section><section class="context-group"><h2>검증</h2><p class="chip">strict snapshot 포함</p><small>${escapeHtml(item.revision.slice(0, 12))}</small></section>`;
   } else {
-    const members = [['', '미지정']].concat(state.snapshot.people.members.map((member) => [member.id, member.name])); const pending = state.pendingTasks.has(item.id); el('context-content').innerHTML = `<section class="context-group"><h2>Task</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>상태</dt><dd>${contextSelect('status', item.status, Object.entries(statusLabels))}</dd></div><div class="property"><dt>우선순위</dt><dd>${contextSelect('priority', item.priority, [['high', '높음'], ['mid', '중간'], ['low', '낮음']])}</dd></div><div class="property"><dt>소유자</dt><dd>${contextSelect('owner', item.owner, members)}</dd></div><div class="property"><dt>검토자</dt><dd>${escapeHtml((item.reviewers || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>이해관계자</dt><dd>${escapeHtml((item.stakeholders || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>저장</dt><dd><span class="save-state ${pending ? 'pending' : ''}">${pending ? '● 파일 반영 대기' : '✓ 저장됨'}</span></dd></div><div class="property"><dt>Revision</dt><dd>${escapeHtml(item.revision || '-')}</dd></div></dl></section>`;
+    const members = [['', '미지정']].concat(state.snapshot.people.members.map((member) => [member.id, member.name]));
+    const pending = state.pendingTasks.has(item.id);
+    // peek이 속성만 보여줘서 목록에서 태스크를 눌러도 무슨 일인지 읽을 수 없었다.
+    // 제목·설명·완료조건이 먼저 오고 속성은 그다음이다.
+    const criteria = Object.entries(item.acceptanceCriteria || {});
+    const doneCount = criteria.filter(([, value]) => value.done).length;
+    const blockage = taskBlockage(item);
+    const lead = `<section class="context-group context-lead"><p class="eyebrow">${escapeHtml(item.id)}</p><h2>${escapeHtml(item.title)}</h2><p class="context-summary">${escapeHtml(item.summary || '설명이 등록되지 않았습니다.')}</p>${blockage ? `<p><span class="task-blocked" data-blocked="${blockage.kind}">${escapeHtml(blockage.label)}</span> ${escapeHtml(blockage.detail.split('\n')[0])}</p>` : ''}${item.cancellation ? `<p class="context-summary">반려: ${escapeHtml(item.cancellation.reason)}</p>` : ''}<button data-task="${escapeHtml(item.id)}" data-task-full="1">상세 열기</button></section>`;
+    const acceptance = criteria.length
+      ? `<section class="context-group"><h2>완료조건 <span class="badge">${doneCount}/${criteria.length}</span></h2><div class="acceptance-list">${criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('')}</div></section>`
+      : '';
+    el('context-content').innerHTML = lead + acceptance + `<section class="context-group"><h2>속성</h2><dl><div class="property"><dt>상태</dt><dd>${contextSelect('status', item.status, Object.entries(statusLabels))}</dd></div><div class="property"><dt>우선순위</dt><dd>${contextSelect('priority', item.priority, [['high', '높음'], ['mid', '중간'], ['low', '낮음']])}</dd></div><div class="property"><dt>소유자</dt><dd>${contextSelect('owner', item.owner, members)}</dd></div><div class="property"><dt>검토자</dt><dd>${escapeHtml((item.reviewers || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>이해관계자</dt><dd>${escapeHtml((item.stakeholders || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>저장</dt><dd><span class="save-state ${pending ? 'pending' : ''}">${pending ? '● 파일 반영 대기' : '✓ 저장됨'}</span></dd></div><div class="property"><dt>Revision</dt><dd>${escapeHtml(item.revision || '-')}</dd></div></dl></section>`;
   }
 }
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
@@ -220,7 +253,7 @@ function renderDocument(id) { const item = state.snapshot.documents.find((docume
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
 function taskBlockage(task) {
   if (task.blocker) return { kind: 'waiting', label: `${personName(task.blocker.waitingFor)} 대기`, detail: task.blocker.condition || '' };
-  const open = (task.deps || []).map((id) => state.snapshot.tasks.tasks.find((item) => item.id === id)).filter((item) => item && item.status !== 'done');
+  const open = (task.deps || []).map((id) => state.snapshot.tasks.tasks.find((item) => item.id === id)).filter((item) => item && !TERMINAL_STATUSES.includes(item.status));
   if (!open.length) return null;
   return { kind: 'deps', label: `선행 ${open.length}건`, detail: open.map((item) => `${item.id} ${item.title}`).join('\n') };
 }
@@ -241,7 +274,7 @@ const groupers = {
 function groupCollapsed(groupBy, key) {
   const saved = viewOption(`collapse.${groupBy}.${key}`, null);
   if (saved !== null) return saved === '1';
-  return groupBy === 'status' && key === 'done';
+  return groupBy === 'status' && TERMINAL_STATUSES.includes(key);
 }
 function taskGroups(tasks) {
   const groupBy = viewOption('groupBy', 'status');
@@ -256,10 +289,10 @@ function taskGroups(tasks) {
     })
     .join('');
 }
-function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">상단에서 현재 사용자를 선택하면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value));
+function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">사이드바 아래에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value));
   // 완료 숨기기는 접기와 다른 일을 한다. 접기는 묶음 머리글을 남기고, 숨기기는 항목을 뺀다.
   // 담당자나 우선순위로 묶으면 완료 묶음이 없으므로 그때는 이 필터가 그 역할을 한다.
-  if (el('hide-done').checked) tasks = tasks.filter((task) => task.status !== 'done');
+  if (el('hide-done').checked) tasks = tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status));
   el('task-list').hidden = state.taskMode !== 'list';
   el('board').hidden = state.taskMode !== 'board';
   el('task-graph').hidden = state.taskMode !== 'graph';
@@ -280,7 +313,7 @@ function renderTaskGraph(tasks) {
   el('task-graph').innerHTML = `<pre class="mermaid">${escapeHtml(diagram)}</pre>`;
   renderMermaid();
 }
-function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]); el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
+function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]); el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-cancellation').textContent = cancellationText(task.cancellation); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
 function renderPeople() { const people = state.snapshot.people; for (const [id, values] of [['members', people.members], ['roles', people.roles], ['stakeholders', people.stakeholders]]) el(id).innerHTML = values.map((item) => `<article class="person-card"><span class="eyebrow">${item.id}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · '))}</small></article>`).join(''); }
 function renderOperations() { const sync = state.snapshot.sync; el('operation-status').innerHTML = `<article class="operation-card"><p class="eyebrow">SYNC</p><h2>${escapeHtml(sync.state)}</h2><p>${sync.ahead ?? '—'} ahead · ${sync.behind ?? '—'} behind</p><small>${escapeHtml(sync.head.slice(0, 12))}</small></article><article class="operation-card"><p class="eyebrow">ATTENTION</p><h2>${state.snapshot.attention.length}</h2><p>현재 조치 필요 항목</p></article><article class="operation-card"><p class="eyebrow">WATCH</p><h2>외부 CLI</h2><p>watch 상태는 다음 Snapshot 계약에서 연결됩니다.</p></article>`; el('leases').innerHTML = state.snapshot.leases.map((item) => `<article class="entity-card"><strong>${escapeHtml(item.documentId)}</strong><small>${escapeHtml(item.clientId)} · ${escapeHtml(item.expiresAt)}</small></article>`).join('') || '<p class="empty-state">활성 임대가 없습니다.</p>'; }
 
@@ -344,6 +377,7 @@ document.addEventListener('click', (event) => { const button = event.target.clos
   // 목록 맥락을 잃지 않고 항목 사이를 옮겨 다닐 수 있다.
   if (button.dataset.task) {
     const peeked = state.snapshot.tasks.tasks.find((item) => item.id === button.dataset.task);
+    if (button.dataset.taskFull) return setView('task', button.dataset.task);
     if (peeked && state.view === 'tasks') {
       state.selected = button.dataset.task;
       document.body.classList.remove('context-collapsed');
@@ -362,10 +396,19 @@ document.addEventListener('change', async (event) => {
   if (field !== 'status') return queueTaskUpdate(task, { [field]: input.value || null });
   const status = input.value;
   if (status === task.status) return;
-  if (status !== 'waiting') return queueTaskUpdate(task, task.blocker ? { status, blocker: null } : { status });
-  const blocker = await requestBlocker(task.blocker);
-  if (!blocker) { input.value = task.status; return message('대기 사유를 입력하지 않아 상태를 바꾸지 않았습니다.'); }
-  queueTaskUpdate(task, { status, blocker });
+  // 상태를 벗어날 때 그 상태에만 허용된 부가 정보를 같이 지운다. 남겨두면 저장 시 검증이 막는다.
+  const cleared = Object.assign({}, task.blocker ? { blocker: null } : null, task.cancellation ? { cancellation: null } : null);
+  if (status === 'waiting') {
+    const blocker = await requestBlocker(task.blocker);
+    if (!blocker) { input.value = task.status; return message('대기 사유를 입력하지 않아 상태를 바꾸지 않았습니다.'); }
+    return queueTaskUpdate(task, Object.assign(cleared, { status, blocker }));
+  }
+  if (status === 'cancelled') {
+    const cancellation = await requestCancellation(task.cancellation);
+    if (!cancellation) { input.value = task.status; return message('반려 사유를 입력하지 않아 상태를 바꾸지 않았습니다.'); }
+    return queueTaskUpdate(task, Object.assign(cleared, { status, cancellation }));
+  }
+  queueTaskUpdate(task, Object.assign(cleared, { status }));
 });
 el('global-search').addEventListener('input', (event) => { state.query = event.target.value.trim(); if (state.view !== 'documents' && state.view !== 'tasks') setView('documents'); else setView(state.view); });
 el('project-switcher').addEventListener('change', async (event) => { markVisit(); state.project = event.target.value; state.snapshot = null; state.lastVisit = localStorage.getItem(visitKey()); await loadSnapshot(true); });
@@ -417,6 +460,15 @@ el('blocker-form').addEventListener('submit', (event) => {
   if (!waitingFor || !condition || !since) return message('대기 대상, 해제 조건과 대기 시작 시각을 모두 입력하세요.', true);
   resolveBlocker({ waitingFor, condition, since: new Date(since).toISOString() });
   el('blocker-dialog').close();
+});
+el('cancellation-dialog').addEventListener('close', () => resolveCancellation(null));
+el('cancellation-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const reason = el('cancellation-reason').value.trim();
+  const decidedBy = el('cancellation-decided-by').value;
+  if (!reason || !decidedBy) return message('반려 사유와 결정자를 모두 입력하세요.', true);
+  resolveCancellation({ reason, decidedBy, at: new Date().toISOString() });
+  el('cancellation-dialog').close();
 });
 el('task-status').addEventListener('change', async () => {
   if (el('task-status').value !== 'waiting') { state.newTaskBlocker = null; return; }
@@ -603,7 +655,7 @@ function renderContractSettings() {
 function renderPresentationSettings() {
   let section = el('presentation-settings');
   if (!section) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel presentation-settings"><header><h2>문서 표시 규칙</h2><p>어떤 문서 타입을 어떤 이름과 순서로 보여줄지 정합니다. 설정 파일이라 여기서는 바꾸지 않고 <code>board.json</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><div id="presentation-types" class="presentation-types"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header><h2>문서 표시 규칙</h2><p>어떤 문서 타입을 어떤 이름과 순서로 보여줄지 정합니다. 설정 파일이라 여기서는 바꾸지 않고 <code>board.json</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><div id="presentation-types" class="presentation-types"></div></div></section>');
     section = el('presentation-settings');
   }
   const presentation = state.snapshot.presentation;

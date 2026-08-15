@@ -8,7 +8,7 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency } = require('./tasks');
+const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency } = require('./tasks');
 const { initSettings, saveSettings, syncSettings } = require('./settings');
 const { runtimeWorkspace } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
@@ -359,6 +359,20 @@ function persistTaskChange(config, values) {
   return runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout;
 }
 
+// 반려를 되돌릴 때 사유를 남겨두면 "반려가 아닌데 반려 사유가 있는" 상태가 되어 검증이 막는다.
+// 호출자마다 같은 짝을 다시 쓰게 하는 대신 여기서 정리한다. 결정자를 생략하면 태스크 owner가
+// 결정한 것으로 본다. CLI는 태스크를 읽지 않으므로 그 값을 알 수 없다.
+function normalizeCancellationChange(task, changes) {
+  if (!changes || !Object.prototype.hasOwnProperty.call(changes, 'status')) return;
+  if (changes.status !== 'cancelled') {
+    if (task.cancellation && !Object.prototype.hasOwnProperty.call(changes, 'cancellation')) changes.cancellation = null;
+    return;
+  }
+  const cancellation = changes.cancellation || task.cancellation;
+  if (!cancellation) return;
+  changes.cancellation = Object.assign({}, cancellation, { decidedBy: cancellation.decidedBy || changes.owner || task.owner || null });
+}
+
 function taskUpdate(start, taskIdValue, changes, projectKey) {
   const config = workspaceStateConfig(start, projectKey);
   if (!refExists(config.root, config.ref)) initState(config.root, { project: config.project });
@@ -368,7 +382,9 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   const parsed = readTaskStore(taskFile);
   const task = parsed.tasks && parsed.tasks[taskIdValue];
   if (!task) throw new Error(`태스크를 찾지 못했습니다: ${taskIdValue}`);
+  normalizeCancellationChange(task, changes);
   assertBlockerConsistency(task, changes);
+  assertCancellationConsistency(task, changes);
   const before = {};
   const changedFields = Object.keys(changes).filter((field) => JSON.stringify(task[field]) !== JSON.stringify(changes[field]));
   if (changedFields.length === 0) {
@@ -428,6 +444,7 @@ function taskCreate(start, input) {
   }
   if ((task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)))) task.implementationReadiness = 'atomic-v1';
   assertBlockerConsistency(null, task);
+  assertCancellationConsistency(null, task);
   parsed.tasks[id] = task;
   const commit = persistTaskChange(config, {
     document: parsed,

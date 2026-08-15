@@ -25,10 +25,33 @@ function normalizeClientId(value) {
 
 // waiting과 blocker의 짝은 저장 계층의 불변식이다. Board API에만 두면 CLI 경로는
 // projection 검증이 RDL-TASK-014/015로 되돌릴 때까지 실패를 알 수 없다.
+// 상태와 부가 정보의 짝이 맞지 않는 것은 호출자가 잘못 보낸 입력이지 서버 고장이 아니다.
+// 표시하지 않으면 Board가 400으로 돌려줄 근거가 없어 전부 500이 된다.
+function inputError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
 function assertBlockerConsistency(current, changes) {
   const next = Object.assign({}, current || {}, changes || {});
-  if (next.status === 'waiting' && !next.blocker) throw new Error('대기 상태로 바꾸려면 대기 대상, 해제 조건과 대기 시작 시각이 필요합니다.');
-  if (next.status !== 'waiting' && next.blocker) throw new Error('대기 상태가 아닌 태스크에는 대기 사유를 둘 수 없습니다.');
+  if (next.status === 'waiting' && !next.blocker) throw inputError('대기 상태로 바꾸려면 대기 대상, 해제 조건과 대기 시작 시각이 필요합니다.');
+  if (next.status !== 'waiting' && next.blocker) throw inputError('대기 상태가 아닌 태스크에는 대기 사유를 둘 수 없습니다.');
+}
+
+// 완료와 반려는 둘 다 종료 상태지만 게이트가 반대 방향이다. 완료는 수용조건과 TST 증거를
+// 요구하고, 반려는 그 증거가 없다는 것을 전제로 사유를 요구한다. 사유를 강제하지 않으면
+// 반려가 완료 게이트를 우회하는 조용한 통로가 된다.
+const TERMINAL_TASK_STATES = Object.freeze(['done', 'cancelled']);
+function assertCancellationConsistency(current, changes) {
+  const next = Object.assign({}, current || {}, changes || {});
+  if (next.status === 'cancelled' && !next.cancellation) throw inputError('반려하려면 반려 사유와 결정자가 필요합니다.');
+  if (next.status !== 'cancelled' && next.cancellation) throw inputError('반려 상태가 아닌 태스크에는 반려 사유를 둘 수 없습니다.');
+  const cancellation = next.cancellation;
+  if (!cancellation) return;
+  for (const [field, label] of [['reason', '반려 사유'], ['decidedBy', '결정자'], ['at', '결정 시각']]) {
+    if (!cancellation[field] || !String(cancellation[field]).trim()) throw inputError(`${label}가 필요합니다.`);
+  }
 }
 
 function clientId(root, preferred) {
@@ -165,7 +188,9 @@ function migrateTaskStore(legacyFile, directory, root, preferredClientId, maxIte
 
 module.exports = {
   MAX_TASKS_PER_SHARD,
+  TERMINAL_TASK_STATES,
   assertBlockerConsistency,
+  assertCancellationConsistency,
   clientId,
   generatedClientId,
   readTaskStore,
