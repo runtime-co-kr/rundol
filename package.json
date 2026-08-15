@@ -1,6 +1,6 @@
 {
   "name": "@rundol/monorepo",
-  "version": "0.22.6",
+  "version": "0.22.7",
   "description": "Git-based project analysis, design and task validation CLI",
   "private": true,
   "workspaces": [

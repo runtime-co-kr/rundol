@@ -4,6 +4,32 @@
 
 ## [Unreleased]
 
+## [0.22.7] - 2026-08-15
+
+### Added
+
+- Tasks can be closed as `cancelled`. Work that was decided against had nowhere to go: `done` demands satisfied acceptance criteria and a linked TST, so it could not pass, and forcing it through would record "완료" for a deliverable nobody will ever find. The two terminal states carry opposite gates — `done` requires the evidence, `cancelled` presupposes its absence and requires a reason and a decider instead, enforced as strictly as the `waiting`/blocker pair so cancelling cannot become a quiet bypass. `rdl task set --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]`. A terminal task no longer blocks its dependents; treating a cancelled predecessor as unfinished left successors permanently blocked with no way to clear them.
+- The Board shows what is blocked. A task waiting on a person was stored but a task whose predecessor is unfinished was not shown anywhere, so the list read as if the work could start. Both are now judged in one place and marked in the list, and a dependency view draws the order for whatever the current filters select.
+- The home screen answers what to do next. It separates work that can start from work that is blocked, and lists what changed since the last visit — the last-visit time is kept per browser, since one shared timestamp would hide changes on every other device.
+- Members can be registered from the CLI with `rdl member add|set|list`. `project.md` stays canonical and the Board does not edit it.
+
+### Fixed
+
+- Quick add on the task screen sent no acceptance criteria, which the API requires, so every quick add failed with HTTP 400. The one-line form is gone; tasks are created through the dialog that collects a completion condition properly.
+- Polling replaced the snapshot while a document was being edited. Only the redraw was skipped, so the draft's base revision was silently refreshed and saving it passed the optimistic concurrency check — overwriting whatever someone else had changed in the meantime. The snapshot is now left alone while editing.
+- The Board snapshot inherited the task list API's default limit of 100. The snapshot is the whole working set the screen filters locally, so beyond 100 tasks the remainder vanished at once from the list, personal queue, attention items and dependency checks, with nothing indicating the loss.
+- A generated client id embedded the machine's hostname, and that id becomes shard directory and event file names committed to the repository. `MOD-002` forbids host information in the manifest body but it was leaking through file names instead. New ids hash the hostname to six characters, so a machine keeps a stable identity without publishing its name.
+- Pair-consistency errors carried no status code, so the Board returned HTTP 500 for what is a caller input mistake. `blocker` had the same problem.
+
+### Changed
+
+- The Board's chrome is split by what it owns. The header keeps only what does not depend on the project — search, sync state, attention count, the viewing identity and settings — and the sidebar keeps navigation within the project. A single sidebar carrying all of it overflowed the screen.
+- Both side panels collapse to an icon rail instead of disappearing. Hiding them moved the content by their full width on every toggle and left the reopen control to be hunted for; overlay panels are gone entirely, so behaviour no longer depends on window width.
+- Task detail is one component rendered either in the side panel or as a full page, ordered title, properties, then content. The two used to be separate markup, so the same task showed different things depending on where it was opened.
+- The operations screen is gone. Its sync and attention cards duplicated the header and home screen and its watch card was a placeholder; the edit leases it uniquely showed moved to Workspace settings.
+- Presentation rules are read-only in the Board and name the `board.json` that owns them. Client registration and removal stay with `rdl client`; the Board only toggles the active flag.
+- Polling backs off when the tab is hidden instead of recomputing the snapshot every three seconds all day.
+
 ## [0.22.6] - 2026-08-14
 
 ### Fixed
