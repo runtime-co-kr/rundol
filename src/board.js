@@ -7,9 +7,9 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { taskCreate, taskUpdate, refreshState, syncState } = require('./state');
-const { readCollaboration, updateCollaboration } = require('./collaboration');
+const { readCollaboration } = require('./collaboration');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, shardFiles } = require('./tasks');
+const { readTaskStore, shardFiles, clientId } = require('./tasks');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus, appendLease, listLeases } = require('./collaboration-store');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
@@ -189,6 +189,7 @@ function workspaceSnapshot(root, projectKey, search) {
   const presentation = loadBoardPresentation(root, project.key);
   return {
     project: project.key,
+    client: boardClient(root, project, clients),
     revision: { workspace: boardRevision(config), tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(presentation) },
     projects: overview(root).projects,
     documents,
@@ -203,6 +204,15 @@ function workspaceSnapshot(root, projectKey, search) {
     runs: [],
     proposals: []
   };
+}
+
+// Board가 lease를 잡으려면 자기가 어느 Client인지 알아야 한다.
+// 로컬 ID(.rundol/state/client-id)는 태스크 샤딩이 이미 쓰고 있으므로 같은 값을 재사용해
+// "이 기기가 만든 태스크"와 "이 기기가 잡은 lease"가 하나의 정체성으로 이어지게 한다.
+function boardClient(root, project, clients) {
+  const id = clientId(project.root);
+  const registered = (clients || []).find((item) => item.id === id) || null;
+  return { id, registered: Boolean(registered), status: registered ? registered.status : null, owner: registered ? registered.owner : null };
 }
 
 function inputError(message) {
@@ -446,9 +456,10 @@ function createBoardServer(start, options) {
         const result = taskUpdate(activeConfig.root, taskMatch[1], changes, activeConfig.project);
         return json(response, 200, result);
       }
+      // project.md는 프로젝트 정본이므로 사람·역할 변경은 명령줄만 담당한다.
+      // 같은 파일에 쓰는 경로가 둘이면 검증과 되돌리기가 두 배가 된다.
       if (request.method === 'POST' && collaborationMatch) {
-        const body = await requestBody(request);
-        return json(response, 200, updateCollaboration(activeConfig.root, collaborationMatch[1], body, activeConfig.project));
+        return json(response, 405, { error: `${collaborationMatch[1]} 변경은 rdl member 명령으로 수행합니다. project.md는 명령줄에서만 씁니다.` });
       }
       if (request.method === 'POST' && url.pathname === '/api/refresh') return json(response, 200, refreshState(activeConfig.root, { project: activeConfig.project }));
       if (request.method === 'POST' && url.pathname === '/api/sync') return json(response, 200, syncState(activeConfig.root, { project: activeConfig.project, remote: 'origin', push: true }));

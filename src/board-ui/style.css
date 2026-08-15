@@ -931,8 +931,53 @@ body.view-operations .workspace-shell {
 }
 
 .breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
   color: var(--secondary-TextColor);
   font-size: var(--small-FontSize);
+}
+
+.breadcrumb button {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--secondary-TextColor);
+  font-weight: inherit;
+  font-size: inherit;
+}
+
+.breadcrumb button:hover {
+  border: 0;
+  background: transparent;
+  color: var(--primary-TextColor);
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--tertiary-TextColor);
+}
+
+/* 편집 점유 표시. 편집을 누르기 전에 보여야 30분 뒤 충돌을 막는다. */
+.lease-banner:empty {
+  display: none;
+}
+
+.lease-banner {
+  margin-top: var(--spacing-1_5);
+}
+
+.chip.lease-held {
+  border-color: color-mix(in srgb, var(--warning-Color) 45%, transparent);
+  color: var(--warning-Color);
+}
+
+.chip.lease-mine {
+  border-color: var(--accent-BorderColor);
+  background: var(--accent-subtle-BackgroundColor);
+  color: var(--accent-TextColor);
 }
 
 .reader-actions {

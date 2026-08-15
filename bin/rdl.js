@@ -33,6 +33,7 @@ Usage:
   rdl settings migrate [--root <path>] [--json]
   rdl workspace show|check|sync|migrate [--root <path>] [--json]
   rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
+  rdl member set <MEMBER-ID|STAKEHOLDER-ID> [--name <이름>] [--role <ROLE-ID>] [--organization <소속>] [--account <계정>] [--responsibility <책임>] [--status <상태>] [--project <key>] [--json]
   rdl member list [--project <key>] [--json]
   rdl client register <client-id> --name <name> --type <device|agent|service> --owner <MEMBER-ID> [--json]
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
@@ -529,7 +530,7 @@ async function main() {
   if (command === 'member') {
     const subcommand = argv.shift();
     const options = parseOperationArgs(argv);
-    const { readCollaboration, addMember } = require('../src/collaboration');
+    const { readCollaboration, addMember, updateCollaboration } = require('../src/collaboration');
     if (subcommand === 'list') printOperation(Object.assign({}, readCollaboration(options.root, options.project), { roles: undefined, stakeholders: undefined }), options.json);
     else if (subcommand === 'add') {
       if (options.positional.length > 1) throw new Error('rdl member add는 이름 하나만 위치 인수로 받습니다.');
@@ -541,7 +542,16 @@ async function main() {
         responsibility: options.responsibility,
         roles: options.roles
       }, options.project), options.json);
-    } else throw new Error('지원하는 member 하위 명령은 add, list입니다.');
+    } else if (subcommand === 'set') {
+      if (options.positional.length !== 1) throw new Error('rdl member set에는 MEMBER-ID 또는 STAKEHOLDER-ID 하나가 필요합니다.');
+      const fields = {};
+      if (options.roles.length) fields['역할'] = options.roles.join(', ');
+      if (options.organization !== null) fields['소속'] = options.organization;
+      if (options.account !== null) fields['업무 계정'] = options.account;
+      if (options.responsibility !== null) fields['책임 영역'] = options.responsibility;
+      if (options.status !== undefined) fields['상태'] = options.status;
+      printOperation(updateCollaboration(options.root, options.positional[0], { name: options.name, fields }, options.project), options.json);
+    } else throw new Error('지원하는 member 하위 명령은 add, set, list입니다.');
     return 0;
   }
 

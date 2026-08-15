@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, pendingTasks: new Map(), blockerResolve: null, newTaskBlocker: null };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, pendingTasks: new Map(), blockerResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료' };
 const typeLabels = {
   project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
@@ -65,6 +65,17 @@ function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(t
 async function flushTaskUpdate(taskId) { const pending = state.pendingTasks.get(taskId); if (!pending) return; pending.timer = null; try { await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, pending.changes)) }); state.pendingTasks.delete(taskId); await loadSnapshot(true); if (state.view === 'task' && state.selected === taskId) renderTask(taskId); message('태스크 변경을 파일에 저장했습니다.'); } catch (error) { state.pendingTasks.delete(taskId); await loadSnapshot(true); if (state.view === 'task' && state.selected === taskId) renderTask(taskId); message(`변경을 되돌렸습니다: ${error.message}`, true); } }
 
 // 화면 이름을 body에 남겨 선택 대상이 없는 화면에서 Context 패널을 접는다.
+// breadcrumb은 지금까지 textContent라 눌러도 아무 일이 없었다.
+// 마디마다 돌아갈 곳이 있어야 들어갔다 나오는 길이 생긴다.
+function breadcrumb(parts) {
+  return parts.map((part, index) => {
+    const last = index === parts.length - 1;
+    const node = last || !part.view
+      ? `<span>${escapeHtml(part.label)}</span>`
+      : `<button data-view="${escapeHtml(part.view)}"${part.entity ? ` data-breadcrumb-entity="${escapeHtml(part.entity)}"` : ''}>${escapeHtml(part.label)}</button>`;
+    return index ? `<span class="breadcrumb-sep">›</span>${node}` : node;
+  }).join('');
+}
 function markViewOnBody(view) {
   for (const name of Array.from(document.body.classList)) if (name.startsWith('view-')) document.body.classList.remove(name);
   document.body.classList.add(`view-${view}`);
@@ -129,7 +140,8 @@ function renderContext(item, kind) {
     const members = [['', '미지정']].concat(state.snapshot.people.members.map((member) => [member.id, member.name])); const pending = state.pendingTasks.has(item.id); el('context-content').innerHTML = `<section class="context-group"><h2>Task</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>상태</dt><dd>${contextSelect('status', item.status, Object.entries(statusLabels))}</dd></div><div class="property"><dt>우선순위</dt><dd>${contextSelect('priority', item.priority, [['high', '높음'], ['mid', '중간'], ['low', '낮음']])}</dd></div><div class="property"><dt>소유자</dt><dd>${contextSelect('owner', item.owner, members)}</dd></div><div class="property"><dt>검토자</dt><dd>${escapeHtml((item.reviewers || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>이해관계자</dt><dd>${escapeHtml((item.stakeholders || []).map(personName).join(', ') || '미지정')}</dd></div><div class="property"><dt>저장</dt><dd><span class="save-state ${pending ? 'pending' : ''}">${pending ? '● 파일 반영 대기' : '✓ 저장됨'}</span></dd></div><div class="property"><dt>Revision</dt><dd>${escapeHtml(item.revision || '-')}</dd></div></dl></section>`;
   }
 }
-function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').textContent = `${state.project} / ${item.file}`; el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
+  renderLeaseBanner(item.id); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 function taskRow(task) { const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length; const total = Object.keys(task.acceptanceCriteria || {}).length; return `<button class="task-row" data-task="${task.id}"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))}· ${completed}/${total}</span></button>`; }
 // 상태별 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
@@ -142,14 +154,27 @@ function taskGroups(tasks) {
     .join('');
 }
 function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">상단에서 현재 사용자를 선택하면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)); if (state.taskMode === 'list') { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>'; } else { el('task-list').hidden = true; el('board').hidden = false; el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); } }
-function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').textContent = `${state.project} / 태스크 / ${task.id}`; el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
+function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]); el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
 function renderPeople() { const people = state.snapshot.people; for (const [id, values] of [['members', people.members], ['roles', people.roles], ['stakeholders', people.stakeholders]]) el(id).innerHTML = values.map((item) => `<article class="person-card"><span class="eyebrow">${item.id}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · '))}</small></article>`).join(''); }
 function renderOperations() { const sync = state.snapshot.sync; el('operation-status').innerHTML = `<article class="operation-card"><p class="eyebrow">SYNC</p><h2>${escapeHtml(sync.state)}</h2><p>${sync.ahead ?? '—'} ahead · ${sync.behind ?? '—'} behind</p><small>${escapeHtml(sync.head.slice(0, 12))}</small></article><article class="operation-card"><p class="eyebrow">ATTENTION</p><h2>${state.snapshot.attention.length}</h2><p>현재 조치 필요 항목</p></article><article class="operation-card"><p class="eyebrow">WATCH</p><h2>외부 CLI</h2><p>watch 상태는 다음 Snapshot 계약에서 연결됩니다.</p></article>`; el('leases').innerHTML = state.snapshot.leases.map((item) => `<article class="entity-card"><strong>${escapeHtml(item.documentId)}</strong><small>${escapeHtml(item.clientId)} · ${escapeHtml(item.expiresAt)}</small></article>`).join('') || '<p class="empty-state">활성 임대가 없습니다.</p>'; }
 function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; }
 
 function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모든 담당자', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-status').replaceChildren(...Object.entries(statusLabels).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
 function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; }
-async function loadSnapshot(silent) { try { const next = await api(projectPath('/board-snapshot')); const changed = !state.snapshot || JSON.stringify(state.snapshot.revision) !== JSON.stringify(next.revision); state.snapshot = next; if (changed) { renderNavigation(); populateControls(); updateHealth(); setView(state.view, state.selected); } if (!silent) message('Workspace를 새로 읽었습니다.'); } catch (error) { message(error.message, true); } }
+// 편집 중에는 화면을 다시 그리지 않는다. setView가 renderDocument를 거쳐 편집기를 닫으므로
+// 폴링이 3초마다 입력 중인 내용을 지워버린다. 스냅샷은 계속 받되 렌더링만 미룬다.
+function isEditing() { return !el('document-editor').hidden || state.pendingTasks.size > 0; }
+async function loadSnapshot(silent) {
+  try {
+    const next = await api(projectPath('/board-snapshot'));
+    const changed = !state.snapshot || JSON.stringify(state.snapshot.revision) !== JSON.stringify(next.revision);
+    state.snapshot = next;
+    if (changed && !isEditing()) { renderNavigation(); populateControls(); updateHealth(); setView(state.view, state.selected); }
+    if (!silent) message('Workspace를 새로 읽었습니다.');
+  } catch (error) {
+    message(error.message, true);
+  }
+}
 async function initialize() { applyTheme(localStorage.getItem('rundol.theme') || 'system'); matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (document.body.classList.contains('theme-system') && state.view === 'document' && state.selected) renderDocument(state.selected); }); const projects = await api('/api/projects'); el('project-switcher').replaceChildren(...projects.map((item) => new Option(item.name || item.key, item.key))); const hash = new URLSearchParams(location.hash.slice(1)); state.project = hash.get('project') || projects[0].key; state.view = hash.get('view') || 'home'; state.taskScope = hash.get('scope') || 'all'; state.selected = hash.get('entity'); el('project-switcher').value = state.project; await loadSnapshot(true); state.polling = setInterval(() => loadSnapshot(true), 3000); }
 
 document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
@@ -237,9 +262,90 @@ el('quick-add').addEventListener('submit', async (event) => {
   }
 });
 el('new-task').addEventListener('click', () => { el('task-id').textContent = 'NEW TASK'; el('task-title').value = ''; el('task-summary').value = ''; el('task-acceptance').value = ''; el('task-links').value = ''; el('task-status').value = 'todo'; state.newTaskBlocker = null; el('task-dialog').showModal(); el('task-title').focus(); });
-el('edit-document').addEventListener('click', () => { const item = state.snapshot.documents.find((value) => value.id === state.selected); if (!item) return; el('document-editor').value = item.body; el('document-body').hidden = true; el('document-editor').hidden = false; el('edit-document').hidden = true; el('cancel-document-edit').hidden = false; el('save-document').hidden = false; el('document-editor').focus(); });
-el('cancel-document-edit').addEventListener('click', () => renderDocument(state.selected));
-el('save-document').addEventListener('click', async () => { const item = state.snapshot.documents.find((value) => value.id === state.selected); if (!item) return; try { await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: el('document-editor').value }) }); await loadSnapshot(true); message('문서를 저장하고 검증했습니다.'); } catch (error) { message(error.message, true); } });
+// ── 편집 lease ────────────────────────────────────────────
+// 저장 시점의 revision 검사만으로는 데이터는 지켜도 작업은 지키지 못한다.
+// 30분 편집한 뒤 거부되면 되돌릴 방법이 없으므로 시작 전에 lease를 잡는다.
+function leasePath(documentId, action) { return projectPath(`/leases/${encodeURIComponent(documentId)}/${action}`); }
+async function leaseAction(documentId, action) {
+  return api(leasePath(documentId, action), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+    body: JSON.stringify({ clientId: state.snapshot.client.id })
+  });
+}
+function stopLeaseRenewal() { if (state.leaseTimer) clearInterval(state.leaseTimer); state.leaseTimer = null; }
+async function releaseLease() {
+  stopLeaseRenewal();
+  const held = state.heldLease;
+  state.heldLease = null;
+  if (held) try { await leaseAction(held, 'release'); } catch (error) { message(error.message, true); }
+}
+function documentHolder(documentId) {
+  return (state.snapshot.leases || []).find((item) => item.documentId === documentId && item.clientId !== state.snapshot.client.id) || null;
+}
+function renderLeaseBanner(documentId) {
+  const holder = documentHolder(documentId);
+  el('document-lease').innerHTML = holder
+    ? `<span class="chip lease-held">${escapeHtml(personName(holder.memberId) || holder.clientId)} 편집 중 · ${escapeHtml(holder.expiresAt)}까지</span>`
+    : (state.heldLease === documentId ? '<span class="chip lease-mine">내가 편집 중</span>' : '');
+  el('edit-document').disabled = Boolean(holder);
+}
+function enterEditing(item) {
+  el('document-editor').value = item.body;
+  el('document-body').hidden = true;
+  el('document-editor').hidden = false;
+  el('edit-document').hidden = true;
+  el('cancel-document-edit').hidden = false;
+  el('save-document').hidden = false;
+  el('document-editor').focus();
+}
+el('edit-document').addEventListener('click', async () => {
+  const item = state.snapshot.documents.find((value) => value.id === state.selected);
+  if (!item) return;
+  // 등록되지 않은 Client는 lease를 만들 수 없다. 무엇을 해야 하는지 알려준다.
+  if (!state.snapshot.client.registered) {
+    return message(`이 기기를 Client로 등록해야 협업 편집을 시작할 수 있습니다: rdl client register ${state.snapshot.client.id} --name "<이름>" --type device --owner <MEMBER-ID>`, true);
+  }
+  const holder = documentHolder(item.id);
+  if (holder) return message(`${personName(holder.memberId) || holder.clientId}가 편집 중입니다. ${holder.expiresAt}까지 유효합니다.`, true);
+  // acquire는 자기 lease에도 실패한다. 브라우저가 갱신 중 죽으면 남은 lease 때문에
+  // 자기 문서를 5분간 못 여는 셈이므로, 내 것이 남아 있으면 갱신으로 이어받는다.
+  const mine = (state.snapshot.leases || []).find((lease) => lease.documentId === item.id && lease.clientId === state.snapshot.client.id);
+  try {
+    await leaseAction(item.id, mine ? 'renew' : 'acquire');
+    state.heldLease = item.id;
+    renderLeaseBanner(item.id);
+    stopLeaseRenewal();
+    // TTL이 5분이므로 그 절반마다 갱신한다. 브라우저가 닫히면 갱신이 멈춰 자동 만료된다.
+    state.leaseTimer = setInterval(() => {
+      leaseAction(item.id, 'renew').catch((error) => { message(`편집 임대 갱신 실패: ${error.message}`, true); stopLeaseRenewal(); });
+    }, 150000);
+    enterEditing(item);
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+el('cancel-document-edit').addEventListener('click', async () => { await releaseLease(); renderDocument(state.selected); });
+window.addEventListener('beforeunload', () => {
+  if (!state.heldLease) return;
+  navigator.sendBeacon(leasePath(state.heldLease, 'release'), new Blob([JSON.stringify({ clientId: state.snapshot.client.id })], { type: 'application/json' }));
+});
+el('save-document').addEventListener('click', async () => {
+  const item = state.snapshot.documents.find((value) => value.id === state.selected);
+  if (!item) return;
+  const draft = el('document-editor').value;
+  try {
+    await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: draft }) });
+    await releaseLease();
+    await loadSnapshot(true);
+    message('문서를 저장하고 검증했습니다.');
+  } catch (error) {
+    // 저장이 거부돼도 편집기 내용은 남긴다. 여기서 지우면 작업이 사라진다.
+    el('document-editor').value = draft;
+    state.rejectedDraft = { id: item.id, body: draft };
+    message(`${error.message} 편집 내용은 편집기에 그대로 있습니다.`, true);
+  }
+});
 el('task-form').addEventListener('submit', async (event) => { event.preventDefault(); const status = el('task-status').value; if (status === 'waiting' && !state.newTaskBlocker) return message('대기 상태로 만들려면 대기 사유를 먼저 입력하세요.', true); const lines = el('task-acceptance').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const acceptanceCriteria = Object.fromEntries(lines.map((text, index) => [`AC-${String(index + 1).padStart(3, '0')}`, { text, done: false }])); try { await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title: el('task-title').value, summary: el('task-summary').value, status, priority: el('task-priority').value, owner: el('task-owner').value || null, blocker: status === 'waiting' ? state.newTaskBlocker : null, links: el('task-links').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), acceptanceCriteria }) }); el('task-dialog').close(); await loadSnapshot(true); message('태스크를 생성했습니다.'); } catch (error) { message(error.message, true); } });
 el('sync').addEventListener('click', async () => { try { message('동기화를 실행하고 있습니다.'); await api(projectPath('/sync'), { method: 'POST', headers: { 'X-Rundol-Token': token } }); await loadSnapshot(true); message('동기화를 완료했습니다.'); } catch (error) { message(error.message, true); } });
 function ensureContractSettings() {
