@@ -1,6 +1,6 @@
 # RDL CLI 기능 명세
 
-Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 별칭이다. 외부 runtime dependency 없이 Node.js 14 이상과 Git에서 동작한다.
+Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 별칭이다. 외부 runtime dependency 없이 Node.js 20 이상과 Git에서 동작한다.
 
 ## 명령 요약
 

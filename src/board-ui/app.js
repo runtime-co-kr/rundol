@@ -84,7 +84,42 @@ function redrawTask(taskId) {
   if (task && state.view === 'tasks') renderContext(task, 'task');
 }
 function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(task.id); if (!pending) pending = { baseRevision: task.revision, changes: {}, timer: null }; Object.assign(pending.changes, changes); Object.assign(task, changes); clearTimeout(pending.timer); pending.timer = setTimeout(() => flushTaskUpdate(task.id), 500); state.pendingTasks.set(task.id, pending); redrawTask(task.id); }
-async function flushTaskUpdate(taskId) { const pending = state.pendingTasks.get(taskId); if (!pending) return; pending.timer = null; try { await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, pending.changes)) }); state.pendingTasks.delete(taskId); await loadSnapshot(true); redrawTask(taskId); message('태스크 변경을 파일에 저장했습니다.'); } catch (error) { state.pendingTasks.delete(taskId); await loadSnapshot(true); redrawTask(taskId); message(`변경을 되돌렸습니다: ${error.message}`, true); } }
+// 보내는 동안 사용자가 또 누르면 그 변경은 새 pending으로 쌓인다. 응답이 온 뒤
+// taskId로 지우면 그 사이 쌓인 것까지 지워져 두 번째 변경이 소리 없이 사라진다.
+// 보낸 그 객체일 때만 지우고, 그 사이 쌓인 것이 있으면 이어서 보낸다.
+async function flushTaskUpdate(taskId) {
+  const pending = state.pendingTasks.get(taskId);
+  if (!pending || pending.sending) return;
+  pending.timer = null;
+  pending.sending = true;
+  const sent = Object.assign({}, pending.changes);
+  try {
+    await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, sent)) });
+    settleTaskUpdate(taskId, pending, sent);
+    await loadSnapshot(true);
+    redrawTask(taskId);
+    if (!state.pendingTasks.has(taskId)) message('태스크 변경을 파일에 저장했습니다.');
+  } catch (error) {
+    state.pendingTasks.delete(taskId);
+    await loadSnapshot(true);
+    redrawTask(taskId);
+    message(`변경을 되돌렸습니다: ${error.message}`, true);
+  }
+}
+function settleTaskUpdate(taskId, pending, sent) {
+  pending.sending = false;
+  const later = Object.keys(pending.changes).filter((field) => JSON.stringify(pending.changes[field]) !== JSON.stringify(sent[field]));
+  if (!later.length) { state.pendingTasks.delete(taskId); return; }
+  // 보내는 사이 쌓인 것만 남기고, 새 revision을 받은 뒤 이어 보낸다.
+  pending.changes = Object.fromEntries(later.map((field) => [field, pending.changes[field]]));
+  pending.baseRevision = null;
+  clearTimeout(pending.timer);
+  pending.timer = setTimeout(() => {
+    const task = state.snapshot.tasks.tasks.find((item) => item.id === taskId);
+    if (task) pending.baseRevision = task.revision;
+    flushTaskUpdate(taskId);
+  }, 0);
+}
 
 // 화면 이름을 body에 남겨 선택 대상이 없는 화면에서 Context 패널을 접는다.
 // 표시 옵션은 지금까지 아무데도 남지 않아 새로고침마다 초기화됐다.
@@ -368,12 +403,20 @@ function personRow(item, group) {
 }
 function renderPeople() {
   const people = state.snapshot.people;
+  // 명단만 다시 그리면 옆에 열어둔 사람의 태스크·문서 수가 예전 값으로 남는다.
+  if (state.selected && document.body.dataset.peekKind === 'person') redrawPerson(state.selected);
   el('members').innerHTML = people.members.map((item) => `<button class="person-card" data-person="members:${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · ') || '설명 없음')}</small></button>`).join('') || '<p class="empty-state">등록된 멤버가 없습니다.</p>';
   el('roles').innerHTML = people.roles.map((item) => personRow(item, 'roles')).join('') || '<p class="empty-state">정의된 역할이 없습니다.</p>';
   el('stakeholders').innerHTML = people.stakeholders.map((item) => personRow(item, 'stakeholders')).join('') || '<p class="empty-state">등록된 이해관계자가 없습니다.</p>';
 }
 // 태스크와 같은 방식으로 옆에서 연다. 화면을 갈아치우면 명단 맥락을 잃고,
 // 사람 하나를 보려고 화면을 오갈 만큼 내용이 많지도 않다.
+function redrawPerson(id) {
+  for (const group of ['members', 'roles', 'stakeholders']) {
+    const entry = (state.snapshot.people[group] || []).find((item) => item.id === id);
+    if (entry) { el('context-content').innerHTML = personDetailHtml(entry, group); return; }
+  }
+}
 function personDetailHtml(entry, group) {
   const labels = { members: '멤버', roles: '역할', stakeholders: '이해관계자' };
   const fields = Object.entries(entry.fields || {}).filter(([, value]) => String(value || '').trim());
@@ -393,7 +436,9 @@ function populateControls() { const members = state.snapshot.people.members; el(
   el('owner').value = members.some((item) => item.id === savedOwner) ? savedOwner : '';
   el('priority').value = viewOption('priority', '');
   el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
-  el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-status').replaceChildren(...Object.entries(statusLabels).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
+  el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); // 새로 만드는 태스크는 아직 끝나지도, 접히지도 않았다. 종료 상태를 고르게 두면
+// 완료는 수용조건과 TST를, 반려는 사유를 요구해 생성이 그대로 거부된다.
+el('task-status').replaceChildren(...Object.entries(statusLabels).filter(([value]) => !TERMINAL_STATUSES.includes(value)).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
 function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; renderSyncStatus(); }
 
 // 동기화는 값을 바꾸는 설정이 아니라 되돌리기 어려운 동작이다. 설정 화면이 아니라
@@ -655,9 +700,16 @@ el('edit-document').addEventListener('click', async () => {
   }
 });
 el('cancel-document-edit').addEventListener('click', async () => { await releaseLease(); renderDocument(state.selected); });
+// sendBeacon은 헤더를 실을 수 없어 인증 토큰이 빠지고 서버가 403으로 버린다. 임대는
+// 풀리지 않은 채 TTL이 다 갈 때까지 남는다. keepalive fetch는 헤더를 그대로 보낸다.
 window.addEventListener('beforeunload', () => {
   if (!state.heldLease) return;
-  navigator.sendBeacon(leasePath(state.heldLease, 'release'), new Blob([JSON.stringify({ clientId: state.snapshot.client.id })], { type: 'application/json' }));
+  fetch(leasePath(state.heldLease, 'release'), {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+    body: JSON.stringify({ clientId: state.snapshot.client.id })
+  }).catch(() => {});
 });
 el('save-document').addEventListener('click', async () => {
   const item = state.snapshot.documents.find((value) => value.id === state.selected);
@@ -666,6 +718,10 @@ el('save-document').addEventListener('click', async () => {
   try {
     await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: draft }) });
     await releaseLease();
+    // 저장은 편집의 끝이다. 편집기를 열어둔 채 스냅샷을 불러오면 isEditing() 가드에
+    // 걸려 갱신이 통째로 건너뛰어지고, 다음 저장이 오래된 revision으로 나가 409가 난다.
+    el('document-editor').hidden = true;
+    state.rejectedDraft = null;
     await loadSnapshot(true);
     message('문서를 저장하고 검증했습니다.');
   } catch (error) {

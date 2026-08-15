@@ -26,7 +26,7 @@
     "release:check": "npm run version:check && npm test && npm run test:install"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=20"
   },
   "dependencies": {
     "mermaid": "^11.12.2"

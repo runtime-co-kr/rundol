@@ -314,4 +314,32 @@ assert(/\.page-heading,\s*\.reader-heading\s*\{[^}]*top:\s*var\(--header-Height\
 // 참고 항목이 문서 유형 목록의 2열 격자에 걸려 레일에서 가운데로 서지 못했다.
 assert(!/\.nav-list button,\s*\.utility-nav button\s*\{[^}]*grid-template-columns/u.test(style), '참고 항목은 문서 유형 목록과 배치가 다릅니다');
 
+// 저장은 편집의 끝이다. 편집기를 열어둔 채 스냅샷을 부르면 isEditing() 가드에 걸려
+// 갱신이 통째로 건너뛰어지고, 다음 저장이 오래된 revision으로 나가 409가 난다.
+const saveStart = app.indexOf("el('save-document').addEventListener");
+const save = app.slice(saveStart, app.indexOf('});', app.indexOf('catch', saveStart)));
+assert(save.includes("el('document-editor').hidden = true"), '저장에 성공하면 편집 모드를 끝내야 합니다');
+assert(save.indexOf("el('document-editor').hidden = true") < save.indexOf('loadSnapshot'), '편집을 끝낸 뒤에 스냅샷을 불러야 합니다');
+
+// 보내는 동안 다시 누르면 그 변경은 새로 쌓인다. taskId로 지우면 그것까지 사라진다.
+assert(app.includes('function settleTaskUpdate'), '전송 중 쌓인 변경을 따로 갈무리해야 합니다');
+assert(app.includes('pending.sending'), '같은 태스크를 두 번 동시에 보내지 않아야 합니다');
+assert(!/await api\(projectPath\(`\/tasks\/[^`]+`\)[\s\S]{0,200}state\.pendingTasks\.delete\(taskId\);\s*await loadSnapshot/u.test(app), '응답 뒤 무조건 지우면 그 사이 변경이 유실됩니다');
+
+// 새로 만드는 태스크는 아직 끝나지도 접히지도 않았다. 종료 상태는 고를 수 없어야 한다.
+assert(app.includes('!TERMINAL_STATUSES.includes(value)'), '생성 화면에 종료 상태를 두면 안 됩니다');
+
+// 명단만 다시 그리면 옆에 열어둔 사람의 태스크·문서 수가 예전 값으로 남는다.
+assert(app.includes('function redrawPerson'), '열어둔 사람도 갱신되어야 합니다');
+assert(app.includes("document.body.dataset.peekKind === 'person'"), '사람 peek이 열려 있을 때만 다시 그려야 합니다');
+
+// sendBeacon은 헤더를 실을 수 없어 토큰이 빠지고 서버가 403으로 버린다.
+assert(!app.includes('navigator.sendBeacon'), '인증이 필요한 요청에 sendBeacon을 쓰면 안 됩니다');
+assert(/keepalive: true[\s\S]{0,160}'X-Rundol-Token'/u.test(app), '종료 시 임대 해제도 토큰을 실어야 합니다');
+
+// 프로젝트 선택기는 사이드바에만 있다. 좁은 화면에서 레일을 강제하면 바꿀 길이 사라진다.
+const narrow = style.slice(style.indexOf('@media (max-width: 720px)'));
+assert(!/\.sidebar-head select[^{]*\{[^}]*display:\s*none/u.test(narrow), '좁은 화면에서 프로젝트 선택기를 감추면 안 됩니다');
+assert(/\.workspace-shell,[^{]*\{[^}]*var\(--nav-Width\)/u.test(narrow), '좁은 화면에서도 기본은 펼친 사이드바여야 합니다');
+
 console.log('board UI tests passed');

@@ -2210,44 +2210,31 @@ dialog label textarea {
 }
 
 @media (max-width: 720px) {
-  /* 이 폭에서도 띄우지 않는다. 사이드바는 레일로만 남고 Context는 자리를 비운다. */
+  /* 이 폭에서도 띄우지 않는다. 다만 레일을 강제하지는 않는다. 프로젝트 선택기는
+     사이드바에만 있고 52px 레일에는 들어가지 않으므로, 강제하면 프로젝트를 바꿀 길이
+     화면에서 통째로 사라진다. 접는 것은 사용자가 고르고 기본은 펼친 상태다. */
   .app-header {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .app-header .brand b,
   .app-header-right .health span:not(.badge),
-  .app-header-right .sync-status span:last-child,
-  .app-header-right select {
+  .app-header-right .sync-status span:last-child {
     display: none;
-  }
-
-  .navigation-panel {
-    padding: var(--spacing-1_5) var(--spacing-1);
-  }
-
-  .sidebar-head select,
-  .nav-label,
-  .nav-section,
-  .navigation-panel h2 {
-    display: none;
-  }
-
-  .primary-nav button,
-  .utility-nav button {
-    justify-content: center;
-    padding: 0;
   }
 
   .workspace-shell,
-  body.nav-collapsed .workspace-shell,
   body.context-collapsed .workspace-shell,
-  body.nav-collapsed.context-collapsed .workspace-shell,
   body.peek-open .workspace-shell,
-  body.peek-open.nav-collapsed .workspace-shell,
   body.view-settings .workspace-shell,
   body.view-people .workspace-shell,
-  body.view-task .workspace-shell,
+  body.view-task .workspace-shell {
+    grid-template-columns: var(--nav-Width) minmax(0, 1fr);
+  }
+
+  body.nav-collapsed .workspace-shell,
+  body.nav-collapsed.context-collapsed .workspace-shell,
+  body.peek-open.nav-collapsed .workspace-shell,
   body.nav-collapsed.view-settings .workspace-shell,
   body.nav-collapsed.view-people .workspace-shell,
   body.nav-collapsed.view-task .workspace-shell {
