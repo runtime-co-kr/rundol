@@ -307,7 +307,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "cancelled",
       "priority": "mid",
       "links": [
         "PRD-001",
@@ -345,11 +345,16 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T02:01:04.040Z",
-      "updatedAt": "2026-08-14T02:03:23.582Z",
-      "statusChangedAt": "2026-08-14T02:01:04.040Z",
+      "updatedAt": "2026-08-15T04:03:38.143Z",
+      "statusChangedAt": "2026-08-15T04:03:38.143Z",
       "externalRefs": [],
       "project": "rundol",
-      "implementationReadiness": "atomic-v1"
+      "implementationReadiness": "atomic-v1",
+      "cancellation": {
+        "reason": "모노레포 전환을 하지 않기로 결정해 공통 문서 정본 구조 정의가 필요 없어졌습니다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-15T04:03:37.855Z"
+      }
     },
     "TASK-00MSSB9PPAB71EFD8F9E635BC0": {
       "title": "[설계] 설계 문서 병렬 작성과 오너 승인 반영 절차 정의",
