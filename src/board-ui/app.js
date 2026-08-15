@@ -121,6 +121,8 @@ function breadcrumb(parts) {
 function markViewOnBody(view) {
   for (const name of Array.from(document.body.classList)) if (name.startsWith('view-')) document.body.classList.remove(name);
   document.body.classList.add(`view-${view}`);
+  // 넓은 peek은 태스크 목록에서만 의미가 있다. 다른 화면으로 가면 원래 폭으로 되돌린다.
+  if (view !== 'tasks') document.body.classList.remove('peek-open');
 }
 function setView(view, selected) {
   if (!state.snapshot) return;
@@ -381,6 +383,7 @@ document.addEventListener('click', (event) => { const button = event.target.clos
     if (peeked && state.view === 'tasks') {
       state.selected = button.dataset.task;
       document.body.classList.remove('context-collapsed');
+      document.body.classList.add('peek-open');
       for (const row of document.querySelectorAll('.task-row')) row.classList.toggle('peeked', row.dataset.task === state.selected);
       return renderContext(peeked, 'task');
     }
@@ -446,7 +449,7 @@ for (const [mode, id] of Object.entries(taskModes)) {
     renderTasks();
   });
 }
-el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed')); el('collapse-context').addEventListener('click', () => { if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-open'); else { document.body.classList.remove('context-open'); document.body.classList.toggle('context-collapsed'); } });
+el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed')); el('collapse-context').addEventListener('click', () => { document.body.classList.remove('peek-open'); if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-open'); else { document.body.classList.remove('context-open'); document.body.classList.toggle('context-collapsed'); } });
 el('menu-button').addEventListener('click', () => document.body.classList.toggle('nav-open'));
 el('context-button').addEventListener('click', () => { document.body.classList.remove('context-collapsed'); document.body.classList.toggle('context-open'); });
 addEventListener('resize', () => { if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-collapsed'); else document.body.classList.remove('context-open'); });

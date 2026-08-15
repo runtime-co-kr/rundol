@@ -188,6 +188,20 @@ assert(/body\.nav-collapsed \.workspace-shell\s*\{[^}]*grid-template-columns/u.t
 assert(/body\.nav-collapsed \.navigation-panel\s*\{[^}]*display:\s*none/u.test(style), '접힌 탐색 패널은 숨겨져야 합니다');
 assert(style.includes('body.nav-collapsed #menu-button'), '접은 뒤 다시 펼 손잡이가 있어야 합니다');
 
+// :not()의 특이도는 인자를 따라간다. 두 번 겹친 (0,2,1)이 .search input(0,1,1)을 이겨
+// 컴포넌트의 테두리 제거가 통째로 무시됐다. :where()로 감싸 요소 하나의 특이도로 되돌린다.
+assert(!/input:not\(\[type=/u.test(style), '전역 input 규칙은 컴포넌트 규칙을 이기면 안 됩니다');
+assert(style.includes("input:not(:where([type='checkbox'], [type='radio']))"), '전역 input 규칙은 :where()로 특이도를 낮춰야 합니다');
+for (const component of ['.search input', '.quick-add input']) {
+  assert(style.includes(component), `${component} 규칙이 있어야 합니다`);
+}
+
+// 태스크 peek은 속성 패널 폭으로는 완료조건이 읽히지 않는다.
+assert(app.includes("classList.add('peek-open')"), '태스크를 열면 읽을 폭을 확보해야 합니다');
+assert(app.includes("if (view !== 'tasks') document.body.classList.remove('peek-open')"), '다른 화면으로 가면 원래 폭으로 되돌려야 합니다');
+assert(/body\.peek-open \.workspace-shell\s*\{[^}]*var\(--peek-Width\)/u.test(style), 'peek 폭은 토큰으로 정의해야 합니다');
+assert(theme.includes('--peek-Width'), 'peek 폭 토큰이 theme.css에 있어야 합니다');
+
 // flex/grid 자식의 기본 min-width는 내용 크기다. 줄이지 않으면 사이드바를 밀고 나간다.
 assert(/\.search\s*\{[^}]*min-width:\s*0/u.test(style), '검색 상자는 사이드바 폭 안에서 줄어야 합니다');
 assert(/\.search input\s*\{[^}]*min-width:\s*0/u.test(style), '검색 입력은 기본 min-width를 버려야 합니다');

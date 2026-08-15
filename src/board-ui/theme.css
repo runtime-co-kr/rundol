@@ -76,6 +76,7 @@
   --topbar-Height: 52px;
   --nav-Width: 248px;
   --context-Width: 300px;
+  --peek-Width: clamp(360px, 42vw, 620px);
 
   --caption-FontSize: 12px;
   --small-FontSize: 13px;
