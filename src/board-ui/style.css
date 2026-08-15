@@ -38,9 +38,6 @@ body {
   clip: rect(0, 0, 0, 0);
 }
 
-.mobile-only {
-  display: none;
-}
 
 /* ── 타이포 ───────────────────────────────────────────── */
 
@@ -471,9 +468,6 @@ button:disabled:hover {
   padding: 0;
 }
 
-.mobile-bar {
-  display: none;
-}
 
 .brand {
   display: flex;
@@ -611,12 +605,6 @@ body.view-task .context-panel {
   display: none;
 }
 
-body.view-settings .workspace-shell,
-body.view-people .workspace-shell,
-body.view-task .workspace-shell {
-  grid-template-columns: var(--nav-Width) minmax(0, 1fr);
-}
-
 /* 태스크 peek. Notion의 side peek은 본문을 밀어내지 않고 화면 오른쪽 절반을 덮는다.
    열로 만들어 밀어내면 폭을 넓힐수록 목록이 좁아져 둘 다 못 읽게 된다. 겹치면 목록은
    원래 폭을 지키고 peek만 필요한 만큼 가져간다.
@@ -674,53 +662,46 @@ body.nav-collapsed #collapse-nav {
   transform: rotate(180deg);
 }
 
+/* Context도 같은 방식으로 접힌다. 숨겼다 띄우면 접을 때마다 본문이 300px씩 튀고
+   다시 펼 손잡이를 본문 위 어딘가에서 찾아야 한다. 레일로 남으면 손잡이가 제자리에 있다. */
 body.context-collapsed .workspace-shell {
+  grid-template-columns: var(--nav-Width) minmax(0, 1fr) var(--nav-rail-Width);
+}
+
+body.nav-collapsed.context-collapsed .workspace-shell {
+  grid-template-columns: var(--nav-rail-Width) minmax(0, 1fr) var(--nav-rail-Width);
+}
+
+body.context-collapsed .context-panel {
+  padding: var(--spacing-1_5) var(--spacing-1);
+}
+
+body.context-collapsed .panel-title span,
+body.context-collapsed #context-empty,
+body.context-collapsed #context-content {
+  display: none;
+}
+
+body.context-collapsed .panel-title {
+  justify-content: center;
+}
+
+body.context-collapsed #collapse-context {
+  transform: rotate(180deg);
+}
+
+/* 선택 대상이 없는 화면은 Context 자체가 없으므로 레일도 두지 않는다.
+   접힘 규칙보다 뒤에 와야 이긴다. */
+body.view-settings .workspace-shell,
+body.view-people .workspace-shell,
+body.view-task .workspace-shell {
   grid-template-columns: var(--nav-Width) minmax(0, 1fr);
 }
 
-body.nav-collapsed.context-collapsed .workspace-shell,
 body.nav-collapsed.view-settings .workspace-shell,
 body.nav-collapsed.view-people .workspace-shell,
 body.nav-collapsed.view-task .workspace-shell {
   grid-template-columns: var(--nav-rail-Width) minmax(0, 1fr);
-}
-
-body.context-collapsed .context-panel {
-  display: none;
-}
-
-/* Context를 접으면 다시 펼 손잡이가 사라진다. 사이드바는 레일이 남으므로 필요 없다. */
-body.context-collapsed .mobile-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--spacing-2);
-}
-
-body.context-collapsed #context-button {
-  display: inline-flex;
-}
-
-/* 좁은 화면에서만 본문 위에 띄운다. 열이 하나뿐이라 레일로 좁힐 여지가 없다. */
-body.nav-open .navigation-panel {
-  position: fixed;
-  z-index: 20;
-  top: var(--header-Height);
-  bottom: 0;
-  left: 0;
-  display: flex;
-  width: min(320px, 86vw);
-  box-shadow: var(--medium-BoxShadow);
-}
-
-body.context-open .context-panel {
-  position: fixed;
-  z-index: 20;
-  top: var(--header-Height);
-  right: 0;
-  bottom: 0;
-  display: block;
-  width: min(320px, 86vw);
-  box-shadow: var(--medium-BoxShadow);
 }
 
 /* ── 탐색 패널 ────────────────────────────────────────── */
@@ -1980,12 +1961,16 @@ dialog label textarea {
 /* ── 반응형 ───────────────────────────────────────────── */
 
 @media (max-width: 1180px) {
+  /* Context 열을 세울 폭이 없다. 자리를 비우되 띄우지는 않는다. 태스크를 고르면
+     peek이 대신 열리고, 그건 사용자가 부른 것이라 겹쳐도 놀라지 않는다. */
   .workspace-shell,
+  body.context-collapsed .workspace-shell,
   body.peek-open .workspace-shell {
     grid-template-columns: var(--nav-Width) minmax(0, 1fr);
   }
 
   body.nav-collapsed .workspace-shell,
+  body.nav-collapsed.context-collapsed .workspace-shell,
   body.peek-open.nav-collapsed .workspace-shell {
     grid-template-columns: var(--nav-rail-Width) minmax(0, 1fr);
   }
@@ -2050,22 +2035,7 @@ dialog label textarea {
 }
 
 @media (max-width: 720px) {
-  .mobile-only {
-    display: inline-flex;
-  }
-
-  /* 레일조차 둘 수 없는 폭이다. 여기서만 헤더의 ☰가 사이드바를 겹쳐 연다. */
-  .mobile-bar {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-1);
-    margin-bottom: var(--spacing-2);
-  }
-
-  .navigation-panel {
-    display: none;
-  }
-
+  /* 이 폭에서도 띄우지 않는다. 사이드바는 레일로만 남고 Context는 자리를 비운다. */
   .app-header {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
@@ -2077,11 +2047,36 @@ dialog label textarea {
     display: none;
   }
 
+  .navigation-panel {
+    padding: var(--spacing-1_5) var(--spacing-1);
+  }
+
+  .sidebar-head select,
+  .nav-label,
+  .nav-section,
+  .navigation-panel h2 {
+    display: none;
+  }
+
+  .primary-nav button,
+  .utility-nav button {
+    justify-content: center;
+    padding: 0;
+  }
+
   .workspace-shell,
   body.nav-collapsed .workspace-shell,
+  body.context-collapsed .workspace-shell,
+  body.nav-collapsed.context-collapsed .workspace-shell,
   body.peek-open .workspace-shell,
-  body.peek-open.nav-collapsed .workspace-shell {
-    grid-template-columns: minmax(0, 1fr);
+  body.peek-open.nav-collapsed .workspace-shell,
+  body.view-settings .workspace-shell,
+  body.view-people .workspace-shell,
+  body.view-task .workspace-shell,
+  body.nav-collapsed.view-settings .workspace-shell,
+  body.nav-collapsed.view-people .workspace-shell,
+  body.nav-collapsed.view-task .workspace-shell {
+    grid-template-columns: var(--nav-rail-Width) minmax(0, 1fr);
   }
 
   .main-content {

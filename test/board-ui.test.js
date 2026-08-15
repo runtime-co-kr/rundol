@@ -54,8 +54,11 @@ assert(app.includes('파일 반영 대기'), 'Optimistic changes must expose pen
 assert(app.includes('window.mermaid.run'), 'Markdown Mermaid blocks must be rendered');
 assert(app.includes('window.marked.parse'), 'Markdown documents must use the standard parser');
 assert(app.includes('window.DOMPurify.sanitize'), 'Rendered Markdown must be sanitized');
-assert(app.includes("document.body.classList.remove('context-collapsed')"), 'Opening mobile Context must recover from desktop collapse state');
-assert(app.includes("document.body.classList.remove('context-open')"), 'Desktop Context must recover from mobile open state');
+// 겹쳐 띄우는 경로를 없앴다. 양쪽 패널 모두 레일로 좁아지므로 화면 폭에 따라 동작이
+// 갈리지 않고, 접힘 상태와 띄움 상태가 어긋나 서로를 되돌릴 일도 없다.
+assert(!app.includes("'context-open'") && !app.includes("'nav-open'"), '패널을 본문 위에 띄우지 않습니다');
+assert(!html.includes('mobile-bar') && !html.includes('mobile-only'), '띄우기 전용 버튼이 남으면 안 됩니다');
+assert(app.includes("document.body.classList.toggle('context-collapsed')"), 'Context는 접었다 펼 수 있어야 합니다');
 assert(app.includes("charter: '프로젝트 헌장'"), 'Document type vocabulary must include project charters');
 assert(app.includes("prd: '제품 요구사항'"), 'Document type vocabulary must include PRDs');
 assert(app.includes("draft: '초안'"), 'Document state vocabulary must map draft status');
@@ -223,10 +226,14 @@ assert(app.includes("el('collapse-nav').addEventListener"), '접기 손잡이는
 assert(/body\.peek-open \.main-content\s*\{[^}]*padding-right:\s*calc\(var\(--peek-Width\)/u.test(style), 'peek이 덮은 만큼 본문 중심이 왼쪽으로 옮겨가야 합니다');
 
 // 접기 버튼은 class만 토글한다. 받는 CSS가 없으면 아무 일도 일어나지 않는다.
-for (const name of ['nav-collapsed', 'context-collapsed', 'nav-open', 'context-open']) {
+for (const name of ['nav-collapsed', 'context-collapsed']) {
   assert(style.includes(`body.${name}`), `${name} 상태를 받는 CSS 규칙이 필요합니다`);
+  assert(new RegExp(`body\\.${name} \\.workspace-shell\\s*\\{[^}]*grid-template-columns`, 'u').test(style), `${name}은 셸의 열 정의를 바꿔야 합니다`);
+  assert(!new RegExp(`body\\.${name} \\.(?:navigation|context)-panel\\s*\\{[^}]*display:\\s*none`, 'u').test(style), `${name}에서 패널을 숨기면 다시 펼 손잡이가 사라집니다`);
 }
-assert(/body\.nav-collapsed \.workspace-shell\s*\{[^}]*grid-template-columns/u.test(style), '탐색을 접으면 셸의 열 정의도 바뀌어야 합니다');
+// 양쪽 다 레일로 좁아진다. 한쪽만 그러면 접는 동작이 자리마다 다르게 느껴진다.
+assert(/body\.context-collapsed \.workspace-shell\s*\{[^}]*var\(--nav-rail-Width\)/u.test(style), 'Context도 레일로 좁아져야 합니다');
+assert(style.includes('body.context-collapsed #collapse-context'), '접힌 Context에도 펼 손잡이가 남아야 합니다');
 
 // :not()의 특이도는 인자를 따라간다. 두 번 겹친 (0,2,1)이 .search input(0,1,1)을 이겨
 // 컴포넌트의 테두리 제거가 통째로 무시됐다. :where()로 감싸 요소 하나의 특이도로 되돌린다.
@@ -254,5 +261,16 @@ assert(app.includes("event.target.closest('.context-panel')"), '바깥을 누르
 assert(/\.search\s*\{[^}]*min-width:\s*0/u.test(style), '검색 상자는 사이드바 폭 안에서 줄어야 합니다');
 assert(/\.search input\s*\{[^}]*min-width:\s*0/u.test(style), '검색 입력은 기본 min-width를 버려야 합니다');
 assert(/\.navigation-panel\s*\{[^}]*min-width:\s*0/u.test(style), '탐색 패널은 열 폭을 넘지 않아야 합니다');
+
+// 빠른 추가는 완료조건 없이 보내 API가 항상 400으로 되돌렸다. 완료조건은 계약상 필수라
+// 뺄 수 없고, 제목에서 지어내면 계약이 금지하는 자리표시자가 된다. 한 줄에 같이 받는다.
+assert(html.includes('id="quick-add-acceptance"'), '빠른 추가도 완료조건을 받아야 합니다');
+assert(app.includes("'AC-001': { text: acceptance, done: false }"), '빠른 추가는 입력한 완료조건을 실어야 합니다');
+assert(!/quick-add[\s\S]{0,400}JSON\.stringify\(\{ title, status: 'todo', priority: 'mid', owner: [^}]*\}\)/u.test(app), '완료조건 없이 생성 요청을 보내면 안 됩니다');
+
+// 편집 중 스냅샷을 갈아끼우면 draft가 최신 revision을 달고 저장되어 남의 변경을 덮어쓴다.
+const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function loadSnapshot') + 900);
+assert(load.includes('if (isEditing()) return;'), '편집 중에는 스냅샷을 교체하지 않아야 합니다');
+assert(load.indexOf('if (isEditing()) return;') < load.indexOf('state.snapshot = next'), '가드가 교체보다 먼저여야 합니다');
 
 console.log('board UI tests passed');

@@ -60,6 +60,16 @@ async function testBoard() {
     // todo, doing, waiting, review, done, cancelled — 완료와 반려는 별개의 종료 상태다
     assert.deepStrictEqual(result.statuses, ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
 
+    // 스냅샷은 화면이 클라이언트에서 걸러 쓰는 작업 집합 전체다. 페이지 나눔이 끼면
+    // 101번째부터가 목록·내 작업·조치 필요·선행 판정에서 아무 표시 없이 사라진다.
+    const { workspaceSnapshot } = require('../src/board');
+    const fixture = path.join(root, 'test', 'fixtures', 'workspace');
+    const whole = workspaceSnapshot(fixture, 'tms', new URLSearchParams());
+    assert.strictEqual(whole.tasks.tasks.length, whole.tasks.total, '스냅샷은 태스크를 잘라내지 않는다');
+    assert.strictEqual(whole.tasks.offset, 0);
+    const capped = workspaceSnapshot(fixture, 'tms', new URLSearchParams('limit=1&offset=5'));
+    assert.strictEqual(capped.tasks.tasks.length, capped.tasks.total, '스냅샷은 limit·offset 질의에도 잘리지 않는다');
+
     const projects = await request(port, '/api/projects');
     assert.strictEqual(projects.status, 200);
     assert(JSON.parse(projects.body).some((project) => project.key === 'tms'));

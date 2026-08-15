@@ -58,14 +58,17 @@ function overview(start) {
   return { schemaVersion: layout.schemaVersion, projects, totals: projects.reduce((sum, project) => sum + project.tasks, 0) };
 }
 
-function queryTasks(config, search) {
+// options.all은 Board 스냅샷 전용이다. 스냅샷은 화면이 클라이언트에서 걸러 쓰는 작업
+// 집합 전체이므로 여기에 페이지 나눔이 끼면 101번째부터가 목록·내 작업·조치 필요·선행
+// 태스크 판정에서 한꺼번에, 그것도 아무 표시 없이 사라진다.
+function queryTasks(config, search, options) {
   const all = readTasks(config);
   const query = (search.get('q') || '').trim().toLowerCase();
   const owner = search.get('owner') || '';
   const priority = search.get('priority') || '';
   const status = search.get('status') || '';
-  const offset = Math.max(0, Number.parseInt(search.get('offset') || '0', 10) || 0);
-  const limit = Math.min(500, Math.max(1, Number.parseInt(search.get('limit') || '100', 10) || 100));
+  const offset = options && options.all ? 0 : Math.max(0, Number.parseInt(search.get('offset') || '0', 10) || 0);
+  const limit = options && options.all ? all.length || 1 : Math.min(500, Math.max(1, Number.parseInt(search.get('limit') || '100', 10) || 100));
   const filtered = all.filter((task) => {
     const text = `${task.id} ${task.title || ''} ${task.summary || ''}`.toLowerCase();
     return (!query || text.includes(query)) && (!owner || String(task.owner || '') === owner) && (!priority || task.priority === priority);
@@ -204,7 +207,7 @@ function workspaceSnapshot(root, projectKey, search) {
   const layout = workspaceLayout(root);
   const project = selectProject(layout, projectKey, true);
   const config = boardConfig(root, project.key);
-  const tasksResult = queryTasks(config, search || new URLSearchParams());
+  const tasksResult = queryTasks(config, search || new URLSearchParams(), { all: true });
   const documents = listDocuments(project);
   const collaboration = readCollaboration(root, project.key);
   const leases = layout.schemaVersion >= 6 ? listLeases(root, project.key).leases : [];

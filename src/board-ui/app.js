@@ -84,14 +84,6 @@ function redrawTask(taskId) {
   if (task && state.view === 'tasks') renderContext(task, 'task');
 }
 function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(task.id); if (!pending) pending = { baseRevision: task.revision, changes: {}, timer: null }; Object.assign(pending.changes, changes); Object.assign(task, changes); clearTimeout(pending.timer); pending.timer = setTimeout(() => flushTaskUpdate(task.id), 500); state.pendingTasks.set(task.id, pending); redrawTask(task.id); }
-// 낙관적 변경은 보고 있는 곳에 바로 비쳐야 한다. peek에서 완료조건을 눌렀는데 상세 화면만
-// 다시 그리면 체크가 다음 polling까지 반영되지 않아 눌리지 않은 것처럼 보인다.
-function redrawTask(taskId) {
-  if (state.selected !== taskId) return;
-  if (state.view === 'task') return renderTask(taskId);
-  const task = state.snapshot.tasks.tasks.find((item) => item.id === taskId);
-  if (task && state.view === 'tasks') renderContext(task, 'task');
-}
 async function flushTaskUpdate(taskId) { const pending = state.pendingTasks.get(taskId); if (!pending) return; pending.timer = null; try { await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, pending.changes)) }); state.pendingTasks.delete(taskId); await loadSnapshot(true); redrawTask(taskId); message('태스크 변경을 파일에 저장했습니다.'); } catch (error) { state.pendingTasks.delete(taskId); await loadSnapshot(true); redrawTask(taskId); message(`변경을 되돌렸습니다: ${error.message}`, true); } }
 
 // 화면 이름을 body에 남겨 선택 대상이 없는 화면에서 Context 패널을 접는다.
@@ -402,9 +394,13 @@ function isEditing() { return !el('document-editor').hidden || state.pendingTask
 async function loadSnapshot(silent) {
   try {
     const next = await api(projectPath('/board-snapshot'));
+    // 편집 중에는 스냅샷을 갈아끼우지 않는다. 그리기만 미루고 값은 바꿔버리면 draft가
+    // 기반으로 삼은 revision까지 최신으로 바뀌어, 저장할 때 낙관적 동시성 검사가
+    // 통과해 버린다. 그 사이 남이 고친 내용을 충돌 없이 덮어쓰게 된다.
+    if (isEditing()) return;
     const changed = !state.snapshot || JSON.stringify(state.snapshot.revision) !== JSON.stringify(next.revision);
     state.snapshot = next;
-    if (changed && !isEditing()) { renderNavigation(); populateControls(); updateHealth(); setView(state.view, state.selected); }
+    if (changed) { renderNavigation(); populateControls(); updateHealth(); setView(state.view, state.selected); }
     if (!silent) message('Workspace를 새로 읽었습니다.');
   } catch (error) {
     message(error.message, true);
@@ -514,13 +510,10 @@ document.addEventListener('pointerdown', (event) => {
   if (event.target.closest('.context-panel') || event.target.closest('[data-task]')) return;
   closePeek();
 });
-el('collapse-context').addEventListener('click', () => { if (closePeek()) return; if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-open'); else { document.body.classList.remove('context-open'); document.body.classList.toggle('context-collapsed'); } });
-// 넓은 화면에서는 사이드바가 레일로 좁아지므로 접기 손잡이가 사이드바에 남는다.
-// 헤더의 ☰는 레일조차 둘 수 없는 좁은 화면에서 겹쳐 여는 용도다.
+// 양쪽 패널 모두 사라지지 않고 레일로 좁아지므로, 접기 손잡이가 언제나 제자리에 있다.
+// 겹쳐 띄우는 방식이 없으니 화면 폭에 따라 동작이 갈리지도 않는다.
+el('collapse-context').addEventListener('click', () => { if (closePeek()) return; document.body.classList.toggle('context-collapsed'); });
 el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed'));
-el('menu-button').addEventListener('click', () => document.body.classList.toggle('nav-open'));
-el('context-button').addEventListener('click', () => { document.body.classList.remove('context-collapsed'); document.body.classList.toggle('context-open'); });
-addEventListener('resize', () => { if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-collapsed'); else document.body.classList.remove('context-open'); });
 document.addEventListener('click', (event) => { const button = event.target.closest('[data-dialog-cancel]'); if (!button) return; el(button.dataset.dialogCancel).close('cancel'); });
 el('blocker-dialog').addEventListener('close', () => resolveBlocker(null));
 el('blocker-form').addEventListener('submit', (event) => {
@@ -553,11 +546,16 @@ el('task-status').addEventListener('change', async () => {
 el('quick-add').addEventListener('submit', async (event) => {
   event.preventDefault();
   const title = el('quick-add-title').value.trim();
+  const acceptance = el('quick-add-acceptance').value.trim();
   if (!title) return;
+  // 완료조건 없이 보내면 API가 400으로 되돌린다. 제목에서 지어내면 계약이 금지하는
+  // 자리표시자가 되므로, 비어 있으면 만들지 않고 무엇이 필요한지 말한다.
+  if (!acceptance) { el('quick-add-acceptance').focus(); return message('완료조건을 입력해야 태스크를 만들 수 있습니다. 무엇이 되면 끝인지 한 줄로 적어주세요.', true); }
   el('quick-add-save').disabled = true;
   try {
-    await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title, status: 'todo', priority: 'mid', owner: state.currentMember || null }) });
+    await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title, status: 'todo', priority: 'mid', owner: state.currentMember || null, acceptanceCriteria: { 'AC-001': { text: acceptance, done: false } } }) });
     el('quick-add-title').value = '';
+    el('quick-add-acceptance').value = '';
     await loadSnapshot(false);
     el('quick-add-title').focus();
   } catch (error) {
