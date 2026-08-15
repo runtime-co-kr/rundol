@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, pendingTasks: new Map(), blockerResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료' };
 const typeLabels = {
   project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
@@ -132,6 +132,59 @@ function renderHome() {
   el('attention-count').textContent = attention.length;
   el('attention-list').innerHTML = attention.length ? attention.slice(0, 12).map((item) => `<button class="attention-item" data-${item.kind === 'task' ? 'task' : 'view'}="${escapeHtml(item.kind === 'task' ? item.id : 'operations')}"><span class="severity ${item.severity}"></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.reason)}</small></span><span>›</span></button>`).join('') : '<p class="empty-state">현재 조치가 필요한 항목이 없습니다.</p>';
   el('home-documents').innerHTML = documents.slice().sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)).slice(0, 6).map(documentCard).join('');
+  renderMyQueue(tasks);
+  renderRecentChanges(tasks, documents);
+}
+
+// 홈은 프로젝트 전체를 요약할 뿐 "그래서 내가 지금 뭘 하면 되나"에는 답하지 않았다.
+// 막힌 일과 시작할 수 있는 일을 갈라 놓아야 그 답이 된다.
+function renderMyQueue(tasks) {
+  if (!state.currentMember) {
+    el('my-queue').innerHTML = '<p class="identity-prompt">사이드바 아래에서 보기 기준을 고르면 내 작업과 검토 요청을 여기 모아 보여줍니다.</p>';
+    return;
+  }
+  const mine = tasks.filter((task) => task.owner === state.currentMember && task.status !== 'done');
+  const ready = mine.filter((task) => !taskBlockage(task));
+  const blocked = mine.filter((task) => taskBlockage(task));
+  const reviews = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember));
+  const buckets = [
+    ['지금 시작할 수 있는 일', ready, '내게 배정되었고 막힌 것이 없는 작업입니다.'],
+    ['내 검토 대기', reviews, '내가 검토자로 지정된 작업입니다.'],
+    ['막혀 있는 내 일', blocked, '사람을 기다리거나 선행 작업이 끝나지 않았습니다.']
+  ].filter(([, items]) => items.length);
+  el('my-queue').innerHTML = buckets.length
+    ? buckets.map(([label, items, hint]) => `<section class="queue-bucket"><div class="section-heading"><h3>${escapeHtml(label)} <span class="badge">${items.length}</span></h3><small>${escapeHtml(hint)}</small></div><div class="task-table">${items.slice(0, 5).map(taskRow).join('')}</div>${items.length > 5 ? `<small class="queue-more">외 ${items.length - 5}건은 태스크 화면에서 볼 수 있습니다.</small>` : ''}</section>`).join('')
+    : '<p class="empty-state">지금 내 차례인 작업이 없습니다.</p>';
+}
+
+// 마지막으로 이 프로젝트를 열어 본 시각을 브라우저에 남긴다. 서버에 저장하면
+// 기기마다 다른 "마지막 방문"이 하나로 합쳐져 오히려 놓치는 변경이 생긴다.
+// 값은 프로젝트를 열 때 한 번만 읽는다. 매번 다시 읽으면 방금 찍은 시각과 비교하게 되어
+// 목록이 항상 비어 보인다.
+function visitKey() { return `rundol.lastVisit.${state.project}`; }
+function markVisit() { if (state.project) localStorage.setItem(visitKey(), new Date().toISOString()); }
+function renderRecentChanges(tasks, documents) {
+  const since = state.lastVisit;
+  if (!since) {
+    el('changes-since').textContent = '';
+    el('recent-changes').innerHTML = '<p class="empty-state">이 브라우저에서 처음 열었습니다. 다음 방문부터 그동안 바뀐 것을 모아 보여줍니다.</p>';
+    return;
+  }
+  const changedTasks = tasks.filter((task) => (task.updatedAt || '') > since);
+  const changedDocuments = documents.filter((item) => (item.modifiedAt || '') > since);
+  el('changes-since').textContent = changedTasks.length + changedDocuments.length || '';
+  const rows = changedDocuments.slice(0, 8).map((item) => `<button class="task-row" data-document="${escapeHtml(item.id)}"><span class="task-row-main"><span class="task-row-title">${escapeHtml(item.title)}</span></span><span class="task-prio">${escapeHtml(item.id)}</span><span class="task-row-meta">${escapeHtml(relativeTime(item.modifiedAt))}</span></button>`)
+    .concat(changedTasks.slice(0, 8).map(taskRow));
+  el('recent-changes').innerHTML = rows.length ? rows.join('') : `<p class="empty-state">${escapeHtml(relativeTime(since))} 이후 바뀐 것이 없습니다.</p>`;
+}
+function relativeTime(value) {
+  const stamp = Date.parse(value || '');
+  if (Number.isNaN(stamp)) return value || '-';
+  const minutes = Math.round((Date.now() - stamp) / 60000);
+  if (minutes < 1) return '방금';
+  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 1440) return `${Math.round(minutes / 60)}시간 전`;
+  return `${Math.round(minutes / 1440)}일 전`;
 }
 
 function renderNavigation() {
@@ -163,7 +216,21 @@ function renderContext(item, kind) {
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
   renderLeaseBanner(item.id); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
-function taskRow(task) { const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length; const total = Object.keys(task.acceptanceCriteria || {}).length; return `<button class="task-row" data-task="${task.id}"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))}· ${completed}/${total}</span></button>`; }
+// 무엇이 막혀 있는지가 목록에서 가장 먼저 읽혀야 한다. 사람 대기(blocker)는 값으로 있었지만
+// 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
+function taskBlockage(task) {
+  if (task.blocker) return { kind: 'waiting', label: `${personName(task.blocker.waitingFor)} 대기`, detail: task.blocker.condition || '' };
+  const open = (task.deps || []).map((id) => state.snapshot.tasks.tasks.find((item) => item.id === id)).filter((item) => item && item.status !== 'done');
+  if (!open.length) return null;
+  return { kind: 'deps', label: `선행 ${open.length}건`, detail: open.map((item) => `${item.id} ${item.title}`).join('\n') };
+}
+function taskRow(task) {
+  const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length;
+  const total = Object.keys(task.acceptanceCriteria || {}).length;
+  const blockage = taskBlockage(task);
+  const badge = blockage ? `<span class="task-blocked" data-blocked="${blockage.kind}" title="${escapeHtml(blockage.detail)}">${escapeHtml(blockage.label)}</span>` : '';
+  return `<button class="task-row" data-task="${task.id}"><span class="task-row-main"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>${badge}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))} · ${completed}/${total}</span></button>`;
+}
 // 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
 // 상태로 묶으면 완료 묶음이 생기고 기본으로 접는다. 개수는 남으므로 진행감은 잃지 않는다.
 const groupers = {
@@ -192,7 +259,27 @@ function taskGroups(tasks) {
 function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">상단에서 현재 사용자를 선택하면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value));
   // 완료 숨기기는 접기와 다른 일을 한다. 접기는 묶음 머리글을 남기고, 숨기기는 항목을 뺀다.
   // 담당자나 우선순위로 묶으면 완료 묶음이 없으므로 그때는 이 필터가 그 역할을 한다.
-  if (el('hide-done').checked) tasks = tasks.filter((task) => task.status !== 'done'); if (state.taskMode === 'list') { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>'; } else { el('task-list').hidden = true; el('board').hidden = false; el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); } }
+  if (el('hide-done').checked) tasks = tasks.filter((task) => task.status !== 'done');
+  el('task-list').hidden = state.taskMode !== 'list';
+  el('board').hidden = state.taskMode !== 'board';
+  el('task-graph').hidden = state.taskMode !== 'graph';
+  if (state.taskMode === 'list') el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>';
+  else if (state.taskMode === 'board') el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); else renderTaskGraph(tasks); }
+// 의존 관계는 태스크마다 deps 값으로만 있어, 어디서 순서가 막히는지는 한 건씩 열어봐야 알 수 있었다.
+// 목록·Board와 같은 필터를 받아 지금 보는 범위의 순서만 그린다.
+// 태스크 제목은 사람이 자유롭게 쓴다. 큰따옴표가 그대로 들어가면 노드 라벨이 닫혀 파싱이 깨진다.
+function nodeLabel(value) { return String(value).replace(/"/gu, '#quot;').replace(/[\r\n]+/gu, ' '); }
+function renderTaskGraph(tasks) {
+  const visible = new Set(tasks.map((task) => task.id));
+  const edges = tasks.flatMap((task) => (task.deps || []).filter((id) => visible.has(id)).map((id) => `  ${id} --> ${task.id}`));
+  if (!edges.length) return void (el('task-graph').innerHTML = '<p class="empty-state">지금 보이는 태스크 사이에 의존 관계가 없습니다. 태스크 상세에서 선행 작업을 연결하면 여기에 순서가 그려집니다.</p>');
+  // 색은 테마를 따라가야 하므로 mermaid classDef 대신 라벨로 상태를 말한다.
+  const nodes = tasks.filter((task) => (task.deps || []).some((id) => visible.has(id)) || tasks.some((other) => (other.deps || []).includes(task.id)))
+    .map((task) => `  ${task.id}["${nodeLabel(`${task.status === 'done' ? '✓ ' : ''}${task.id} ${task.title}`)}"]`);
+  const diagram = ['flowchart LR'].concat(nodes, edges).join('\n');
+  el('task-graph').innerHTML = `<pre class="mermaid">${escapeHtml(diagram)}</pre>`;
+  renderMermaid();
+}
 function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]); el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
 function renderPeople() { const people = state.snapshot.people; for (const [id, values] of [['members', people.members], ['roles', people.roles], ['stakeholders', people.stakeholders]]) el(id).innerHTML = values.map((item) => `<article class="person-card"><span class="eyebrow">${item.id}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · '))}</small></article>`).join(''); }
 function renderOperations() { const sync = state.snapshot.sync; el('operation-status').innerHTML = `<article class="operation-card"><p class="eyebrow">SYNC</p><h2>${escapeHtml(sync.state)}</h2><p>${sync.ahead ?? '—'} ahead · ${sync.behind ?? '—'} behind</p><small>${escapeHtml(sync.head.slice(0, 12))}</small></article><article class="operation-card"><p class="eyebrow">ATTENTION</p><h2>${state.snapshot.attention.length}</h2><p>현재 조치 필요 항목</p></article><article class="operation-card"><p class="eyebrow">WATCH</p><h2>외부 CLI</h2><p>watch 상태는 다음 Snapshot 계약에서 연결됩니다.</p></article>`; el('leases').innerHTML = state.snapshot.leases.map((item) => `<article class="entity-card"><strong>${escapeHtml(item.documentId)}</strong><small>${escapeHtml(item.clientId)} · ${escapeHtml(item.expiresAt)}</small></article>`).join('') || '<p class="empty-state">활성 임대가 없습니다.</p>'; }
@@ -204,7 +291,27 @@ function populateControls() { const members = state.snapshot.people.members; el(
   el('priority').value = viewOption('priority', '');
   el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
   el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-status').replaceChildren(...Object.entries(statusLabels).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
-function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; }
+function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; renderSyncStatus(); }
+
+// 동기화는 값을 바꾸는 설정이 아니라 되돌리기 어려운 동작이다. 설정 화면이 아니라
+// 상태 옆에 두어, 무엇이 원격으로 나가는지 보고 나서 누르게 한다.
+function syncSummary(sync) {
+  if (!sync) return { text: '동기화 상태', tone: '' };
+  if ((sync.conflicts || []).length) return { text: `충돌 ${sync.conflicts.length}건`, tone: 'error' };
+  const parts = [];
+  if (sync.changedFiles) parts.push(`로컬 변경 ${sync.changedFiles}`);
+  if (sync.ahead) parts.push(`올릴 것 ${sync.ahead}`);
+  if (sync.behind) parts.push(`받을 것 ${sync.behind}`);
+  return parts.length ? { text: parts.join(' · '), tone: 'warning' } : { text: '원격과 같음', tone: '' };
+}
+function renderSyncStatus() {
+  const sync = state.snapshot.sync;
+  const summary = syncSummary(sync);
+  el('sync-status').className = `sync-status ${summary.tone}`;
+  el('sync-label').textContent = summary.text;
+  el('sync-status').disabled = !sync || (!sync.ahead && !sync.behind && !sync.changedFiles && !(sync.conflicts || []).length);
+  el('sync-status').title = sync ? `${sync.remoteRef || '원격 없음'} · ${sync.state}` : '';
+}
 // 편집 중에는 화면을 다시 그리지 않는다. setView가 renderDocument를 거쳐 편집기를 닫으므로
 // 폴링이 3초마다 입력 중인 내용을 지워버린다. 스냅샷은 계속 받되 렌더링만 미룬다.
 function isEditing() { return !el('document-editor').hidden || state.pendingTasks.size > 0; }
@@ -219,7 +326,19 @@ async function loadSnapshot(silent) {
     message(error.message, true);
   }
 }
-async function initialize() { applyTheme(localStorage.getItem('rundol.theme') || 'system'); matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (document.body.classList.contains('theme-system') && state.view === 'document' && state.selected) renderDocument(state.selected); }); const projects = await api('/api/projects'); el('project-switcher').replaceChildren(...projects.map((item) => new Option(item.name || item.key, item.key))); const hash = new URLSearchParams(location.hash.slice(1)); state.project = hash.get('project') || projects[0].key; state.view = hash.get('view') || 'home'; state.taskScope = hash.get('scope') || 'all'; state.selected = hash.get('entity'); el('project-switcher').value = state.project; await loadSnapshot(true); state.polling = setInterval(() => loadSnapshot(true), 3000); }
+async function initialize() { applyTheme(localStorage.getItem('rundol.theme') || 'system'); matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (document.body.classList.contains('theme-system') && state.view === 'document' && state.selected) renderDocument(state.selected); }); const projects = await api('/api/projects'); el('project-switcher').replaceChildren(...projects.map((item) => new Option(item.name || item.key, item.key))); const hash = new URLSearchParams(location.hash.slice(1)); state.project = hash.get('project') || projects[0].key; state.view = hash.get('view') || 'home'; state.taskScope = hash.get('scope') || 'all'; state.selected = hash.get('entity'); el('project-switcher').value = state.project; state.lastVisit = localStorage.getItem(visitKey()); await loadSnapshot(true); startPolling(); }
+
+// 3초 고정 폴링은 탭을 열어만 두어도 하루 종일 스냅샷을 다시 계산하게 만든다.
+// 보이지 않을 때는 멈추고, 다시 보일 때 한 번 당겨온다.
+const POLL_INTERVAL = 5000;
+function startPolling() { stopPolling(); if (document.visibilityState === 'visible') state.polling = setInterval(() => loadSnapshot(true), POLL_INTERVAL); }
+function stopPolling() { if (state.polling) clearInterval(state.polling); state.polling = null; }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { loadSnapshot(true); startPolling(); return; }
+  stopPolling();
+  markVisit();
+});
+window.addEventListener('pagehide', markVisit);
 
 document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
   // 목록 맥락을 잃지 않고 항목 사이를 옮겨 다닐 수 있다.
@@ -249,8 +368,8 @@ document.addEventListener('change', async (event) => {
   queueTaskUpdate(task, { status, blocker });
 });
 el('global-search').addEventListener('input', (event) => { state.query = event.target.value.trim(); if (state.view !== 'documents' && state.view !== 'tasks') setView('documents'); else setView(state.view); });
-el('project-switcher').addEventListener('change', async (event) => { state.project = event.target.value; state.snapshot = null; await loadSnapshot(true); });
-el('current-member').addEventListener('change', (event) => { state.currentMember = event.target.value; if (state.currentMember) localStorage.setItem(`rundol.currentMember.${state.project}`, state.currentMember); else localStorage.removeItem(`rundol.currentMember.${state.project}`); if (state.view === 'tasks') renderTasks(); });
+el('project-switcher').addEventListener('change', async (event) => { markVisit(); state.project = event.target.value; state.snapshot = null; state.lastVisit = localStorage.getItem(visitKey()); await loadSnapshot(true); });
+el('current-member').addEventListener('change', (event) => { state.currentMember = event.target.value; if (state.currentMember) localStorage.setItem(`rundol.currentMember.${state.project}`, state.currentMember); else localStorage.removeItem(`rundol.currentMember.${state.project}`); if (state.view === 'tasks') renderTasks(); if (state.view === 'home') renderHome(); if (el('settings-member').value !== state.currentMember) el('settings-member').value = state.currentMember; });
 el('theme-system').addEventListener('click', () => applyTheme('system')); el('theme-dark').addEventListener('click', () => applyTheme('dark')); el('theme-light').addEventListener('click', () => applyTheme('light'));
 for (const button of document.querySelectorAll('[data-task-scope]')) button.addEventListener('click', () => { state.taskScope = button.dataset.taskScope; setView('tasks'); });
 // 설정 목차는 한 번에 한 묶음만 연다. 계약·표시 설정은 나중에 주입되므로 클릭 시점에 찾는다.
@@ -276,7 +395,14 @@ document.addEventListener('click', (event) => {
   setViewOption(`collapse.${groupBy}.${key}`, groupCollapsed(groupBy, key) ? '0' : '1');
   renderTasks();
 });
-el('task-list-mode').addEventListener('click', () => { state.taskMode = 'list'; el('task-list-mode').classList.add('active'); el('task-board-mode').classList.remove('active'); renderTasks(); }); el('task-board-mode').addEventListener('click', () => { state.taskMode = 'board'; el('task-board-mode').classList.add('active'); el('task-list-mode').classList.remove('active'); renderTasks(); });
+const taskModes = { list: 'task-list-mode', board: 'task-board-mode', graph: 'task-graph-mode' };
+for (const [mode, id] of Object.entries(taskModes)) {
+  el(id).addEventListener('click', () => {
+    state.taskMode = mode;
+    for (const [other, otherId] of Object.entries(taskModes)) el(otherId).classList.toggle('active', other === mode);
+    renderTasks();
+  });
+}
 el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed')); el('collapse-context').addEventListener('click', () => { if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-open'); else { document.body.classList.remove('context-open'); document.body.classList.toggle('context-collapsed'); } });
 el('menu-button').addEventListener('click', () => document.body.classList.toggle('nav-open'));
 el('context-button').addEventListener('click', () => { document.body.classList.remove('context-collapsed'); document.body.classList.toggle('context-open'); });
@@ -403,7 +529,28 @@ el('save-document').addEventListener('click', async () => {
   }
 });
 el('task-form').addEventListener('submit', async (event) => { event.preventDefault(); const status = el('task-status').value; if (status === 'waiting' && !state.newTaskBlocker) return message('대기 상태로 만들려면 대기 사유를 먼저 입력하세요.', true); const lines = el('task-acceptance').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const acceptanceCriteria = Object.fromEntries(lines.map((text, index) => [`AC-${String(index + 1).padStart(3, '0')}`, { text, done: false }])); try { await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title: el('task-title').value, summary: el('task-summary').value, status, priority: el('task-priority').value, owner: el('task-owner').value || null, blocker: status === 'waiting' ? state.newTaskBlocker : null, links: el('task-links').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), acceptanceCriteria }) }); el('task-dialog').close(); await loadSnapshot(true); message('태스크를 생성했습니다.'); } catch (error) { message(error.message, true); } });
-el('sync').addEventListener('click', async () => { try { message('동기화를 실행하고 있습니다.'); await api(projectPath('/sync'), { method: 'POST', headers: { 'X-Rundol-Token': token } }); await loadSnapshot(true); message('동기화를 완료했습니다.'); } catch (error) { message(error.message, true); } });
+// push는 이 화면에서 가장 되돌리기 어려운 동작이다. 무엇이 나가는지 보여주고 확인받는다.
+el('sync-status').addEventListener('click', async () => {
+  const sync = state.snapshot.sync;
+  const lines = [];
+  if (sync.changedFiles) lines.push(`로컬 변경 ${sync.changedFiles}건을 커밋합니다.`);
+  if (sync.ahead) lines.push(`커밋 ${sync.ahead}건을 ${sync.remoteRef || '원격'}으로 올립니다.`);
+  if (sync.behind) lines.push(`원격의 커밋 ${sync.behind}건을 받습니다.`);
+  if ((sync.conflicts || []).length) lines.push(`충돌 ${sync.conflicts.length}건을 먼저 해결해야 합니다.`);
+  if (!lines.length) return;
+  if (!confirm(`${lines.join('\n')}\n\n계속할까요?`)) return;
+  try {
+    message('동기화를 실행하고 있습니다.');
+    await api(projectPath('/sync'), { method: 'POST', headers: { 'X-Rundol-Token': token } });
+    await loadSnapshot(true);
+    message('동기화를 완료했습니다.');
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+// 보기 기준은 설정에도 두되 사이드바의 것과 값을 공유한다.
+el('settings-member').addEventListener('change', (event) => { el('current-member').value = event.target.value; el('current-member').dispatchEvent(new Event('change')); });
+el('reset-view-options').addEventListener('click', () => { resetViewOptions(); populateControls(); setView(state.view, state.selected); message('이 프로젝트의 표시 설정을 초기값으로 되돌렸습니다.'); });
 function ensureContractSettings() {
   if (el('contract-settings')) return;
   el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><div class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></div><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
@@ -443,24 +590,29 @@ function renderContractSettings() {
     const omission = profile.omissions[type] || catalog.defaultOmissions[type];
     const selectedComponents = omission.sections || [];
     const targetOptions = catalog.documentTypes.filter((candidate) => candidate !== type).map((candidate) => `<option value="${candidate}" ${candidate === omission.absorbedBy ? 'selected' : ''}>${candidate}</option>`).join('');
+    // AI 추천 문맥은 보기만 되고 바꿀 수 없어, 프로젝트마다 다른 작성 순서를 담지 못했다.
+    // 이 타입을 쓸 때 함께 읽어야 할 타입을 켜고 끈다. 생성을 막는 게이트가 아니라 작성 안내다.
     const recommendedContext = profile.rules[type].after;
-    const context = recommendedContext.length ? recommendedContext.map((value) => `<span class="guidance-chip">${escapeHtml(value)}</span>`).join('') : '<span class="guidance-empty">바로 작성 가능</span>';
+    const context = catalog.documentTypes.filter((candidate) => candidate !== type)
+      .map((candidate) => `<button type="button" class="guidance-chip" data-context-toggle="${candidate}" aria-pressed="${recommendedContext.includes(candidate)}">${candidate}</button>`).join('');
     const suggestions = catalog.sections[type].map((value) => `<button type="button" class="suggestion-chip" data-component-suggestion="${escapeHtml(value)}" ${selectedComponents.includes(value) ? 'disabled' : ''}>+ ${escapeHtml(value)}</button>`).join('');
-    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}><label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
+    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>${type}를 작성할 때 함께 읽을 타입입니다. 생성을 막지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}><label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
   }).join('');
   for (const row of document.querySelectorAll('[data-contract-type]')) syncContractRow(row);
 }
 function renderPresentationSettings() {
   let section = el('presentation-settings');
   if (!section) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel presentation-settings"><div class="section-heading"><div><h2>문서 표시 설정</h2><p>내장 기본값 다음 Workspace와 프로젝트 board.json을 순서대로 적용합니다.</p></div></div><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-types" class="presentation-types"></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel presentation-settings"><header><h2>문서 표시 규칙</h2><p>어떤 문서 타입을 어떤 이름과 순서로 보여줄지 정합니다. 설정 파일이라 여기서는 바꾸지 않고 <code>board.json</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><div id="presentation-types" class="presentation-types"></div></div></section>');
     section = el('presentation-settings');
   }
   const presentation = state.snapshot.presentation;
   const inherited = presentation.inheritance;
   el('presentation-inheritance').innerHTML = `<span class="inheritance-node active">내장 기본값</span><span>→</span><span class="inheritance-node ${inherited.workspace.configured ? 'active' : ''}">Workspace board.json</span><span>→</span><span class="inheritance-node ${inherited.project.configured ? 'active' : ''}">프로젝트 board.json</span>`;
+  // 어느 파일을 열어야 하는지 알려주는 게 이 화면의 전부다. 경로를 tooltip에만 두면 찾을 수 없다.
+  el('presentation-source').innerHTML = [['Workspace', inherited.workspace], ['프로젝트', inherited.project]]
+    .map(([label, item]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd><code>${escapeHtml(item.file)}</code><small>${item.configured ? '이 파일이 값을 덮어쓰고 있습니다.' : '아직 없어 상위 값을 그대로 씁니다.'}</small></dd></div>`).join('');
   el('presentation-types').innerHTML = Object.entries(presentation.documentTypes).sort((left, right) => left[1].order - right[1].order).map(([kind, item]) => `<article><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(kind)} · ${escapeHtml(item.description)}</small></article>`).join('');
-  section.title = `${inherited.workspace.file}\n${inherited.project.file}`;
 }
 // 계약 준수. 규칙을 정하는 화면은 있었는데 그 규칙이 지켜지는지 보는 화면이 없었다.
 // 여기 쓰는 값은 전부 스냅샷에 이미 실려 오던 것이라 새로 계산하지 않는다.
@@ -517,13 +669,37 @@ function renderContractCompliance() {
     <section class="compliance-group"><h3>기능 추적성 — 준비 ${trace.summary.ready}/${trace.summary.functions}</h3>${complianceList(incomplete, '선언된 기능이 모두 REQ와 TST 계약을 갖췄습니다.')}</section>
     <section class="compliance-group"><h3>흡수 규칙</h3>${complianceList(absorbed, '비활성 유형이 없습니다.')}</section>`;
 }
-function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; renderPresentationSettings(); renderContractSettings(); renderContractCompliance(); const current = document.querySelector('[data-settings-section].active'); showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance'); }
+function renderSettings() {
+  // 등록과 삭제는 CLI가 담당한다. 여기서는 활성 상태만 바꾼다 — 에이전트가 늘면 자주 쓰는 동작이다.
+  const members = state.snapshot.people.members;
+  const memberName = (id) => (members.find((item) => item.id === id) || {}).name || id || '미지정';
+  el('clients').innerHTML = state.snapshot.clients.map((item) => {
+    const self = item.id === state.snapshot.client.id;
+    return `<div class="setting-row"><div><strong>${escapeHtml(item.name)}${self ? ' <span class="chip">이 기기</span>' : ''}</strong><p>${escapeHtml(item.id)} · ${escapeHtml(item.type)} · ${escapeHtml(memberName(item.owner))}</p></div><div class="setting-control"><span class="chip ${item.status === 'active' ? 'lease-mine' : ''}">${escapeHtml(item.status)}</span><button data-client-toggle="${escapeHtml(item.id)}" data-client-status="${item.status === 'active' ? 'disabled' : 'active'}">${item.status === 'active' ? '비활성화' : '활성화'}</button></div></div>`;
+  }).join('') || `<p class="empty-state">등록된 Client가 없습니다. <code>rdl client register ${escapeHtml(state.snapshot.client.id)} --name "&lt;이름&gt;" --type device --owner &lt;MEMBER-ID&gt;</code></p>`;
+  el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
+  el('settings-member').value = state.currentMember || '';
+  renderPresentationSettings(); renderContractSettings(); renderContractCompliance();
+  const current = document.querySelector('[data-settings-section].active');
+  showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');
+}
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-client-toggle]');
+  if (!button) return;
+  try {
+    await api(`/api/clients/${encodeURIComponent(button.dataset.clientToggle)}/${button.dataset.clientStatus === 'active' ? 'enable' : 'disable'}`, { method: 'POST', headers: { 'X-Rundol-Token': token } });
+    await loadSnapshot(true);
+    message('Client 상태를 바꿨습니다.');
+  } catch (error) {
+    message(error.message, true);
+  }
+});
 function contractInput() {
   const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
   const rules = {}; const omissions = {};
   for (const row of document.querySelectorAll('[data-contract-type]')) {
     const type = row.dataset.contractType; const status = row.querySelector('[data-contract-status]').value;
-    policy[status].push(type); rules[type] = { after: state.snapshot.contract.profile.rules[type].after.slice() };
+    policy[status].push(type); rules[type] = { after: Array.from(row.querySelectorAll('[data-context-toggle][aria-pressed="true"]')).map((item) => item.dataset.contextToggle) };
     if (status === 'disabled') omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value, sections: Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection) };
   }
   return { baseRevision: state.snapshot.contract.revision, name: el('contract-profile').value, enforcement: el('contract-enforcement').value, policy, rules, omissions };
@@ -540,6 +716,8 @@ document.addEventListener('click', async (event) => {
   if (row && remove) { const component = remove.closest('[data-contract-section]'); const value = component.dataset.contractSection; component.remove(); setSuggestionState(row, value, false); return; }
   const add = event.target.closest('[data-component-add]');
   if (row && add) { const input = row.querySelector('[data-component-input]'); if (addContractComponent(row, input.value)) input.value = ''; return; }
+  const context = event.target.closest('[data-context-toggle]');
+  if (row && context) { context.setAttribute('aria-pressed', context.getAttribute('aria-pressed') !== 'true'); return; }
   if (!event.target.closest('#save-contract')) return;
   try { await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(contractInput()) }); await loadSnapshot(true); message('문서 계획 계약을 저장했습니다.'); }
   catch (error) { message(error.message, true); }

@@ -29,6 +29,7 @@
       <div class="sidebar-foot">
         <label class="sr-only" for="current-member">현재 사용자</label>
         <select id="current-member" title="현재 사용자"><option value="">사용자 선택</option></select>
+        <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
         <div class="sidebar-foot-actions">
           <button id="health" class="health" data-view="operations"><span class="health-dot"></span><span id="health-label">상태 확인</span></button>
           <button id="refresh" class="icon-button" aria-label="로컬 새로고침">↻</button>
@@ -45,6 +46,8 @@
       <section id="home-view" class="view">
         <header class="page-heading"><div><p class="eyebrow">WORKSPACE HOME</p><h1>오늘 확인할 작업</h1><p>문서, 검토 요청과 동기화 상태를 한곳에서 확인합니다.</p></div></header>
         <div class="metric-grid" id="metrics"></div>
+        <section class="content-section"><div class="section-heading"><h2>내 차례</h2><button data-view="tasks">태스크로 이동</button></div><div id="my-queue"></div></section>
+        <section class="content-section"><div class="section-heading"><h2>지난 방문 이후 바뀐 것</h2><span id="changes-since" class="badge"></span></div><div id="recent-changes" class="task-table"></div></section>
         <section class="content-section"><div class="section-heading"><h2>Needs Attention</h2><span id="attention-count" class="badge"></span></div><div id="attention-list" class="attention-list"></div></section>
         <section class="content-section"><div class="section-heading"><h2>최근 문서</h2><button data-view="documents">모두 보기</button></div><div id="home-documents" class="card-grid"></div></section>
       </section>
@@ -61,17 +64,17 @@
       </section>
 
       <section id="tasks-view" class="view" hidden>
-        <header class="page-heading"><div><p class="eyebrow">TASKS</p><h1 id="tasks-heading">전체 태스크</h1><p id="tasks-description">프로젝트의 모든 작업을 목록과 Board로 확인합니다.</p></div><div class="segmented"><button id="task-list-mode" class="active">목록</button><button id="task-board-mode">Board</button></div></header>
-        <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
+        <header class="page-heading"><div><p class="eyebrow">TASKS</p><h1 id="tasks-heading">전체 태스크</h1><p id="tasks-description">프로젝트의 모든 작업을 목록과 Board로 확인합니다.</p></div><div class="page-actions"><div class="segmented" aria-label="보기 방식"><button id="task-list-mode" class="active">목록</button><button id="task-board-mode">Board</button><button id="task-graph-mode">의존</button></div><button id="new-task" class="primary">새 태스크</button></div></header>
         <div class="toolbar">
+          <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
           <label class="toolbar-field"><span>담당자</span><select id="owner"><option value="">모두</option></select></label>
           <label class="toolbar-field"><span>우선순위</span><select id="priority"><option value="">모두</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label>
-          <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
+          <div class="toolbar-spacer"></div>
           <label class="toolbar-field"><span>묶음</span><select id="group-by"><option value="status">상태</option><option value="owner">담당자</option><option value="priority">우선순위</option></select></label>
-          <button id="new-task">새 태스크</button>
+          <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
         </div>
         <form id="quick-add" class="quick-add"><span class="quick-add-mark">+</span><input id="quick-add-title" maxlength="160" placeholder="제목을 입력하고 Enter를 누르면 바로 추가됩니다" aria-label="태스크 빠른 추가"><button class="primary" id="quick-add-save">추가</button></form>
-        <div id="task-list" class="task-table"></div><div id="board" hidden></div>
+        <div id="task-list" class="task-table"></div><div id="board" hidden></div><div id="task-graph" class="task-graph" hidden></div>
       </section>
 
       <section id="task-view" class="view" hidden>
@@ -85,31 +88,34 @@
         <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header>
         <div class="settings-layout">
           <nav class="settings-nav" aria-label="설정 항목">
-            <button data-settings-section="settings-appearance" class="active">모양</button>
-            <button data-settings-section="settings-sync">동기화</button>
-            <button data-settings-section="settings-clients">Clients</button>
-            <button data-settings-section="presentation-settings">문서 표시</button>
+            <h2>내 브라우저</h2>
+            <button data-settings-section="settings-appearance" class="active">모양과 보기 기준</button>
+            <h2>이 프로젝트</h2>
             <button data-settings-section="contract-settings">문서 계약</button>
             <button data-settings-section="contract-compliance">계약 준수</button>
+            <button data-settings-section="presentation-settings">문서 표시 규칙</button>
+            <h2>Workspace</h2>
+            <button data-settings-section="settings-clients">Clients</button>
           </nav>
           <div id="settings-panels" class="settings-panels">
             <section id="settings-appearance" class="settings-panel">
-              <header><h2>모양</h2><p>이 브라우저에만 적용되며 Workspace 설정을 바꾸지 않습니다.</p></header>
+              <header><h2>모양과 보기 기준</h2><p>이 브라우저에만 저장되며 다른 사람에게 영향을 주지 않습니다.</p></header>
               <div class="setting-row">
                 <div><strong>화면 모드</strong><p>운영체제 설정을 따르거나 다크·라이트를 고정합니다.</p></div>
                 <div class="setting-control"><div class="theme-options" role="group" aria-label="화면 모드"><button id="theme-system">시스템</button><button id="theme-dark">다크</button><button id="theme-light">라이트</button></div></div>
               </div>
-            </section>
-            <section id="settings-sync" class="settings-panel">
-              <header><h2>동기화</h2><p>자동 push 정책은 CLI 설정을 따릅니다.</p></header>
               <div class="setting-row">
-                <div><strong>원격 저장소</strong><p>현재 원격은 <code>origin</code>입니다.</p></div>
-                <div class="setting-control"><button id="sync" class="primary">변경 저장·동기화</button></div>
+                <div><strong>보기 기준</strong><p><code>내 작업</code>과 <code>내 검토</code>가 누구를 기준으로 하는지 고릅니다. 로그인이 아니며 이 브라우저에만 저장됩니다.</p></div>
+                <div class="setting-control"><select id="settings-member"><option value="">선택 안 함</option></select></div>
+              </div>
+              <div class="setting-row">
+                <div><strong>표시 기본값</strong><p>이 프로젝트의 묶음 기준, 필터, 접힘 상태를 처음 값으로 되돌립니다.</p></div>
+                <div class="setting-control"><button id="reset-view-options">초기화</button></div>
               </div>
             </section>
             <section id="settings-clients" class="settings-panel">
-              <header><h2>Clients</h2><p>이 Workspace에 등록된 협업 실행 주체입니다.</p></header>
-              <div class="settings-body"><div id="clients" class="card-grid"></div></div>
+              <header><h2>Clients</h2><p>이 Workspace에 등록된 협업 실행 주체입니다. 등록과 삭제는 <code>rdl client</code> 명령이 담당하고 여기서는 활성 상태만 바꿉니다.</p></header>
+              <div class="settings-body"><div id="clients" class="client-list"></div></div>
             </section>
           </div>
         </div>

@@ -107,4 +107,56 @@ assert(app.includes('requestBlocker(task.blocker)'), 'Switching a task to waitin
 assert(app.includes('queueTaskUpdate(task, task.blocker ? { status, blocker: null } : { status })'), 'Leaving waiting must clear the blocker in the same change');
 assert(app.includes('blockerText(task.blocker)'), 'Task detail must render structured blocker information');
 
+// 동기화는 되돌리기 어렵다. 무엇이 나가는지 보여주고 확인을 받은 뒤에만 실행한다.
+assert(html.includes('id="sync-status"'), '동기화 상태는 사이드바에서 상시 보여야 합니다');
+assert(!html.includes('data-settings-section="settings-sync"'), '동기화는 설정 항목이 아니라 동작입니다');
+assert(app.includes("el('sync-status').addEventListener"), '동기화는 상태 표시 자체가 실행 지점이어야 합니다');
+assert(app.includes('confirm(`${lines.join('), 'push 전에 무엇이 나가는지 확인을 받아야 합니다');
+assert(app.includes("projectPath('/sync')"), '동기화는 프로젝트 sync API를 씁니다');
+
+// 설정은 범위별로 묶는다. 브라우저에만 남는 값과 저장소에 커밋되는 값이 섞이면 무엇이 공유되는지 알 수 없다.
+assert(html.includes('<h2>내 브라우저</h2>'), '설정은 저장 범위별로 묶여야 합니다');
+assert(html.includes('<h2>Workspace</h2>'), '설정은 저장 범위별로 묶여야 합니다');
+assert(html.includes('id="settings-member"'), '보기 기준은 설정에서도 고를 수 있어야 합니다');
+assert(html.includes('id="reset-view-options"'), '표시 기본값은 되돌릴 수 있어야 합니다');
+assert(app.includes('resetViewOptions(); populateControls();'), '초기화는 저장값과 컨트롤을 함께 되돌려야 합니다');
+
+// Client 등록·삭제는 CLI가 소유하고 Board는 활성 상태만 바꾼다.
+assert(app.includes('data-client-toggle'), 'Client는 Board에서 활성 상태를 바꿀 수 있어야 합니다');
+assert(app.includes("'/enable' : '/disable'") || app.includes("? 'enable' : 'disable'"), 'Client 상태 변경은 전용 API를 씁니다');
+assert(app.includes('rdl client register'), '등록 방법은 CLI 명령으로 안내해야 합니다');
+
+// 문서 표시 규칙은 설정 파일이라 Board에서 편집하지 않는다. 어느 파일을 열지 알려주는 게 이 화면의 일이다.
+assert(app.includes('presentation-source'), '문서 표시 규칙은 board.json 경로를 본문에 보여야 합니다');
+assert(!app.includes('data-presentation-edit'), '문서 표시 규칙은 Board에서 편집하지 않습니다');
+
+// 막힘은 목록에서 바로 읽혀야 한다. blocker뿐 아니라 끝나지 않은 선행 태스크도 막힘이다.
+assert(app.includes('function taskBlockage'), '막힘 판정은 한 곳에서 계산해야 합니다');
+assert(app.includes("task.status !== 'done'"), '선행 태스크가 끝나지 않으면 막힘입니다');
+assert(app.includes('class="task-blocked"'), '막힌 태스크는 목록에서 배지로 구분되어야 합니다');
+assert(style.includes(".task-blocked[data-blocked='deps']"), '사람 대기와 선행 대기는 구분되어야 합니다');
+
+// 의존 그래프는 목록·Board와 같은 필터를 받는다.
+assert(html.includes('id="task-graph-mode"'), '태스크는 의존 관계 보기를 제공해야 합니다');
+assert(app.includes('function renderTaskGraph'), '의존 그래프는 지금 보이는 범위만 그려야 합니다');
+assert(app.includes('nodeLabel('), '태스크 제목의 따옴표가 노드 라벨을 깨뜨리면 안 됩니다');
+
+// 홈은 "내가 지금 뭘 하면 되나"에 답해야 한다.
+assert(html.includes('id="my-queue"'), '홈은 내 차례를 보여야 합니다');
+assert(app.includes('지금 시작할 수 있는 일'), '막힌 일과 시작할 수 있는 일은 갈라져야 합니다');
+assert(html.includes('id="recent-changes"'), '홈은 지난 방문 이후 바뀐 것을 보여야 합니다');
+assert(app.includes('state.lastVisit'), '마지막 방문 시각은 한 번만 읽어야 합니다');
+assert(app.includes('function markVisit'), '마지막 방문 시각은 떠날 때 기록해야 합니다');
+
+// 탭이 보이지 않는 동안 스냅샷을 다시 계산할 이유가 없다.
+assert(app.includes("document.addEventListener('visibilitychange'"), '폴링은 탭이 보이지 않으면 멈춰야 합니다');
+assert(app.includes('function stopPolling'), '폴링은 멈출 수 있어야 합니다');
+assert(!app.includes('setInterval(() => loadSnapshot(true), 3000)'), '고정 3초 폴링은 유지하지 않습니다');
+
+// AI 추천 문맥은 편집 가능하되 생성 게이트가 아니다.
+assert(app.includes('data-context-toggle'), 'AI 추천 문맥은 프로젝트마다 바꿀 수 있어야 합니다');
+assert(app.includes('생성을 막지 않습니다'), 'AI 추천 문맥이 게이트가 아님을 화면에서 밝혀야 합니다');
+assert(app.includes('[data-context-toggle][aria-pressed="true"]'), '추천 문맥은 저장 payload에 실려야 합니다');
+assert(style.includes(".guidance-chip[aria-pressed='true']"), '켜진 추천 문맥은 구별되어야 합니다');
+
 console.log('board UI tests passed');
