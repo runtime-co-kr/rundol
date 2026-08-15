@@ -17,15 +17,15 @@ related:
   - "[[PRD-001-Rundol-제품-요구사항|PRD-001]]"
 documentProfile:
   schemaVersion: 2
-  revision: 2
+  revision: 5
   name: lean
   enforcement: checkpoint
   traits: []
-  history: [lean, lean]
+  history: [lean, lean, lean, lean, lean]
   policy:
-    required: [PRD, REQ]
-    recommended: []
-    onDemand: [ARC, MOD, API, ADR, TST, RUN, GLS]
+    required: [PRD, REQ, TST]
+    recommended: [ARC, ADR]
+    onDemand: [MOD, API, RUN, GLS]
     disabled: [SCR]
   rules:
     PRD:
@@ -37,15 +37,15 @@ documentProfile:
     SCR:
       after: [REQ]
     MOD:
-      after: [REQ]
+      after: [REQ, ARC]
     API:
-      after: [REQ]
+      after: [REQ, ARC]
     ADR:
       after: [ARC]
     TST:
       after: [REQ]
     RUN:
-      after: [REQ]
+      after: [REQ, ARC]
     GLS:
       after: []
   omissions:
