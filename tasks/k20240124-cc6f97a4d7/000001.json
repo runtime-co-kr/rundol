@@ -558,7 +558,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "cancelled",
+      "status": "todo",
       "priority": "high",
       "links": [
         "REQ-012",
@@ -581,15 +581,11 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:59:09.900Z",
-      "updatedAt": "2026-08-15T04:05:20.854Z",
-      "statusChangedAt": "2026-08-15T04:05:20.854Z",
+      "updatedAt": "2026-08-15T04:05:21.779Z",
+      "statusChangedAt": "2026-08-15T04:05:21.779Z",
       "externalRefs": [],
       "project": "rundol",
-      "cancellation": {
-        "reason": "스모크 테스트",
-        "decidedBy": "MEMBER-001",
-        "at": "2026-08-15T04:05:20.547Z"
-      }
+      "cancellation": null
     },
     "TASK-00MSS4EI5AC88C26EF54284EFB": {
       "title": "문서 책임 범위와 추적 단위 하네스 구현",
