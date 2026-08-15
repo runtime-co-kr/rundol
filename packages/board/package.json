@@ -1,6 +1,6 @@
 {
   "name": "@rundol/board",
-  "version": "0.22.7",
+  "version": "0.22.8",
   "description": "Rundol local and collaboration board UI package",
   "license": "Apache-2.0",
   "repository": {
@@ -25,7 +25,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rundol/core": "0.22.7",
-    "@rundol/protocol": "0.22.7"
+    "@rundol/core": "0.22.8",
+    "@rundol/protocol": "0.22.8"
   }
 }
