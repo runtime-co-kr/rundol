@@ -71,6 +71,7 @@ rdl --help
 - `check`, `git init`, `refresh`, `save`, `sync`는 `--project`를 생략하면 등록 프로젝트 전체를 각각 처리한다.
 - `task add`, `task set`, `task acceptance`, `board`는 프로젝트가 하나면 자동 선택하고 여러 개면 `--project <key>`가 필요하다.
 - `--json`은 자동화와 AI 클라이언트가 사용할 안정된 JSON 결과를 출력한다.
+- 사람이 읽는 출력은 `키: 값`과 목록을 찍고 중첩 객체는 생략한다. 목록은 건수와 항목별 요약을 함께 보여주므로 `member list`, `client list`, `lease list`는 `--json` 없이도 내용을 확인할 수 있다.
 
 `rundol/*`는 하나의 Git 브랜치나 wildcard 작업 단위가 아니다. CLI의 전체 처리 기준은 Workspace의 프로젝트 Registry이며 각 프로젝트 브랜치를 독립적으로 처리한다.
 

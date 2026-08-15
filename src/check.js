@@ -619,14 +619,16 @@ function checkDocumentProfile(diagnostics, layout, project, settings) {
   if (validation.errors.length) return;
   if (validation.profile.schemaVersion === 2) {
     if (settings.skipProfilePolicy) return;
-    const evaluation = evaluateDocumentContract(validation.profile, projectArtifacts(project));
+    const artifacts = projectArtifacts(project);
+    const evaluation = evaluateDocumentContract(validation.profile, artifacts);
     const severity = evaluation.enforcement === 'checkpoint' && settings.strict ? 'error' : 'warning';
     const codes = {
       'required-missing': 'RDL-PROFILE-002',
       'recommended-missing': 'RDL-PROFILE-003',
       'disabled-present': 'RDL-PROFILE-004',
       'omission-target-missing': 'RDL-PROFILE-006',
-      'omission-section-missing': 'RDL-PROFILE-007'
+      'omission-section-missing': 'RDL-PROFILE-007',
+      'omission-sections-split': 'RDL-PROFILE-011'
     };
     for (const violation of evaluation.violations) diagnostic(diagnostics, {
       code: codes[violation.code] || 'RDL-PROFILE-009', category: 'profile', severity: violation.code === 'recommended-missing' ? 'warning' : severity,
@@ -640,9 +642,12 @@ function checkDocumentProfile(diagnostics, layout, project, settings) {
     for (const status of evaluation.absorbed) {
       for (const id of status.partial || []) {
         const entry = status.coverage.find((item) => item.id === id);
+        // 고쳐야 할 파일은 헌장이 아니라 그 문서다. 헌장을 가리키면 열어봐도 할 일이 없다.
+        const artifact = artifacts.find((item) => item.id === id);
         diagnostic(diagnostics, {
           code: 'RDL-PROFILE-010', category: 'profile', severity: 'warning',
-          file: relative(layout.root, project.charter), project: project.key, artifactId: id, target: status.type,
+          file: relative(layout.root, artifact && artifact.file ? artifact.file : project.charter),
+          project: project.key, artifactId: id, target: status.type,
           message: `${id}이 ${status.type} 흡수 구성요소를 일부만 갖고 있습니다. 누락: ${entry.missing.join(', ')}`
         });
       }

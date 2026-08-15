@@ -208,3 +208,30 @@ const phantom = composeScreen([
 assert.deepStrictEqual(phantom.issues.map((issue) => issue.code), ['RDL-COMPOSE-002']);
 assert.strictEqual(phantom.issues[0].target, 'SCR-299');
 assert.strictEqual(phantom.transitions.length, 0, '존재하지 않는 화면의 간선은 합성하지 않는다');
+
+// 워킹트리가 더러우면 재현 가능한 source revision이 없다. 파일과 상태가 같은 표현을 쓰되,
+// dirty인 동안에는 비교가 아무것도 증명하지 못하므로 신선하다고 말하지 않는다.
+{
+  const os = require('os');
+  const { writeCompositeViews, compositeViewState } = require('../src/document-composite');
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-composite-rev-'));
+  try {
+    const documents = [{ id: 'MOD-001', type: 'MOD', source: '## 관계\n\n```mermaid\nerDiagram\n  A {\n    string id\n  }\n```\n' }];
+
+    // dirty에서 생성: 파일에는 unknown이 적히고, 쓴 그 순간만 신선하다고 본다
+    const written = writeCompositeViews(probe, documents, '', { ensureIgnore: false });
+    assert.ok(written.views.every((view) => view.stale === false), '쓴 직후에는 stale이 아니다');
+    assert.ok(written.views.every((view) => view.storedRevision === 'unknown'), '파일과 상태가 같은 표현을 쓴다');
+
+    // 그 뒤로는 원본이 또 바뀌었는지 알 방법이 없다. 증명할 수 없으면 신선하다고 하지 않는다.
+    const reread = compositeViewState(probe, documents, '');
+    assert.ok(reread.every((view) => view.stale === true), 'dirty인 동안에는 신선함을 증명할 수 없다');
+
+    // 깨끗한 revision으로 만들면 같은 revision에서는 신선하고, 바뀌면 stale이다
+    writeCompositeViews(probe, documents, 'abc1234', { ensureIgnore: false });
+    assert.ok(compositeViewState(probe, documents, 'abc1234').every((view) => view.stale === false), '같은 revision이면 신선하다');
+    assert.ok(compositeViewState(probe, documents, 'def5678').every((view) => view.stale === true), 'revision이 바뀌면 stale이다');
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+}

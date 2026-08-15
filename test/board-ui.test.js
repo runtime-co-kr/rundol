@@ -103,14 +103,30 @@ assert(style.includes('.markdown-body code'), 'Markdown code must use a theme-aw
 assert(style.includes('color: var(--code-TextColor)'), 'Markdown code colour must come from the theme');
 assert(style.includes('color: var(--on-accent-TextColor)'), 'Primary buttons must use a theme-aware foreground token');
 assert(/pre\.mermaid\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid blocks must use the panel surface instead of the code background');
-assert(/\.mermaid \.marker circle\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid cardinality markers must not keep their hardcoded white fill');
+assert(/\.mermaid svg \.marker circle\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid cardinality markers must not keep their hardcoded white fill');
 
 // 목록 행은 겹침을 막는 두 속성이 항상 같이 있어야 한다.
 assert(/\.task-row > \*[^{]*\{[^}]*min-width:\s*0/u.test(style), 'List cells must be allowed to shrink below their content');
 assert(/\.task-row > \*[^{]*\{[^}]*text-overflow:\s*ellipsis/u.test(style), 'List cells must truncate instead of overflowing their track');
 assert(style.includes('.theme-options button.active'), 'The theme picker must show which mode is selected');
 assert(app.includes("theme: 'base', themeVariables: mermaidThemeVariables()"), 'Mermaid must render with the Board palette instead of its built-in themes');
-assert(app.includes("lineColor: themeToken('--muted')"), 'Mermaid relationship lines must follow the Board palette');
+// 토큰 이름이 바뀌면 빈 문자열이 돌아오고 mermaid는 "Unsupported color format"으로 전체를
+// 포기한다. 실제로 theme.css를 다시 쓰며 --panel·--text가 사라져 본문 다이어그램이 전부
+// 죽어 있었다. 이름은 theme.css에 실재해야 하고, 빈 값은 넘겨서 그림은 나오게 한다.
+{
+  const used = [...app.matchAll(/themeToken\('(--[\w-]+)'/gu)].map((match) => match[1]);
+  assert(used.length, 'Mermaid 팔레트가 토큰을 참조해야 합니다');
+  for (const name of used) assert(theme.includes(`${name}:`), `theme.css에 없는 토큰입니다: ${name}`);
+  assert(app.includes("filter(([, value]) => value !== '')"), '빈 값은 넘겨야 다이어그램 하나가 전체를 죽이지 않습니다');
+}
+// mermaid가 svg 안에 심는 스타일이 적용되지 않아 도형이 두 테마 모두 검정으로 칠해졌다.
+// 색은 우리 토큰으로 직접 주어야 테마 전환에도 따라온다.
+assert(/\.mermaid svg \.node rect[\s\S]{0,200}fill:\s*var\(--surface-02-BackgroundColor\)/u.test(style), '다이어그램 도형은 토큰으로 칠해야 합니다');
+assert(/\.mermaid svg text[\s\S]{0,200}fill:\s*var\(--primary-TextColor\)/u.test(style), '다이어그램 글자는 본문과 같은 색이어야 합니다');
+// mermaid는 svg에 width="100%"를 붙여 356px 그림을 909px로 펴 글자를 2.5배로 키운다.
+assert(app.includes('function fitDiagram'), '다이어그램은 고유 크기보다 커지지 않아야 합니다');
+assert(app.includes('min(100%, ${Math.ceil(intrinsic)}px)'), 'viewBox의 고유 폭을 상한으로 씁니다');
+assert(/\.mermaid svg\s*\{[^}]*display:\s*block/u.test(style), 'inline이면 max-width가 적용되지 않습니다');
 assert(!app.includes("theme: lightTheme() ? 'default' : 'dark'"), 'Mermaid must not fall back to its unthemed built-in palettes');
 assert(html.includes('id="close-dialog" type="button"'), 'Dialog close must not submit the task form');
 assert(html.includes('<button type="button" data-dialog-cancel="task-dialog">취소</button>'), 'Task dialog cancel must not submit the task form');
@@ -321,10 +337,15 @@ const save = app.slice(saveStart, app.indexOf('});', app.indexOf('catch', saveSt
 assert(save.includes("el('document-editor').hidden = true"), '저장에 성공하면 편집 모드를 끝내야 합니다');
 assert(save.indexOf("el('document-editor').hidden = true") < save.indexOf('loadSnapshot'), '편집을 끝낸 뒤에 스냅샷을 불러야 합니다');
 
-// 보내는 동안 다시 누르면 그 변경은 새로 쌓인다. taskId로 지우면 그것까지 사라진다.
-assert(app.includes('function settleTaskUpdate'), '전송 중 쌓인 변경을 따로 갈무리해야 합니다');
+// 보내는 동안 다시 누르면 그 변경은 같은 pending에 쌓인다. 지우면 유실되고, 남겨두면
+// 낡은 revision으로 나가 409가 난다. 최신 revision을 받은 뒤에 다시 큐에 넣어야 한다.
+assert(app.includes('function remainingChanges'), '전송 중 쌓인 변경을 따로 갈무리해야 합니다');
 assert(app.includes('pending.sending'), '같은 태스크를 두 번 동시에 보내지 않아야 합니다');
-assert(!/await api\(projectPath\(`\/tasks\/[^`]+`\)[\s\S]{0,200}state\.pendingTasks\.delete\(taskId\);\s*await loadSnapshot/u.test(app), '응답 뒤 무조건 지우면 그 사이 변경이 유실됩니다');
+{
+  const flush = app.slice(app.indexOf('async function flushTaskUpdate'), app.indexOf('function remainingChanges'));
+  assert(flush.indexOf('await loadSnapshot(true)') < flush.indexOf('queueTaskUpdate(task, later)'), '남은 변경은 최신 revision을 받은 뒤에 보내야 합니다');
+  assert(!flush.includes('setTimeout'), '스냅샷 갱신을 기다리지 않는 타이머로 이어 보내면 낡은 revision이 나갑니다');
+}
 
 // 새로 만드는 태스크는 아직 끝나지도 접히지도 않았다. 종료 상태는 고를 수 없어야 한다.
 assert(app.includes('!TERMINAL_STATUSES.includes(value)'), '생성 화면에 종료 상태를 두면 안 됩니다');
@@ -345,8 +366,11 @@ assert(/body\.view-settings #settings-view\s*\{[^}]*display:\s*flex/u.test(style
 
 // 내부 스크롤 상자가 여럿이라 막대가 화면 곳곳에 세로줄로 남는다. overflow는 건드리지
 // 않으므로 휠·터치·키보드 이동은 그대로다.
-assert(/\*\s*\{[^}]*scrollbar-width:\s*none/u.test(style), '스크롤 막대는 감춥니다');
-assert(style.includes('*::-webkit-scrollbar'), 'WebKit 계열에서도 막대를 감춰야 합니다');
+// 앱 크롬에서만 감춘다. 전역으로 감추면 표·코드처럼 가로로 넘치는 내용에서 스크롤
+// 가능 여부를 알 단서가 사라진다.
+assert(style.includes('scrollbar-width: none'), '앱 크롬의 스크롤 막대는 감춥니다');
+assert(!/^\*\s*\{[^}]*scrollbar-width:\s*none/mu.test(style), '전역으로 막대를 감추면 안 됩니다');
+assert(style.includes('.context-panel::-webkit-scrollbar'), 'WebKit 계열에서도 크롬 막대를 감춰야 합니다');
 
 // 같은 선택자를 두 곳에서 선언하면 어느 쪽이 이기는지 읽어야 알 수 있다. 이 파일에서
 // 이 실수로 다섯 번 물렸다. 카드 설명은 두 줄 말줄임이어야 하는데 metric-grid 규칙에

@@ -91,6 +91,26 @@ try {
   }, 'tms');
   assert.strictEqual(explicit.member, 'MEMBER-090');
   assert.notStrictEqual(fs.readFileSync(charter, 'utf8'), original);
+
+  // 역할 참조 검증이 add 경로에만 있어서, set 경로로는 없는 역할 ID가 평문 그대로
+  // 기록됐다. 실제로 MEMBER-002의 역할이 ROLE-099로 덮이고 링크 형식까지 깨졌다.
+  const roles = readCollaboration(temporary, 'tms').roles;
+  assert.ok(roles.length, '검증에 쓸 역할이 필요합니다.');
+  const target = readCollaboration(temporary, 'tms').members[0];
+
+  assert.throws(
+    () => updateCollaboration(temporary, target.id, { fields: { '역할': 'ROLE-099' } }, 'tms'),
+    /등록되지 않은 역할/u,
+    'set 경로도 없는 역할을 거부해야 합니다.'
+  );
+
+  const applied = updateCollaboration(temporary, target.id, { fields: { '역할': roles[0].id } }, 'tms');
+  const value = applied.members.find((item) => item.id === target.id).fields['역할'];
+  assert.strictEqual(value, `[[project#^${roles[0].id}|${roles[0].name}]]`, 'set 경로도 Obsidian 링크 형식으로 기록해야 합니다.');
+
+  // 이미 링크로 들어온 값은 그대로 통과하고 ID만 확인한다
+  const again = updateCollaboration(temporary, target.id, { fields: { '역할': value } }, 'tms');
+  assert.strictEqual(again.members.find((item) => item.id === target.id).fields['역할'], value);
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

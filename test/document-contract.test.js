@@ -72,7 +72,7 @@ try {
     artifact('REQ-003', [])
   ]);
   const scr = evaluation.absorbed.find((item) => item.type === 'SCR');
-  assert.strictEqual(scr.satisfied, true, '한 문서가 모두 가지면 유형 판정은 충족이다');
+  assert.strictEqual(scr.satisfied, true, '한 문서가 모두 가지면 충족이다');
   assert.deepStrictEqual(scr.complete, ['REQ-001']);
   assert.deepStrictEqual(scr.partial, ['REQ-002'], '일부만 가진 문서를 가려낸다');
   assert.deepStrictEqual(scr.absent, ['REQ-003'], '전혀 없는 문서는 따로 센다');
@@ -85,6 +85,23 @@ try {
   assert.strictEqual(emptyScr.satisfied, false);
   assert.deepStrictEqual(emptyScr.absent, ['REQ-001']);
   assert.deepStrictEqual(emptyScr.partial, []);
+
+  // 구성요소가 여러 문서에 흩어져 있으면, 섹션별로는 다 있어도 충족이 아니다.
+  // 어느 문서도 그 주제를 온전히 설명하지 않는다.
+  const split = evaluateDocumentContract(profile, [artifact('REQ-001', ['사용자 흐름']), artifact('REQ-002', ['화면 상태'])]);
+  const splitScr = split.absorbed.find((item) => item.type === 'SCR');
+  assert.strictEqual(splitScr.satisfied, false, '절반씩 나눠 가지면 충족이 아니다');
+  assert.deepStrictEqual(splitScr.complete, []);
+  assert.deepStrictEqual(splitScr.missingSections, [], '섹션 자체는 어딘가에 다 있다');
+  assert.deepStrictEqual(split.violations.map((v) => v.code), ['omission-sections-split']);
+}
+
+// 일부 보유 진단은 고쳐야 할 문서를 가리켜야 한다. 헌장을 가리키면 열어봐도 할 일이 없다.
+{
+  const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
+  const rule = check.slice(check.indexOf("code: 'RDL-PROFILE-010'"), check.indexOf("code: 'RDL-PROFILE-010'") + 320);
+  assert.ok(rule.includes('artifact && artifact.file'), 'RDL-PROFILE-010은 해당 문서 경로를 보고해야 합니다.');
+  assert.ok(check.includes("'omission-sections-split': 'RDL-PROFILE-011'"), '분산 위반에 코드가 필요합니다.');
 }
 
 // 진단은 경고이며 강제 수준과 무관하게 저장·동기화를 막지 않는다

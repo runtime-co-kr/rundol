@@ -165,12 +165,27 @@ function parseOperationArgs(argv) {
   return options;
 }
 
+// 사람이 읽는 출력은 객체를 건너뛴다. 그래서 목록 명령의 본체가 배열이라는 이유만으로
+// 통째로 사라져 rdl member list와 rdl client list가 머리말만 찍고 끝났다.
+// 최상위 배열은 그 명령이 보여주려는 것이므로 찍는다. 중첩 객체는 그대로 건너뛴다.
+function summarizeEntry(value) {
+  if (value === null || typeof value !== 'object') return String(value);
+  return Object.entries(value)
+    .filter(([, item]) => item !== undefined && item !== null && typeof item !== 'object')
+    .map(([key, item]) => `${key}=${item}`)
+    .join(' ');
+}
 function printOperation(result, json) {
-  if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  else {
-    for (const [key, value] of Object.entries(result)) {
-      if (value !== undefined && value !== null && typeof value !== 'object') process.stdout.write(`${key}: ${value}\n`);
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  for (const [key, value] of Object.entries(result)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      process.stdout.write(`${key}: ${value.length}건\n`);
+      for (const entry of value) process.stdout.write(`  ${summarizeEntry(entry)}\n`);
+      continue;
     }
+    if (typeof value === 'object') continue;
+    process.stdout.write(`${key}: ${value}\n`);
   }
 }
 
@@ -548,7 +563,9 @@ async function main() {
     } else if (subcommand === 'set') {
       if (options.positional.length !== 1) throw new Error('rdl member set에는 MEMBER-ID 또는 STAKEHOLDER-ID 하나가 필요합니다.');
       const fields = {};
-      if (options.roles.length) fields['역할'] = options.roles.join(', ');
+      // 역할 필드 이름이 대상마다 다르다. member는 역할, stakeholder는 담당 역할이라
+      // 한쪽 이름으로만 보내면 다른 쪽에서는 조용히 무시된다.
+      if (options.roles.length) fields[options.positional[0].startsWith('STAKEHOLDER-') ? '담당 역할' : '역할'] = options.roles.join(', ');
       if (options.organization !== null) fields['소속'] = options.organization;
       if (options.account !== null) fields['업무 계정'] = options.account;
       if (options.responsibility !== null) fields['책임 영역'] = options.responsibility;

@@ -92,6 +92,21 @@ function atomicWrite(file, content) {
   fs.renameSync(temporary, file);
 }
 
+// 역할 참조는 존재 확인과 Obsidian 링크 형식을 함께 갖춰야 한다. add 경로만 이 검증을
+// 갖고 있어서 set 경로로는 없는 역할 ID가 평문으로 그대로 기록됐다. 한곳에 모은다.
+const ROLE_FIELDS = { member: '역할', stakeholder: '담당 역할' };
+function resolveRoleField(parsed, value) {
+  const requested = String(value).split(',').map((item) => item.trim()).filter(Boolean);
+  if (!requested.length) throw new Error('역할을 하나 이상 지정해야 합니다.');
+  return requested.map((token) => {
+    // 이미 링크 형태로 들어온 값은 그대로 두고 ID만 뽑아 확인한다.
+    const id = (/\^([A-Z]+-\d+)/u.exec(token) || [])[1] || token;
+    const role = parsed.entities.find((item) => item.type === 'role' && item.id === id);
+    if (!role) throw new Error(`project.md에 등록되지 않은 역할입니다: ${id}`);
+    return `[[project#^${role.id}|${role.name}]]`;
+  }).join(', ');
+}
+
 function updateCollaboration(start, id, input, projectKey) {
   const root = findWorkspaceRoot(start);
   const file = projectFile(root, projectKey);
@@ -102,8 +117,12 @@ function updateCollaboration(start, id, input, projectKey) {
   const name = safeValue(input.name || entity.name, '이름');
   if (!name) throw new Error('이름이 필요합니다.');
   const updates = {};
+  const roleField = ROLE_FIELDS[entity.type];
   for (const field of EDITABLE_FIELDS[entity.type]) {
-    if (input.fields && Object.prototype.hasOwnProperty.call(input.fields, field)) updates[field] = safeValue(input.fields[field], field);
+    if (!input.fields || !Object.prototype.hasOwnProperty.call(input.fields, field)) continue;
+    updates[field] = field === roleField
+      ? resolveRoleField(parsed, safeValue(input.fields[field], field))
+      : safeValue(input.fields[field], field);
   }
   parsed.lines[entity.start] = `### ${name} ^${entity.id}`;
   const existing = new Set();

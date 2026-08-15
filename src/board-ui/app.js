@@ -35,18 +35,52 @@ function markdown(source) {
 }
 
 function lightTheme() { return document.body.classList.contains('theme-light') || (document.body.classList.contains('theme-system') && matchMedia('(prefers-color-scheme: light)').matches); }
-function themeToken(name) { return getComputedStyle(document.body).getPropertyValue(name).trim(); }
-function mermaidThemeVariables() {
-  return {
-    darkMode: !lightTheme(),
-    background: themeToken('--panel'), mainBkg: themeToken('--panel2'), tertiaryColor: themeToken('--panel'),
-    primaryColor: themeToken('--panel2'), primaryTextColor: themeToken('--text'), primaryBorderColor: themeToken('--muted'),
-    nodeBorder: themeToken('--muted'), lineColor: themeToken('--muted'), textColor: themeToken('--text'),
-    edgeLabelBackground: themeToken('--panel'),
-    attributeBackgroundColorOdd: themeToken('--panel'), attributeBackgroundColorEven: themeToken('--panel2')
-  };
+// 토큰 이름이 바뀌면 빈 문자열이 돌아오고, mermaid는 그걸 색으로 받아 통째로 렌더링에
+// 실패한다. 실제로 theme.css를 다시 쓰면서 --panel·--text 같은 옛 이름이 사라져
+// 본문 다이어그램이 전부 그려지지 않고 있었다. 빈 값이면 그 항목을 넘긴다.
+function themeToken(name, fallback) {
+  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+  return value || fallback || '';
 }
-async function renderMermaid() { if (!window.mermaid) return; const nodes = Array.from(document.querySelectorAll('.mermaid')); if (!nodes.length) return; try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: mermaidThemeVariables() }); await window.mermaid.run({ nodes }); } catch (error) { message(`Mermaid 렌더링 실패: ${error.message}`, true); } }
+function mermaidThemeVariables() {
+  const surface = themeToken('--surface-01-BackgroundColor');
+  const raised = themeToken('--surface-02-BackgroundColor');
+  const text = themeToken('--primary-TextColor');
+  const line = themeToken('--divider-BorderColor');
+  const variables = {
+    darkMode: !lightTheme(),
+    background: surface, mainBkg: raised, tertiaryColor: surface,
+    primaryColor: raised, primaryTextColor: text, primaryBorderColor: line,
+    nodeBorder: line, lineColor: line, textColor: text,
+    edgeLabelBackground: surface,
+    attributeBackgroundColorOdd: surface, attributeBackgroundColorEven: raised
+  };
+  // 값이 하나라도 비면 mermaid가 "Unsupported color format"으로 전체를 포기한다.
+  // 못 채운 항목은 넘기고 mermaid의 기본값을 쓰게 둔다. 색이 조금 어긋나도 그림은 나온다.
+  return Object.fromEntries(Object.entries(variables).filter(([, value]) => value !== ''));
+}
+async function renderMermaid() {
+  if (!window.mermaid) return;
+  const nodes = Array.from(document.querySelectorAll('.mermaid'));
+  if (!nodes.length) return;
+  try {
+    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: mermaidThemeVariables() });
+    await window.mermaid.run({ nodes });
+    for (const node of nodes) fitDiagram(node.querySelector('svg'));
+  } catch (error) {
+    message(`Mermaid 렌더링 실패: ${error.message}`, true);
+  }
+}
+// mermaid는 svg에 width="100%"를 붙여 본문 폭까지 늘린다. 356px짜리 그림이 909px로
+// 펴지면 글자와 선이 2.5배로 커져 읽기 나쁘다. viewBox가 고유 크기를 알려주므로
+// 그보다 크게 늘리지 않고, 좁은 화면에서만 줄어들게 한다.
+function fitDiagram(svg) {
+  if (!svg) return;
+  const intrinsic = Number((svg.getAttribute('viewBox') || '').split(/\s+/u)[2]);
+  if (!Number.isFinite(intrinsic) || intrinsic <= 0) return;
+  svg.style.maxWidth = `min(100%, ${Math.ceil(intrinsic)}px)`;
+  svg.removeAttribute('height');
+}
 function applyTheme(theme) { const selected = ['system', 'dark', 'light'].includes(theme) ? theme : 'system'; document.body.classList.remove('theme-system', 'theme-dark', 'theme-light'); document.body.classList.add(`theme-${selected}`); localStorage.setItem('rundol.theme', selected); for (const value of ['system', 'dark', 'light']) if (el(`theme-${value}`)) el(`theme-${value}`).classList.toggle('active', value === selected); if (state.snapshot && state.view === 'document' && state.selected) renderDocument(state.selected); }
 
 function blockerCandidates() { return state.snapshot.people.members.concat(state.snapshot.people.stakeholders).map((item) => [item.id, item.name]); }
@@ -84,9 +118,9 @@ function redrawTask(taskId) {
   if (task && state.view === 'tasks') renderContext(task, 'task');
 }
 function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(task.id); if (!pending) pending = { baseRevision: task.revision, changes: {}, timer: null }; Object.assign(pending.changes, changes); Object.assign(task, changes); clearTimeout(pending.timer); pending.timer = setTimeout(() => flushTaskUpdate(task.id), 500); state.pendingTasks.set(task.id, pending); redrawTask(task.id); }
-// 보내는 동안 사용자가 또 누르면 그 변경은 새 pending으로 쌓인다. 응답이 온 뒤
-// taskId로 지우면 그 사이 쌓인 것까지 지워져 두 번째 변경이 소리 없이 사라진다.
-// 보낸 그 객체일 때만 지우고, 그 사이 쌓인 것이 있으면 이어서 보낸다.
+// 보내는 동안 사용자가 또 누르면 그 변경은 같은 pending에 쌓인다. 응답이 온 뒤 taskId로
+// 지우면 그 사이 쌓인 것까지 사라지고, 반대로 남겨두면 이미 낡은 revision을 달고 나간다.
+// 보낸 것만 확정하고, 남은 것은 새 revision을 받은 뒤에 다시 큐에 넣는다.
 async function flushTaskUpdate(taskId) {
   const pending = state.pendingTasks.get(taskId);
   if (!pending || pending.sending) return;
@@ -95,8 +129,14 @@ async function flushTaskUpdate(taskId) {
   const sent = Object.assign({}, pending.changes);
   try {
     await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, sent)) });
-    settleTaskUpdate(taskId, pending, sent);
+    const later = remainingChanges(pending, sent);
+    state.pendingTasks.delete(taskId);
+    // 먼저 최신 revision을 받는다. 이 전에 다시 큐에 넣으면 낡은 revision으로 나가 409가 난다.
     await loadSnapshot(true);
+    if (later) {
+      const task = state.snapshot.tasks.tasks.find((item) => item.id === taskId);
+      if (task) queueTaskUpdate(task, later);
+    }
     redrawTask(taskId);
     if (!state.pendingTasks.has(taskId)) message('태스크 변경을 파일에 저장했습니다.');
   } catch (error) {
@@ -106,19 +146,10 @@ async function flushTaskUpdate(taskId) {
     message(`변경을 되돌렸습니다: ${error.message}`, true);
   }
 }
-function settleTaskUpdate(taskId, pending, sent) {
-  pending.sending = false;
-  const later = Object.keys(pending.changes).filter((field) => JSON.stringify(pending.changes[field]) !== JSON.stringify(sent[field]));
-  if (!later.length) { state.pendingTasks.delete(taskId); return; }
-  // 보내는 사이 쌓인 것만 남기고, 새 revision을 받은 뒤 이어 보낸다.
-  pending.changes = Object.fromEntries(later.map((field) => [field, pending.changes[field]]));
-  pending.baseRevision = null;
-  clearTimeout(pending.timer);
-  pending.timer = setTimeout(() => {
-    const task = state.snapshot.tasks.tasks.find((item) => item.id === taskId);
-    if (task) pending.baseRevision = task.revision;
-    flushTaskUpdate(taskId);
-  }, 0);
+// 보내는 사이 값이 또 바뀐 필드만 골라낸다. 없으면 null.
+function remainingChanges(pending, sent) {
+  const fields = Object.keys(pending.changes).filter((field) => JSON.stringify(pending.changes[field]) !== JSON.stringify(sent[field]));
+  return fields.length ? Object.fromEntries(fields.map((field) => [field, pending.changes[field]])) : null;
 }
 
 // 화면 이름을 body에 남겨 선택 대상이 없는 화면에서 Context 패널을 접는다.
@@ -425,6 +456,9 @@ function redrawPerson(id) {
     const entry = (state.snapshot.people[group] || []).find((item) => item.id === id);
     if (entry) { el('context-content').innerHTML = personDetailHtml(entry, group); return; }
   }
+  // project.md에서 지워진 사람이다. 옛 내용을 그대로 두면 없는 사람을 보고 있게 된다.
+  closePeek();
+  message('이 사람은 project.md에서 사라졌습니다.');
 }
 function personDetailHtml(entry, group) {
   const labels = { members: '멤버', roles: '역할', stakeholders: '이해관계자' };

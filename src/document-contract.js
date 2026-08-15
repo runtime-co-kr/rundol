@@ -105,13 +105,18 @@ function evaluateDocumentContract(profileInput, artifactInput) {
     }
     const targets = byType.get(omission.absorbedBy) || [];
     const missingSections = omission.sections.filter((section) => !targets.some((target) => hasSection(target.source, section)));
-    const satisfied = targets.length > 0 && missingSections.length === 0;
-    // 충족 판정은 유형 단위다. 대상 문서 하나가 다 갖고 있으면 나머지가 비어 있어도 통과하므로,
-    // 그 하나 뒤에 가려진 문서별 현황을 함께 낸다. 판정을 바꾸지 않고 보이게만 한다.
     const coverage = targets.map((target) => {
       const has = omission.sections.filter((section) => hasSection(target.source, section));
       return { id: target.id, has, missing: omission.sections.filter((section) => !has.includes(section)) };
     });
+    // 일부만 가진 문서는 그 주제를 다루기 시작해 놓고 나머지를 빠뜨린 것이라 미완성이라
+    // 단정할 수 있다. 전혀 없는 문서는 그 주제를 안 다룰 수 있어 판정하지 않는다.
+    const complete = coverage.filter((item) => !item.missing.length).map((item) => item.id);
+    const partial = coverage.filter((item) => item.has.length && item.missing.length).map((item) => item.id);
+    // 충족은 한 문서가 구성요소를 온전히 담을 때만 성립한다. 섹션별로 아무 문서나 있으면
+    // 통과시키면, 둘이 절반씩 나눠 가져 어느 쪽도 그 주제를 온전히 설명하지 않는데도
+    // 흡수됐다고 판정된다. 흡수는 내용을 옮기는 것이지 조각내는 것이 아니다.
+    const satisfied = complete.length > 0;
     omissionStatus[type] = {
       type,
       disposition: 'absorbed',
@@ -120,14 +125,13 @@ function evaluateDocumentContract(profileInput, artifactInput) {
       missingSections,
       satisfied,
       coverage,
-      // 일부만 가진 문서는 그 주제를 다루기 시작해 놓고 나머지를 빠뜨린 것이라 미완성이라
-      // 단정할 수 있다. 전혀 없는 문서는 그 주제를 안 다룰 수 있어 판정하지 않는다.
-      complete: coverage.filter((item) => !item.missing.length).map((item) => item.id),
-      partial: coverage.filter((item) => item.has.length && item.missing.length).map((item) => item.id),
+      complete,
+      partial,
       absent: coverage.filter((item) => !item.has.length).map((item) => item.id)
     };
     if (!targets.length) violations.push({ code: 'omission-target-missing', type, target: omission.absorbedBy, message: `${type} 생략 내용을 흡수할 ${omission.absorbedBy} 문서가 없습니다.` });
-    else for (const section of missingSections) violations.push({ code: 'omission-section-missing', type, target: omission.absorbedBy, section, message: `${type} 생략 내용의 필수 구성요소가 ${omission.absorbedBy}에 없습니다: ${section}` });
+    else if (missingSections.length) for (const section of missingSections) violations.push({ code: 'omission-section-missing', type, target: omission.absorbedBy, section, message: `${type} 생략 내용의 필수 구성요소가 ${omission.absorbedBy}에 없습니다: ${section}` });
+    else if (!satisfied) violations.push({ code: 'omission-sections-split', type, target: omission.absorbedBy, message: `${type} 생략 내용의 필수 구성요소가 여러 ${omission.absorbedBy} 문서에 흩어져 있습니다. 한 문서가 모두 담아야 합니다: ${partial.join(', ')}` });
   }
 
   function dependencySatisfied(type) {

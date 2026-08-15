@@ -19,14 +19,24 @@
   display: none !important;
 }
 
-/* 내부 스크롤 상자가 여럿이라 막대가 화면 곳곳에 세로줄로 남는다. 스크롤은 그대로 두고
-   막대만 감춘다. 스크롤할 것이 있는지는 잘린 내용이 알려주므로 단서가 사라지지 않는다.
-   overflow를 건드리지 않으므로 휠·터치·키보드 이동은 모두 그대로다. */
-* {
+/* 앱 크롬(사이드바·Context·설정 패널)은 늘 스크롤 상자라 막대가 화면 곳곳에 세로줄로
+   남는다. 여기서만 감춘다. 표·코드 블록·다이어그램처럼 가로로 넘치는 내용은 막대가
+   유일한 단서이므로 남긴다. 전역으로 감추면 스크롤 가능 여부 자체가 보이지 않는다. */
+.navigation-panel,
+.sidebar-body,
+.context-panel,
+#context-empty,
+#context-content,
+.settings-panels > .settings-panel {
   scrollbar-width: none;
 }
 
-*::-webkit-scrollbar {
+.navigation-panel::-webkit-scrollbar,
+.sidebar-body::-webkit-scrollbar,
+.context-panel::-webkit-scrollbar,
+#context-empty::-webkit-scrollbar,
+#context-content::-webkit-scrollbar,
+.settings-panels > .settings-panel::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
@@ -2207,7 +2217,73 @@ dialog label textarea {
   background: var(--surface-01-BackgroundColor);
 }
 
-.mermaid .marker circle {
+/* mermaid가 svg에 붙이는 width="100%"를 그대로 두면 본문 폭까지 늘어나 글자가 2.5배로
+   커진다. viewBox의 고유 크기를 쓰되 좁은 화면에서만 줄어들게 한다. */
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* mermaid가 svg 안에 심는 스타일이 적용되지 않아 도형이 두 테마 모두에서 검정으로
+   칠해졌다. 색은 우리 토큰으로 직접 준다. 그러면 테마 전환에도 저절로 따라온다. */
+.mermaid svg .label-container,
+.mermaid svg .node rect,
+.mermaid svg .node polygon,
+.mermaid svg .node circle,
+.mermaid svg .er.entityBox,
+.mermaid svg .actor,
+.mermaid svg .labelBox,
+.mermaid svg .cluster rect {
+  fill: var(--surface-02-BackgroundColor);
+  stroke: var(--divider-BorderColor);
+}
+
+.mermaid svg .er.attributeBoxOdd {
+  fill: var(--surface-01-BackgroundColor);
+  stroke: var(--divider-BorderColor);
+}
+
+.mermaid svg .er.attributeBoxEven {
+  fill: var(--surface-02-BackgroundColor);
+  stroke: var(--divider-BorderColor);
+}
+
+.mermaid svg text,
+.mermaid svg .nodeLabel,
+.mermaid svg .edgeLabel,
+.mermaid svg .messageText,
+.mermaid svg .actor-line + text {
+  fill: var(--primary-TextColor);
+  color: var(--primary-TextColor);
+}
+
+.mermaid svg .edgePath path,
+.mermaid svg .relationshipLine,
+.mermaid svg .messageLine0,
+.mermaid svg .messageLine1,
+.mermaid svg line,
+.mermaid svg .actor-line {
+  stroke: var(--divider-BorderColor);
+  fill: none;
+}
+
+/* 화살촉과 관계 표식은 선과 같은 색이어야 방향이 읽힌다. */
+.mermaid svg marker path,
+.mermaid svg .marker {
+  fill: var(--divider-BorderColor);
+  stroke: var(--divider-BorderColor);
+}
+
+.mermaid svg .marker circle {
+  fill: var(--surface-01-BackgroundColor);
+}
+
+/* 라벨 배경은 선을 가리는 용도라 캔버스와 같아야 한다. */
+.mermaid svg .edgeLabel rect,
+.mermaid svg .label-container ~ rect {
   fill: var(--surface-01-BackgroundColor);
 }
 
