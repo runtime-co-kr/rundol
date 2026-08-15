@@ -42,12 +42,18 @@ function themeToken(name, fallback) {
   const value = getComputedStyle(document.body).getPropertyValue(name).trim();
   return value || fallback || '';
 }
+// mermaid가 svg 안에 심는 스타일이 적용되지 않아 글자가 브라우저 기본 monospace 16px로
+// 그려진다. mermaid는 자기 기본 글꼴로 상자 크기를 재므로 잰 폭과 그린 폭이 어긋나
+// 액터 이름이 상자 밖으로 삐져나왔다. 재는 글꼴과 그리는 글꼴을 같은 값으로 못박는다.
+const DIAGRAM_FONT = 'Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif';
+
 function mermaidThemeVariables() {
   const surface = themeToken('--surface-01-BackgroundColor');
   const raised = themeToken('--surface-02-BackgroundColor');
   const text = themeToken('--primary-TextColor');
   const line = themeToken('--divider-BorderColor');
   const variables = {
+    fontFamily: DIAGRAM_FONT,
     darkMode: !lightTheme(),
     background: surface, mainBkg: raised, tertiaryColor: surface,
     primaryColor: raised, primaryTextColor: text, primaryBorderColor: line,
@@ -64,7 +70,7 @@ async function renderMermaid() {
   const nodes = Array.from(document.querySelectorAll('.mermaid'));
   if (!nodes.length) return;
   try {
-    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: mermaidThemeVariables() });
+    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', fontFamily: DIAGRAM_FONT, themeVariables: mermaidThemeVariables() });
     await window.mermaid.run({ nodes });
     for (const node of nodes) fitDiagram(node.querySelector('svg'));
   } catch (error) {

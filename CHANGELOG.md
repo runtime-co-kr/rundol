@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.22.10] - 2026-08-16
+
+### Fixed
+
+- Sequence diagram participant names spilled outside their boxes. Mermaid sizes each box by measuring the label in the font from its own config, but the style it injects into the SVG never applied, so the text was actually drawn in the browser's default monospace. Measured width and drawn width disagreed and long names like "Project readers" ran past the border. Both now use the same font.
+
 ## [0.22.9] - 2026-08-16
 
 ### Fixed

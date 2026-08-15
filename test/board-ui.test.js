@@ -124,7 +124,11 @@ assert(/\.task-card\s*\{[^}]*justify-content:\s*stretch/u.test(style), "Board ca
 assert(/\.task-row > \*[^{]*\{[^}]*min-width:\s*0/u.test(style), 'List cells must be allowed to shrink below their content');
 assert(/\.task-row > \*[^{]*\{[^}]*text-overflow:\s*ellipsis/u.test(style), 'List cells must truncate instead of overflowing their track');
 assert(style.includes('.theme-options button.active'), 'The theme picker must show which mode is selected');
-assert(app.includes("theme: 'base', themeVariables: mermaidThemeVariables()"), 'Mermaid must render with the Board palette instead of its built-in themes');
+assert(app.includes("theme: 'base'") && app.includes('themeVariables: mermaidThemeVariables()'), 'Mermaid must render with the Board palette instead of its built-in themes');
+// mermaid는 config 글꼴로 상자 크기를 재는데 svg 안 스타일이 적용되지 않아 글자는
+// 브라우저 기본 monospace로 그려졌다. 잰 폭과 그린 폭이 달라 액터 이름이 상자를 넘쳤다.
+assert(app.includes('fontFamily: DIAGRAM_FONT'), 'Mermaid must measure with the font the diagram is drawn in');
+assert(/\.mermaid svg text,\s*\.mermaid svg tspan\s*\{[^}]*font-family:\s*Inter/u.test(style), 'Diagram text must be drawn in the font mermaid measured with');
 // 토큰 이름이 바뀌면 빈 문자열이 돌아오고 mermaid는 "Unsupported color format"으로 전체를
 // 포기한다. 실제로 theme.css를 다시 쓰며 --panel·--text가 사라져 본문 다이어그램이 전부
 // 죽어 있었다. 이름은 theme.css에 실재해야 하고, 빈 값은 넘겨서 그림은 나오게 한다.

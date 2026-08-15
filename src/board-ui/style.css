@@ -2398,10 +2398,14 @@ dialog label textarea {
 /* 글자는 도형 규칙 뒤에 온다. text.actor처럼 도형과 같은 클래스를 쓰는 글자가 있어
    앞에 두면 라벨이 상자와 같은 색이 되어 사라진다. 실제로 sequence의 액터 이름이
    흰 상자에 흰 글자로 나오고 있었다. */
+/* mermaid의 svg 내부 스타일이 적용되지 않아 글자가 브라우저 기본 monospace 16px가 된다.
+   mermaid는 자기 config 글꼴로 상자 크기를 재므로 여기 값이 app.js의 DIAGRAM_FONT와
+   같아야 한다. 어긋나면 잰 폭과 그린 폭이 달라 액터 이름이 상자 밖으로 나간다. */
 .mermaid svg text,
 .mermaid svg tspan {
   fill: var(--primary-TextColor);
   stroke: none;
+  font-family: Inter, Pretendard, 'Noto Sans KR', system-ui, sans-serif;
 }
 
 .mermaid svg foreignObject div,
