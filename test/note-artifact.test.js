@@ -62,4 +62,23 @@ assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, 
 assert.doesNotThrow(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }));
 assert.doesNotThrow(() => assertBlockerConsistency({ status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }, { status: 'doing', blocker: null }));
 
+// Client ID는 샤드 디렉터리와 이벤트 파일 이름이 되어 저장소에 커밋된다.
+// 호스트명을 그대로 넣으면 공개 저장소에 기기 이름이 남는다.
+const { generatedClientId } = require('../src/tasks');
+const savedHost = process.env.COMPUTERNAME;
+try {
+  process.env.COMPUTERNAME = 'SECRET-WORKSTATION-01';
+  const first = generatedClientId();
+  const second = generatedClientId();
+  assert.ok(!first.toLowerCase().includes('secret'), `생성된 Client ID에 호스트명이 남았습니다: ${first}`);
+  assert.ok(!first.toLowerCase().includes('workstation'), `생성된 Client ID에 호스트명이 남았습니다: ${first}`);
+  assert.match(first, /^[a-z0-9]+(?:-[a-z0-9]+)*$/u, 'Client ID 형식을 지켜야 합니다.');
+  assert.strictEqual(first.split('-')[0], second.split('-')[0], '같은 기기는 같은 접두사를 얻어야 합니다.');
+  assert.notStrictEqual(first, second, '무작위 부분은 매번 달라야 합니다.');
+  process.env.COMPUTERNAME = 'ANOTHER-MACHINE';
+  assert.notStrictEqual(generatedClientId().split('-')[0], first.split('-')[0], '다른 기기는 다른 접두사를 얻어야 합니다.');
+} finally {
+  if (savedHost === undefined) delete process.env.COMPUTERNAME; else process.env.COMPUTERNAME = savedHost;
+}
+
 process.stdout.write('note artifact tests passed\n');

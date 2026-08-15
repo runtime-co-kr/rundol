@@ -35,9 +35,19 @@ function clientId(root, preferred) {
   if (preferred) return normalizeClientId(preferred);
   const file = path.join(root, '.rundol', 'state', 'client-id');
   if (fs.existsSync(file)) return normalizeClientId(fs.readFileSync(file, 'utf8'));
-  const generated = normalizeClientId(`${process.env.COMPUTERNAME || process.env.HOSTNAME || 'client'}-${crypto.randomBytes(5).toString('hex')}`);
-  atomicWrite(file, `${generated}\n`);
-  return generated;
+  atomicWrite(file, `${generatedClientId()}\n`);
+  return normalizeClientId(fs.readFileSync(file, 'utf8'));
+}
+
+// Client ID는 샤드 디렉터리와 이벤트 파일의 이름이 되어 저장소에 커밋된다.
+// 호스트명을 그대로 쓰면 공개 저장소에 기기 이름이 남고, MOD-002가 금지한
+// 호스트 정보가 manifest 본문이 아니라 파일명으로 새어 나간다.
+// 호스트를 6자리로 해시하면 같은 기기는 항상 같은 값을 얻어 정체성은 유지되고
+// 원래 이름은 드러나지 않는다.
+function generatedClientId() {
+  const host = process.env.COMPUTERNAME || process.env.HOSTNAME || 'client';
+  const tag = crypto.createHash('sha256').update(String(host)).digest('hex').slice(0, 6);
+  return normalizeClientId(`c${tag}-${crypto.randomBytes(5).toString('hex')}`);
 }
 
 function shardFiles(directory) {
@@ -157,6 +167,7 @@ module.exports = {
   MAX_TASKS_PER_SHARD,
   assertBlockerConsistency,
   clientId,
+  generatedClientId,
   readTaskStore,
   shardFiles,
   createTaskInStore,
