@@ -59,7 +59,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 
 | 영역 | 설계 |
 |---|---|
-| 런타임 | Node.js CLI와 표준 라이브러리 중심 CommonJS 모듈. 지원 기준은 Node.js 14 이상이며 CI는 현재 지원 Node matrix를 검증한다. |
+| 런타임 | Node.js CLI와 표준 라이브러리 중심 CommonJS 모듈. 지원 기준은 Node.js 20 이상이며 CI는 현재 지원 Node matrix를 검증한다. 직접 의존성이 요구하는 최소 런타임과 CI가 실제로 검증하는 버전이 지원 기준이며, 셋 중 하나만 낮게 적어두지 않는다. |
 | 네트워크 | 기본 동작은 로컬 파일·Git. Board는 `127.0.0.1` HTTP에만 bind하고, Git sync와 npm 설치·배포만 외부 네트워크를 사용한다. |
 | 저장소 | Git refs와 linked worktree가 정본이다. `.rundol/state`, logs, `.obsidian`은 로컬 실행·개인 설정이며 Git 추적 대상과 분리한다. |
 | 배포 단위 | npm의 `@rundol/core`, `protocol`, `board`, `node`, `cli`, `rundol` 패키지. CLI build는 검증된 root 소스·문서·스킬을 dist로 복제한다. |
