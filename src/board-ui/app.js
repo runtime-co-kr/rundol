@@ -74,10 +74,19 @@ async function renderMermaid() {
 // mermaid는 svg에 width="100%"를 붙여 본문 폭까지 늘린다. 356px짜리 그림이 909px로
 // 펴지면 글자와 선이 2.5배로 커져 읽기 나쁘다. viewBox가 고유 크기를 알려주므로
 // 그보다 크게 늘리지 않고, 좁은 화면에서만 줄어들게 한다.
+// mermaid의 기본 글꼴은 16px이다. 폭에 맞춰 무한정 줄이면 넓은 흐름도는 실효 7px까지
+// 내려가 글자가 사라진다. 아래로는 줄이지 않고 가로 스크롤로 넘긴다. 읽을 수 없는 그림을
+// 다 보여주는 것보다 읽을 수 있는 그림을 밀어 보는 편이 낫다.
+const DIAGRAM_BASE_FONT = 16;
+const DIAGRAM_MIN_FONT = 11;
+
 function fitDiagram(svg) {
   if (!svg) return;
   const intrinsic = Number((svg.getAttribute('viewBox') || '').split(/\s+/u)[2]);
   if (!Number.isFinite(intrinsic) || intrinsic <= 0) return;
+  const floor = Math.ceil(intrinsic * (DIAGRAM_MIN_FONT / DIAGRAM_BASE_FONT));
+  svg.style.width = 'auto';
+  svg.style.minWidth = `min(${floor}px, ${Math.ceil(intrinsic)}px)`;
   svg.style.maxWidth = `min(100%, ${Math.ceil(intrinsic)}px)`;
   svg.removeAttribute('height');
 }
@@ -398,8 +407,33 @@ function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝�
   el('task-list').hidden = state.taskMode !== 'list';
   el('board').hidden = state.taskMode !== 'board';
   el('task-graph').hidden = state.taskMode !== 'graph';
+  // Board는 화면 높이에 고정되어 레인마다 따로 스크롤한다. 바깥이 스크롤되면 레인
+  // 머리글이 위로 밀려 어느 열을 보고 있는지 놓친다. 그 배치를 body가 알아야 한다.
+  document.body.classList.toggle('board-mode', state.taskMode === 'board');
   if (state.taskMode === 'list') el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>';
-  else if (state.taskMode === 'board') el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); else renderTaskGraph(tasks); }
+  else if (state.taskMode === 'board') renderBoard(tasks); else renderTaskGraph(tasks); }
+// Trello를 따른다. 카드는 제목 두 줄로 높이를 맞춰 눈이 한 칸씩 훑을 수 있게 하고,
+// 막힌 태스크만 표식을 더한다. 높이가 제각각이면 열끼리 줄이 어긋나 비교가 안 된다.
+function boardCard(task) {
+  const blockage = taskBlockage(task);
+  const total = Object.keys(task.acceptanceCriteria || {}).length;
+  const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length;
+  return `<button class="task-card" data-task="${escapeHtml(task.id)}" title="${escapeHtml(task.title)}">`
+    + `<span class="task-card-title">${escapeHtml(task.title)}</span>`
+    + `<span class="task-card-meta">`
+    + `<span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span>`
+    + `<span class="task-card-owner">${escapeHtml(personName(task.owner))}</span>`
+    + (total ? `<span class="task-card-progress">${completed}/${total}</span>` : '')
+    + (blockage ? `<span class="task-blocked" data-blocked="${blockage.kind}" title="${escapeHtml(blockage.detail)}">${escapeHtml(blockage.label)}</span>` : '')
+    + `</span></button>`;
+}
+function renderBoard(tasks) {
+  el('board').innerHTML = Object.keys(statusLabels).map((status) => {
+    const items = tasks.filter((task) => task.status === status);
+    return `<section class="column"><header class="column-head"><h2>${escapeHtml(statusLabels[status])}</h2><span class="badge">${items.length}</span></header>`
+      + `<div class="column-cards">${items.length ? items.map(boardCard).join('') : '<p class="column-empty">없음</p>'}</div></section>`;
+  }).join('');
+}
 // 의존 관계는 태스크마다 deps 값으로만 있어, 어디서 순서가 막히는지는 한 건씩 열어봐야 알 수 있었다.
 // 목록·Board와 같은 필터를 받아 지금 보는 범위의 순서만 그린다.
 // 태스크 제목은 사람이 자유롭게 쓴다. 큰따옴표가 그대로 들어가면 노드 라벨이 닫혀 파싱이 깨진다.
@@ -759,14 +793,19 @@ el('save-document').addEventListener('click', async () => {
   if (!item) return;
   const draft = el('document-editor').value;
   try {
-    await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: draft }) });
+    const saved = await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: draft, clientId: state.snapshot.client && state.snapshot.client.id }) });
     await releaseLease();
     // 저장은 편집의 끝이다. 편집기를 열어둔 채 스냅샷을 불러오면 isEditing() 가드에
     // 걸려 갱신이 통째로 건너뛰어지고, 다음 저장이 오래된 revision으로 나가 409가 난다.
     el('document-editor').hidden = true;
     state.rejectedDraft = null;
     await loadSnapshot(true);
-    message('문서를 저장하고 검증했습니다.');
+    // 남의 lease와 어긋난 저장도 통과시킨다. 막으면 브라우저가 죽어 남은 5분짜리
+    // lease가 그동안 저장을 통째로 잠근다. 대신 누구와 겹쳤는지는 반드시 알린다.
+    const notice = saved && saved.leaseNotice;
+    message(notice
+      ? `문서를 저장했습니다. ${personName(notice.memberId) || notice.holder}님이 같은 문서를 열어 두었습니다(${notice.expiresAt}까지). 변경 내용을 서로 확인하세요.`
+      : '문서를 저장하고 검증했습니다.', Boolean(notice));
   } catch (error) {
     // 저장이 거부돼도 편집기 내용은 남긴다. 여기서 지우면 작업이 사라진다.
     el('document-editor').value = draft;
@@ -835,8 +874,12 @@ function renderContractSettings() {
   el('implementation-contract-summary').textContent = `${catalog.implementation.version} · 기능별 독립 명세(묶음 금지) · 계산된 추적성 ${trace ? `${trace.ready}/${trace.functions} 준비` : '0/0 준비'} · 별도 인덱스 없음`;
   el('contract-rules').innerHTML = catalog.documentTypes.map((type) => {
     const status = Object.keys(profile.policy).find((key) => profile.policy[key].includes(type));
-    const omission = profile.omissions[type] || catalog.defaultOmissions[type];
-    const selectedComponents = omission.sections || [];
+    const configured = profile.omissions[type];
+    // 해당 없음은 흡수 대상도 구성요소도 갖지 않는 별개의 처분이다. 기본값으로 채워
+    // 보여주면 저장할 때 그 결정이 지워지므로, 처분 자체를 화면에 남긴다.
+    const notApplicable = Boolean(configured && configured.notApplicable);
+    const omission = notApplicable ? catalog.defaultOmissions[type] : (configured || catalog.defaultOmissions[type]);
+    const selectedComponents = notApplicable ? [] : (omission.sections || []);
     const targetOptions = catalog.documentTypes.filter((candidate) => candidate !== type).map((candidate) => `<option value="${candidate}" ${candidate === omission.absorbedBy ? 'selected' : ''}>${candidate}</option>`).join('');
     // AI 추천 문맥은 보기만 되고 바꿀 수 없어, 프로젝트마다 다른 작성 순서를 담지 못했다.
     // 이 타입을 쓸 때 함께 읽어야 할 타입을 켜고 끈다. 생성을 막는 게이트가 아니라 작성 안내다.
@@ -844,7 +887,7 @@ function renderContractSettings() {
     const context = catalog.documentTypes.filter((candidate) => candidate !== type)
       .map((candidate) => `<button type="button" class="guidance-chip" data-context-toggle="${candidate}" aria-pressed="${recommendedContext.includes(candidate)}">${candidate}</button>`).join('');
     const suggestions = catalog.sections[type].map((value) => `<button type="button" class="suggestion-chip" data-component-suggestion="${escapeHtml(value)}" ${selectedComponents.includes(value) ? 'disabled' : ''}>+ ${escapeHtml(value)}</button>`).join('');
-    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>${type}를 작성할 때 함께 읽을 타입입니다. 생성을 막지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}><label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
+    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>${type}를 작성할 때 함께 읽을 타입입니다. 생성을 막지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}${notApplicable ? ' data-not-applicable' : ''}>${notApplicable ? `<p class="control-hint">이 유형은 <strong>해당 없음</strong>으로 처분되어 있습니다. 사유: ${escapeHtml(configured.reason || '기록 없음')}. 흡수 대상을 지정하려면 <code>rdl contract set</code>으로 처분을 바꾸세요.</p>` : ''}<label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
   }).join('');
   for (const row of document.querySelectorAll('[data-contract-type]')) syncContractRow(row);
 }
@@ -956,7 +999,9 @@ function contractInput() {
   for (const row of document.querySelectorAll('[data-contract-type]')) {
     const type = row.dataset.contractType; const status = row.querySelector('[data-contract-status]').value;
     policy[status].push(type); rules[type] = { after: Array.from(row.querySelectorAll('[data-context-toggle][aria-pressed="true"]')).map((item) => item.dataset.contextToggle) };
-    if (status === 'disabled') omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value, sections: Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection) };
+    // 해당 없음 처분은 이 화면이 편집하지 않는다. 흡수 대상과 구성요소를 짜서 보내면
+    // 서버가 그것을 새 처분으로 받아 사유째 지워버린다. 아예 보내지 않아야 보존된다.
+    if (status === 'disabled' && !row.querySelector('[data-contract-omission][data-not-applicable]')) omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value, sections: Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection) };
   }
   return { baseRevision: state.snapshot.contract.revision, name: el('contract-profile').value, enforcement: el('contract-enforcement').value, policy, rules, omissions };
 }

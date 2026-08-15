@@ -103,7 +103,22 @@ assert(style.includes('.markdown-body code'), 'Markdown code must use a theme-aw
 assert(style.includes('color: var(--code-TextColor)'), 'Markdown code colour must come from the theme');
 assert(style.includes('color: var(--on-accent-TextColor)'), 'Primary buttons must use a theme-aware foreground token');
 assert(/pre\.mermaid\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid blocks must use the panel surface instead of the code background');
-assert(/\.mermaid svg \.marker circle\s*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid cardinality markers must not keep their hardcoded white fill');
+assert(/\.mermaid svg \.marker circle,[^{]*\{[^}]*var\(--surface-01-BackgroundColor\)/u.test(style), 'Mermaid cardinality markers must not keep their hardcoded white fill');
+// 간선을 채우면 곡선 안쪽이 메워져 거대한 검은 쐐기가 된다. flowchart의 간선은
+// .edgePath가 아니라 path.flowchart-link로 나오므로 그 이름을 반드시 포함해야 한다.
+assert(/\.mermaid svg \.flowchart-link,[\s\S]*?\{[^}]*fill:\s*none/u.test(style), 'Flowchart edges must be stroked, not filled');
+// 도형 채움 규칙이 text·tspan까지 잡으면 라벨이 상자와 같은 색이 되어 사라진다.
+assert(!/\.mermaid svg \.actor\s*[,{]/u.test(style), 'Shape fills must not match text.actor');
+assert(/\.mermaid svg text,\s*\.mermaid svg tspan\s*\{[^}]*var\(--primary-TextColor\)/u.test(style), 'Diagram text must use the primary text colour');
+// ER 관계 표식과 sequence의 갈래 머리는 선으로 그린 기호라 채우면 검은 덩어리가 된다.
+assert(/marker\[id\*='_er-'\] path/u.test(style), 'ER cardinality markers must stay unfilled');
+// 레인은 자기 안에서만 세로로 스크롤한다. 바깥이 스크롤되면 레인 머리글이 사라진다.
+assert(/\.column-cards\s*\{[^}]*overflow-y:\s*auto/u.test(style), 'Board lanes must scroll inside themselves');
+assert(/\.column-cards\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/u.test(style), 'Board lanes must not let cards widen past the lane');
+assert(/body\.view-tasks\.board-mode \.main-content\s*\{[^}]*height:\s*calc\(100vh/u.test(style), 'Board must be pinned to the viewport height');
+// 전역 button 규칙의 nowrap을 되돌리지 않으면 제목이 한 줄에서 잘려 읽히지 않는다.
+assert(/\.task-card-title\s*\{[^}]*white-space:\s*normal/u.test(style), 'Board card titles must wrap instead of clipping');
+assert(/\.task-card\s*\{[^}]*justify-content:\s*stretch/u.test(style), "Board cards must override button's centred track");
 
 // 목록 행은 겹침을 막는 두 속성이 항상 같이 있어야 한다.
 assert(/\.task-row > \*[^{]*\{[^}]*min-width:\s*0/u.test(style), 'List cells must be allowed to shrink below their content');

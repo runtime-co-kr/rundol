@@ -251,6 +251,16 @@ function inputError(message) {
   throw error;
 }
 
+// lease는 권한이 아니라 신호다. 저장을 막는 것은 baseRevision과 브랜치 경계이고, lease는
+// "지금 누가 이 문서를 열어 두었다"를 알린다. 그래서 어긋나도 거절하지 않고 알리기만 한다.
+// 막아 버리면 브라우저가 죽어 남은 5분짜리 lease가 남의 저장을 그동안 통째로 잠근다.
+function leaseMismatch(root, project, documentId, clientId) {
+  if (workspaceLayout(root).schemaVersion < 6) return null;
+  const holder = listLeases(root, project.key).leases.find((item) => item.documentId === documentId);
+  if (!holder || (clientId && holder.clientId === clientId)) return null;
+  return { holder: holder.clientId, memberId: holder.memberId || null, expiresAt: holder.expiresAt };
+}
+
 function updateDocumentBody(root, projectKey, documentId, body) {
   const project = selectProject(workspaceLayout(root), projectKey, true);
   const current = listDocuments(project).find((item) => item.id === documentId);
@@ -261,11 +271,18 @@ function updateDocumentBody(root, projectKey, documentId, body) {
   const file = path.resolve(project.root, current.file);
   if (!file.startsWith(`${path.resolve(project.root)}${path.sep}`)) inputError('프로젝트 경로 밖의 문서는 수정할 수 없습니다.');
   const original = fs.readFileSync(file, 'utf8');
-  const match = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)/u.exec(original);
+  // 닫는 --- 뒤의 빈 줄까지 함께 잡는다. 본문만 다듬고 이 자리를 버리면 손대지 않은
+  // 문서도 저장할 때마다 빈 줄 하나가 사라져, 실제 변경과 구분되지 않는 diff가 남는다.
+  const match = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)((?:\r?\n)*)/u.exec(original);
   if (!match) inputError('표준 frontmatter가 없는 문서는 Board에서 수정할 수 없습니다.');
+  // 스냅샷의 본문은 줄바꿈이 \n으로 정규화되어 있다. 그대로 쓰면 CRLF 문서는 한 글자도
+  // 고치지 않아도 전 줄이 바뀐 diff가 된다. 그 문서가 쓰던 줄바꿈으로 되돌려 쓴다.
+  const eol = match[1].includes('\r\n') ? '\r\n' : '\n';
+  const trimmed = nextBody.replace(/\r\n/g, '\n').replace(/^\s+|\s+$/g, '');
+  const restored = eol === '\r\n' ? trimmed.replace(/\n/g, '\r\n') : trimmed;
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs.writeFileSync(temporary, `${match[1]}${nextBody.replace(/^\s+|\s+$/g, '')}\n`, 'utf8');
+    fs.writeFileSync(temporary, `${match[1]}${match[2]}${restored}${eol}`, 'utf8');
     fs.renameSync(temporary, file);
     const checked = checkWorkspace(root, { project: projectKey, strict: true, skipProfilePolicy: true });
     if (checked.summary.errors) throw new Error(checked.diagnostics.find((item) => item.severity === 'error').message);
@@ -274,7 +291,9 @@ function updateDocumentBody(root, projectKey, documentId, body) {
     fs.writeFileSync(file, original, 'utf8');
     throw error;
   }
-  return listDocuments(project).find((item) => item.id === documentId);
+  const saved = listDocuments(project).find((item) => item.id === documentId);
+  const mismatch = leaseMismatch(root, project, documentId, body.clientId);
+  return mismatch ? Object.assign({}, saved, { leaseNotice: mismatch }) : saved;
 }
 
 function stringList(value, field) {

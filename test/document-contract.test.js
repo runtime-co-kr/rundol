@@ -112,4 +112,49 @@ try {
   assert.ok(!rule.includes('settings.strict'), '강제 수준에 따라 오류로 올리지 않습니다.');
 }
 
+// 흡수 처분은 유형마다 따로 세운 결정이다. 계약을 저장할 때마다 보내온 값으로 통째
+// 갈아끼우면, 화면이 표현하지 못하는 처분은 저장 한 번에 카탈로그 기본값이 된다.
+{
+  const contractRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-omission-'));
+  try {
+    git(['init', '-b', 'main'], contractRoot);
+    git(['config', 'user.name', 'Rundol Test'], contractRoot);
+    git(['config', 'user.email', 'rundol@example.test'], contractRoot);
+    fs.writeFileSync(path.join(contractRoot, 'README.md'), '# test\n');
+    git(['add', 'README.md'], contractRoot); git(['commit', '-m', 'initial'], contractRoot);
+    run(['init', 'demo', '--name', 'Demo', '--profile', 'lean', '--root', contractRoot, '--json'], contractRoot);
+    const { planDocumentContract, updateDocumentContract, loadDocumentContract } = require('../src/document-contract');
+    const target = 'SCR';
+    const started = loadDocumentContract(contractRoot, 'demo');
+    const policy = { required: started.profile.policy.required.filter((type) => type !== target), recommended: started.profile.policy.recommended.filter((type) => type !== target), onDemand: started.profile.policy.onDemand.filter((type) => type !== target), disabled: started.profile.policy.disabled.concat(started.profile.policy.disabled.includes(target) ? [] : [target]) };
+    updateDocumentContract(contractRoot, 'demo', { baseRevision: started.revision, policy });
+    const base = loadDocumentContract(contractRoot, 'demo');
+    assert.ok(base.profile.omissions[target] && base.profile.omissions[target].sections.length, '비활성 유형에 기본 구성요소가 있어야 이 검사가 성립합니다.');
+
+    // 1) 구성요소를 비워 보내면 지금 값을 지운 것이 아니라 그대로 둔다
+    const emptied = planDocumentContract(contractRoot, 'demo', {
+      omissions: Object.assign({}, base.profile.omissions, { [target]: { absorbedBy: base.profile.omissions[target].absorbedBy, sections: [] } })
+    });
+    assert.deepStrictEqual(emptied.profile.omissions[target].sections, base.profile.omissions[target].sections, '빈 구성요소가 기존 설정을 지웠습니다.');
+
+    // 2) 직접 정한 구성요소는 그대로 살아남는다
+    const custom = planDocumentContract(contractRoot, 'demo', {
+      omissions: Object.assign({}, base.profile.omissions, { [target]: { absorbedBy: base.profile.omissions[target].absorbedBy, sections: ['우리가 정한 항목'] } })
+    });
+    assert.deepStrictEqual(custom.profile.omissions[target].sections, ['우리가 정한 항목']);
+
+    // 3) 해당 없음 처분은 화면이 만들어 보내는 흡수 대상·구성요소에 덮이지 않는다
+    updateDocumentContract(contractRoot, 'demo', { baseRevision: base.revision, omissions: Object.assign({}, base.profile.omissions, { [target]: { notApplicable: true, reason: '이 제품에는 없는 영역' } }) });
+    const after = loadDocumentContract(contractRoot, 'demo');
+    assert.strictEqual(after.profile.omissions[target].notApplicable, true, '해당 없음 처분이 기록되어야 합니다.');
+    const overwritten = planDocumentContract(contractRoot, 'demo', {
+      omissions: Object.assign({}, after.profile.omissions, { [target]: { absorbedBy: 'REQ', sections: [] } })
+    });
+    assert.strictEqual(overwritten.profile.omissions[target].notApplicable, true, '해당 없음 처분이 저장 한 번에 사라졌습니다.');
+    assert.strictEqual(overwritten.profile.omissions[target].reason, '이 제품에는 없는 영역', '처분 사유까지 보존해야 합니다.');
+  } finally {
+    fs.rmSync(contractRoot, { recursive: true, force: true });
+  }
+}
+
 process.stdout.write('document contract tests passed\n');

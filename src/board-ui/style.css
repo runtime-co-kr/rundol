@@ -27,6 +27,7 @@
 .context-panel,
 #context-empty,
 #context-content,
+.column-cards,
 .settings-panels > .settings-panel {
   scrollbar-width: none;
 }
@@ -36,6 +37,7 @@
 .context-panel::-webkit-scrollbar,
 #context-empty::-webkit-scrollbar,
 #context-content::-webkit-scrollbar,
+.column-cards::-webkit-scrollbar,
 .settings-panels > .settings-panel::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -1334,45 +1336,155 @@ body.peek-open[data-peek-kind='task'] #expand-context {
 /* 칸반은 줄바꿈되면 좌→우 진행이라는 유일한 의미를 잃는다. 상태가 여섯이 되면서
    auto-fit 줄바꿈으로는 어느 폭에서도 한 줄에 들어가지 않아, 폭이 모자라면 접는 대신
    가로로 스크롤한다. 스크롤은 이 요소 안에서만 일어나고 본문은 가로로 밀리지 않는다. */
+/* Board는 설정 화면과 같은 방식으로 화면 높이에 못박는다. 바깥이 스크롤되면 레인
+   머리글이 위로 사라져 지금 보는 열이 무엇인지 놓친다. Trello가 그렇게 하지 않는다. */
+body.view-tasks.board-mode .main-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--header-Height));
+  overflow: hidden;
+}
+
+/* .view의 margin: 0 auto는 세로 flex 안에서 내용 크기로 줄어든다. 폭을 못박아야
+   목록과 Board를 오갈 때 가운데 축이 흔들리지 않는다. */
+body.view-tasks.board-mode #tasks-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+body.view-tasks.board-mode .page-heading,
+body.view-tasks.board-mode .toolbar {
+  position: static;
+  flex: none;
+}
+
 #board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(240px, 1fr);
+  grid-auto-columns: 280px;
   gap: var(--spacing-1_5);
+  min-height: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   padding-bottom: var(--spacing-1);
 }
 
+body.view-tasks.board-mode #board {
+  flex: 1;
+}
+
+/* 레인은 자기 안에서만 세로로 스크롤한다. min-height: 0이 없으면 flex 자식이
+   내용 높이만큼 부풀어 레인이 아니라 페이지가 늘어난다. */
 .column {
-  display: grid;
-  align-content: start;
-  gap: var(--spacing-1);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  min-height: 320px;
-  padding: var(--spacing-1_5);
+  min-height: 0;
   border: 1px solid var(--surface-01-BorderColor);
   border-radius: var(--large-BorderRadius);
   background: var(--surface-01-BackgroundColor);
 }
 
-.column h2 {
-  margin: 0 0 var(--spacing-0_5);
+.column-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1_5) var(--spacing-1_5) var(--spacing-1);
+}
+
+.column-head h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
   color: var(--secondary-TextColor);
   font-size: var(--small-FontSize);
   letter-spacing: .08em;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
+/* minmax(0, 1fr)이 없으면 암시적 트랙이 max-content가 되어 카드가 레인보다 넓어지고
+   제목이 양옆으로 삐져나온다. 실제로 그렇게 깨져 있었다. */
+.column-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--spacing-1);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 0 var(--spacing-1_5) var(--spacing-1_5);
+}
+
+.column-empty {
+  margin: 0;
+  padding: var(--spacing-2) 0;
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
+  text-align: center;
+}
+
+/* button의 justify-content: center가 grid 트랙을 가운데로 몰아 카드 내용이 폭보다
+   넓어지면 양옆으로 삐져나갔다. 트랙을 못박고 늘려 채운다. */
 .task-card {
   display: grid;
-  gap: var(--spacing-0_5);
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  justify-items: stretch;
+  align-items: start;
+  gap: var(--spacing-1);
   min-width: 0;
   padding: var(--spacing-1_5);
   border: 1px solid var(--surface-01-BorderColor);
   border-radius: var(--medium-BorderRadius);
   background: var(--surface-02-BackgroundColor);
   text-align: left;
+}
+
+/* 제목을 두 줄로 못박아 카드 높이를 맞춘다. 높이가 제각각이면 열끼리 줄이 어긋나
+   무엇이 어느 단계에 있는지 눈으로 비교되지 않는다. */
+.task-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 3em;
+  color: var(--primary-TextColor);
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  /* 전역 button 규칙의 nowrap을 되돌린다. 두지 않으면 두 줄로 접히지 않고 한 줄에서
+     잘려 나가 무슨 태스크인지 읽히지 않는다. */
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.task-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
+}
+
+.task-card-owner {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card-progress {
+  flex: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .task-card:hover {
@@ -2212,13 +2324,17 @@ dialog label textarea {
   border: 1px solid var(--divider-BorderColor);
 }
 
-/* Mermaid는 코드 블록이 아니라 그림이므로 코드 배경을 쓰지 않는다. */
+/* Mermaid는 코드 블록이 아니라 그림이므로 코드 배경을 쓰지 않는다.
+   넓은 흐름도는 fitDiagram이 정한 가독 하한 아래로 줄지 않고 여기서 스크롤된다. */
 .markdown-body pre.mermaid {
   background: var(--surface-01-BackgroundColor);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* mermaid가 svg에 붙이는 width="100%"를 그대로 두면 본문 폭까지 늘어나 글자가 2.5배로
-   커진다. viewBox의 고유 크기를 쓰되 좁은 화면에서만 줄어들게 한다. */
+   커진다. viewBox의 고유 크기를 쓰되 좁은 화면에서만 줄어들게 한다. 실제 상·하한은
+   fitDiagram이 min-width·max-width로 넣는다. */
 .mermaid svg {
   display: block;
   width: auto;
@@ -2228,16 +2344,22 @@ dialog label textarea {
 }
 
 /* mermaid가 svg 안에 심는 스타일이 적용되지 않아 도형이 두 테마 모두에서 검정으로
-   칠해졌다. 색은 우리 토큰으로 직접 준다. 그러면 테마 전환에도 저절로 따라온다. */
-.mermaid svg .label-container,
+   칠해졌다. 색은 우리 토큰으로 직접 준다. 그러면 테마 전환에도 저절로 따라온다.
+   선택자는 실제로 렌더된 클래스에서 뽑았다. 넓게 잡으면 글자와 간선까지 칠해진다. */
 .mermaid svg .node rect,
 .mermaid svg .node polygon,
 .mermaid svg .node circle,
-.mermaid svg .er.entityBox,
-.mermaid svg .actor,
-.mermaid svg .labelBox,
-.mermaid svg .cluster rect {
+.mermaid svg .node path,
+.mermaid svg rect.actor,
+.mermaid svg polygon.labelBox,
+.mermaid svg .er.entityBox {
   fill: var(--surface-02-BackgroundColor);
+  stroke: var(--secondary-TextColor);
+}
+
+/* 묶음 상자는 배경 구조물이라 내용보다 뒤로 물러나야 한다. */
+.mermaid svg .cluster rect {
+  fill: var(--surface-01-BackgroundColor);
   stroke: var(--divider-BorderColor);
 }
 
@@ -2251,40 +2373,73 @@ dialog label textarea {
   stroke: var(--divider-BorderColor);
 }
 
-.mermaid svg text,
-.mermaid svg .nodeLabel,
-.mermaid svg .edgeLabel,
-.mermaid svg .messageText,
-.mermaid svg .actor-line + text {
-  fill: var(--primary-TextColor);
-  color: var(--primary-TextColor);
-}
-
-.mermaid svg .edgePath path,
+/* 간선은 선이지 면이 아니다. fill을 주면 곡선 안쪽이 메워져 거대한 검은 쐐기가 된다.
+   flowchart의 간선은 path.flowchart-link로 나오며 기본 fill이 검정이다.
+   색은 divider가 아니라 secondary다. divider는 실선 구분자용 최약 톤이라
+   의미를 나르는 화살표에 쓰면 어느 노드가 어디로 가는지 읽히지 않는다. */
+.mermaid svg .edgePaths path,
+.mermaid svg .flowchart-link,
 .mermaid svg .relationshipLine,
 .mermaid svg .messageLine0,
 .mermaid svg .messageLine1,
-.mermaid svg line,
-.mermaid svg .actor-line {
-  stroke: var(--divider-BorderColor);
+.mermaid svg .actor-line,
+.mermaid svg .er.relationshipLine {
   fill: none;
+  stroke: var(--secondary-TextColor);
 }
 
-/* 화살촉과 관계 표식은 선과 같은 색이어야 방향이 읽힌다. */
-.mermaid svg marker path,
-.mermaid svg .marker {
-  fill: var(--divider-BorderColor);
+/* alt·loop 구획선은 구조물이므로 한 단계 약하게 둔다. */
+.mermaid svg .loopLine,
+.mermaid svg line.loopLine {
+  fill: none;
   stroke: var(--divider-BorderColor);
 }
 
-.mermaid svg .marker circle {
-  fill: var(--surface-01-BackgroundColor);
+/* 글자는 도형 규칙 뒤에 온다. text.actor처럼 도형과 같은 클래스를 쓰는 글자가 있어
+   앞에 두면 라벨이 상자와 같은 색이 되어 사라진다. 실제로 sequence의 액터 이름이
+   흰 상자에 흰 글자로 나오고 있었다. */
+.mermaid svg text,
+.mermaid svg tspan {
+  fill: var(--primary-TextColor);
+  stroke: none;
 }
 
-/* 라벨 배경은 선을 가리는 용도라 캔버스와 같아야 한다. */
-.mermaid svg .edgeLabel rect,
-.mermaid svg .label-container ~ rect {
+.mermaid svg foreignObject div,
+.mermaid svg foreignObject span,
+.mermaid svg .nodeLabel,
+.mermaid svg .edgeLabel {
+  color: var(--primary-TextColor);
+  fill: var(--primary-TextColor);
+}
+
+/* 간선 라벨은 선 위에 얹히므로 캔버스 색을 깔아야 글자가 선에 묻히지 않는다. */
+.mermaid svg .edgeLabel .labelBkg,
+.mermaid svg .labelBkg {
+  background: var(--surface-01-BackgroundColor);
+}
+
+/* 화살촉은 선과 같은 색이어야 방향이 읽힌다. */
+.mermaid svg .arrowMarkerPath,
+.mermaid svg marker path,
+.mermaid svg marker polygon {
+  fill: var(--secondary-TextColor);
+  stroke: var(--secondary-TextColor);
+}
+
+.mermaid svg .marker circle,
+.mermaid svg marker circle {
   fill: var(--surface-01-BackgroundColor);
+  stroke: var(--secondary-TextColor);
+}
+
+/* ER의 관계 표식과 sequence의 갈래·가위 머리는 선으로 그린 기호다. 채우면 획 사이가
+   메워져 검은 덩어리가 된다. 실제로 카디널리티가 읽히지 않았다. */
+.mermaid svg marker[id*='_er-'] path,
+.mermaid svg marker[id*='stickTopArrowHead'] path,
+.mermaid svg marker[id*='stickBottomArrowHead'] path,
+.mermaid svg marker[id$='-crosshead'] path {
+  fill: none;
+  stroke: var(--secondary-TextColor);
 }
 
 /* ── 반응형 ───────────────────────────────────────────── */

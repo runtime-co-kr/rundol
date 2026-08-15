@@ -184,11 +184,33 @@ function assertDocumentCreationAllowed(start, projectKey, type) {
   return contract;
 }
 
+// 흡수 처분은 유형마다 따로 세운 결정이다. 보내온 값이 그 결정을 담고 있지 않으면
+// 지금 것을 그대로 둔다. 통째로 갈아끼우면, 계약 화면이 표현하지 못하는 처분(해당 없음과
+// 그 사유)이 저장 한 번에 카탈로그 기본값으로 바뀌어 사라진다.
+function mergeOmissions(before, supplied) {
+  if (!before) return supplied;
+  if (!supplied) return before;
+  const result = Object.assign({}, supplied);
+  for (const [type, previous] of Object.entries(before)) {
+    const incoming = supplied[type];
+    if (!incoming) { result[type] = previous; continue; }
+    if (incoming.notApplicable === true) continue;
+    // 해당 없음이던 유형을 구성요소 없이 되돌려 보내면 되돌릴 뜻이 없었다고 본다.
+    if (previous.notApplicable === true && !(Array.isArray(incoming.sections) && incoming.sections.length)) { result[type] = previous; continue; }
+    if (Array.isArray(incoming.sections) && incoming.sections.length) continue;
+    result[type] = Object.assign({}, incoming, { sections: previous.sections });
+  }
+  return result;
+}
+
 function planDocumentContract(start, projectKey, input) {
   const current = loadDocumentContract(start, projectKey);
   const before = current.profile;
   const settings = input || {};
   const merged = Object.assign({}, before || {}, settings);
+  if (Object.prototype.hasOwnProperty.call(settings, 'omissions')) {
+    merged.omissions = mergeOmissions(before && before.omissions, settings.omissions);
+  }
   if (before && settings.name && settings.name !== before.name && !Object.prototype.hasOwnProperty.call(settings, 'policy')) {
     delete merged.policy;
     delete merged.omissions;

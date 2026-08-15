@@ -86,11 +86,37 @@ async function testWorkspaceBoard() {
       assert(edited.json.body.includes('Board edit test.'));
       const staleDocument = await request(port, '/api/projects/crm/documents/project%3Acrm', board.token, 'POST', { baseRevision: editable.revision, body: editable.body });
       assert.strictEqual(staleDocument.status, 409);
+      // 고치지 않은 문서를 저장하면 파일이 한 바이트도 달라지지 않아야 한다. 템플릿은
+      // 닫는 --- 뒤에 빈 줄을 두는데, 저장이 그 줄을 지우면 손대지 않은 문서에도 diff가
+      // 남아 실제 변경과 섞인다. 템플릿을 그대로 쓰는 문서로 확인해야 이 경로를 탄다.
+      const created = JSON.parse(command(process.execPath, [cli, 'doc', 'create', 'ARC', '빈 줄 보존 확인', '--owner', 'MEMBER-001', '--scope', 'Board 저장 왕복 경계', '--exclude', '그 밖의 시스템 구조', '--project', 'crm', '--root', temporary, '--json'], repository));
+      const untouchedPath = created.file;
+      assert.ok(/\r?\n---\r?\n\r?\n/u.test(fs.readFileSync(untouchedPath, 'utf8')), '템플릿에 빈 줄이 없어 이 검사가 무의미합니다.');
+      const refreshed = await request(port, '/api/projects/crm/board-snapshot', board.token);
+      const untouched = refreshed.json.documents.find((document) => document.id === created.id);
+      const before = fs.readFileSync(untouchedPath, 'utf8');
+      const resaved = await request(port, `/api/projects/crm/documents/${encodeURIComponent(created.id)}`, board.token, 'POST', { baseRevision: untouched.revision, body: untouched.body });
+      assert.strictEqual(resaved.status, 200);
+      assert.strictEqual(fs.readFileSync(untouchedPath, 'utf8'), before, 'Board 저장이 내용을 바꾸지 않은 문서를 변형했습니다.');
+      assert.strictEqual(resaved.json.revision, untouched.revision, '내용이 같은데 revision이 바뀌었습니다.');
 
       const acquired = await request(port, '/api/projects/crm/leases/project%3Acrm/acquire', board.token, 'POST', { clientId: 'test-device' });
       assert.strictEqual(acquired.status, 200);
       const leases = await request(port, '/api/projects/crm/leases', board.token);
       assert.strictEqual(leases.json.leases.length, 1);
+
+      // COL-02-S07·S08: lease는 저장 권한이 아니라 조율 신호다. 어긋나도 막지 않고 알린다.
+      // 막으면 브라우저가 죽어 남은 5분짜리 lease가 그동안 남의 저장을 통째로 잠근다.
+      const held = await request(port, '/api/projects/crm/board-snapshot', board.token);
+      const leased = held.json.documents.find((document) => document.id === 'project:crm');
+      const otherClient = await request(port, `/api/projects/crm/documents/project%3Acrm`, board.token, 'POST', { baseRevision: leased.revision, body: `${leased.body}\n\nLease notice test.`, clientId: 'someone-else' });
+      assert.strictEqual(otherClient.status, 200, '남의 lease가 저장을 막아서는 안 됩니다.');
+      assert.ok(otherClient.json.leaseNotice, '어긋난 저장은 leaseNotice로 알려야 합니다.');
+      assert.strictEqual(otherClient.json.leaseNotice.holder, 'test-device');
+      assert.ok(otherClient.json.leaseNotice.expiresAt, '누구와 언제까지 겹치는지 알려야 합니다.');
+      const sameClient = await request(port, `/api/projects/crm/documents/project%3Acrm`, board.token, 'POST', { baseRevision: otherClient.json.revision, body: otherClient.json.body, clientId: 'test-device' });
+      assert.strictEqual(sameClient.status, 200);
+      assert.strictEqual(sameClient.json.leaseNotice, undefined, '자기 lease에는 알림이 없어야 합니다.');
 
       const current = await request(port, `/api/projects/crm/tasks/${task.taskId}`, board.token);
       assert.strictEqual(current.status, 200);
