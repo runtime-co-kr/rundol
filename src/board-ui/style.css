@@ -238,7 +238,7 @@ button:disabled:hover {
 .task-row,
 .task-card,
 .component-chip button,
-.acceptance-toggle {
+.acceptance-item {
   height: auto;
   border: 0;
   background: transparent;
@@ -563,17 +563,41 @@ button:disabled:hover {
   background: var(--danger-Color);
 }
 
-/* 헤더가 자리를 차지하므로 붙는 위치와 높이가 그만큼 밀린다. */
+/* 헤더가 자리를 차지하므로 붙는 위치와 높이가 그만큼 밀린다.
+   패널은 세로 flex다. 머리글은 제자리에 남고 목록만 스크롤해야, 길게 내려간 뒤에도
+   지금 무엇을 보고 있는지와 접는 손잡이를 잃지 않는다. */
 .navigation-panel,
 .context-panel {
   position: sticky;
   top: var(--header-Height);
   align-self: start;
+  display: flex;
+  flex-direction: column;
   height: calc(100vh - var(--header-Height));
   min-width: 0;
-  overflow: auto;
-  padding: var(--spacing-2);
+  overflow: hidden;
   background: var(--surface-01-BackgroundColor);
+}
+
+.sidebar-head,
+.panel-title {
+  flex: none;
+  padding: var(--spacing-2) var(--spacing-2) var(--spacing-1_5);
+}
+
+.sidebar-body,
+#context-empty,
+#context-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--spacing-2) var(--spacing-2);
+}
+
+.sidebar-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1_5);
 }
 
 .context-panel {
@@ -600,8 +624,12 @@ body.peek-open .main-content {
 /* 선택 대상이 없는 화면에서 Context 패널이 빈 채로 자리를 차지하지 않게 한다.
    태스크 전체화면은 상세를 본문이 이미 갖고 있으므로 여기 포함된다. */
 body.view-settings .context-panel,
-body.view-people .context-panel,
 body.view-task .context-panel {
+  display: none;
+}
+
+/* 사람 화면은 고른 사람을 옆에서 연다. 열려 있지 않을 때만 자리를 비운다. */
+body.view-people:not(.peek-open) .context-panel {
   display: none;
 }
 
@@ -704,13 +732,75 @@ body.nav-collapsed.view-task .workspace-shell {
   grid-template-columns: var(--nav-rail-Width) minmax(0, 1fr);
 }
 
+/* 사람 화면의 명단은 카드와 목록이 섞여 있다. 이름이 짧은 멤버는 카드가 맞고,
+   책임 문장이 긴 역할·이해관계자는 행이라야 잘리지 않는다. */
+.people-columns > section + section {
+  margin-top: var(--spacing-4);
+}
+
+.people-columns h2 {
+  margin: 0 0 var(--spacing-1_5);
+  font-size: var(--title-FontSize);
+}
+
+.person-list {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--large-BorderRadius);
+  background: var(--surface-01-BackgroundColor);
+}
+
+.person-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-1_5);
+  align-items: center;
+  width: 100%;
+  min-height: var(--row-MinHeight);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-bottom: 1px solid var(--divider-BorderColor);
+  text-align: left;
+}
+
+.person-row:last-child {
+  border-bottom: 0;
+}
+
+.person-row:hover {
+  background: var(--ui-hover-OverlayColor);
+}
+
+.person-row.peeked,
+.person-card.peeked {
+  background: var(--accent-subtle-BackgroundColor);
+}
+
+.person-row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.person-row-main strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.person-row-main small {
+  overflow: hidden;
+  color: var(--secondary-TextColor);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── 탐색 패널 ────────────────────────────────────────── */
 
 .panel-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-1_5);
+  border-bottom: 1px solid var(--divider-BorderColor);
   color: var(--secondary-TextColor);
   font-size: var(--caption-FontSize);
   font-weight: 700;
@@ -783,8 +873,9 @@ body.nav-collapsed.view-task .workspace-shell {
   gap: 1px;
 }
 
-.nav-list button,
-.utility-nav button {
+/* 문서 유형 목록은 이름과 개수 두 칸이다. 참고 목록은 아이콘과 이름이라 배치가 다르므로
+   같은 규칙을 쓰면 안 된다. 실제로 참고 항목이 2열 격자에 걸려 레일에서 가운데로 서지 못했다. */
+.nav-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--spacing-1);
@@ -799,7 +890,7 @@ body.nav-collapsed.view-task .workspace-shell {
 
 /* 최근 문서 제목은 사이드바 폭보다 길다. 잘라내지 않으면 패널 밖으로 흐른다. */
 .nav-list button > *,
-.utility-nav button > * {
+.nav-list button > * {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1151,39 +1242,6 @@ body.nav-collapsed.view-task .workspace-shell {
   border-radius: var(--large-BorderRadius) var(--large-BorderRadius) 0 0;
 }
 
-/* 제목만 있는 흔한 경우를 위한 한 줄 추가. 상세는 옆 버튼이 맡는다. */
-.quick-add {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--spacing-1);
-  align-items: center;
-  margin-bottom: var(--spacing-1_5);
-  padding: 0 var(--spacing-1_5);
-  border: 1px solid var(--surface-01-BorderColor);
-  border-radius: var(--large-BorderRadius);
-  background: var(--surface-01-BackgroundColor);
-}
-
-.quick-add-mark {
-  color: var(--tertiary-TextColor);
-  font-size: 16px;
-}
-
-.quick-add input {
-  border: 0;
-  background: transparent;
-  padding-left: 0;
-}
-
-.quick-add input:hover {
-  border: 0;
-}
-
-.quick-add button {
-  height: 26px;
-  font-size: var(--small-FontSize);
-}
-
 /* ── 태스크 Board(칸반) ───────────────────────────────── */
 
 /* 칸반은 줄바꿈되면 좌→우 진행이라는 유일한 의미를 잃는다. 상태가 여섯이 되면서
@@ -1313,10 +1371,23 @@ body.nav-collapsed.view-task .workspace-shell {
   max-width: 900px;
 }
 
+/* 완료조건이 길면 제목이 화면 밖으로 나가 무엇을 보고 있는지 잃는다.
+   peek 안에서는 스크롤 컨테이너 위에, 전체화면에서는 앱 헤더 아래에 붙는다. */
 .task-detail-head {
+  position: sticky;
+  z-index: 2;
+  top: 0;
   display: grid;
   gap: var(--spacing-0_5);
   margin-bottom: var(--spacing-2);
+  padding: var(--spacing-2) 0 var(--spacing-1);
+  border-bottom: 1px solid var(--divider-BorderColor);
+  background: var(--surface-01-BackgroundColor);
+}
+
+body.view-task .task-detail-head {
+  top: var(--header-Height);
+  background: var(--surface-00-BackgroundColor);
 }
 
 .task-detail-head h1 {
@@ -1373,23 +1444,79 @@ body.nav-collapsed.view-task .workspace-shell {
   gap: var(--spacing-0_5);
 }
 
+/* 행 전체가 버튼이다. 네모칸만 누를 수 있으면 목표가 20px짜리라 계속 빗나간다. */
 .acceptance-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--spacing-1_5);
-  align-items: center;
+  align-items: start;
+  width: 100%;
   padding: var(--spacing-1) var(--spacing-1_5);
   border: 1px solid var(--surface-01-BorderColor);
   border-radius: var(--medium-BorderRadius);
   background: var(--surface-01-BackgroundColor);
+  text-align: left;
+  cursor: pointer;
 }
 
-.acceptance-item.done {
+.acceptance-item:hover {
+  border-color: var(--field-hover-BorderColor);
+  background-image: linear-gradient(var(--ui-hover-OverlayColor), var(--ui-hover-OverlayColor));
+}
+
+/* ✓와 ○는 같은 자리에 같은 크기로 그려져 멀리서 구분되지 않는다.
+   빈 칸은 테두리만, 채운 칸은 강조색으로 칠하고 체크를 얹는다. */
+.acceptance-box {
+  position: relative;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  border: 1.5px solid var(--field-BorderColor);
+  border-radius: 5px;
+  background: var(--field-BackgroundColor);
+  transition: background-color .12s ease, border-color .12s ease;
+}
+
+.acceptance-item:hover .acceptance-box {
+  border-color: var(--accent-BorderColor);
+}
+
+.acceptance-item.done .acceptance-box {
+  border-color: var(--accent-BackgroundColor);
+  background: var(--accent-BackgroundColor);
+}
+
+.acceptance-item.done .acceptance-box::after {
+  position: absolute;
+  top: 1px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--on-accent-TextColor);
+  border-width: 0 2px 2px 0;
+  content: '';
+  transform: rotate(45deg);
+}
+
+.acceptance-item.done .acceptance-text {
   color: var(--secondary-TextColor);
 }
 
-.acceptance-toggle {
-  color: var(--accent-TextColor);
+.acceptance-item.done .acceptance-text strong {
+  text-decoration: line-through;
+}
+
+.acceptance-text {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.acceptance-text strong {
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+  font-weight: 600;
+  letter-spacing: .06em;
 }
 
 /* ── Context 패널 ─────────────────────────────────────── */

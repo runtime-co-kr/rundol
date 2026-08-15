@@ -37,6 +37,7 @@
         <select id="project-switcher"></select>
         <button id="collapse-nav" class="icon-button" aria-label="탐색 접기">‹</button>
       </div>
+      <div class="sidebar-body">
       <nav class="primary-nav" aria-label="주요 화면">
         <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">홈</span></button>
         <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">문서</span></button>
@@ -45,6 +46,7 @@
       <section class="nav-section"><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
       <section class="nav-section"><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
       <section class="utility-nav"><h2>참고</h2><button data-view="people" title="사람과 역할"><span class="nav-icon" aria-hidden="true">◍</span><span class="nav-label">사람과 역할</span></button></section>
+      </div>
     </aside>
 
     <main class="main-content" tabindex="-1">
@@ -79,9 +81,6 @@
           <label class="toolbar-field"><span>묶음</span><select id="group-by"><option value="status">상태</option><option value="owner">담당자</option><option value="priority">우선순위</option></select></label>
           <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
         </div>
-        <!-- 완료조건은 계약상 필수라 생략할 수 없다. 빼면 추가가 항상 실패한다.
-             한 줄에 같이 받아 빠르기는 지키고 계약도 지킨다. -->
-        <form id="quick-add" class="quick-add"><span class="quick-add-mark">+</span><input id="quick-add-title" maxlength="160" placeholder="제목" aria-label="태스크 제목"><input id="quick-add-acceptance" maxlength="200" placeholder="무엇이 되면 끝인가" aria-label="완료조건"><button class="primary" id="quick-add-save">추가</button></form>
         <div id="task-list" class="task-table"></div><div id="board" hidden></div><div id="task-graph" class="task-graph" hidden></div>
       </section>
 
@@ -91,7 +90,7 @@
         <div id="task-page"></div>
       </section>
 
-      <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1><p>project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="card-grid"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="card-grid"></div></section></div></section>
+      <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1><p>project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="person-list"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="person-list"></div></section></div></section>
       <section id="settings-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header>
         <div class="settings-layout">

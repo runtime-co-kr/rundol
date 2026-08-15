@@ -239,13 +239,16 @@ assert(style.includes('body.context-collapsed #collapse-context'), '접힌 Conte
 // 컴포넌트의 테두리 제거가 통째로 무시됐다. :where()로 감싸 요소 하나의 특이도로 되돌린다.
 assert(!/input:not\(\[type=/u.test(style), '전역 input 규칙은 컴포넌트 규칙을 이기면 안 됩니다');
 assert(style.includes("input:not(:where([type='checkbox'], [type='radio']))"), '전역 input 규칙은 :where()로 특이도를 낮춰야 합니다');
-for (const component of ['.search input', '.quick-add input']) {
-  assert(style.includes(component), `${component} 규칙이 있어야 합니다`);
-}
+assert(style.includes('.search input'), '.search input 규칙이 있어야 합니다');
 
 // 태스크 peek은 속성 패널 폭으로는 완료조건이 읽히지 않는다.
 assert(app.includes("classList.add('peek-open')"), '태스크를 열면 읽을 폭을 확보해야 합니다');
-assert(app.includes("if (view !== 'tasks') document.body.classList.remove('peek-open')"), '다른 화면으로 가면 원래 폭으로 되돌려야 합니다');
+assert(app.includes("if (view !== 'tasks' && view !== 'people') document.body.classList.remove('peek-open')"), '목록이 없는 화면으로 가면 원래 폭으로 되돌려야 합니다');
+// 사람도 태스크와 같은 방식으로 옆에서 연다. 화면을 갈아치우면 명단 맥락을 잃는다.
+assert(app.includes('function personDetailHtml'), '사람은 옆에서 열려야 합니다');
+assert(app.includes('data-person='), '명단 항목이 선택 가능해야 합니다');
+assert(html.includes('id="roles" class="person-list"'), '역할은 책임 문장이 길어 카드가 아니라 행이어야 합니다');
+assert(style.includes('.person-row'), '명단 행 스타일이 필요합니다');
 // 열로 만들어 밀어내면 peek을 넓힐수록 목록이 좁아져 둘 다 못 읽는다. 겹쳐야 한다.
 assert(/body\.peek-open \.context-panel\s*\{[^}]*position:\s*fixed/u.test(style), 'peek은 본문을 밀어내지 말고 덮어야 합니다');
 assert(/body\.peek-open \.context-panel\s*\{[^}]*width:\s*var\(--peek-Width\)/u.test(style), 'peek 폭은 토큰으로 정의해야 합니다');
@@ -262,15 +265,34 @@ assert(/\.search\s*\{[^}]*min-width:\s*0/u.test(style), '검색 상자는 사이
 assert(/\.search input\s*\{[^}]*min-width:\s*0/u.test(style), '검색 입력은 기본 min-width를 버려야 합니다');
 assert(/\.navigation-panel\s*\{[^}]*min-width:\s*0/u.test(style), '탐색 패널은 열 폭을 넘지 않아야 합니다');
 
-// 빠른 추가는 완료조건 없이 보내 API가 항상 400으로 되돌렸다. 완료조건은 계약상 필수라
-// 뺄 수 없고, 제목에서 지어내면 계약이 금지하는 자리표시자가 된다. 한 줄에 같이 받는다.
-assert(html.includes('id="quick-add-acceptance"'), '빠른 추가도 완료조건을 받아야 합니다');
-assert(app.includes("'AC-001': { text: acceptance, done: false }"), '빠른 추가는 입력한 완료조건을 실어야 합니다');
-assert(!/quick-add[\s\S]{0,400}JSON\.stringify\(\{ title, status: 'todo', priority: 'mid', owner: [^}]*\}\)/u.test(app), '완료조건 없이 생성 요청을 보내면 안 됩니다');
+// 한 줄 추가는 없앴다. 완료조건 없이 보내 API가 항상 400으로 되돌리고 있었고, 완료조건을
+// 한 줄에 끼워 넣으면 빠르지도 않으면서 대충 적게 만든다. 만드는 길은 다이얼로그 하나다.
+assert(!html.includes('id="quick-add"'), '한 줄 추가는 두지 않습니다');
+assert(!app.includes("el('quick-add')"), '한 줄 추가 처리기가 남으면 안 됩니다');
+assert(html.includes('id="new-task"'), '태스크를 만드는 길은 있어야 합니다');
+assert(html.includes('id="task-acceptance"'), '생성 다이얼로그가 완료조건을 받아야 합니다');
 
 // 편집 중 스냅샷을 갈아끼우면 draft가 최신 revision을 달고 저장되어 남의 변경을 덮어쓴다.
 const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function loadSnapshot') + 900);
 assert(load.includes('if (isEditing()) return;'), '편집 중에는 스냅샷을 교체하지 않아야 합니다');
 assert(load.indexOf('if (isEditing()) return;') < load.indexOf('state.snapshot = next'), '가드가 교체보다 먼저여야 합니다');
+
+// ✓와 ○는 같은 자리에 같은 크기로 그려져 멀리서 구분되지 않았고, 20px 글리프만
+// 누를 수 있어 계속 빗나갔다. 행 전체를 버튼으로 두고 상태는 네모칸으로 그린다.
+assert(app.includes('class="acceptance-item') && app.includes('data-task-acceptance'), '완료조건 행 전체가 버튼이어야 합니다');
+assert(!app.includes('acceptance-toggle'), '작은 글리프 버튼은 남기지 않습니다');
+assert(app.includes('acceptance-box'), '완료 상태는 네모칸으로 보여야 합니다');
+assert(/\.acceptance-item\.done \.acceptance-box\s*\{[^}]*background:\s*var\(--accent-BackgroundColor\)/u.test(style), '완료된 칸은 채워져야 합니다');
+assert(/\.acceptance-item\.done \.acceptance-box::after/u.test(style), '완료된 칸에는 체크가 있어야 합니다');
+assert(/\.acceptance-item:hover/u.test(style), '행 전체가 눌린다는 것이 보여야 합니다');
+
+// 스크롤해도 지금 무엇을 보고 있는지와 접는 손잡이를 잃지 않아야 한다.
+assert(/\.navigation-panel,\s*\.context-panel\s*\{[^}]*flex-direction:\s*column/u.test(style), '패널은 머리글과 본문을 나눠야 합니다');
+assert(/\.sidebar-body,[^{]*\{[^}]*overflow:\s*auto/u.test(style), '패널은 본문만 스크롤해야 합니다');
+assert(/\.task-detail-head\s*\{[^}]*position:\s*sticky/u.test(style), '태스크 제목은 스크롤해도 남아야 합니다');
+assert(style.includes('body.view-task .task-detail-head'), '전체화면에서는 앱 헤더 아래에 붙어야 합니다');
+
+// 참고 항목이 문서 유형 목록의 2열 격자에 걸려 레일에서 가운데로 서지 못했다.
+assert(!/\.nav-list button,\s*\.utility-nav button\s*\{[^}]*grid-template-columns/u.test(style), '참고 항목은 문서 유형 목록과 배치가 다릅니다');
 
 console.log('board UI tests passed');

@@ -121,8 +121,8 @@ function breadcrumb(parts) {
 function markViewOnBody(view) {
   for (const name of Array.from(document.body.classList)) if (name.startsWith('view-')) document.body.classList.remove(name);
   document.body.classList.add(`view-${view}`);
-  // 넓은 peek은 태스크 목록에서만 의미가 있다. 다른 화면으로 가면 원래 폭으로 되돌린다.
-  if (view !== 'tasks') document.body.classList.remove('peek-open');
+  // 넓은 peek은 목록에서 고른 항목을 여는 자리다. 목록이 없는 화면으로 가면 되돌린다.
+  if (view !== 'tasks' && view !== 'people') document.body.classList.remove('peek-open');
 }
 function setView(view, selected) {
   if (!state.snapshot) return;
@@ -262,7 +262,8 @@ function taskDetailHtml(task, mode) {
   const body = [
     `<div class="task-detail-summary">${task.summary ? markdown(task.summary) : '<p class="empty-state">설명이 등록되지 않았습니다.</p>'}</div>`,
     section('완료조건', criteria.length
-      ? `<div class="acceptance-list">${criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('')}</div>`
+      // 행 전체가 버튼이다. 글자를 눌러도 켜지고, 상태는 글리프가 아니라 네모칸으로 보인다.
+      ? `<div class="acceptance-list">${criteria.map(([key, value]) => `<button class="acceptance-item ${value.done ? 'done' : ''}" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} ${escapeHtml(value.text)}"><span class="acceptance-box" aria-hidden="true"></span><span class="acceptance-text"><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></button>`).join('')}</div>`
       : '<p class="empty-state">완료조건이 없습니다.</p>', criteria.length ? `${doneCount}/${criteria.length}` : ''),
     section('연결 문서', documents.length ? `<div class="card-grid">${documents.map(documentCard).join('')}</div>` : '<p class="empty-state">연결된 문서가 없습니다.</p>'),
     section('의존 태스크', dependencies.length ? `<div class="task-table">${dependencies.map(taskRow).join('')}</div>` : '<p class="empty-state">선행 태스크가 없습니다.</p>'),
@@ -358,7 +359,32 @@ function renderTask(id) {
   el('context-empty').hidden = false;
   renderMermaid();
 }
-function renderPeople() { const people = state.snapshot.people; for (const [id, values] of [['members', people.members], ['roles', people.roles], ['stakeholders', people.stakeholders]]) el(id).innerHTML = values.map((item) => `<article class="person-card"><span class="eyebrow">${item.id}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · '))}</small></article>`).join(''); }
+// 사람·역할·이해관계자는 성격이 다르다. 멤버는 이름이 짧고 수가 적어 카드가 맞지만,
+// 역할과 이해관계자는 책임 문장이 길어 카드에 넣으면 두 줄에서 잘린다. 목록 행으로 둔다.
+function personRow(item, group) {
+  const detail = item.description || Object.values(item.fields || {}).join(' · ');
+  return `<button class="person-row" data-person="${escapeHtml(group)}:${escapeHtml(item.id)}"><span class="person-row-main"><strong>${escapeHtml(item.name || item.id)}</strong><small>${escapeHtml(detail || '설명 없음')}</small></span><span class="eyebrow">${escapeHtml(item.id)}</span></button>`;
+}
+function renderPeople() {
+  const people = state.snapshot.people;
+  el('members').innerHTML = people.members.map((item) => `<button class="person-card" data-person="members:${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · ') || '설명 없음')}</small></button>`).join('') || '<p class="empty-state">등록된 멤버가 없습니다.</p>';
+  el('roles').innerHTML = people.roles.map((item) => personRow(item, 'roles')).join('') || '<p class="empty-state">정의된 역할이 없습니다.</p>';
+  el('stakeholders').innerHTML = people.stakeholders.map((item) => personRow(item, 'stakeholders')).join('') || '<p class="empty-state">등록된 이해관계자가 없습니다.</p>';
+}
+// 태스크와 같은 방식으로 옆에서 연다. 화면을 갈아치우면 명단 맥락을 잃고,
+// 사람 하나를 보려고 화면을 오갈 만큼 내용이 많지도 않다.
+function personDetailHtml(entry, group) {
+  const labels = { members: '멤버', roles: '역할', stakeholders: '이해관계자' };
+  const fields = Object.entries(entry.fields || {}).filter(([, value]) => String(value || '').trim());
+  const tasks = state.snapshot.tasks.tasks.filter((task) => task.owner === entry.id || (task.reviewers || []).includes(entry.id) || (task.stakeholders || []).includes(entry.id));
+  const open = tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status));
+  const documents = state.snapshot.documents.filter((item) => String(item.owner || '').includes(entry.id));
+  return `<article class="task-detail"><header class="task-detail-head"><p class="eyebrow">${escapeHtml(labels[group] || group)} · ${escapeHtml(entry.id)}</p><h1>${escapeHtml(entry.name || entry.id)}</h1></header>`
+    + `<dl class="task-properties">${[['설명', entry.description || '없음']].concat(fields).map(([label, value]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl>`
+    + `<section class="task-detail-section"><h2>맡은 태스크 <span class="badge">${open.length}/${tasks.length}</span></h2>${tasks.length ? `<div class="task-table">${tasks.slice(0, 8).map(taskRow).join('')}</div>` : '<p class="empty-state">연결된 태스크가 없습니다.</p>'}</section>`
+    + `<section class="task-detail-section"><h2>소유 문서 <span class="badge">${documents.length}</span></h2>${documents.length ? `<div class="card-grid">${documents.slice(0, 6).map(documentCard).join('')}</div>` : '<p class="empty-state">소유한 문서가 없습니다.</p>'}</section>`
+    + '<p class="control-hint">project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></article>';
+}
 
 function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모두', ''), ...members.map((item) => new Option(item.name, item.id)));
   // 저장해 둔 표시 옵션을 컨트롤에 되돌린다. 값이 사라진 담당자를 가리키면 무시한다.
@@ -422,6 +448,19 @@ window.addEventListener('pagehide', markVisit);
 
 document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
   // 목록 맥락을 잃지 않고 항목 사이를 옮겨 다닐 수 있다.
+  if (button.dataset.person) {
+    const [group, id] = button.dataset.person.split(':');
+    const entry = (state.snapshot.people[group] || []).find((item) => item.id === id);
+    if (!entry) return;
+    state.selected = id;
+    document.body.classList.remove('context-collapsed');
+    document.body.classList.add('peek-open');
+    for (const row of document.querySelectorAll('[data-person]')) row.classList.toggle('peeked', row.dataset.person === button.dataset.person);
+    el('context-empty').hidden = true;
+    el('context-content').hidden = false;
+    el('context-content').innerHTML = personDetailHtml(entry, group);
+    return;
+  }
   if (button.dataset.task) {
     const peeked = state.snapshot.tasks.tasks.find((item) => item.id === button.dataset.task);
     if (button.dataset.taskFull) return setView('task', button.dataset.task);
@@ -499,7 +538,7 @@ function closePeek() {
   if (!document.body.classList.contains('peek-open')) return false;
   document.body.classList.remove('peek-open');
   state.selected = null;
-  for (const row of document.querySelectorAll('.task-row')) row.classList.remove('peeked');
+  for (const row of document.querySelectorAll('.peeked')) row.classList.remove('peeked');
   el('context-content').hidden = true;
   el('context-empty').hidden = false;
   return true;
@@ -507,7 +546,7 @@ function closePeek() {
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closePeek(); });
 document.addEventListener('pointerdown', (event) => {
   if (!document.body.classList.contains('peek-open')) return;
-  if (event.target.closest('.context-panel') || event.target.closest('[data-task]')) return;
+  if (event.target.closest('.context-panel') || event.target.closest('[data-task]') || event.target.closest('[data-person]')) return;
   closePeek();
 });
 // 양쪽 패널 모두 사라지지 않고 레일로 좁아지므로, 접기 손잡이가 언제나 제자리에 있다.
@@ -543,27 +582,8 @@ el('task-status').addEventListener('change', async () => {
   message('대기 사유를 입력하지 않아 상태를 할 일로 되돌렸습니다.');
 });
 // Plane의 quick add. 흔한 경우는 제목 하나뿐인데 모달을 열게 하면 매번 여섯 필드를 지나야 한다.
-el('quick-add').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const title = el('quick-add-title').value.trim();
-  const acceptance = el('quick-add-acceptance').value.trim();
-  if (!title) return;
-  // 완료조건 없이 보내면 API가 400으로 되돌린다. 제목에서 지어내면 계약이 금지하는
-  // 자리표시자가 되므로, 비어 있으면 만들지 않고 무엇이 필요한지 말한다.
-  if (!acceptance) { el('quick-add-acceptance').focus(); return message('완료조건을 입력해야 태스크를 만들 수 있습니다. 무엇이 되면 끝인지 한 줄로 적어주세요.', true); }
-  el('quick-add-save').disabled = true;
-  try {
-    await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title, status: 'todo', priority: 'mid', owner: state.currentMember || null, acceptanceCriteria: { 'AC-001': { text: acceptance, done: false } } }) });
-    el('quick-add-title').value = '';
-    el('quick-add-acceptance').value = '';
-    await loadSnapshot(false);
-    el('quick-add-title').focus();
-  } catch (error) {
-    message(error.message, true);
-  } finally {
-    el('quick-add-save').disabled = false;
-  }
-});
+// 한 줄 추가는 없앴다. 태스크에는 완료조건이 반드시 있어야 하고, 그걸 한 줄에 끼워 넣으면
+// 빠르지도 않으면서 대충 적게 만든다. 만드는 길은 다이얼로그 하나로 둔다.
 el('new-task').addEventListener('click', () => { el('task-id').textContent = 'NEW TASK'; el('task-title').value = ''; el('task-summary').value = ''; el('task-acceptance').value = ''; el('task-links').value = ''; el('task-status').value = 'todo'; state.newTaskBlocker = null; el('task-dialog').showModal(); el('task-title').focus(); });
 // ── 편집 lease ────────────────────────────────────────────
 // 저장 시점의 revision 검사만으로는 데이터는 지켜도 작업은 지키지 못한다.
