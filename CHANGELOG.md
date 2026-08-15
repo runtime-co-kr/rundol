@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [0.22.9] - 2026-08-16
+
+### Fixed
+
+- Diagrams in document bodies were unreadable. Flowchart edges rendered as large black wedges: their paths carry the class `flowchart-link`, not `edgePath`, so the rule meant to stroke them never matched and mermaid's default black fill filled the inside of every curve. Sequence actor names were white text on white boxes, because the shape-fill rule matched `.actor` and `text.actor` is a label, not a shape. ER cardinality markers were black blobs, because crow's feet are drawn with strokes and every marker path was being filled. Edge colour came from the divider token, the weakest hairline tone in the palette, which left arrows too faint to trace from one node to the next.
+- Wide flowcharts shrank to fit the reader column until their labels reached an effective 7px. A diagram that is fully visible but illegible shows nothing. Diagrams now stop shrinking at an 11px floor and scroll horizontally past it.
+- The task Board was unusable. The page scrolled instead of the lanes, so lane headers slid out of view and there was no way to tell which column was on screen; cards were wider than their lane and spilled out both sides, because the implicit grid track sizes to max-content; card titles were clipped mid-word on one line and short titles sat centred, both inherited from the global button rule. The Board is now pinned to the viewport, each lane scrolls inside itself, the header and filters stay put, and cards share one height so columns can be compared by eye.
+- Saving a document from the Board rewrote parts of the file nobody had edited: it dropped the blank line after the closing `---` and converted CRLF line endings to LF. A document saved without a single change came back as a whole-file diff, mixing real edits into noise. Saves now restore the separator and line endings the file already used.
+- Saving the document contract replaced every omission disposition with catalog defaults. A type marked not-applicable — a decision the settings screen cannot express — lost its disposition and its recorded reason on the next save from that screen. Dispositions are now merged per type, and a payload that does not carry a decision leaves the current one alone.
+
+### Changed
+
+- A document lease is a coordination signal, not a permission to save, and `REQ-020` now says so. Enforcing it would mean that a browser dying mid-edit leaves a five-minute lease that locks everyone else out with nothing to do but wait — worse than anything the lease prevents. Loss is prevented by `baseRevision` and the branch boundary instead. Saving a document held by another client now succeeds and reports who holds it and until when, rather than being refused.
+
 ## [0.22.8] - 2026-08-15
 
 ### Fixed
