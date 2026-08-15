@@ -515,8 +515,10 @@ document.addEventListener('pointerdown', (event) => {
   closePeek();
 });
 el('collapse-context').addEventListener('click', () => { if (closePeek()) return; if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-open'); else { document.body.classList.remove('context-open'); document.body.classList.toggle('context-collapsed'); } });
-// 헤더의 ☰는 좁은 화면에서는 사이드바를 겹쳐 열고, 넓은 화면에서는 접었다 편다.
-el('menu-button').addEventListener('click', () => { if (matchMedia('(max-width: 1180px)').matches) document.body.classList.toggle('nav-open'); else document.body.classList.toggle('nav-collapsed'); });
+// 넓은 화면에서는 사이드바가 레일로 좁아지므로 접기 손잡이가 사이드바에 남는다.
+// 헤더의 ☰는 레일조차 둘 수 없는 좁은 화면에서 겹쳐 여는 용도다.
+el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed'));
+el('menu-button').addEventListener('click', () => document.body.classList.toggle('nav-open'));
 el('context-button').addEventListener('click', () => { document.body.classList.remove('context-collapsed'); document.body.classList.toggle('context-open'); });
 addEventListener('resize', () => { if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-collapsed'); else document.body.classList.remove('context-open'); });
 document.addEventListener('click', (event) => { const button = event.target.closest('[data-dialog-cancel]'); if (!button) return; el(button.dataset.dialogCancel).close('cancel'); });

@@ -194,25 +194,39 @@ assert(app.includes('크게 보기'), '전체화면으로 가는 동작은 크�
 assert(app.includes('function redrawTask'), '낙관적 변경은 보고 있는 화면에 바로 반영되어야 합니다');
 assert(style.includes('.task-detail-head h1'), '상세 제목은 속성 라벨과 다르게 보여야 합니다');
 
-// 헤더가 어디서든 바뀌지 않는 것을 갖고, 사이드바에는 프로젝트 내용물만 남는다.
-assert(html.includes('class="app-header"'), '헤더가 있어야 합니다');
-for (const id of ['project-switcher', 'global-search', 'sync-status', 'current-member', 'settings-button']) {
-  const header = html.slice(html.indexOf('<header class="app-header"'), html.indexOf('</header>'));
+// 헤더는 프로젝트를 가리지 않는 것만, 사이드바는 프로젝트 안에서의 이동을 갖는다.
+const header = html.slice(html.indexOf('<header class="app-header"'), html.indexOf('</header>'));
+const sidebar = html.slice(html.indexOf('<aside class="navigation-panel"'), html.indexOf('</aside>'));
+for (const id of ['global-search', 'sync-status', 'current-member', 'settings-button']) {
   assert(header.includes(`id="${id}"`), `${id}는 헤더에 있어야 합니다`);
 }
-const sidebar = html.slice(html.indexOf('<aside class="navigation-panel"'), html.indexOf('</aside>'));
-assert(sidebar.includes('document-filters') && sidebar.includes('recent-documents'), '사이드바는 프로젝트 내용물을 갖습니다');
-assert(!sidebar.includes('project-switcher') && !sidebar.includes('global-search'), '사이드바가 프로젝트 전환과 검색까지 지면 넘칩니다');
-assert(style.includes('--header-Height'), '헤더 높이는 토큰이어야 합니다');
-assert(theme.includes('--header-Height'), '헤더 높이 토큰이 theme.css에 있어야 합니다');
+for (const id of ['project-switcher', 'collapse-nav', 'document-filters', 'recent-documents']) {
+  assert(sidebar.includes(`id="${id}"`), `${id}는 사이드바에 있어야 합니다`);
+}
+assert(sidebar.includes('data-view="tasks"'), '주요 이동은 사이드바가 갖습니다');
+assert(!header.includes('data-view="tasks"'), '헤더에 주요 이동까지 넣으면 줄바꿈되어 자리가 흔들립니다');
+assert(style.includes('--header-Height') && theme.includes('--header-Height'), '헤더 높이는 토큰이어야 합니다');
+
+// 검색은 좌우 내용 길이가 바뀌어도 같은 자리에 있어야 한다. flex 가운데는 따라 움직인다.
+assert(/\.app-header\s*\{[^}]*display:\s*grid/u.test(style), '헤더는 격자여야 검색이 고정됩니다');
+assert(/\.app-header\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 720px\) minmax\(0, 1fr\)/u.test(style), '검색은 가운데 칸을 고정으로 차지해야 합니다');
+
+// 접힌 사이드바는 사라지지 않고 아이콘 레일로 좁아진다.
+assert(theme.includes('--nav-rail-Width'), '레일 폭 토큰이 있어야 합니다');
+assert(/body\.nav-collapsed \.workspace-shell\s*\{[^}]*var\(--nav-rail-Width\)/u.test(style), '접으면 레일 폭으로 좁아져야 합니다');
+assert(!/body\.nav-collapsed \.navigation-panel\s*\{[^}]*display:\s*none/u.test(style), '접은 사이드바를 숨기면 다시 펼 손잡이가 사라집니다');
+assert(style.includes('body.nav-collapsed .nav-label'), '접히면 라벨만 사라지고 아이콘은 남아야 합니다');
+assert(html.includes('class="nav-icon"'), '레일에 남을 아이콘이 필요합니다');
+assert(app.includes("el('collapse-nav').addEventListener"), '접기 손잡이는 접히는 대상 옆에 있어야 합니다');
+
+// peek은 흐름 밖에서 오른쪽을 덮으므로 본문이 그 아래에 가려진다.
+assert(/body\.peek-open \.main-content\s*\{[^}]*padding-right:\s*calc\(var\(--peek-Width\)/u.test(style), 'peek이 덮은 만큼 본문 중심이 왼쪽으로 옮겨가야 합니다');
 
 // 접기 버튼은 class만 토글한다. 받는 CSS가 없으면 아무 일도 일어나지 않는다.
 for (const name of ['nav-collapsed', 'context-collapsed', 'nav-open', 'context-open']) {
   assert(style.includes(`body.${name}`), `${name} 상태를 받는 CSS 규칙이 필요합니다`);
 }
 assert(/body\.nav-collapsed \.workspace-shell\s*\{[^}]*grid-template-columns/u.test(style), '탐색을 접으면 셸의 열 정의도 바뀌어야 합니다');
-assert(/body\.nav-collapsed \.navigation-panel\s*\{[^}]*display:\s*none/u.test(style), '접힌 탐색 패널은 숨겨져야 합니다');
-assert(style.includes('body.nav-collapsed #menu-button'), '접은 뒤 다시 펼 손잡이가 있어야 합니다');
 
 // :not()의 특이도는 인자를 따라간다. 두 번 겹친 (0,2,1)이 .search input(0,1,1)을 이겨
 // 컴포넌트의 테두리 제거가 통째로 무시됐다. :where()로 감싸 요소 하나의 특이도로 되돌린다.

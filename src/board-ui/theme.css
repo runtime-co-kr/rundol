@@ -76,6 +76,7 @@
   --topbar-Height: 52px;
   --header-Height: 52px;
   --nav-Width: 248px;
+  --nav-rail-Width: 52px;
   --context-Width: 300px;
   --peek-Width: clamp(420px, 50vw, 900px);
 
