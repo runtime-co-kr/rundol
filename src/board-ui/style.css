@@ -1393,6 +1393,74 @@ body.view-operations .workspace-shell {
   font-size: var(--caption-FontSize);
 }
 
+/* ── 설정: 계약 준수 ──────────────────────────────────── */
+
+.compliance-group + .compliance-group {
+  margin-top: var(--spacing-3);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--divider-BorderColor);
+}
+
+.compliance-group h3 {
+  margin: 0 0 var(--spacing-1_5);
+  font-size: var(--small-FontSize);
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--secondary-TextColor);
+}
+
+.compliance-group dl {
+  margin: 0;
+}
+
+.compliance-group .property dd small {
+  display: block;
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+}
+
+.compliance-list {
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+/* 심각도는 왼쪽 선으로만 구분한다. 배경을 칠하면 목록이 시끄러워진다. */
+.compliance-item {
+  display: grid;
+  gap: 2px;
+  padding: var(--spacing-1) var(--spacing-1_5);
+  border-left: 3px solid var(--divider-BorderColor);
+  background: var(--surface-02-BackgroundColor);
+  border-radius: 0 var(--small-BorderRadius) var(--small-BorderRadius) 0;
+}
+
+.compliance-item.error {
+  border-left-color: var(--danger-Color);
+}
+
+.compliance-item.warning {
+  border-left-color: var(--warning-Color);
+}
+
+.compliance-item.ok {
+  border-left-color: var(--success-Color);
+}
+
+.compliance-item strong {
+  font-size: var(--small-FontSize);
+  font-weight: 650;
+}
+
+.compliance-item span {
+  font-size: var(--small-FontSize);
+}
+
+.compliance-item small {
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+}
+
 /* ── 대화상자와 알림 ──────────────────────────────────── */
 
 dialog {

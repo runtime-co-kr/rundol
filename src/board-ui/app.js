@@ -157,7 +157,6 @@ function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝�
 function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]); el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
 function renderPeople() { const people = state.snapshot.people; for (const [id, values] of [['members', people.members], ['roles', people.roles], ['stakeholders', people.stakeholders]]) el(id).innerHTML = values.map((item) => `<article class="person-card"><span class="eyebrow">${item.id}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · '))}</small></article>`).join(''); }
 function renderOperations() { const sync = state.snapshot.sync; el('operation-status').innerHTML = `<article class="operation-card"><p class="eyebrow">SYNC</p><h2>${escapeHtml(sync.state)}</h2><p>${sync.ahead ?? '—'} ahead · ${sync.behind ?? '—'} behind</p><small>${escapeHtml(sync.head.slice(0, 12))}</small></article><article class="operation-card"><p class="eyebrow">ATTENTION</p><h2>${state.snapshot.attention.length}</h2><p>현재 조치 필요 항목</p></article><article class="operation-card"><p class="eyebrow">WATCH</p><h2>외부 CLI</h2><p>watch 상태는 다음 Snapshot 계약에서 연결됩니다.</p></article>`; el('leases').innerHTML = state.snapshot.leases.map((item) => `<article class="entity-card"><strong>${escapeHtml(item.documentId)}</strong><small>${escapeHtml(item.clientId)} · ${escapeHtml(item.expiresAt)}</small></article>`).join('') || '<p class="empty-state">활성 임대가 없습니다.</p>'; }
-function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; }
 
 function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모든 담당자', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-status').replaceChildren(...Object.entries(statusLabels).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
 function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; }
@@ -406,7 +405,62 @@ function renderPresentationSettings() {
   el('presentation-types').innerHTML = Object.entries(presentation.documentTypes).sort((left, right) => left[1].order - right[1].order).map(([kind, item]) => `<article><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(kind)} · ${escapeHtml(item.description)}</small></article>`).join('');
   section.title = `${inherited.workspace.file}\n${inherited.project.file}`;
 }
-function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; renderPresentationSettings(); renderContractSettings(); const current = document.querySelector('[data-settings-section].active'); showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance'); }
+// 계약 준수. 규칙을 정하는 화면은 있었는데 그 규칙이 지켜지는지 보는 화면이 없었다.
+// 여기 쓰는 값은 전부 스냅샷에 이미 실려 오던 것이라 새로 계산하지 않는다.
+const enforcementNote = {
+  advisory: '위반을 보고만 하고 저장·동기화를 막지 않습니다.',
+  checkpoint: '위반이 남아 있으면 rdl save와 rdl sync가 차단됩니다.'
+};
+const policyNote = {
+  required: '없으면 위반입니다.',
+  recommended: '없으면 경고이며 checkpoint에서도 차단하지 않습니다.',
+  onDemand: '필요할 때만 만듭니다.',
+  disabled: '만들면 위반이며 흡수 규칙이 대신 담습니다.'
+};
+function complianceList(items, empty) {
+  return items.length ? `<div class="compliance-list">${items.join('')}</div>` : `<p class="empty-state">${escapeHtml(empty)}</p>`;
+}
+function renderContractCompliance() {
+  if (!el('contract-compliance')) {
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="contract-compliance" class="settings-panel"><header><h2>계약 준수</h2><p>이 프로젝트가 지금 계약을 지키고 있는지 보여줍니다. 모두 계산 결과이며 여기서 바꾸지 않습니다.</p></header><div class="settings-body" id="compliance-body"></div></section>');
+  }
+  const contract = state.snapshot.contract;
+  const diagnostics = state.snapshot.diagnostics || { summary: { errors: 0, warnings: 0 }, items: [] };
+  const evaluation = contract.evaluation || {};
+  const trace = contract.traceability || { entries: [], summary: { functions: 0, ready: 0 } };
+  const profile = contract.profile;
+
+  const policyRows = ['required', 'recommended', 'onDemand', 'disabled']
+    .map((name) => `<div class="property"><dt>${escapeHtml(name)}</dt><dd>${escapeHtml((profile.policy[name] || []).join(', ') || '없음')}<small>${escapeHtml(policyNote[name])}</small></dd></div>`).join('');
+
+  const violations = (evaluation.violations || []).map((item) => `<div class="compliance-item error"><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.message)}</span></div>`);
+  const findings = (diagnostics.items || []).map((item) => `<div class="compliance-item ${escapeHtml(item.severity)}"><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.message)}</span><small>${escapeHtml(item.artifactId || item.file || '')}</small></div>`);
+  const incomplete = (trace.entries || []).filter((entry) => !entry.ready)
+    .map((entry) => `<div class="compliance-item warning"><strong>${escapeHtml(entry.functionId)}</strong><span>미준비: ${escapeHtml((entry.missing || []).join(', ') || '연결 문서 부족')}</span></div>`);
+
+  // 흡수 판정은 타입 단위라 REQ 하나만 섹션을 가져도 satisfied가 된다. 실제로 몇 개가 갖고 있는지 보여준다.
+  const absorbed = (evaluation.absorbed || []).map((item) => {
+    const all = state.snapshot.documents.filter((doc) => doc.id.startsWith(`${item.absorbedBy}-`));
+    const holders = all.filter((doc) => (item.sections || []).every((section) => (doc.body || '').includes(`## ${section}`)));
+    return `<div class="compliance-item ${item.satisfied ? 'ok' : 'error'}"><strong>${escapeHtml(item.type)} → ${escapeHtml(item.absorbedBy)}</strong><span>${escapeHtml((item.sections || []).join(' · '))}</span><small>${holders.length}/${all.length} ${escapeHtml(item.absorbedBy)}가 네 섹션을 모두 갖고 있습니다</small></div>`;
+  });
+
+  const diagrams = contract.catalog && contract.catalog.diagrams
+    ? `<div class="property"><dt>다이어그램</dt><dd>${escapeHtml(contract.catalog.diagrams.version)} · ${escapeHtml(contract.catalog.diagrams.types.join(', '))}<small>${escapeHtml(contract.catalog.diagrams.authority || '')}</small></dd></div>` : '';
+
+  el('compliance-body').innerHTML = `
+    <section class="compliance-group"><h3>계약 상태</h3><dl>
+      <div class="property"><dt>강제 수준</dt><dd>${escapeHtml(contract.enforcement)}<small>${escapeHtml(enforcementNote[contract.enforcement] || '')}</small></dd></div>
+      <div class="property"><dt>revision</dt><dd>${escapeHtml(String(profile.revision))}<small>계약을 바꿀 때마다 1씩 오릅니다.</small></dd></div>
+      <div class="property"><dt>프로필 이력</dt><dd>${escapeHtml((profile.history || []).join(' → '))}</dd></div>${diagrams}
+    </dl></section>
+    <section class="compliance-group"><h3>정책 상태별 의미</h3><dl>${policyRows}</dl></section>
+    <section class="compliance-group"><h3>계약 위반 ${violations.length}</h3>${complianceList(violations, '위반이 없습니다.')}</section>
+    <section class="compliance-group"><h3>검사 결과 — 오류 ${diagnostics.summary.errors} · 경고 ${diagnostics.summary.warnings}</h3>${complianceList(findings, 'rdl check --strict가 오류와 경고 없이 통과합니다.')}</section>
+    <section class="compliance-group"><h3>기능 추적성 — 준비 ${trace.summary.ready}/${trace.summary.functions}</h3>${complianceList(incomplete, '선언된 기능이 모두 REQ와 TST 계약을 갖췄습니다.')}</section>
+    <section class="compliance-group"><h3>흡수 규칙</h3>${complianceList(absorbed, '비활성 유형이 없습니다.')}</section>`;
+}
+function renderSettings() { el('clients').innerHTML = state.snapshot.clients.map((item) => `<article class="entity-card"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type)} · ${escapeHtml(item.status)}</small></article>`).join('') || '<p class="empty-state">등록된 Client가 없습니다.</p>'; renderPresentationSettings(); renderContractSettings(); renderContractCompliance(); const current = document.querySelector('[data-settings-section].active'); showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance'); }
 function contractInput() {
   const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
   const rules = {}; const omissions = {};

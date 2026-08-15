@@ -175,6 +175,29 @@ function attentionItems(tasks, documents, sync) {
   return items;
 }
 
+// rdl check 결과는 지금까지 쓰기 게이트로만 쓰이고 버려졌다. 계약을 정하는 화면이
+// 그 계약이 지켜지는지 못 보여주던 이유다. 전체 검사는 비싸므로 revision이 바뀔 때만 계산한다.
+const diagnosticsCache = new Map();
+function projectDiagnostics(root, projectKey, revision) {
+  const cached = diagnosticsCache.get(projectKey);
+  if (cached && cached.revision === revision) return cached.value;
+  let value;
+  try {
+    const checked = checkWorkspace(root, { project: projectKey, strict: true });
+    value = {
+      summary: checked.summary,
+      items: checked.diagnostics.map((item) => ({
+        code: item.code, severity: item.severity, category: item.category,
+        file: item.file, artifactId: item.artifactId, target: item.target, message: item.message
+      }))
+    };
+  } catch (error) {
+    value = { summary: { errors: 0, warnings: 0, failed: true }, items: [], error: error.message };
+  }
+  diagnosticsCache.set(projectKey, { revision, value });
+  return value;
+}
+
 function workspaceSnapshot(root, projectKey, search) {
   const layout = workspaceLayout(root);
   const project = selectProject(layout, projectKey, true);
@@ -187,10 +210,12 @@ function workspaceSnapshot(root, projectKey, search) {
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
   const contract = loadDocumentContract(root, project.key);
   const presentation = loadBoardPresentation(root, project.key);
+  const workspaceRevision = boardRevision(config);
   return {
     project: project.key,
     client: boardClient(root, project, clients),
-    revision: { workspace: boardRevision(config), tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(presentation) },
+    diagnostics: projectDiagnostics(root, project.key, `${workspaceRevision}:${entityRevision(documents)}`),
+    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(presentation) },
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
