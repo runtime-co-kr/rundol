@@ -333,6 +333,11 @@ assert(app.includes('!TERMINAL_STATUSES.includes(value)'), '생성 화면에 종
 assert(app.includes('function redrawPerson'), '열어둔 사람도 갱신되어야 합니다');
 assert(app.includes("document.body.dataset.peekKind === 'person'"), '사람 peek이 열려 있을 때만 다시 그려야 합니다');
 
+// 헤더와 패널은 같은 표면색이라 경계에서 붙어 보인다. 본문만 헤더에서 떨어져 시작하면
+// 세 열의 시작선이 어긋난다. 패널 머리글도 본문과 같은 위 여백을 갖는다.
+assert(/\.sidebar-head,\s*\.panel-title\s*\{[^}]*padding:\s*var\(--spacing-4\)/u.test(style), '패널 머리글도 본문과 같은 높이에서 시작해야 합니다');
+assert(/\.main-content\s*\{[^}]*padding:\s*var\(--spacing-4\)/u.test(style), '본문 위 여백이 기준입니다');
+
 // sendBeacon은 헤더를 실을 수 없어 토큰이 빠지고 서버가 403으로 버린다.
 assert(!app.includes('navigator.sendBeacon'), '인증이 필요한 요청에 sendBeacon을 쓰면 안 됩니다');
 assert(/keepalive: true[\s\S]{0,160}'X-Rundol-Token'/u.test(app), '종료 시 임대 해제도 토큰을 실어야 합니다');
