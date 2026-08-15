@@ -262,7 +262,7 @@ assert(app.includes("event.target.closest('.context-panel')"), '바깥을 누르
 // flex/grid 자식의 기본 min-width는 내용 크기다. 줄이지 않으면 사이드바를 밀고 나간다.
 assert(/\.search\s*\{[^}]*min-width:\s*0/u.test(style), '검색 상자는 사이드바 폭 안에서 줄어야 합니다');
 assert(/\.search input\s*\{[^}]*min-width:\s*0/u.test(style), '검색 입력은 기본 min-width를 버려야 합니다');
-assert(/\.navigation-panel\s*\{[^}]*min-width:\s*0/u.test(style), '탐색 패널은 열 폭을 넘지 않아야 합니다');
+assert(/\.navigation-panel,\s*\.context-panel\s*\{[^}]*min-width:\s*0/u.test(style), '탐색 패널은 열 폭을 넘지 않아야 합니다');
 
 // 한 줄 추가는 없앴다. 완료조건 없이 보내 API가 항상 400으로 되돌리고 있었고, 완료조건을
 // 한 줄에 끼워 넣으면 빠르지도 않으면서 대충 적게 만든다. 만드는 길은 다이얼로그 하나다.
@@ -337,6 +337,51 @@ assert(app.includes("document.body.dataset.peekKind === 'person'"), '사람 peek
 // 세 열의 시작선이 어긋난다. 패널 머리글도 본문과 같은 위 여백을 갖는다.
 assert(/\.sidebar-head,\s*\.panel-title\s*\{[^}]*padding:\s*var\(--spacing-4\)/u.test(style), '패널 머리글도 본문과 같은 높이에서 시작해야 합니다');
 assert(/\.main-content\s*\{[^}]*padding:\s*var\(--spacing-4\)/u.test(style), '본문 위 여백이 기준입니다');
+
+// 내부 스크롤 상자가 여럿이라 막대가 화면 곳곳에 세로줄로 남는다. overflow는 건드리지
+// 않으므로 휠·터치·키보드 이동은 그대로다.
+assert(/\*\s*\{[^}]*scrollbar-width:\s*none/u.test(style), '스크롤 막대는 감춥니다');
+assert(style.includes('*::-webkit-scrollbar'), 'WebKit 계열에서도 막대를 감춰야 합니다');
+
+// 같은 선택자를 두 곳에서 선언하면 어느 쪽이 이기는지 읽어야 알 수 있다. 이 파일에서
+// 이 실수로 다섯 번 물렸다. 카드 설명은 두 줄 말줄임이어야 하는데 metric-grid 규칙에
+// 딸려 들어가 display: grid로 덮여 있었다.
+assert(!/\.person-card small,\s*\.metric-grid/u.test(style), '카드 설명이 metric-grid 규칙에 딸려 들어가면 안 됩니다');
+assert(/\.entity-card small,\s*\.document-card small,\s*\.person-card small\s*\{[^}]*line-clamp/u.test(style), '카드 설명은 두 줄까지만 보입니다');
+{
+  // 최상위 규칙에서 같은 선택자가 같은 속성을 두 번 선언하는지 훑는다.
+  // 리셋 후 다시 지정하는 것은 의도된 패턴이라 리셋 규칙은 제외한다.
+  const stripped = style.replace(/\/\*[\s\S]*?\*\//gu, '');
+  const rules = [];
+  let depth = 0, start = 0, selector = '', inAt = false;
+  for (let i = 0; i < stripped.length; i += 1) {
+    if (stripped[i] === '{') {
+      if (depth === 0) { selector = stripped.slice(start, i).trim(); inAt = selector.startsWith('@'); start = i + 1; }
+      depth += 1;
+    } else if (stripped[i] === '}') {
+      depth -= 1;
+      if (depth === 0) { if (!inAt) rules.push({ selector, body: stripped.slice(start, i) }); start = i + 1; }
+    }
+  }
+  // 앞 규칙을 일부러 되돌리는 곳은 제외한다. 공통 필드·버튼 모양을 깔고 특정 컴포넌트가
+  // 그중 몇 가지만 되돌리는 것은 의도된 패턴이다. 문제는 같은 대상을 두 곳에서
+  // 따로 정의해 어느 쪽이 이기는지 읽어야 아는 경우다.
+  const overrides = new Set(['textarea', 'select', 'button', 'input:not(:where([type=\'checkbox\']', '[type=\'radio\']))']);
+  const isReset = (rule) => rule.body.includes('height: auto') && rule.body.includes('box-shadow: none');
+  const seen = new Map();
+  for (const rule of rules) {
+    if (isReset(rule)) continue;
+    for (const part of rule.selector.split(',').map((value) => value.trim()).filter(Boolean)) {
+      if (overrides.has(part)) continue;
+      const declared = new Set(rule.body.split(';').map((d) => d.split(':')[0].trim()).filter(Boolean));
+      if (!seen.has(part)) { seen.set(part, declared); continue; }
+      const before = seen.get(part);
+      const clash = [...declared].filter((name) => before.has(name));
+      assert.strictEqual(clash.length, 0, `${part}이 ${clash.join(', ')}를 두 번 선언합니다. 한곳에 모으세요.`);
+      for (const name of declared) before.add(name);
+    }
+  }
+}
 
 // sendBeacon은 헤더를 실을 수 없어 토큰이 빠지고 서버가 403으로 버린다.
 assert(!app.includes('navigator.sendBeacon'), '인증이 필요한 요청에 sendBeacon을 쓰면 안 됩니다');

@@ -19,6 +19,18 @@
   display: none !important;
 }
 
+/* 내부 스크롤 상자가 여럿이라 막대가 화면 곳곳에 세로줄로 남는다. 스크롤은 그대로 두고
+   막대만 감춘다. 스크롤할 것이 있는지는 잘린 내용이 알려주므로 단서가 사라지지 않는다.
+   overflow를 건드리지 않으므로 휠·터치·키보드 이동은 모두 그대로다. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 body {
   margin: 0;
   min-width: 360px;
@@ -247,9 +259,11 @@ button:disabled:hover {
 .document-card,
 .entity-card,
 .person-card,
+.person-row,
 .task-row,
 .task-card,
 .component-chip button,
+.guidance-chip,
 .acceptance-item {
   height: auto;
   border: 0;
@@ -439,13 +453,9 @@ button:disabled:hover {
   min-height: calc(100vh - var(--header-Height));
 }
 
-/* 자식 수가 바뀌어도 어긋나지 않도록 명시적 행 대신 흐름으로 쌓고
-   바닥 영역만 margin-top:auto로 밀어낸다. */
+/* 세로 배치와 폭 규칙은 아래 패널 공통 규칙이 갖는다. 여기서 다시 선언하면
+   같은 속성이 두 곳에 흩어져 어느 쪽이 이기는지 읽어야 알 수 있다. */
 .navigation-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1_5);
-  min-width: 0;
   border-right: 1px solid var(--divider-BorderColor);
 }
 
@@ -824,10 +834,18 @@ body.nav-collapsed.view-task .workspace-shell {
 }
 
 .person-row-main small {
+  min-width: 0;
   overflow: hidden;
   color: var(--secondary-TextColor);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 멤버 카드는 역할과 책임을 각각 한 줄로 보여준다. 둘을 이어붙이면 어느 쪽이
+   역할인지 읽히지 않고, 필드를 전부 붙이면 카드가 문단이 된다. */
+.person-card small:first-of-type {
+  color: var(--accent-TextColor);
+  font-weight: 600;
 }
 
 /* ── 탐색 패널 ────────────────────────────────────────── */
@@ -950,7 +968,6 @@ body.peek-open[data-peek-kind='task'] #expand-context {
 }
 
 /* 최근 문서 제목은 사이드바 폭보다 길다. 잘라내지 않으면 패널 밖으로 흐른다. */
-.nav-list button > *,
 .nav-list button > * {
   min-width: 0;
   overflow: hidden;
@@ -1064,9 +1081,8 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   line-clamp: 2;
 }
 
-.entity-card small,
-.document-card small,
-.person-card small,
+/* 카드의 small은 바로 위에서 두 줄 말줄임을 받는다. 여기 딸려 들어와 있어서
+   display: grid로 덮이고 말줄임이 통째로 죽어 있었다. metric-grid만 남긴다. */
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1629,17 +1645,46 @@ body.view-task .task-detail-head {
 
 /* ── 설정 ─────────────────────────────────────────────── */
 
+/* 설정은 페이지 전체가 아니라 오른쪽 패널이 자기 안에서 스크롤한다. 그래야 목차와
+   패널 머리글이 제자리에 남고, 앱 헤더 아래로 파고드는 sticky 계산도 필요 없어진다. */
+body.view-settings .main-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--header-Height));
+  overflow: hidden;
+}
+
+body.view-settings #settings-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 설정에서는 페이지가 스크롤되지 않으므로 제목을 붙일 이유가 없다. sticky로 두면
+   배경과 z-index만 남아 아래 목차를 덮고, flex 자식이라 눌려 찌그러지기도 한다. */
+body.view-settings .page-heading {
+  position: static;
+  flex: none;
+}
+
+/* align-items: start면 행 높이가 내용으로 잡혀 아래의 max-height가 걸릴 기준이 없다.
+   행이 남은 높이를 채워야 패널이 그 안에서 스크롤한다. 목차만 위로 붙인다. */
 .settings-layout {
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--spacing-4);
-  align-items: start;
+  flex: 1;
+  min-height: 0;
 }
 
+
+/* 목차는 패널이 자기 안에서 스크롤하므로 붙일 필요가 없다. sticky로 두면 top이
+   앱 헤더 높이를 몰라 그 아래로 파고든다. 실제로 24px에 붙어 헤더에 가려져 있었다. */
 .settings-nav {
-  position: sticky;
-  top: var(--spacing-3);
   display: grid;
+  align-self: start;
   gap: 2px;
 }
 
@@ -1665,11 +1710,14 @@ body.view-task .task-detail-head {
   font-weight: 600;
 }
 
-/* 다섯 묶음을 한 열로 쌓으면 3500px 스크롤이 된다. 목차가 한 번에 하나만 연다. */
+/* 다섯 묶음을 한 열로 쌓으면 3500px 스크롤이 된다. 목차가 한 번에 하나만 연다.
+   열린 패널이 스크롤 상자다. 앞서 이 세 규칙을 아래에서 다시 선언해 두었다가
+   같은 속성을 두 번 쓰는 바람에 어느 쪽이 이기는지 읽기 어려웠다. 한곳에 모은다. */
 .settings-panels {
   display: grid;
   gap: var(--spacing-3);
   min-width: 0;
+  min-height: 0;
 }
 
 .settings-panels > .settings-panel {
@@ -1678,6 +1726,8 @@ body.view-task .task-detail-head {
 
 .settings-panels > .settings-panel.active {
   display: block;
+  max-height: 100%;
+  overflow: auto;
 }
 
 .settings-panel {
@@ -1687,9 +1737,14 @@ body.view-task .task-detail-head {
   overflow: hidden;
 }
 
+/* 패널이 스크롤 상자이므로 머리글은 그 안에서 붙는다. */
 .settings-panel > header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
   padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--divider-BorderColor);
+  background: var(--surface-01-BackgroundColor);
 }
 
 .settings-panel > header h2 {
@@ -1779,18 +1834,25 @@ body.view-task .task-detail-head {
 
 /* 계약 설정은 JS가 주입하며 header/.settings-body 구조 대신
    .section-heading을 쓴다. 패널 안쪽 여백을 직접 준다. */
-.contract-settings {
-  padding: var(--spacing-3);
-}
-
+/* 계약 패널은 머리글만 .section-heading 모양을 쓰고 나머지 구조는 다른 패널과 같다.
+   패널 자신에 padding을 주면 붙은 머리글이 그만큼 안쪽에 떠서 내용이 옆으로 새어 보인다. */
 .contract-settings > .section-heading {
-  margin-bottom: var(--spacing-2);
+  margin-bottom: 0;
 }
 
 .contract-settings > .section-heading p {
   margin: var(--spacing-0_5) 0 0;
   color: var(--secondary-TextColor);
   font-size: var(--small-FontSize);
+}
+
+.contract-settings > :not(header) {
+  margin-left: var(--spacing-3);
+  margin-right: var(--spacing-3);
+}
+
+.contract-settings > :last-child {
+  margin-bottom: var(--spacing-3);
 }
 
 /* 문서 표시 규칙은 읽기 전용이다. 어느 파일을 열어야 하는지가 핵심 정보라 경로를 본문에 둔다. */

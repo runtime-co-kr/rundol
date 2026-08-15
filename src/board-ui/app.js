@@ -397,15 +397,24 @@ function renderTask(id) {
 }
 // 사람·역할·이해관계자는 성격이 다르다. 멤버는 이름이 짧고 수가 적어 카드가 맞지만,
 // 역할과 이해관계자는 책임 문장이 길어 카드에 넣으면 두 줄에서 잘린다. 목록 행으로 둔다.
+// project.md의 값에는 [[project#^ROLE-001|제품·기술 책임자]] 같은 Obsidian 링크가 들어 있다.
+// 그대로 두면 화면에 대괄호와 앵커가 그대로 나온다. 보이는 이름만 남긴다.
+function plainText(value) { return String(value || '').replace(/\[\[[^\]|]*\|([^\]]+)\]\]/gu, '$1').replace(/\[\[([^\]]+)\]\]/gu, '$1'); }
+// 필드를 전부 이어붙이면 한 줄이 문단이 된다. 종류마다 그 사람을 가장 잘 말하는 하나만 쓴다.
+const personSummaryField = { members: '책임 영역', roles: '미션', stakeholders: '관심' };
+function personSummary(item, group) {
+  const fields = item.fields || {};
+  const preferred = fields[personSummaryField[group]];
+  return plainText(item.description || preferred || Object.values(fields)[0] || '');
+}
 function personRow(item, group) {
-  const detail = item.description || Object.values(item.fields || {}).join(' · ');
-  return `<button class="person-row" data-person="${escapeHtml(group)}:${escapeHtml(item.id)}"><span class="person-row-main"><strong>${escapeHtml(item.name || item.id)}</strong><small>${escapeHtml(detail || '설명 없음')}</small></span><span class="eyebrow">${escapeHtml(item.id)}</span></button>`;
+  return `<button class="person-row" data-person="${escapeHtml(group)}:${escapeHtml(item.id)}"><span class="person-row-main"><strong>${escapeHtml(item.name || item.id)}</strong><small>${escapeHtml(personSummary(item, group) || '설명 없음')}</small></span><span class="eyebrow">${escapeHtml(item.id)}</span></button>`;
 }
 function renderPeople() {
   const people = state.snapshot.people;
   // 명단만 다시 그리면 옆에 열어둔 사람의 태스크·문서 수가 예전 값으로 남는다.
   if (state.selected && document.body.dataset.peekKind === 'person') redrawPerson(state.selected);
-  el('members').innerHTML = people.members.map((item) => `<button class="person-card" data-person="members:${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · ') || '설명 없음')}</small></button>`).join('') || '<p class="empty-state">등록된 멤버가 없습니다.</p>';
+  el('members').innerHTML = people.members.map((item) => `<button class="person-card" data-person="members:${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(plainText((item.fields || {})['역할']) || '역할 미지정')}</small><small>${escapeHtml(personSummary(item, 'members') || '설명 없음')}</small></button>`).join('') || '<p class="empty-state">등록된 멤버가 없습니다.</p>';
   el('roles').innerHTML = people.roles.map((item) => personRow(item, 'roles')).join('') || '<p class="empty-state">정의된 역할이 없습니다.</p>';
   el('stakeholders').innerHTML = people.stakeholders.map((item) => personRow(item, 'stakeholders')).join('') || '<p class="empty-state">등록된 이해관계자가 없습니다.</p>';
 }
@@ -424,7 +433,7 @@ function personDetailHtml(entry, group) {
   const open = tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status));
   const documents = state.snapshot.documents.filter((item) => String(item.owner || '').includes(entry.id));
   return `<article class="task-detail"><header class="task-detail-head"><p class="eyebrow">${escapeHtml(labels[group] || group)} · ${escapeHtml(entry.id)}</p><h1>${escapeHtml(entry.name || entry.id)}</h1></header>`
-    + `<dl class="task-properties">${[['설명', entry.description || '없음']].concat(fields).map(([label, value]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`).join('')}</dl>`
+    + `<dl class="task-properties">${fields.map(([label, value]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(plainText(value))}</dd></div>`).join('') || '<div class="property"><dt>설명</dt><dd>없음</dd></div>'}</dl>`
     + `<section class="task-detail-section"><h2>맡은 태스크 <span class="badge">${open.length}/${tasks.length}</span></h2>${tasks.length ? `<div class="task-table">${tasks.slice(0, 8).map(taskRow).join('')}</div>` : '<p class="empty-state">연결된 태스크가 없습니다.</p>'}</section>`
     + `<section class="task-detail-section"><h2>소유 문서 <span class="badge">${documents.length}</span></h2>${documents.length ? `<div class="card-grid">${documents.slice(0, 6).map(documentCard).join('')}</div>` : '<p class="empty-state">소유한 문서가 없습니다.</p>'}</section>`
     + '<p class="control-hint">project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></article>';
@@ -758,7 +767,7 @@ el('settings-member').addEventListener('change', (event) => { el('current-member
 el('reset-view-options').addEventListener('click', () => { resetViewOptions(); populateControls(); setView(state.view, state.selected); message('이 프로젝트의 표시 설정을 초기값으로 되돌렸습니다.'); });
 function ensureContractSettings() {
   if (el('contract-settings')) return;
-  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><div class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></div><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
+  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></header><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
 function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
 function setSuggestionState(row, value, selected) {
