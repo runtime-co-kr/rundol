@@ -63,7 +63,13 @@
       <section id="tasks-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">TASKS</p><h1 id="tasks-heading">전체 태스크</h1><p id="tasks-description">프로젝트의 모든 작업을 목록과 Board로 확인합니다.</p></div><div class="segmented"><button id="task-list-mode" class="active">목록</button><button id="task-board-mode">Board</button></div></header>
         <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
-        <div class="toolbar"><select id="owner"><option value="">모든 담당자</option></select><select id="priority"><option value="">모든 우선순위</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select><button id="new-task">새 태스크</button></div>
+        <div class="toolbar">
+          <label class="toolbar-field"><span>담당자</span><select id="owner"><option value="">모두</option></select></label>
+          <label class="toolbar-field"><span>우선순위</span><select id="priority"><option value="">모두</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label>
+          <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
+          <label class="toolbar-field"><span>묶음</span><select id="group-by"><option value="status">상태</option><option value="owner">담당자</option><option value="priority">우선순위</option></select></label>
+          <button id="new-task">새 태스크</button>
+        </div>
         <form id="quick-add" class="quick-add"><span class="quick-add-mark">+</span><input id="quick-add-title" maxlength="160" placeholder="제목을 입력하고 Enter를 누르면 바로 추가됩니다" aria-label="태스크 빠른 추가"><button class="primary" id="quick-add-save">추가</button></form>
         <div id="task-list" class="task-table"></div><div id="board" hidden></div>
       </section>

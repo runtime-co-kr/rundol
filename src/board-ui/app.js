@@ -65,6 +65,26 @@ function queueTaskUpdate(task, changes) { let pending = state.pendingTasks.get(t
 async function flushTaskUpdate(taskId) { const pending = state.pendingTasks.get(taskId); if (!pending) return; pending.timer = null; try { await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, pending.changes)) }); state.pendingTasks.delete(taskId); await loadSnapshot(true); if (state.view === 'task' && state.selected === taskId) renderTask(taskId); message('태스크 변경을 파일에 저장했습니다.'); } catch (error) { state.pendingTasks.delete(taskId); await loadSnapshot(true); if (state.view === 'task' && state.selected === taskId) renderTask(taskId); message(`변경을 되돌렸습니다: ${error.message}`, true); } }
 
 // 화면 이름을 body에 남겨 선택 대상이 없는 화면에서 Context 패널을 접는다.
+// 표시 옵션은 지금까지 아무데도 남지 않아 새로고침마다 초기화됐다.
+// 프로젝트마다 일하는 방식이 다르므로 프로젝트별로 기억한다.
+// 읽는 순서는 URL 해시 > 내 저장값 > 기본값이다. URL로 들어온 값은 저장하지 않는다 —
+// 남의 링크를 한 번 열었다고 내 기본이 바뀌면 안 된다.
+function viewOptionKey(name) { return `rundol.view.${state.project}.${name}`; }
+function viewOption(name, fallback) {
+  const hash = new URLSearchParams(location.hash.slice(1)).get(name);
+  if (hash !== null) return hash;
+  const saved = localStorage.getItem(viewOptionKey(name));
+  return saved === null ? fallback : saved;
+}
+function setViewOption(name, value) {
+  if (value === null || value === undefined || value === '') localStorage.removeItem(viewOptionKey(name));
+  else localStorage.setItem(viewOptionKey(name), String(value));
+}
+function resetViewOptions() {
+  const prefix = `rundol.view.${state.project}.`;
+  for (const key of Object.keys(localStorage)) if (key.startsWith(prefix)) localStorage.removeItem(key);
+}
+
 // breadcrumb은 지금까지 textContent라 눌러도 아무 일이 없었다.
 // 마디마다 돌아갈 곳이 있어야 들어갔다 나오는 길이 생긴다.
 function breadcrumb(parts) {
@@ -144,21 +164,46 @@ function renderDocument(id) { const item = state.snapshot.documents.find((docume
   renderLeaseBanner(item.id); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 function taskRow(task) { const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length; const total = Object.keys(task.acceptanceCriteria || {}).length; return `<button class="task-row" data-task="${task.id}"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))}· ${completed}/${total}</span></button>`; }
-// 상태별 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
-// 묶음 머리글에 개수를 붙이고 스크롤 중에도 머리글을 붙여 둔다.
+// 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
+// 상태로 묶으면 완료 묶음이 생기고 기본으로 접는다. 개수는 남으므로 진행감은 잃지 않는다.
+const groupers = {
+  status: { order: () => Object.keys(statusLabels), key: (task) => task.status, label: (key) => statusLabels[key] || key },
+  owner: { order: null, key: (task) => task.owner || '', label: (key) => personName(key) || '미지정' },
+  priority: { order: () => ['high', 'mid', 'low'], key: (task) => task.priority, label: (key) => ({ high: '높음', mid: '중간', low: '낮음' }[key] || key) }
+};
+function groupCollapsed(groupBy, key) {
+  const saved = viewOption(`collapse.${groupBy}.${key}`, null);
+  if (saved !== null) return saved === '1';
+  return groupBy === 'status' && key === 'done';
+}
 function taskGroups(tasks) {
-  return Object.keys(statusLabels)
-    .map((status) => [status, tasks.filter((task) => task.status === status)])
+  const groupBy = viewOption('groupBy', 'status');
+  const grouper = groupers[groupBy] || groupers.status;
+  const keys = grouper.order ? grouper.order() : Array.from(new Set(tasks.map(grouper.key))).sort();
+  return keys
+    .map((key) => [key, tasks.filter((task) => grouper.key(task) === key)])
     .filter(([, items]) => items.length)
-    .map(([status, items]) => `<section class="task-group"><header class="task-group-head"><span class="chip">${escapeHtml(statusLabels[status])}</span><span class="badge">${items.length}</span></header>${items.map(taskRow).join('')}</section>`)
+    .map(([key, items]) => {
+      const collapsed = groupCollapsed(groupBy, key);
+      return `<section class="task-group${collapsed ? ' collapsed' : ''}"><button class="task-group-head" data-group-toggle="${escapeHtml(`${groupBy}.${key}`)}" aria-expanded="${!collapsed}"><span class="group-caret">${collapsed ? '▸' : '▾'}</span><span class="chip">${escapeHtml(grouper.label(key))}</span><span class="badge">${items.length}</span></button>${collapsed ? '' : items.map(taskRow).join('')}</section>`;
+    })
     .join('');
 }
-function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">상단에서 현재 사용자를 선택하면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)); if (state.taskMode === 'list') { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>'; } else { el('task-list').hidden = true; el('board').hidden = false; el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); } }
+function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">상단에서 현재 사용자를 선택하면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value));
+  // 완료 숨기기는 접기와 다른 일을 한다. 접기는 묶음 머리글을 남기고, 숨기기는 항목을 뺀다.
+  // 담당자나 우선순위로 묶으면 완료 묶음이 없으므로 그때는 이 필터가 그 역할을 한다.
+  if (el('hide-done').checked) tasks = tasks.filter((task) => task.status !== 'done'); if (state.taskMode === 'list') { el('task-list').hidden = false; el('board').hidden = true; el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>'; } else { el('task-list').hidden = true; el('board').hidden = false; el('board').innerHTML = Object.keys(statusLabels).map((status) => `<section class="column"><h2>${statusLabels[status]}</h2>${tasks.filter((task) => task.status === status).map((task) => `<button class="task-card" data-task="${task.id}"><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.owner || '미지정')}</small></button>`).join('')}</section>`).join(''); } }
 function renderTask(id) { const task = state.snapshot.tasks.tasks.find((item) => item.id === id); if (!task) return setView('tasks'); const documents = (task.links || []).map((link) => state.snapshot.documents.find((item) => item.id === link)).filter(Boolean); const dependencies = (task.deps || []).map((dependency) => state.snapshot.tasks.tasks.find((item) => item.id === dependency)).filter(Boolean); el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]); el('task-detail-title').textContent = task.title; el('task-detail-summary').textContent = task.summary || '설명이 등록되지 않았습니다.'; el('task-detail-badges').innerHTML = [task.id, statusLabels[task.status] || task.status, task.priority, `담당 ${personName(task.owner)}`].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); const criteria = Object.entries(task.acceptanceCriteria || {}); el('task-acceptance-list').innerHTML = criteria.length ? criteria.map(([key, value]) => `<article class="acceptance-item ${value.done ? 'done' : ''}"><button class="acceptance-toggle" data-task-acceptance="${escapeHtml(key)}" aria-pressed="${value.done}" aria-label="${escapeHtml(key)} 완료 상태 변경">${value.done ? '✓' : '○'}</button><span><strong>${escapeHtml(key)}</strong><br>${escapeHtml(value.text)}</span></article>`).join('') : '<p class="empty-state">완료 조건이 없습니다.</p>'; el('task-documents').innerHTML = documents.length ? documents.map(documentCard).join('') : '<p class="empty-state">연결된 문서가 없습니다.</p>'; el('task-dependencies').innerHTML = dependencies.length ? dependencies.map(taskRow).join('') : '<p class="empty-state">의존 태스크가 없습니다.</p>'; el('task-blocker').textContent = blockerText(task.blocker); el('task-external-refs').innerHTML = (task.externalRefs || []).length ? task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('') : '<p class="empty-state">없음</p>'; el('task-timestamps').innerHTML = [['생성', task.createdAt], ['수정', task.updatedAt], ['상태 변경', task.statusChangedAt]].map(([label, value]) => `<div class="property"><dt>${label}</dt><dd>${escapeHtml(value || '-')}</dd></div>`).join(''); renderContext(task, 'task'); }
 function renderPeople() { const people = state.snapshot.people; for (const [id, values] of [['members', people.members], ['roles', people.roles], ['stakeholders', people.stakeholders]]) el(id).innerHTML = values.map((item) => `<article class="person-card"><span class="eyebrow">${item.id}</span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.description || Object.values(item.fields || {}).join(' · '))}</small></article>`).join(''); }
 function renderOperations() { const sync = state.snapshot.sync; el('operation-status').innerHTML = `<article class="operation-card"><p class="eyebrow">SYNC</p><h2>${escapeHtml(sync.state)}</h2><p>${sync.ahead ?? '—'} ahead · ${sync.behind ?? '—'} behind</p><small>${escapeHtml(sync.head.slice(0, 12))}</small></article><article class="operation-card"><p class="eyebrow">ATTENTION</p><h2>${state.snapshot.attention.length}</h2><p>현재 조치 필요 항목</p></article><article class="operation-card"><p class="eyebrow">WATCH</p><h2>외부 CLI</h2><p>watch 상태는 다음 Snapshot 계약에서 연결됩니다.</p></article>`; el('leases').innerHTML = state.snapshot.leases.map((item) => `<article class="entity-card"><strong>${escapeHtml(item.documentId)}</strong><small>${escapeHtml(item.clientId)} · ${escapeHtml(item.expiresAt)}</small></article>`).join('') || '<p class="empty-state">활성 임대가 없습니다.</p>'; }
 
-function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모든 담당자', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-status').replaceChildren(...Object.entries(statusLabels).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
+function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모두', ''), ...members.map((item) => new Option(item.name, item.id)));
+  // 저장해 둔 표시 옵션을 컨트롤에 되돌린다. 값이 사라진 담당자를 가리키면 무시한다.
+  const savedOwner = viewOption('owner', '');
+  el('owner').value = members.some((item) => item.id === savedOwner) ? savedOwner : '';
+  el('priority').value = viewOption('priority', '');
+  el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
+  el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); el('task-status').replaceChildren(...Object.entries(statusLabels).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
 function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; }
 // 편집 중에는 화면을 다시 그리지 않는다. setView가 renderDocument를 거쳐 편집기를 닫으므로
 // 폴링이 3초마다 입력 중인 내용을 지워버린다. 스냅샷은 계속 받되 렌더링만 미룬다.
@@ -218,7 +263,19 @@ document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-settings-section]');
   if (button) showSettingsSection(button.dataset.settingsSection);
 });
-el('refresh').addEventListener('click', () => loadSnapshot(false)); el('owner').addEventListener('change', () => renderTasks()); el('priority').addEventListener('change', () => renderTasks());
+el('refresh').addEventListener('click', () => loadSnapshot(false));
+for (const [id, option] of [['owner', 'owner'], ['priority', 'priority'], ['group-by', 'groupBy']]) {
+  el(id).addEventListener('change', () => { setViewOption(option, el(id).value); renderTasks(); });
+}
+el('hide-done').addEventListener('change', () => { setViewOption('hideDone', el('hide-done').checked ? '1' : ''); renderTasks(); });
+// 묶음 접기. 상태로 묶었을 때 완료는 기본으로 접히고, 사용자가 바꾸면 그 선택이 이긴다.
+document.addEventListener('click', (event) => {
+  const toggle = event.target.closest('[data-group-toggle]');
+  if (!toggle) return;
+  const [groupBy, key] = toggle.dataset.groupToggle.split('.');
+  setViewOption(`collapse.${groupBy}.${key}`, groupCollapsed(groupBy, key) ? '0' : '1');
+  renderTasks();
+});
 el('task-list-mode').addEventListener('click', () => { state.taskMode = 'list'; el('task-list-mode').classList.add('active'); el('task-board-mode').classList.remove('active'); renderTasks(); }); el('task-board-mode').addEventListener('click', () => { state.taskMode = 'board'; el('task-board-mode').classList.add('active'); el('task-list-mode').classList.remove('active'); renderTasks(); });
 el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed')); el('collapse-context').addEventListener('click', () => { if (matchMedia('(max-width: 1050px)').matches) document.body.classList.remove('context-open'); else { document.body.classList.remove('context-open'); document.body.classList.toggle('context-collapsed'); } });
 el('menu-button').addEventListener('click', () => document.body.classList.toggle('nav-open'));
