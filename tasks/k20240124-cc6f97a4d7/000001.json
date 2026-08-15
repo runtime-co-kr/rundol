@@ -559,7 +559,7 @@
       "reviewers": [],
       "stakeholders": [],
       "status": "todo",
-      "priority": "high",
+      "priority": "mid",
       "links": [
         "REQ-012",
         "TST-002"
@@ -581,7 +581,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:59:09.900Z",
-      "updatedAt": "2026-08-15T04:05:32.462Z",
+      "updatedAt": "2026-08-15T18:27:48.503Z",
       "statusChangedAt": "2026-08-15T04:05:32.462Z",
       "externalRefs": [],
       "project": "rundol",
