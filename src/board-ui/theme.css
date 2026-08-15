@@ -74,9 +74,10 @@
   --control-Height: 34px;
   --row-MinHeight: 44px;
   --topbar-Height: 52px;
+  --header-Height: 52px;
   --nav-Width: 248px;
   --context-Width: 300px;
-  --peek-Width: clamp(360px, 42vw, 620px);
+  --peek-Width: clamp(420px, 50vw, 900px);
 
   --caption-FontSize: 12px;
   --small-FontSize: 13px;

@@ -9,37 +9,41 @@
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
-  <div class="workspace-shell">
-    <aside class="navigation-panel" aria-label="Workspace 탐색">
-      <div class="sidebar-head">
-        <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark">R</span><span><b>Rundol</b><small>Workspace</small></span></a>
-        <button id="collapse-nav" class="icon-button" aria-label="탐색 접기">‹</button>
-      </div>
+  <!-- 어디에 있든 같은 자리에 있어야 하는 것만 헤더가 갖는다. 무엇을 보고 있는지(프로젝트),
+       어디로 갈지(주요 이동·검색), 지금 상태가 어떤지(동기화·조치·사용자).
+       사이드바는 지금 보는 프로젝트의 내용물만 남긴다. -->
+  <header class="app-header">
+    <div class="app-header-left">
+      <button id="menu-button" class="icon-button" aria-label="탐색 열기">☰</button>
+      <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark">R</span><b>Rundol</b></a>
       <label class="sr-only" for="project-switcher">프로젝트</label>
       <select id="project-switcher"></select>
-      <label class="search"><span>⌕</span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
       <nav class="primary-nav" aria-label="주요 화면">
         <button data-view="home" class="nav-item active">홈</button>
         <button data-view="documents" class="nav-item">문서</button>
         <button data-view="tasks" class="nav-item">태스크</button>
       </nav>
+    </div>
+    <label class="search"><span>⌕</span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
+    <div class="app-header-right">
+      <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
+      <button id="health" class="health" data-view="home"><span class="health-dot"></span><span id="health-label">상태 확인</span><span id="operation-count" class="badge"></span></button>
+      <button id="refresh" class="icon-button" aria-label="로컬 새로고침">↻</button>
+      <label class="sr-only" for="current-member">보기 기준</label>
+      <select id="current-member" title="보기 기준"><option value="">사용자 선택</option></select>
+      <button id="settings-button" class="icon-button" data-view="settings" aria-label="설정">⚙</button>
+    </div>
+  </header>
+
+  <div class="workspace-shell">
+    <aside class="navigation-panel" aria-label="프로젝트 탐색">
       <section><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
       <section><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
-      <section class="utility-nav"><h2>관리</h2><button data-view="people">사람과 역할</button><button data-view="operations">운영 상태 <span id="operation-count" class="badge"></span></button><button id="settings-button" data-view="settings">설정</button></section>
-      <div class="sidebar-foot">
-        <label class="sr-only" for="current-member">현재 사용자</label>
-        <select id="current-member" title="현재 사용자"><option value="">사용자 선택</option></select>
-        <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
-        <div class="sidebar-foot-actions">
-          <button id="health" class="health" data-view="operations"><span class="health-dot"></span><span id="health-label">상태 확인</span></button>
-          <button id="refresh" class="icon-button" aria-label="로컬 새로고침">↻</button>
-        </div>
-      </div>
+      <section class="utility-nav"><h2>참고</h2><button data-view="people">사람과 역할</button></section>
     </aside>
 
     <main class="main-content" tabindex="-1">
       <div class="mobile-bar">
-        <button id="menu-button" class="icon-button mobile-only" aria-label="탐색 열기">☰</button>
         <button id="context-button" class="icon-button mobile-only" aria-label="Context 열기">◫</button>
       </div>
       <div id="message" role="status" aria-live="polite"></div>
@@ -77,13 +81,13 @@
         <div id="task-list" class="task-table"></div><div id="board" hidden></div><div id="task-graph" class="task-graph" hidden></div>
       </section>
 
+      <!-- 사이드 peek과 같은 컴포넌트를 담는 그릇. 구조는 taskDetailHtml 하나가 소유한다. -->
       <section id="task-view" class="view" hidden>
-        <header class="reader-heading"><div id="task-breadcrumb" class="breadcrumb"></div><h1 id="task-detail-title"></h1><p id="task-detail-summary"></p><div id="task-detail-badges" class="chip-row"></div></header>
-        <div class="task-detail-grid"><div><section class="content-section"><h2>완료 조건</h2><div id="task-acceptance-list" class="acceptance-list"></div></section><section class="content-section"><h2>연관 문서</h2><div id="task-documents" class="card-grid"></div></section><section class="content-section"><h2>의존 태스크</h2><div id="task-dependencies" class="task-table"></div></section></div><aside class="task-detail-side"><section><h2>차단 사유</h2><p id="task-blocker"></p></section><section><h2>반려 사유</h2><p id="task-cancellation"></p></section><section><h2>외부 참조</h2><div id="task-external-refs"></div></section><section><h2>변경 시각</h2><dl id="task-timestamps"></dl></section></aside></div>
+        <div id="task-breadcrumb" class="breadcrumb"></div>
+        <div id="task-page"></div>
       </section>
 
-      <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="card-grid"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="card-grid"></div></section></div></section>
-      <section id="operations-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">OPERATIONS</p><h1>상태와 복구</h1></div></header><div id="operation-status" class="operation-grid"></div><section class="content-section"><h2>편집 임대</h2><div id="leases" class="card-grid"></div></section></section>
+      <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1><p>project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="card-grid"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="card-grid"></div></section></div></section>
       <section id="settings-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header>
         <div class="settings-layout">
@@ -96,6 +100,7 @@
             <button data-settings-section="presentation-settings">문서 표시 규칙</button>
             <h2>Workspace</h2>
             <button data-settings-section="settings-clients">Clients</button>
+            <button data-settings-section="settings-leases">편집 임대</button>
           </nav>
           <div id="settings-panels" class="settings-panels">
             <section id="settings-appearance" class="settings-panel">
@@ -116,6 +121,10 @@
             <section id="settings-clients" class="settings-panel">
               <header><h2>Clients</h2><p>이 Workspace에 등록된 협업 실행 주체입니다. 등록과 삭제는 <code>rdl client</code> 명령이 담당하고 여기서는 활성 상태만 바꿉니다.</p></header>
               <div class="settings-body"><div id="clients" class="client-list"></div></div>
+            </section>
+            <section id="settings-leases" class="settings-panel">
+              <header><h2>편집 임대</h2><p>지금 누가 어떤 문서를 잡고 있는지 보여줍니다. 5분이 지나면 스스로 풀리므로 여기서 강제로 뺏지 않습니다.</p></header>
+              <div class="settings-body"><div id="leases" class="card-grid"></div></div>
             </section>
           </div>
         </div>

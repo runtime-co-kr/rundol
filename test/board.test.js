@@ -35,7 +35,8 @@ async function testBoard() {
     assert(page.body.includes('새 태스크'));
     assert(page.body.includes('프로젝트 문서'));
     assert(page.body.includes('Needs Attention'));
-    assert(page.body.includes('운영 상태'));
+    // 운영 상태 화면은 없앴다. 동기화와 조치 필요는 헤더가, 그 목록은 홈이 갖는다.
+    assert(page.body.includes('동기화 상태'));
     assert(page.body.includes('설정'));
     assert(page.body.includes('test-session-token'));
     assert(page.headers['content-security-policy'].includes("default-src 'self'"));

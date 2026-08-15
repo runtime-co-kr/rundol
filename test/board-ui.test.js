@@ -11,7 +11,12 @@ const style = fs.readFileSync(path.join(uiRoot, 'style.css'), 'utf8');
 
 assert(html.includes('id="current-member"'), 'Board must expose the current-member selector');
 assert(html.includes('id="task-view"'), 'Board must provide a dedicated task detail view');
-assert(html.includes('id="task-documents"'), 'Task detail must expose linked documents');
+// 태스크 상세는 사이드와 전체화면이 같은 컴포넌트를 쓴다. 구조는 HTML의 빈 자리가 아니라
+// taskDetailHtml 하나가 소유하므로, 화면마다 다른 id를 두지 않는다.
+assert(html.includes('id="task-page"'), '전체화면은 같은 컴포넌트를 담는 그릇이어야 합니다');
+assert(app.includes('function taskDetailHtml'), '태스크 상세는 한 곳에서 만들어야 합니다');
+assert(app.includes("taskDetailHtml(item, 'peek')") && app.includes("taskDetailHtml(task, 'page')"), '사이드와 전체화면이 같은 함수를 써야 합니다');
+assert(app.includes('연결 문서'), 'Task detail must expose linked documents');
 assert(html.includes('id="theme-system"'), 'Settings must provide system theme mode');
 assert(html.includes('id="theme-dark"'), 'Settings must provide dark theme mode');
 assert(html.includes('id="theme-light"'), 'Settings must provide light theme mode');
@@ -60,8 +65,14 @@ assert(app.includes('Workspace board.json'), 'Settings must show Workspace prese
 assert(app.includes('프로젝트 board.json'), 'Settings must show project presentation inheritance');
 assert(app.includes('documentTypeLabel(documentValue)'), 'Document cards must use the shared type vocabulary');
 assert(app.includes('documentStateLabel(documentValue.state)'), 'Document cards must use the shared state vocabulary');
-assert(html.includes('data-view="operations">운영 상태'), 'Sidebar management labels must use consistent Korean terminology');
-assert(html.includes('data-view="settings">설정'), 'Sidebar settings label must use consistent Korean terminology');
+// 운영 상태 화면은 없앴다. SYNC와 ATTENTION은 헤더·홈과 중복이었고 WATCH는 빈 자리표시자였다.
+// 유일하게 고유하던 편집 임대만 Workspace 범위인 설정으로 옮겼다.
+assert(!html.includes('data-view="operations"'), '운영 상태 화면은 헤더와 홈의 중복이라 두지 않습니다');
+assert(!app.includes('renderOperations'), '운영 상태 렌더러가 남아 있으면 안 됩니다');
+assert(!app.includes('다음 Snapshot 계약에서 연결됩니다'), '빈 자리표시자를 화면에 두지 않습니다');
+assert(html.includes('data-settings-section="settings-leases"'), '편집 임대는 Workspace 설정으로 옮겨야 합니다');
+assert(app.includes("el('leases')"), '편집 임대는 설정에서 그려야 합니다');
+assert(html.includes('id="settings-button"'), '설정으로 가는 길이 있어야 합니다');
 const theme = fs.readFileSync(path.join(uiRoot, 'theme.css'), 'utf8');
 
 // 구조 스타일시트는 색을 직접 쓰지 않는다. 하나라도 hex가 있으면 테마 전환이 그 지점에서 깨진다.
@@ -173,12 +184,27 @@ assert(app.includes('cancellationText(task.cancellation)'), '태스크 상세는
 assert(app.includes("const TERMINAL_STATUSES = ['done', 'cancelled']"), '완료와 반려는 함께 종료로 다뤄야 합니다');
 assert(!app.includes("task.status !== 'done')"), '종료 판정에 done만 쓰면 반려된 태스크가 열린 것으로 남습니다');
 
-// peek이 속성만 보여주면 목록에서 태스크를 눌러도 무슨 일인지 읽을 수 없다.
-assert(app.includes('context-lead'), 'Task peek은 제목과 설명을 먼저 보여야 합니다');
-assert(app.includes('context-summary'), 'Task peek은 설명을 보여야 합니다');
-assert(app.includes('data-task-full'), 'Task peek에서 상세 화면으로 갈 수 있어야 합니다');
+// Notion 순서: 제목 → 속성 → 내용. 속성은 짧고 고정이라 위에서 한눈에 지나가고,
+// 길이를 알 수 없는 내용이 그 아래로 흐른다. peek이 속성만 보여주던 문제의 해결이기도 하다.
+const detail = app.slice(app.indexOf('function taskDetailHtml'), app.indexOf('function renderContext'));
+assert(detail.indexOf('task-detail-head') < detail.indexOf('task-properties'), '제목이 속성보다 먼저 와야 합니다');
+assert(detail.indexOf('task-properties') < detail.indexOf('task-detail-summary'), '속성이 내용보다 먼저 와야 합니다');
+assert(app.includes('data-task-full'), 'peek에서 전체화면으로 갈 수 있어야 합니다');
+assert(app.includes('크게 보기'), '전체화면으로 가는 동작은 크게 보기입니다');
 assert(app.includes('function redrawTask'), '낙관적 변경은 보고 있는 화면에 바로 반영되어야 합니다');
-assert(style.includes('.context-lead h2'), 'peek 제목은 속성 라벨과 다르게 보여야 합니다');
+assert(style.includes('.task-detail-head h1'), '상세 제목은 속성 라벨과 다르게 보여야 합니다');
+
+// 헤더가 어디서든 바뀌지 않는 것을 갖고, 사이드바에는 프로젝트 내용물만 남는다.
+assert(html.includes('class="app-header"'), '헤더가 있어야 합니다');
+for (const id of ['project-switcher', 'global-search', 'sync-status', 'current-member', 'settings-button']) {
+  const header = html.slice(html.indexOf('<header class="app-header"'), html.indexOf('</header>'));
+  assert(header.includes(`id="${id}"`), `${id}는 헤더에 있어야 합니다`);
+}
+const sidebar = html.slice(html.indexOf('<aside class="navigation-panel"'), html.indexOf('</aside>'));
+assert(sidebar.includes('document-filters') && sidebar.includes('recent-documents'), '사이드바는 프로젝트 내용물을 갖습니다');
+assert(!sidebar.includes('project-switcher') && !sidebar.includes('global-search'), '사이드바가 프로젝트 전환과 검색까지 지면 넘칩니다');
+assert(style.includes('--header-Height'), '헤더 높이는 토큰이어야 합니다');
+assert(theme.includes('--header-Height'), '헤더 높이 토큰이 theme.css에 있어야 합니다');
 
 // 접기 버튼은 class만 토글한다. 받는 CSS가 없으면 아무 일도 일어나지 않는다.
 for (const name of ['nav-collapsed', 'context-collapsed', 'nav-open', 'context-open']) {
@@ -199,8 +225,16 @@ for (const component of ['.search input', '.quick-add input']) {
 // 태스크 peek은 속성 패널 폭으로는 완료조건이 읽히지 않는다.
 assert(app.includes("classList.add('peek-open')"), '태스크를 열면 읽을 폭을 확보해야 합니다');
 assert(app.includes("if (view !== 'tasks') document.body.classList.remove('peek-open')"), '다른 화면으로 가면 원래 폭으로 되돌려야 합니다');
-assert(/body\.peek-open \.workspace-shell\s*\{[^}]*var\(--peek-Width\)/u.test(style), 'peek 폭은 토큰으로 정의해야 합니다');
-assert(theme.includes('--peek-Width'), 'peek 폭 토큰이 theme.css에 있어야 합니다');
+// 열로 만들어 밀어내면 peek을 넓힐수록 목록이 좁아져 둘 다 못 읽는다. 겹쳐야 한다.
+assert(/body\.peek-open \.context-panel\s*\{[^}]*position:\s*fixed/u.test(style), 'peek은 본문을 밀어내지 말고 덮어야 합니다');
+assert(/body\.peek-open \.context-panel\s*\{[^}]*width:\s*var\(--peek-Width\)/u.test(style), 'peek 폭은 토큰으로 정의해야 합니다');
+assert(/--peek-Width:\s*clamp\(\d+px,\s*50vw/u.test(theme), 'peek은 화면의 절반을 차지해야 합니다');
+// 패널을 흐름에서 빼면 남은 열도 같이 정리해야 빈 자리가 남지 않는다.
+assert(/body\.peek-open \.workspace-shell\s*\{[^}]*grid-template-columns:\s*var\(--nav-Width\) minmax\(0, 1fr\)/u.test(style), 'peek이 열리면 셸은 두 열이어야 합니다');
+// 덮는 UI는 닫는 길이 분명해야 한다.
+assert(app.includes('function closePeek'), 'peek을 닫는 경로가 하나로 모여야 합니다');
+assert(app.includes("event.key === 'Escape'"), 'Esc로 peek을 닫을 수 있어야 합니다');
+assert(app.includes("event.target.closest('.context-panel')"), '바깥을 누르면 peek이 닫혀야 합니다');
 
 // flex/grid 자식의 기본 min-width는 내용 크기다. 줄이지 않으면 사이드바를 밀고 나간다.
 assert(/\.search\s*\{[^}]*min-width:\s*0/u.test(style), '검색 상자는 사이드바 폭 안에서 줄어야 합니다');
