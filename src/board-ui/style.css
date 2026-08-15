@@ -645,16 +645,18 @@ body.peek-open.nav-collapsed .workspace-shell {
   grid-template-columns: var(--nav-rail-Width) minmax(0, 1fr);
 }
 
+/* display를 block으로 되돌리면 세로 flex가 풀려 본문에 높이 제약이 사라진다.
+   그러면 내용이 패널 밖으로 자라고 overflow: hidden에 잘려 스크롤이 아예 생기지 않는다.
+   여백도 패널이 아니라 각 칸이 갖는다. 패널이 padding을 가지면 머리글이 그만큼 밀린다. */
 body.peek-open .context-panel {
   position: fixed;
   z-index: 20;
-  top: 0;
+  top: var(--header-Height);
   right: 0;
   bottom: 0;
-  display: block;
+  display: flex;
   width: var(--peek-Width);
-  height: 100vh;
-  padding: var(--spacing-3);
+  height: auto;
   box-shadow: var(--medium-BoxShadow);
 }
 
@@ -704,7 +706,7 @@ body.context-collapsed .context-panel {
   padding: var(--spacing-1_5) var(--spacing-1);
 }
 
-body.context-collapsed .panel-title span,
+body.context-collapsed .panel-title > span,
 body.context-collapsed #context-empty,
 body.context-collapsed #context-content {
   display: none;
@@ -812,6 +814,31 @@ body.nav-collapsed.view-task .workspace-shell {
   border: 0;
   background: transparent;
   color: var(--primary-TextColor);
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-0_5);
+}
+
+/* 덮고 있을 때는 접는 게 아니라 닫는 것이다. ›는 옆으로 민다는 뜻이라 맞지 않는다. */
+.when-peek,
+body.peek-open .when-docked {
+  display: none;
+}
+
+body.peek-open .when-peek {
+  display: inline;
+}
+
+/* 크게 보기는 전체화면이 있는 대상에만 뜬다. 사람에게는 갈 곳이 없다. */
+#expand-context {
+  display: none;
+}
+
+body.peek-open[data-peek-kind='task'] #expand-context {
+  display: inline-flex;
 }
 
 .search {

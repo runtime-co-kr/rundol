@@ -135,7 +135,13 @@
     </main>
 
     <aside class="context-panel" aria-label="현재 항목 Context">
-      <div class="panel-title"><span>Context</span><button id="collapse-context" aria-label="Context 접기">›</button></div>
+      <div class="panel-title">
+        <span>Context</span>
+        <div class="panel-actions">
+          <button id="expand-context" class="icon-button" aria-label="크게 보기" title="크게 보기">⤢</button>
+          <button id="collapse-context" class="icon-button" aria-label="닫기"><span class="when-peek">×</span><span class="when-docked">›</span></button>
+        </div>
+      </div>
       <div id="context-empty" class="empty-state">문서나 태스크를 선택하면 속성, 연결과 검증 정보를 표시합니다.</div>
       <div id="context-content" hidden></div>
     </aside>

@@ -192,8 +192,7 @@ assert(!app.includes("task.status !== 'done')"), '종료 판정에 done만 쓰�
 const detail = app.slice(app.indexOf('function taskDetailHtml'), app.indexOf('function renderContext'));
 assert(detail.indexOf('task-detail-head') < detail.indexOf('task-properties'), '제목이 속성보다 먼저 와야 합니다');
 assert(detail.indexOf('task-properties') < detail.indexOf('task-detail-summary'), '속성이 내용보다 먼저 와야 합니다');
-assert(app.includes('data-task-full'), 'peek에서 전체화면으로 갈 수 있어야 합니다');
-assert(app.includes('크게 보기'), '전체화면으로 가는 동작은 크게 보기입니다');
+assert(html.includes('title="크게 보기"'), '전체화면으로 가는 동작은 크게 보기입니다');
 assert(app.includes('function redrawTask'), '낙관적 변경은 보고 있는 화면에 바로 반영되어야 합니다');
 assert(style.includes('.task-detail-head h1'), '상세 제목은 속성 라벨과 다르게 보여야 합니다');
 
@@ -285,6 +284,19 @@ assert(app.includes('acceptance-box'), '완료 상태는 네모칸으로 보여�
 assert(/\.acceptance-item\.done \.acceptance-box\s*\{[^}]*background:\s*var\(--accent-BackgroundColor\)/u.test(style), '완료된 칸은 채워져야 합니다');
 assert(/\.acceptance-item\.done \.acceptance-box::after/u.test(style), '완료된 칸에는 체크가 있어야 합니다');
 assert(/\.acceptance-item:hover/u.test(style), '행 전체가 눌린다는 것이 보여야 합니다');
+
+// peek에서 display를 block으로 되돌리면 세로 flex가 풀려 본문에 높이 제약이 사라지고,
+// 내용이 패널 밖으로 자라 overflow: hidden에 잘려 스크롤이 아예 생기지 않는다.
+assert(/body\.peek-open \.context-panel\s*\{[^}]*display:\s*flex/u.test(style), 'peek에서도 세로 flex를 유지해야 스크롤됩니다');
+assert(!/body\.peek-open \.context-panel\s*\{[^}]*padding:/u.test(style), '여백은 패널이 아니라 각 칸이 갖습니다');
+
+// 덮고 있을 때는 접는 게 아니라 닫는 것이다. ›는 옆으로 민다는 뜻이라 맞지 않는다.
+assert(html.includes('class="when-peek"') && html.includes('class="when-docked"'), '덮을 때와 붙어 있을 때의 손잡이가 달라야 합니다');
+assert(style.includes('body.peek-open .when-peek'), '덮을 때는 ×를 보여야 합니다');
+assert(html.includes('id="expand-context"'), '× 옆에 크게 보기가 있어야 합니다');
+assert(app.includes("el('expand-context').addEventListener"), '크게 보기가 동작해야 합니다');
+assert(app.includes("dataset.peekKind = 'task'") && app.includes("dataset.peekKind = 'person'"), 'peek에 담긴 것이 무엇인지 표시해야 합니다');
+assert(style.includes("body.peek-open[data-peek-kind='task'] #expand-context"), '전체화면이 없는 대상에는 크게 보기를 띄우지 않습니다');
 
 // 스크롤해도 지금 무엇을 보고 있는지와 접는 손잡이를 잃지 않아야 한다.
 assert(/\.navigation-panel,\s*\.context-panel\s*\{[^}]*flex-direction:\s*column/u.test(style), '패널은 머리글과 본문을 나눠야 합니다');

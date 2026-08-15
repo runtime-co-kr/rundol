@@ -242,7 +242,8 @@ function taskDetailHtml(task, mode) {
   const dependencies = (task.deps || []).map((id) => state.snapshot.tasks.tasks.find((item) => item.id === id)).filter(Boolean);
   const blockage = taskBlockage(task);
 
-  const head = `<header class="task-detail-head"><p class="eyebrow">${escapeHtml(task.id)}</p><h1>${escapeHtml(task.title)}</h1><div class="task-detail-actions">${mode === 'peek' ? `<button data-task="${escapeHtml(task.id)}" data-task-full="1">크게 보기</button>` : '<button data-view="tasks">목록으로</button>'}</div></header>`;
+  // peek에서는 크게 보기가 패널 크롬(× 옆)에 있으므로 머리글에 또 두지 않는다.
+  const head = `<header class="task-detail-head"><p class="eyebrow">${escapeHtml(task.id)}</p><h1>${escapeHtml(task.title)}</h1>${mode === 'page' ? '<div class="task-detail-actions"><button data-view="tasks">목록으로</button></div>' : ''}</header>`;
 
   const row = (label, value) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>`;
   const properties = `<dl class="task-properties">${[
@@ -455,6 +456,7 @@ document.addEventListener('click', (event) => { const button = event.target.clos
     state.selected = id;
     document.body.classList.remove('context-collapsed');
     document.body.classList.add('peek-open');
+    document.body.dataset.peekKind = 'person';
     for (const row of document.querySelectorAll('[data-person]')) row.classList.toggle('peeked', row.dataset.person === button.dataset.person);
     el('context-empty').hidden = true;
     el('context-content').hidden = false;
@@ -468,6 +470,7 @@ document.addEventListener('click', (event) => { const button = event.target.clos
       state.selected = button.dataset.task;
       document.body.classList.remove('context-collapsed');
       document.body.classList.add('peek-open');
+      document.body.dataset.peekKind = 'task';
       for (const row of document.querySelectorAll('.task-row')) row.classList.toggle('peeked', row.dataset.task === state.selected);
       return renderContext(peeked, 'task');
     }
@@ -537,6 +540,7 @@ for (const [mode, id] of Object.entries(taskModes)) {
 function closePeek() {
   if (!document.body.classList.contains('peek-open')) return false;
   document.body.classList.remove('peek-open');
+  delete document.body.dataset.peekKind;
   state.selected = null;
   for (const row of document.querySelectorAll('.peeked')) row.classList.remove('peeked');
   el('context-content').hidden = true;
@@ -552,6 +556,8 @@ document.addEventListener('pointerdown', (event) => {
 // 양쪽 패널 모두 사라지지 않고 레일로 좁아지므로, 접기 손잡이가 언제나 제자리에 있다.
 // 겹쳐 띄우는 방식이 없으니 화면 폭에 따라 동작이 갈리지도 않는다.
 el('collapse-context').addEventListener('click', () => { if (closePeek()) return; document.body.classList.toggle('context-collapsed'); });
+// 크게 보기는 peek이 덮고 있는 그 태스크를 전체화면으로 옮긴다.
+el('expand-context').addEventListener('click', () => { if (state.selected) setView('task', state.selected); });
 el('collapse-nav').addEventListener('click', () => document.body.classList.toggle('nav-collapsed'));
 document.addEventListener('click', (event) => { const button = event.target.closest('[data-dialog-cancel]'); if (!button) return; el(button.dataset.dialogCancel).close('cancel'); });
 el('blocker-dialog').addEventListener('close', () => resolveBlocker(null));
