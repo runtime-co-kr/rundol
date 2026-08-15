@@ -633,6 +633,20 @@ function checkDocumentProfile(diagnostics, layout, project, settings) {
       file: relative(layout.root, project.charter), project: project.key, target: violation.type,
       message: violation.message
     });
+    // 흡수 충족은 유형 단위라 대상 문서 하나가 다 갖고 있으면 나머지는 보이지 않는다.
+    // 구성요소를 일부만 가진 문서는 그 주제를 다루기 시작해 놓고 나머지를 빠뜨린 것이라
+    // 미완성이라고 단정할 수 있다. 전혀 없는 문서는 그 주제를 안 다룰 수 있어 진단하지 않는다.
+    // 작성 중일 수 있으므로 강제 수준과 무관하게 경고로만 남긴다.
+    for (const status of evaluation.absorbed) {
+      for (const id of status.partial || []) {
+        const entry = status.coverage.find((item) => item.id === id);
+        diagnostic(diagnostics, {
+          code: 'RDL-PROFILE-010', category: 'profile', severity: 'warning',
+          file: relative(layout.root, project.charter), project: project.key, artifactId: id, target: status.type,
+          message: `${id}이 ${status.type} 흡수 구성요소를 일부만 갖고 있습니다. 누락: ${entry.missing.join(', ')}`
+        });
+      }
+    }
     return;
   }
   diagnostic(diagnostics, {

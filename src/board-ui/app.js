@@ -861,11 +861,16 @@ function renderContractCompliance() {
   const incomplete = (trace.entries || []).filter((entry) => !entry.ready)
     .map((entry) => `<div class="compliance-item warning"><strong>${escapeHtml(entry.functionId)}</strong><span>미준비: ${escapeHtml((entry.missing || []).join(', ') || '연결 문서 부족')}</span></div>`);
 
-  // 흡수 판정은 타입 단위라 REQ 하나만 섹션을 가져도 satisfied가 된다. 실제로 몇 개가 갖고 있는지 보여준다.
-  const absorbed = (evaluation.absorbed || []).map((item) => {
-    const all = state.snapshot.documents.filter((doc) => doc.id.startsWith(`${item.absorbedBy}-`));
-    const holders = all.filter((doc) => (item.sections || []).every((section) => (doc.body || '').includes(`## ${section}`)));
-    return `<div class="compliance-item ${item.satisfied ? 'ok' : 'error'}"><strong>${escapeHtml(item.type)} → ${escapeHtml(item.absorbedBy)}</strong><span>${escapeHtml((item.sections || []).join(' · '))}</span><small>${holders.length}/${all.length} ${escapeHtml(item.absorbedBy)}가 네 섹션을 모두 갖고 있습니다</small></div>`;
+  // 흡수 판정은 유형 단위라 대상 문서 하나만 섹션을 가져도 satisfied가 된다. 그 하나 뒤에
+  // 가려진 현황을 evaluator가 계산해 주므로 화면에서 다시 세지 않고 그대로 쓴다.
+  // 일부만 가진 문서는 미완성이라 단정할 수 있어 눈에 띄게, 전혀 없는 문서는 판정 불가라 조용히.
+  const absorbed = (evaluation.absorbed || []).filter((item) => item.disposition === 'absorbed').map((item) => {
+    const complete = (item.complete || []).length;
+    const partial = item.partial || [];
+    const absent = (item.absent || []).length;
+    const total = complete + partial.length + absent;
+    const tone = partial.length ? 'warning' : item.satisfied ? 'ok' : 'error';
+    return `<div class="compliance-item ${tone}"><strong>${escapeHtml(item.type)} → ${escapeHtml(item.absorbedBy)}</strong><span>${escapeHtml((item.sections || []).join(' · '))}</span><small>${escapeHtml(item.absorbedBy)} ${total}건 중 모두 보유 ${complete} · 일부만 ${partial.length} · 없음 ${absent}${partial.length ? ` — 일부만 가진 문서: ${escapeHtml(partial.join(', '))}` : ''}</small></div>`;
   });
 
   const diagrams = contract.catalog && contract.catalog.diagrams

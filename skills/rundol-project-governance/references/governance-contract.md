@@ -36,6 +36,7 @@ The responsibility matrix identifies Responsible, Accountable, Consulted, and In
 - `policy` classifies every regular type exactly once as `required`, `recommended`, `onDemand`, or `disabled`.
 - `rules.<TYPE>.after` lists document types that are useful AI authoring context. Missing recommendations never block document creation, save, or sync.
 - `omissions.<TYPE>` records either `absorbedBy` plus required `sections`, or `notApplicable: true` plus a reason.
+- Omission is evaluated per type: one `absorbedBy` document holding every section satisfies the whole type. The evaluation also reports, per document, which of them hold all the sections, which hold only some, and which hold none. `RDL-PROFILE-010` warns on the "only some" case — a document that began covering the subject and left the rest out. The "none" case is never diagnosed, because whether that document needed the sections is not mechanically decidable.
 - `enforcement: advisory` reports findings without blocking persistence. `checkpoint` blocks `rdl save` and `rdl sync` while non-recommended violations remain.
 - Contract changes are explicit and revisioned. Inspect impact before saving and never delete existing documents as a side effect.
 

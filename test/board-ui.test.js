@@ -338,6 +338,11 @@ assert(app.includes("document.body.dataset.peekKind === 'person'"), '사람 peek
 assert(/\.sidebar-head,\s*\.panel-title\s*\{[^}]*padding:\s*var\(--spacing-4\)/u.test(style), '패널 머리글도 본문과 같은 높이에서 시작해야 합니다');
 assert(/\.main-content\s*\{[^}]*padding:\s*var\(--spacing-4\)/u.test(style), '본문 위 여백이 기준입니다');
 
+// .view의 margin: 0 auto는 flex 세로 컨테이너 안에서 내용 크기로 줄어든다. 그래서 설정
+// 탭을 옮길 때마다 폭이 265px씩 튀었다. 폭을 못박아야 고정된다.
+assert(/body\.view-settings #settings-view\s*\{[^}]*width:\s*100%/u.test(style), '설정 화면 폭은 탭에 따라 변하면 안 됩니다');
+assert(/body\.view-settings #settings-view\s*\{[^}]*display:\s*flex/u.test(style), '설정은 세로 flex로 나뉩니다');
+
 // 내부 스크롤 상자가 여럿이라 막대가 화면 곳곳에 세로줄로 남는다. overflow는 건드리지
 // 않으므로 휠·터치·키보드 이동은 그대로다.
 assert(/\*\s*\{[^}]*scrollbar-width:\s*none/u.test(style), '스크롤 막대는 감춥니다');

@@ -106,7 +106,26 @@ function evaluateDocumentContract(profileInput, artifactInput) {
     const targets = byType.get(omission.absorbedBy) || [];
     const missingSections = omission.sections.filter((section) => !targets.some((target) => hasSection(target.source, section)));
     const satisfied = targets.length > 0 && missingSections.length === 0;
-    omissionStatus[type] = { type, disposition: 'absorbed', absorbedBy: omission.absorbedBy, sections: omission.sections, missingSections, satisfied };
+    // 충족 판정은 유형 단위다. 대상 문서 하나가 다 갖고 있으면 나머지가 비어 있어도 통과하므로,
+    // 그 하나 뒤에 가려진 문서별 현황을 함께 낸다. 판정을 바꾸지 않고 보이게만 한다.
+    const coverage = targets.map((target) => {
+      const has = omission.sections.filter((section) => hasSection(target.source, section));
+      return { id: target.id, has, missing: omission.sections.filter((section) => !has.includes(section)) };
+    });
+    omissionStatus[type] = {
+      type,
+      disposition: 'absorbed',
+      absorbedBy: omission.absorbedBy,
+      sections: omission.sections,
+      missingSections,
+      satisfied,
+      coverage,
+      // 일부만 가진 문서는 그 주제를 다루기 시작해 놓고 나머지를 빠뜨린 것이라 미완성이라
+      // 단정할 수 있다. 전혀 없는 문서는 그 주제를 안 다룰 수 있어 판정하지 않는다.
+      complete: coverage.filter((item) => !item.missing.length).map((item) => item.id),
+      partial: coverage.filter((item) => item.has.length && item.missing.length).map((item) => item.id),
+      absent: coverage.filter((item) => !item.has.length).map((item) => item.id)
+    };
     if (!targets.length) violations.push({ code: 'omission-target-missing', type, target: omission.absorbedBy, message: `${type} 생략 내용을 흡수할 ${omission.absorbedBy} 문서가 없습니다.` });
     else for (const section of missingSections) violations.push({ code: 'omission-section-missing', type, target: omission.absorbedBy, section, message: `${type} 생략 내용의 필수 구성요소가 ${omission.absorbedBy}에 없습니다: ${section}` });
   }

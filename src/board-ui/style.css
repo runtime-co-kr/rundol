@@ -1654,10 +1654,13 @@ body.view-settings .main-content {
   overflow: hidden;
 }
 
+/* .view의 margin: 0 auto는 flex 세로 컨테이너 안에서 내용 크기로 줄어드는 성질을 갖는다.
+   그래서 탭을 옮길 때마다 폭이 767~1032px로 265px씩 튀었다. 폭을 못박아야 고정된다. */
 body.view-settings #settings-view {
   display: flex;
   flex: 1;
   flex-direction: column;
+  width: 100%;
   min-height: 0;
 }
 
