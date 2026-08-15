@@ -131,4 +131,90 @@ function updateCollaboration(start, id, input, projectKey) {
   return readCollaboration(root, projectKey);
 }
 
-module.exports = { readCollaboration, updateCollaboration, parseCollaboration };
+const MEMBER_ID = /^MEMBER-\d{3}$/u;
+const MEMBER_SECTION = /^##\s+프로젝트 팀원\s*$/u;
+
+// Client의 owner는 프로젝트 멤버여야 하고 lease는 그 owner를 확인한다.
+// 그래서 새 사람이 합류하면 Client 등록보다 이 블록이 먼저 있어야 한다.
+function nextMemberId(members) {
+  const numbers = members.map((item) => Number.parseInt(item.id.slice('MEMBER-'.length), 10)).filter(Number.isInteger);
+  return `MEMBER-${String((numbers.length ? Math.max(...numbers) : 0) + 1).padStart(3, '0')}`;
+}
+
+function memberBlock(id, values, roles) {
+  return [
+    `### ${values.name} ^${id}`,
+    '',
+    `- 역할: ${roles.map((role) => `[[project#^${role.id}|${role.name}]]`).join(', ')}`,
+    `- 소속: ${values.organization}`,
+    `- 업무 계정: ${values.account}`,
+    `- 책임 영역: ${values.responsibility}`,
+    '- 상태: active',
+    ''
+  ];
+}
+
+// 새 블록은 프로젝트 팀원 절 안, 마지막 멤버 뒤에 넣는다. 절이 없으면 넣을 자리가 없다.
+function memberInsertPoint(parsed) {
+  const start = parsed.lines.findIndex((line) => MEMBER_SECTION.test(line));
+  if (start < 0) throw new Error('project.md에서 프로젝트 팀원 절을 찾지 못했습니다.');
+  const members = parsed.entities.filter((item) => item.type === 'member' && item.start > start);
+  if (members.length) return members[members.length - 1].end;
+  let cursor = start + 1;
+  while (cursor < parsed.lines.length && !/^##\s+/u.test(parsed.lines[cursor])) cursor += 1;
+  return cursor;
+}
+
+function addMember(start, input, projectKey) {
+  const root = findWorkspaceRoot(start);
+  const file = projectFile(root, projectKey);
+  const original = fs.readFileSync(file, 'utf8');
+  const parsed = parseCollaboration(original);
+
+  const values = {
+    name: safeValue(input.name, '이름'),
+    organization: safeValue(input.organization, '소속'),
+    account: safeValue(input.account, '업무 계정'),
+    responsibility: safeValue(input.responsibility, '책임 영역')
+  };
+  for (const [key, label] of [['name', '이름'], ['organization', '소속'], ['account', '업무 계정'], ['responsibility', '책임 영역']]) {
+    if (!values[key]) throw new Error(`${label}이(가) 필요합니다.`);
+  }
+
+  const requested = Array.from(new Set((input.roles || []).map((role) => String(role).trim()).filter(Boolean)));
+  if (!requested.length) throw new Error('역할을 하나 이상 지정해야 합니다.');
+  const roles = requested.map((id) => {
+    const role = parsed.entities.find((item) => item.type === 'role' && item.id === id);
+    if (!role) throw new Error(`project.md에 등록되지 않은 역할입니다: ${id}`);
+    return role;
+  });
+
+  const members = parsed.entities.filter((item) => item.type === 'member');
+  const id = input.member ? String(input.member).trim() : nextMemberId(members);
+  if (!MEMBER_ID.test(id)) throw new Error(`멤버 ID는 MEMBER-NNN 형식이어야 합니다: ${id}`);
+  if (parsed.entities.some((item) => item.id === id)) throw new Error(`이미 존재하는 ID입니다: ${id}`);
+
+  parsed.lines.splice(memberInsertPoint(parsed), 0, ...memberBlock(id, values, roles));
+  const next = `${parsed.lines.join('\n').replace(/\n*$/u, '')}\n`;
+  try {
+    atomicWrite(file, next);
+    const checked = checkWorkspace(root, { strict: true, project: projectKey || null });
+    if (checked.summary.errors > 0) {
+      const first = checked.diagnostics.find((item) => item.severity === 'error');
+      throw new Error(first ? `${first.code} ${first.message}` : '협업 문서 검증에 실패했습니다.');
+    }
+  } catch (error) {
+    atomicWrite(file, original);
+    throw error;
+  }
+  return {
+    root,
+    project: projectKey || null,
+    member: id,
+    name: values.name,
+    roles: roles.map((role) => role.id),
+    file: path.relative(root, file).split(path.sep).join('/')
+  };
+}
+
+module.exports = { readCollaboration, updateCollaboration, addMember, parseCollaboration };

@@ -32,6 +32,8 @@ Usage:
   rdl skill install [--force] [--json]
   rdl settings migrate [--root <path>] [--json]
   rdl workspace show|check|sync|migrate [--root <path>] [--json]
+  rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
+  rdl member list [--project <key>] [--json]
   rdl client register <client-id> --name <name> --type <device|agent|service> --owner <MEMBER-ID> [--json]
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
   rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
@@ -106,7 +108,7 @@ function parseBoardArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -120,7 +122,7 @@ function parseOperationArgs(argv) {
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
     else if (value === '--write') options.write = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -137,6 +139,11 @@ function parseOperationArgs(argv) {
       else if (value === '--function-id') options.functionIds.push(argv[i]);
       else if (value === '--priority') options.priority = argv[i];
       else if (value === '--reviewer') options.reviewers.push(argv[i]);
+      else if (value === '--role') options.roles.push(argv[i]);
+      else if (value === '--member') options.member = argv[i];
+      else if (value === '--organization') options.organization = argv[i];
+      else if (value === '--account') options.account = argv[i];
+      else if (value === '--responsibility') options.responsibility = argv[i];
       else if (value === '--stakeholder') options.stakeholders.push(argv[i]);
       else if (value === '--link') options.links.push(argv[i]);
       else if (value === '--acceptance') options.acceptance.push(argv[i]);
@@ -519,6 +526,25 @@ async function main() {
     else throw new Error('지원하는 workspace 하위 명령은 show, check, sync, migrate입니다.');
     return 0;
   }
+  if (command === 'member') {
+    const subcommand = argv.shift();
+    const options = parseOperationArgs(argv);
+    const { readCollaboration, addMember } = require('../src/collaboration');
+    if (subcommand === 'list') printOperation(Object.assign({}, readCollaboration(options.root, options.project), { roles: undefined, stakeholders: undefined }), options.json);
+    else if (subcommand === 'add') {
+      if (options.positional.length > 1) throw new Error('rdl member add는 이름 하나만 위치 인수로 받습니다.');
+      printOperation(addMember(options.root, {
+        name: options.positional[0] || options.name,
+        member: options.member,
+        organization: options.organization,
+        account: options.account,
+        responsibility: options.responsibility,
+        roles: options.roles
+      }, options.project), options.json);
+    } else throw new Error('지원하는 member 하위 명령은 add, list입니다.');
+    return 0;
+  }
+
   if (command === 'client') {
     const subcommand = argv.shift();
     const options = parseOperationArgs(argv);
