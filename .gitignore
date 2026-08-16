@@ -3,3 +3,10 @@ node_modules/
 .tmp-tests/
 .tmp-publish/
 packages/cli/dist/
+
+# Local AI agent and session metadata
+.omx/
+.claude/
+.elder-gods/
+.codex/
+.agents/
