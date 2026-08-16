@@ -8,6 +8,11 @@ const { spawnSync } = require('child_process');
 const { findWorkspaceRoot } = require('./workspace');
 const { skillSource, skillTargets, SKILL_NAME } = require('./skill');
 
+// doctor가 통과라고 하는데 실행이 깨지면 진단이 거짓말이 된다. package.json을 런타임에
+// 읽으면 설치 레이아웃마다 상대 경로가 달라 깨지므로 값을 여기 두고, engines와 같은지는
+// 테스트가 지킨다. 둘이 어긋나면 배포 전에 잡힌다.
+const NODE_FLOOR = 20;
+
 const PACKAGE_ROOT = path.resolve(__dirname, '..');
 
 function run(command, args, options) {
@@ -104,9 +109,7 @@ function doctor(start, options) {
   const settings = options || {};
   const checks = [];
   const nodeMajor = major(process.version);
-  // engines와 같은 값을 봐야 한다. doctor가 통과라고 하는데 실행이 깨지면 진단이 거짓말이 된다.
-  const nodeFloor = Number.parseInt(String(require('../package.json').engines.node).replace(/[^\d]/gu, ''), 10) || 20;
-  checks.push({ id: 'node', status: nodeMajor >= nodeFloor ? 'ok' : 'error', message: `Node.js ${process.version}`, required: `>=${nodeFloor}` });
+  checks.push({ id: 'node', status: nodeMajor >= NODE_FLOOR ? 'ok' : 'error', message: `Node.js ${process.version}`, required: `>=${NODE_FLOOR}` });
 
   const npm = run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'], { shell: process.platform === 'win32' });
   const npmOk = npm.status === 0 && atLeast(npm.stdout, [6, 0, 0]);

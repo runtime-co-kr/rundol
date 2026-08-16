@@ -29,6 +29,20 @@ assert.match(readme, /rdl doctor/);
 assert.match(readme, /docs\/RELEASES\.md/);
 assert.match(readme, /docs\/MIGRATION-0\.22\.md/);
 assert.match(readme, /docs\/MIGRATION-0\.23\.md/);
+assert.match(readme, /docs\/MIGRATION-0\.24\.md/);
+
+// 호환성 파괴는 CHANGELOG와 migration 문서에 함께 적혀야 한다. 0.22.9가 그러지 않아
+// 되돌렸던 일이 있다. 여기서 묶어 두면 같은 실수가 조용히 반복되지 않는다.
+{
+  const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
+  const latest = changelog.slice(0, changelog.indexOf('## [0.23.0]'));
+  assert.ok(latest.includes('호환성 파괴'), '0.24.0의 호환성 파괴를 명시해야 합니다');
+  assert.ok(latest.includes('MIGRATION-0.24.md'), 'CHANGELOG가 migration 문서를 가리켜야 합니다');
+  const guide = fs.readFileSync(path.join(root, 'docs', 'MIGRATION-0.24.md'), 'utf8');
+  for (const token of ['rules', 'omissions', 'notApplicable', '0.23.0']) {
+    assert.ok(guide.includes(token), `migration 문서에 ${token} 설명이 필요합니다`);
+  }
+}
 assert.match(readme, /rundol\/workspace/);
 assert.match(readme, /rundol\/<key>/);
 

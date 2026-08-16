@@ -27,9 +27,10 @@ assert.strictEqual(JSON.parse(cli.stdout).summary.errors, 0);
 // doctor가 통과라고 하는데 실행이 깨지면 진단이 거짓말이 된다. engines와 같은 값을 봐야 한다.
 {
   const source = require('fs').readFileSync(path.join(__dirname, '..', 'src', 'doctor.js'), 'utf8');
-  const declared = require('../package.json').engines.node;
-  assert.ok(!/nodeMajor >= \d+/u.test(source), `Node 하한을 코드에 박으면 engines(${declared})와 어긋납니다`);
-  assert.ok(source.includes("require('../package.json').engines.node"), 'doctor는 engines를 읽어 판정해야 합니다');
+  const declared = Number.parseInt(String(require('../package.json').engines.node).replace(/[^\d]/gu, ''), 10);
+  const floor = Number.parseInt((/^const NODE_FLOOR = (\d+);$/mu.exec(source) || [])[1], 10);
+  assert.strictEqual(floor, declared, `doctor의 Node 하한(${floor})이 engines(${declared})와 어긋납니다`);
+  assert.ok(!/nodeMajor >= \d+/u.test(source), 'Node 하한을 판정식에 직접 박으면 안 됩니다');
 }
 
 process.stdout.write('doctor tests passed\n');

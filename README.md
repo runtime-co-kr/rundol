@@ -44,6 +44,7 @@ rdl skill install
 - registry, 폐쇄망 tarball, PATH와 손상된 설치 복구는 [Rundol 설치와 복구](docs/INSTALLATION.md)를 따른다.
 - `0.21.1`부터 `0.22.2`를 `0.22.3`으로 올릴 때는 [Rundol 0.22 마이그레이션](docs/MIGRATION-0.22.md)을 먼저 따른다.
 - `0.22.x`에서 `0.23.0`으로 올릴 때는 지원 Node가 20 이상으로 바뀌므로 [Rundol 0.23 마이그레이션](docs/MIGRATION-0.23.md)을 확인한다. 데이터 변환은 없다.
+- `0.23.x`에서 `0.24.0`으로 올릴 때는 `documentProfile`이 저장하는 범위가 줄어들므로 [Rundol 0.24 마이그레이션](docs/MIGRATION-0.24.md)을 확인한다. 실행할 명령은 없다.
 
 ## 5분 시작
 

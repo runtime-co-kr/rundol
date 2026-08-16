@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-16
+
+### Changed
+
+- **호환성 파괴 — `documentProfile`이 저장하는 범위가 줄었습니다.** [마이그레이션 안내](docs/MIGRATION-0.24.md). `rules.<TYPE>.after` and the absorption half of `omissions` are no longer project state. Authoring order never differed between projects and never blocked anything, so it is now a shipped constant and `rdl contract next` returns what it always did. Absorption checked only whether a heading string existed: six empty headings satisfied it, while a document that covered the subject thoroughly under different headings failed it, and enabling the type later left the absorbed content in place with nothing pointing at it. Four diagnostics (`RDL-PROFILE-006`, `007`, `010`, `011`) went with it. A `project.md` written by this version is rejected by `0.23.0`, so upgrade a shared workspace together. Nothing needs to be run: old blocks still parse, and the next contract save drops them.
+- **A recorded `notApplicable` decision and its reason survive.** They are not a machine-generated default — they are a person's judgement about why a type does not apply, and nowhere else holds them. Removing the absorption rule was not a reason to erase them.
+- Document types now carry the sections their documents are expected to fill, on every type rather than only disabled ones. `rdl contract show --json` reports them per profile and `rdl doc create` scaffolds from the same list. The shipped defaults were extracted from 257 real project documents rather than guessed from templates.
+- Profiles are no longer five hardcoded names. A team defines its own in `board.json` — label, policy, and per-type sections — inheriting built-in → workspace → project, the same chain the display settings already used. The contract stores only the profile name; what it means is recomputed on read.
+- Stored values and the words on screen are separated. `required`, `checkpoint`, `lean`, `todo` and `high` reached the screen verbatim, and the profile picker used the display text as the stored value, so renaming a label would have broken saved contracts. Labels now come from the display settings and are editable per workspace and project. `onDemand` reads as 「선택」 rather than 「필요할 때」, which sounded like a schedule when it means permission.
+
+### Fixed
+
+- A team profile made `rdl check --strict` fail. `rdl contract show` resolved presets but the general check did not, so a custom name was misdiagnosed as unsupported and blocked save and sync — `contract check` reported valid while `check --strict` failed on the same project.
+- Editing two tasks in quick succession could lose the first edit. Settling one task refreshed the snapshot, which reverted the other task's not-yet-sent optimistic change, and the next payload was then built from the reverted value.
+- The contract editor's preset section fields and "save as preset" button were wired to nothing. Saving now goes through a display-settings API that writes only what this scope overrides, so inherited values are not frozen into the lower file.
+- `rdl doctor` hardcoded a Node floor of 14 while the package required 20, so it reported a healthy environment that could not run Rundol. It reads `engines` now.
+- Switching projects left scheduled task saves and the open detail panel behind: the save would fire against the new project's path, and the panel kept showing an item absent from the new list.
+- The home screen's four metrics were inert `div`s. They now open the list each number came from.
+
 ## [0.23.0] - 2026-08-16
 
 ### Changed
