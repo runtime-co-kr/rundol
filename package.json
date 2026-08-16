@@ -21,7 +21,7 @@
     "check:fixture": "node bin/rdl.js check --root test/fixtures/workspace",
     "test": "node test/run.js",
     "test:packages": "node test/packages.test.js",
-    "test:install": "node test/install.test.js",
+    "test:install": "node test/install.test.js && node test/tarball-compat.test.js",
     "version:check": "node scripts/version-check.js",
     "release:check": "npm run version:check && npm test && npm run test:install"
   },

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 혼합 버전 호환이 실측으로 게이트된다. 매 스위트의 빠른 경로(p15-compat)가 신형 run v2·driver lease 공유 샤드를 0.28.1 check/sync에 통과시켜 오진 0을 고정하고, `release:check`의 `test:install` 단계는 0.28.1 기준 커밋을 실제 `npm pack` tarball로 설치해 배포 산출물 그대로가 신형 데이터(run v2 수명주기·takeover·driver lease·verdict)를 오진 없이 지나가는지 확인한다. CI checkout은 기준 커밋 접근을 위해 전체 이력을 받는다.
+
 ### Fixed
 
 - strict 검증이 런이 아니라 이벤트의 스키마를 따른다 — legacy 런에 유입된 v2 이벤트도 커서·종류 검증을 받는다. legacy 전용 런도 소유권·dedup·진단이 같은 단일 fold 경로를 지난다.

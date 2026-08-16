@@ -33,7 +33,11 @@ jobs:
           - os: ubuntu-latest
             node: '22'
     steps:
+      # 혼합 버전 호환 테스트(p15-compat, tarball-compat)가 기준 릴리스 커밋을
+      # worktree로 꺼내므로 얕은 checkout으로는 실행할 수 없다.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}

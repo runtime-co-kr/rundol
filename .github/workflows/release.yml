@@ -17,7 +17,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # release:check의 tarball-compat이 기준 릴리스 커밋을 worktree로 꺼내므로
+      # 얕은 checkout으로는 실행할 수 없다.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

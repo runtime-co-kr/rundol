@@ -6,6 +6,9 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { verdictEnvelope } = require('../src/verify');
+const ledger = require('../src/run-ledger');
+const eventStore = require('../src/event-store');
+const { appendDriverEvent } = require('../src/driver-lease');
 
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'bin', 'rdl.js');
@@ -71,11 +74,44 @@ try {
   const valid = verdictEnvelope(event()).shared;
   fs.writeFileSync(path.join(verdictRoot, 'verdict-crm-agent-a-000001.jsonl'), `${JSON.stringify(valid)}\n`, 'utf8');
 
+  // 신형 v2 run 원장과 driver lease 샤드 — 0.29 클라이언트가 쓰고 pull로 들어온
+  // 상황의 재현이다. 프로덕션 공유 기록과 같은 구성요소(createEventEnvelope →
+  // appendEvent, appendDriverEvent)로 만들어 바이트가 동일하다. 0.28.1 check는
+  // run 샤드를 구조만 검사하고 driver 디렉터리는 건너뛰므로 어느 쪽도 오진이 없어야 한다.
+  const eventsRoot = path.join(temporary, 'projects', 'workspace', 'events');
+  const lockDirectory = path.join(temporary, '.compat-locks');
+  const contentHash = 'c'.repeat(64);
+  const runId = 'RUN-00000000000000000C01';
+  const ownerToken = 'EVT-00000000000000000C11';
+  const resolvedProcedure = {
+    name: 'compat-author', revision: 1, schemaVersion: 1,
+    steps: [{ id: 'author', executor: 'adapter' }, { id: 'mech-gate', gate: { command: 'check', args: [] } }, { id: 'save', executor: 'cli' }]
+  };
+  const runBase = { schemaVersion: 2, rootRequestId: 'REQ-00000000000000000C01', clientId: 'agent-a', projectId: 'crm', runId };
+  const runEvents = [
+    { ...runBase, eventId: ownerToken, requestId: 'REQ-00000000000000000C11', type: 'run.started', ownerToken, goal: '호환성 픽스처',
+      procedure: { name: 'compat-author', revision: 1, schemaVersion: 1, contentHash, resolved: resolvedProcedure },
+      settings: { schemaVersion: 1, contentHash, safeResolved: {} } },
+    { ...runBase, eventId: 'EVT-00000000000000000C12', requestId: 'REQ-00000000000000000C12', type: 'run.step', ownerToken, stepId: 'author', executor: 'adapter', exitCode: 0, artifactIds: [] },
+    { ...runBase, eventId: 'EVT-00000000000000000C13', requestId: 'REQ-00000000000000000C13', type: 'run.gate', ownerToken, stepId: 'mech-gate', command: 'check', args: [], exitCode: 0, diagnostics: [], attempt: 1 },
+    { ...runBase, eventId: 'EVT-00000000000000000C14', requestId: 'REQ-00000000000000000C14', type: 'run.step', ownerToken, stepId: 'save', executor: 'cli', exitCode: 0, artifactIds: [] },
+    { ...runBase, eventId: 'EVT-00000000000000000C15', requestId: 'REQ-00000000000000000C15', type: 'run.completed_local', ownerToken, commit: 'a'.repeat(40), artifactIds: [] }
+  ];
+  for (const runEvent of runEvents) {
+    eventStore.appendEvent(eventsRoot, 'run', 'crm', runEvent.clientId, ledger.createEventEnvelope(runEvent).shared, { runId, lockDirectory });
+  }
+  const driverBase = { schemaVersion: 1, rootRequestId: 'REQ-00000000000000000C02', requestId: 'REQ-00000000000000000C21', clientId: 'agent-a', projectId: 'crm', runId, leaseId: 'LEASE-00000000000000000C01', ownerToken };
+  appendDriverEvent(eventsRoot, { ...driverBase, eventId: 'EVT-00000000000000000C21', type: 'driver.acquired', expiresAt: '2030-01-01T00:00:00.000Z' }, { lockDirectory });
+  appendDriverEvent(eventsRoot, { ...driverBase, requestId: 'REQ-00000000000000000C22', eventId: 'EVT-00000000000000000C22', type: 'driver.released', previousDriverEventId: 'EVT-00000000000000000C21', reason: 'completed' }, { lockDirectory });
+
   const clean = currentCheck();
   assert.strictEqual(clean.status, 0, clean.stdout + clean.stderr);
   assert(!clean.stdout.includes('RDL-VERDICT-'), clean.stdout);
+  assert(!clean.stdout.includes('RDL-RUN-'), clean.stdout);
+  assert(!clean.stdout.includes('RDL-DRIVER-'), clean.stdout);
 
-  // 0.28.1 predates verdict registration. Its check/sync must ignore the new kind directory.
+  // 0.28.1은 verdict·driver kind와 run v2 스키마 이전이다. check/sync가 새 kind
+  // 디렉터리를 무시하고 run 샤드는 오진 없이 지나가야 한다.
   const baseline = command('git', ['rev-parse', '8d1c6df^{commit}'], root);
   oldTree = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-0281-'));
   fs.rmSync(oldTree, { recursive: true, force: true });
@@ -84,6 +120,7 @@ try {
   const oldCheck = invoke(process.execPath, [oldCli, 'check', '--root', temporary, '--json'], root);
   assert.strictEqual(oldCheck.status, 0, `0.28.1 check failed:\n${oldCheck.stdout}\n${oldCheck.stderr}`);
   assert(!oldCheck.stdout.includes('RDL-LEASE-001'), oldCheck.stdout);
+  assert(!oldCheck.stdout.includes('RDL-RUN-'), oldCheck.stdout);
   const oldSync = invoke(process.execPath, [oldCli, 'sync', '--root', temporary, '--project', 'crm', '--no-push', '--json'], root);
   assert.strictEqual(oldSync.status, 0, `0.28.1 sync failed:\n${oldSync.stdout}\n${oldSync.stderr}`);
   command('git', ['worktree', 'remove', '--force', oldTree], root);
