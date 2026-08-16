@@ -41,6 +41,16 @@
 ### Changed
 
 - lease 이벤트 저장의 샤드 선택·세그먼트 롤오버·읽기 검증이 범용 이벤트 스토어(`src/event-store.js`)로 추출됐다. 파일 경로·이벤트 형태·오류 메시지는 그대로다. 같은 client의 CLI 프로세스 여럿이 동시에 임대를 기록하면 세그먼트 롤오버의 「읽고 판단하고 append」가 경합할 수 있었는데, 머신 단위 락으로 직렬화했다. clientId는 실행 주체 단위 식별자라 프로세스 경합까지 막지는 못하기 때문이다.
+## [0.24.1] - 2026-08-16
+
+### Fixed
+
+- **`0.24.0` deleted settings people had typed.** The absorption block was treated as machine-generated defaults, but the old contract screen let you enter required components by hand and toggle authoring order, so that block held a mix of defaults and human input. One `rdl contract set` erased it. Values now survive the save: not being read and being safe to delete are different things. `rdl check` reports what is left (`RDL-PROFILE-012`, `RDL-PROFILE-013`) and `rdl contract migrate` moves the components to their new home — per-type preset sections are the same concept relocated. Authoring order has no new home, so migrate names what would be dropped and leaves the decision to you. A project already saved under `0.24.0` has lost those values; they are recoverable only from Git history. See [the migration guide](docs/MIGRATION-0.24.md).
+- Switching projects discarded task edits still inside the 500ms debounce. Sending them to the wrong project was already prevented, but a change the user had just clicked vanished without a word. Pending edits are now flushed first, and anything that cannot be sent is named before the switch proceeds.
+- Editing only a type's sections left "save as preset" hidden, because the comparison looked at policy alone while a preset defines both policy and sections. Adding or removing a section now re-evaluates too.
+- `rdl doc create` merged preset sections into the template instead of replacing them, so a section the team had removed still appeared in the skeleton and the generated document disagreed with what `contract show` reported. The preset now decides the list and the order. Function contracts are appended after the rebuild — their heading differs by type (설계 for REQ, 검증 for TST), so matching on the text dropped the whole block for TST.
+- Saving a preset and switching the contract to it touch two different files, and a failure in the second left the preset alone with the screen holding a stale revision, so retrying was refused as a conflict. The snapshot is refreshed either way and the message says what was written and what still needs doing.
+- `rdl project profile` rejected team presets that `rdl contract set` accepted, so the same name worked or failed depending on the command.
 
 ## [0.24.0] - 2026-08-16
 
