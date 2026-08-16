@@ -595,6 +595,28 @@ function checkWorkspaceStore(diagnostics, layout) {
       }
     }
   }
+  // events/run/ 서브디렉터리는 run 원장 샤드다. 알려진 kind만 검사하고, 그 밖의
+  // 서브디렉터리는 미래의 이벤트 종류이므로 진단하지 않는다 — 구버전이 신버전의
+  // 데이터를 오진하지 않게 하는 것과 같은 규칙을 이 버전도 미래에 대해 지킨다.
+  const runRoot = path.join(eventsRoot, 'run');
+  if (fs.existsSync(runRoot)) for (const entry of fs.readdirSync(runRoot, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(runRoot, entry.name);
+    if (!/^run-[a-z0-9-]+-RUN-[A-F0-9]{20}-\d{6}\.jsonl$/u.test(entry.name)) {
+      diagnostic(diagnostics, { code: 'RDL-RUN-001', category: 'workspace', file: relative(layout.root, file), message: '런 이벤트 파일명이 표준 패턴과 다릅니다.' });
+      continue;
+    }
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/u).entries()) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line);
+        if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-RUN-002', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 Client를 참조합니다: ${event.clientId || '(없음)'}` });
+        if (!entry.name.startsWith(`run-${event.projectId}-${event.clientId}-${event.runId}-`)) diagnostic(diagnostics, { code: 'RDL-RUN-003', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: '런 이벤트의 프로젝트, Client 또는 runId가 파일명과 일치하지 않습니다.' });
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-RUN-004', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL 이벤트를 파싱할 수 없습니다: ${error.message}` });
+      }
+    }
+  }
 }
 
 function checkCompositeViews(diagnostics, layout, project) {

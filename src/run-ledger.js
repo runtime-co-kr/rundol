@@ -4,9 +4,13 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
+const { saveSettings } = require('./settings');
+const { runtimeWorkspace } = require('./runtime');
+const { getClient } = require('./collaboration-store');
+const eventStore = require('./event-store');
 
 const RUN_ID = /^RUN-[A-F0-9]{20}$/u;
-const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local']);
+const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.takeover']);
 const HALT_REASONS = new Set(['gate-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual']);
 
 function canonicalJson(value) {
@@ -104,6 +108,12 @@ function createRun(start, input) {
   const procedure = validateProcedure(input.procedure);
   const clientId = String(input.clientId || '').trim().toLowerCase();
   if (!clientId) throw new Error('--client-id <Client ID>가 필요합니다.');
+  // 공유 원장에 쓰는 주체는 등록된 client여야 한다. workspace가 없는 로컬 전용
+  // 환경에서는 원장이 로컬에만 남으므로 등록을 요구하지 않는다.
+  if (workspaceEventsRoot(layout)) {
+    const client = getClient(start, clientId);
+    if (client.status !== 'active') throw new Error(`비활성 Client는 런을 시작할 수 없습니다: ${clientId}`);
+  }
   const runId = newRunId();
   const directory = runDirectory(project.root, runId);
   const contentHash = crypto.createHash('sha256').update(canonicalJson(procedure)).digest('hex');
@@ -121,7 +131,8 @@ function createRun(start, input) {
       resolved: procedure
     }
   });
-  return { runId, project: project.key, directory, file: appended.file };
+  const shared = mirrorRunEvent(layout, project.key, appended.event);
+  return { runId, project: project.key, directory, file: appended.file, shared };
 }
 
 // 순수 결정적 fold. 이벤트 배열(파일 순서 = 정본 순서)만으로 커서를 재현한다.
@@ -201,4 +212,113 @@ function listRuns(projectRoot) {
   });
 }
 
-module.exports = { RUN_ID, CHECKPOINT_TYPES, newRunId, runDirectory, validateProcedure, appendRunEvent, readRunEvents, createRun, foldRun, listRuns };
+// ── 공유 원장 (workspace 브랜치) ──────────────────────────────────────────
+// 커서를 결정하는 이벤트는 전부 workspace events/run/에 복제한다. 로컬에만 남는
+// 것은 payload 파일이지 이벤트가 아니다. 커밋은 체크포인트에서만 만들고, 그 사이
+// 이벤트는 다음 커밋에 편승한다 — append-only 합집합이라 커밋 귀속은 표시일 뿐이다.
+
+function workspaceEventsRoot(layout) {
+  if (layout.schemaVersion < 6) return null;
+  return path.join(layout.root, 'projects', 'workspace', 'events');
+}
+
+function mirrorRunEvent(layout, projectKey, event) {
+  const eventsRoot = workspaceEventsRoot(layout);
+  if (!eventsRoot) return null;
+  if (!event.clientId) throw new Error('공유 run 이벤트에는 clientId가 필요합니다.');
+  const file = eventStore.appendEvent(eventsRoot, 'run', projectKey, event.clientId, event, {
+    runId: event.runId,
+    lockDirectory: runtimeWorkspace(layout.root).locks
+  });
+  if (CHECKPOINT_TYPES.has(event.type)) saveSettings(layout.root);
+  return file;
+}
+
+function recordRunEvent(start, input) {
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, input.project, true);
+  // 공유 샤드의 파일명 검증은 이벤트가 자기 기술적일 것을 요구한다 —
+  // lease 이벤트처럼 모든 run 이벤트가 projectId를 지닌다.
+  const event = Object.assign({ runId: input.runId, projectId: project.key }, input.event);
+  if (!RUN_ID.test(event.runId || '')) throw new Error(`잘못된 run ID입니다: ${event.runId || '(없음)'}`);
+  const appended = appendRunEvent(runDirectory(project.root, event.runId), event);
+  const shared = mirrorRunEvent(layout, project.key, appended.event);
+  return { project: project.key, event: appended.event, file: appended.file, shared };
+}
+
+function readSharedRunEvents(layout, projectKey, runId) {
+  const eventsRoot = workspaceEventsRoot(layout);
+  if (!eventsRoot) return [];
+  return eventStore.readEvents(eventsRoot, 'run', projectKey, { sort: 'file' }).filter((event) => event.runId === runId);
+}
+
+// 시계 없는 크로스 클라이언트 순서: 소유권 사슬을 takeover 이벤트의
+// previousClientId 연결로 구조적으로 복원한다. 클라이언트 내부 순서는 단일
+// 작성자 샤드의 파일 순서가 정본이고, occurredAt은 어디에도 쓰지 않는다.
+function orderSharedEvents(events) {
+  const partitions = new Map();
+  for (const event of events) {
+    if (!partitions.has(event.clientId)) partitions.set(event.clientId, []);
+    partitions.get(event.clientId).push(event);
+  }
+  const started = events.find((event) => event.type === 'run.started');
+  if (!started) throw new Error('공유 원장에 run.started가 없습니다.');
+  const takeovers = events.filter((event) => event.type === 'run.takeover');
+  const chain = [started.clientId];
+  for (;;) {
+    const next = takeovers.find((event) => event.previousClientId === chain[chain.length - 1] && !chain.includes(event.clientId));
+    if (!next) break;
+    chain.push(next.clientId);
+  }
+  const unknown = Array.from(partitions.keys()).filter((clientId) => !chain.includes(clientId));
+  if (unknown.length) throw new Error(`소유권 사슬에 없는 클라이언트의 run 이벤트가 있습니다: ${unknown.join(', ')}`);
+  return chain.flatMap((clientId) => partitions.get(clientId) || []);
+}
+
+function foldSharedRun(events) {
+  return foldRun(orderSharedEvents(events).filter((event) => event.type !== 'run.takeover'));
+}
+
+// 인수: 자동은 이전 소유자의 halted가 보일 때만이다. 그 외는 사람이 --force와
+// 사유로 승인한다. 벽시계 TTL은 어떤 경로에서도 판정에 쓰지 않는다.
+function takeoverRun(start, input) {
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, input.project, true);
+  const clientId = String(input.clientId || '').trim().toLowerCase();
+  if (!clientId) throw new Error('--client-id <Client ID>가 필요합니다.');
+  const client = getClient(start, clientId);
+  if (client.status !== 'active') throw new Error(`비활성 Client는 런을 인수할 수 없습니다: ${clientId}`);
+  const shared = readSharedRunEvents(layout, project.key, input.runId);
+  if (!shared.length) throw new Error(`공유 원장에 없는 런입니다: ${input.runId}`);
+  const ordered = orderSharedEvents(shared);
+  const currentOwner = ordered[ordered.length - 1] ? ordered.filter((event) => event.type === 'run.started' || event.type === 'run.takeover').map((event) => event.clientId).pop() : null;
+  if (currentOwner === clientId) throw new Error(`${clientId}는 이미 이 런의 소유자입니다.`);
+  const fold = foldSharedRun(shared);
+  let basis = 'halted';
+  if (fold.status !== 'halted') {
+    if (!input.force) throw new Error('정지하지 않은 런은 자동으로 인수할 수 없습니다. 사람의 결정이면 --force --reason을 사용하세요.');
+    if (!String(input.reason || '').trim()) throw new Error('--force 인수에는 --reason이 필요합니다.');
+    basis = 'forced';
+  }
+  const takeover = {
+    schemaVersion: 1,
+    eventId: `EVT-${crypto.randomBytes(10).toString('hex').toUpperCase()}`,
+    type: 'run.takeover',
+    runId: input.runId,
+    projectId: project.key,
+    clientId,
+    previousClientId: currentOwner,
+    basis,
+    reason: basis === 'forced' ? String(input.reason).trim() : null,
+    occurredAt: new Date().toISOString()
+  };
+  // 새 소유자의 로컬 원장을 공유 이벤트로 재구성한다 — 파생이므로 언제든 다시 만들 수 있다.
+  const directory = runDirectory(project.root, input.runId);
+  fs.mkdirSync(directory, { recursive: true });
+  const file = path.join(directory, 'events.jsonl');
+  fs.writeFileSync(file, ordered.filter((event) => event.type !== 'run.takeover').map((event) => JSON.stringify(event)).join('\n').concat('\n'), 'utf8');
+  mirrorRunEvent(layout, project.key, takeover);
+  return { runId: input.runId, project: project.key, clientId, previousClientId: currentOwner, basis, directory };
+}
+
+module.exports = { RUN_ID, CHECKPOINT_TYPES, newRunId, runDirectory, validateProcedure, appendRunEvent, readRunEvents, createRun, foldRun, listRuns, recordRunEvent, readSharedRunEvents, foldSharedRun, takeoverRun };

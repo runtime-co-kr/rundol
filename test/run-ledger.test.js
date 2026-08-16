@@ -93,7 +93,7 @@ try {
   ledger.appendRunEvent(corrupt, { type: 'run.step', stepId: 'a', exitCode: 0, clientId: 'laptop-a' });
   assert.throws(() => ledger.readRunEvents(corrupt), /파싱할 수 없습니다/u);
 
-  // 실제 workspace에서 createRun: 경로 배치, Git 제외, 공유 events/ 무접촉 (AC-P0b ⑤).
+  // 실제 workspace: 공유 미러, 커서 재현성, 시계 무관 소유권 사슬, 인수 규칙.
   command('git', ['init', '-b', 'main'], temporary);
   command('git', ['config', 'user.name', 'Rundol Test'], temporary);
   command('git', ['config', 'user.email', 'rundol@example.test'], temporary);
@@ -101,6 +101,11 @@ try {
   command('git', ['add', 'README.md'], temporary);
   command('git', ['commit', '-m', 'initial'], temporary);
   JSON.parse(command(process.execPath, [cli, 'init', 'crm', '--name', '고객 관리', '--root', temporary, '--json'], root));
+  JSON.parse(command(process.execPath, [cli, 'client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'device', '--owner', 'MEMBER-001', '--root', temporary, '--json'], root));
+  JSON.parse(command(process.execPath, [cli, 'client', 'register', 'desk-b', '--name', '데스크톱', '--type', 'device', '--owner', 'MEMBER-001', '--root', temporary, '--json'], root));
+
+  // 공유 원장에 쓰는 주체는 등록된 client여야 한다.
+  assert.throws(() => ledger.createRun(temporary, { project: 'crm', clientId: 'ghost', procedure }), /등록되지 않은 Client/u);
 
   const created = ledger.createRun(temporary, { project: 'crm', goal: '결제 REQ', clientId: 'laptop-a', procedure });
   assert(ledger.RUN_ID.test(created.runId));
@@ -110,11 +115,64 @@ try {
   assert.strictEqual(runFold.cursor, 'author');
   assert.strictEqual(runFold.procedure.name, 'document.author-verified');
   assert.strictEqual(ledger.listRuns(path.join(temporary, 'projects', 'crm')).length, 1);
-
-  const workspaceEvents = path.join(temporary, 'projects', 'workspace', 'events');
-  assert(!fs.existsSync(workspaceEvents) || fs.readdirSync(workspaceEvents).length === 0);
   const projectStatus = command('git', ['status', '--short'], path.join(temporary, 'projects', 'crm'));
   assert(!projectStatus.includes('.rundol'));
+
+  // 공유 미러: events/run/ 서브디렉터리의 client+run 샤드.
+  const sharedShard = path.join(temporary, 'projects', 'workspace', 'events', 'run', `run-crm-laptop-a-${created.runId}-000001.jsonl`);
+  assert(fs.existsSync(sharedShard));
+
+  // 커서 재현성 (AC-P0c ①): 로컬 원장 없이 공유 이벤트만 fold해도 소유자와 동일.
+  const { workspaceLayout } = require(path.join(root, 'src', 'workspace.js'));
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: created.runId, event: { type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' } });
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: created.runId, event: { type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: ['RDL-DOC-004'], clientId: 'laptop-a' } });
+  const layout = workspaceLayout(temporary);
+  const sharedFold = ledger.foldSharedRun(ledger.readSharedRunEvents(layout, 'crm', created.runId));
+  const localFold = ledger.foldRun(ledger.readRunEvents(created.directory));
+  assert.deepStrictEqual(
+    { status: sharedFold.status, cursor: sharedFold.cursor, attempts: sharedFold.attempts, haltReason: sharedFold.haltReason },
+    { status: localFold.status, cursor: localFold.cursor, attempts: localFold.attempts, haltReason: localFold.haltReason }
+  );
+
+  // 정지하지 않은 런의 자동 인수는 거부된다. 벽시계는 어디에도 개입하지 않는다.
+  assert.throws(() => ledger.takeoverRun(temporary, { project: 'crm', runId: created.runId, clientId: 'desk-b' }), /자동으로 인수할 수 없습니다/u);
+
+  // halted 후 자동 인수. 새 소유자의 이벤트가 25년 과거의 시계를 갖더라도 사슬 순서가 이긴다.
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: created.runId, event: { type: 'run.halted', reason: 'manual', atStep: 'author', resumable: true, clientId: 'laptop-a' } });
+  const taken = ledger.takeoverRun(temporary, { project: 'crm', runId: created.runId, clientId: 'desk-b' });
+  assert.strictEqual(taken.basis, 'halted');
+  assert.strictEqual(taken.previousClientId, 'laptop-a');
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: created.runId, event: { type: 'run.resumed', fromStep: 'author', clientId: 'desk-b', occurredAt: '2000-01-01T00:00:00.000Z' } });
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: created.runId, event: { type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'desk-b', occurredAt: '2000-01-01T00:00:01.000Z' } });
+  const chained = ledger.foldSharedRun(ledger.readSharedRunEvents(layout, 'crm', created.runId));
+  assert.strictEqual(chained.status, 'running');
+  assert.strictEqual(chained.cursor, 'mech-gate');
+  assert.throws(() => ledger.takeoverRun(temporary, { project: 'crm', runId: created.runId, clientId: 'desk-b' }), /이미 이 런의 소유자/u);
+
+  // 정지 없는 런의 강제 인수는 사람의 결정이며 사유가 필수다.
+  const second = ledger.createRun(temporary, { project: 'crm', goal: '두 번째', clientId: 'laptop-a', procedure });
+  assert.throws(() => ledger.takeoverRun(temporary, { project: 'crm', runId: second.runId, clientId: 'desk-b', force: true }), /--reason/u);
+  const forced = ledger.takeoverRun(temporary, { project: 'crm', runId: second.runId, clientId: 'desk-b', force: true, reason: '소유 머신 분실' });
+  assert.strictEqual(forced.basis, 'forced');
+
+  // 신버전 검사가 run 샤드를 이해한다: 정상 통과 + 위조 clientId는 RDL-RUN-003.
+  const checkOutput = JSON.parse(command(process.execPath, [cli, 'check', '--root', temporary, '--json'], root));
+  const runDiagnostics = JSON.stringify(checkOutput).match(/RDL-RUN-\d{3}/gu) || [];
+  assert.strictEqual(runDiagnostics.length, 0, `예상 밖 run 진단: ${runDiagnostics.join(', ')}`);
+
+  // 혼합 버전 실측 (AC-P0c ②): 구버전(0.24.0) check가 events/run/을 보고도 오진 0.
+  const oldCommit = command('git', ['log', '--all', '--format=%H', '--grep=chore: release 0.24.0', '-1'], root);
+  if (oldCommit) {
+    const oldTree = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-old-'));
+    command('git', ['worktree', 'add', '--detach', oldTree, oldCommit], root);
+    try {
+      const result = spawnSync(process.execPath, [path.join(oldTree, 'bin', 'rdl.js'), 'check', '--root', temporary, '--json'], { encoding: 'utf8' });
+      assert.strictEqual(result.status, 0, `구버전 check 실패:\n${result.stdout}\n${result.stderr}`);
+      assert(!result.stdout.includes('RDL-LEASE-001'), `구버전이 run 샤드를 임대 파일로 오진:\n${result.stdout}`);
+    } finally {
+      command('git', ['worktree', 'remove', '--force', oldTree], root);
+    }
+  }
 
   process.stdout.write('run ledger tests passed\n');
 } finally {

@@ -68,7 +68,10 @@ function withAppendLock(lockDirectory, name, action) {
   }
 }
 
-function readEvents(eventsRoot, kind, scope) {
+// 기본 정렬은 occurredAt+eventId 표시용 병합이다(lease 소비자 불변).
+// { sort: 'file' }은 파일명·줄 순서 그대로 반환한다 — 단일 작성자 샤드에서는
+// 클라이언트 내부 순서의 정본이며, 시계에 의존하지 않는 fold의 입력이 된다.
+function readEvents(eventsRoot, kind, scope, options) {
   const definition = kindDefinition(kind);
   const directory = eventsDirectory(eventsRoot, kind);
   if (!fs.existsSync(directory)) return [];
@@ -82,6 +85,7 @@ function readEvents(eventsRoot, kind, scope) {
       events.push(event);
     }
   }
+  if (options && options.sort === 'file') return events;
   return events.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || String(a.eventId).localeCompare(String(b.eventId)));
 }
 
