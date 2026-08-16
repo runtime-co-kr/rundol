@@ -568,7 +568,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "CLI가 문서 유형 존재 여부뿐 아니라 과도한 통합과 추적 단위 부족을 일반 규칙으로 진단한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "런돌 스킬이 문서 생성 전에 책임 경계와 분할 여부를 명시적으로 판단하도록 안내한다.",
@@ -581,7 +581,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:59:09.900Z",
-      "updatedAt": "2026-08-15T18:27:57.039Z",
+      "updatedAt": "2026-08-16T01:31:03.665Z",
       "statusChangedAt": "2026-08-15T04:05:32.462Z",
       "externalRefs": [],
       "project": "rundol",
