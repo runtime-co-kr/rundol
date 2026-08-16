@@ -13,7 +13,16 @@ const { readTaskStore, shardFiles, clientId, TERMINAL_TASK_STATES } = require('.
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus, appendLease, listLeases } = require('./collaboration-store');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
-const { loadBoardPresentation } = require('./board-presentation');
+const { loadBoardPresentation, savePresentation } = require('./board-presentation');
+
+// inheritance와 sources는 파일 경로와 원본을 담은 파생 정보라 revision 비교에서 뺀다.
+// 넣어 두면 경로가 같아도 값이 같은지 판단하는 데 방해만 된다.
+function stripSources(presentation) {
+  const copy = Object.assign({}, presentation);
+  delete copy.inheritance;
+  delete copy.sources;
+  return copy;
+}
 
 const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'];
 const UI_ROOT = path.join(__dirname, 'board-ui');
@@ -220,7 +229,7 @@ function workspaceSnapshot(root, projectKey, search) {
     project: project.key,
     client: boardClient(root, project, clients),
     diagnostics: projectDiagnostics(root, project.key, `${workspaceRevision}:${entityRevision(documents)}`),
-    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(presentation) },
+    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(stripSources(presentation)) },
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
@@ -494,6 +503,20 @@ function createBoardServer(start, options) {
       if (request.method === 'POST' && projectContractMatch) {
         const body = await requestBody(request);
         return json(response, 200, updateDocumentContract(config.root, projectContractMatch[1], body));
+      }
+      // 표시 규칙과 프리셋은 board.json이 소유하고 범위마다 파일이 다르다. 커밋은 rdl save가
+      // 맡으므로 여기서는 파일만 쓴다. 읽을 때와 같은 검증을 통과하지 못하면 손대지 않는다.
+      if (request.method === 'POST' && projectPresentationMatch) {
+        const body = await requestBody(request);
+        const scope = body && body.scope;
+        if (!['workspace', 'project'].includes(scope)) return json(response, 400, { error: 'scope는 workspace 또는 project여야 합니다.' });
+        const projectKey = projectPresentationMatch[1];
+        const current = loadBoardPresentation(config.root, projectKey);
+        if (!body.baseRevision || body.baseRevision !== entityRevision(stripSources(current))) {
+          return json(response, 409, { error: '표시 설정이 외부에서 변경되었습니다. 최신 값을 확인하세요.', current });
+        }
+        savePresentation(config.root, projectKey, scope, body);
+        return json(response, 200, loadBoardPresentation(config.root, projectKey));
       }
       if (request.method === 'POST' && projectLeaseActionMatch) {
         const body = await requestBody(request);

@@ -591,6 +591,14 @@ async function loadSnapshot(silent, options) {
     if (state.pendingTasks.size > 0 && !(options && options.settlingTask)) return;
     const changed = !state.snapshot || JSON.stringify(state.snapshot.revision) !== JSON.stringify(next.revision);
     state.snapshot = next;
+    // 저장 직후 경로는 대기열이 남아 있어도 스냅샷을 갈아끼운다. 그러면 아직 보내지 않은
+    // 다른 태스크의 낙관적 변경이 서버 값으로 되돌아가고, 그 뒤에 만들어지는 payload는
+    // 되돌아간 값을 기준으로 하므로 먼저 누른 변경이 조용히 사라진다. 대기열에 남아 있는
+    // 변경을 새 객체에 다시 얹어 화면과 다음 payload가 같은 것을 보게 한다.
+    for (const [taskId, pending] of state.pendingTasks) {
+      const task = next.tasks.tasks.find((item) => item.id === taskId);
+      if (task) Object.assign(task, pending.changes);
+    }
     if (changed) { renderNavigation(); populateControls(); updateHealth(); setView(state.view, state.selected); }
     if (!silent) message('Workspace를 새로 읽었습니다.');
   } catch (error) {
@@ -665,7 +673,19 @@ document.addEventListener('change', async (event) => {
   queueTaskUpdate(task, Object.assign(cleared, { status }));
 });
 el('global-search').addEventListener('input', (event) => { state.query = event.target.value.trim(); if (state.view !== 'documents' && state.view !== 'tasks') setView('documents'); else setView(state.view); });
-el('project-switcher').addEventListener('change', async (event) => { markVisit(); state.project = event.target.value; state.snapshot = null; state.lastVisit = localStorage.getItem(visitKey()); await loadSnapshot(true); });
+// 프로젝트를 바꾸면 이전 프로젝트의 것은 무엇도 넘어오지 않아야 한다. 예약된 태스크 저장이
+// 남아 있으면 새 프로젝트 경로로 나가고, 열어 둔 패널은 지금 목록에 없는 항목을 계속 보여준다.
+el('project-switcher').addEventListener('change', async (event) => {
+  markVisit();
+  for (const [, pending] of state.pendingTasks) clearTimeout(pending.timer);
+  state.pendingTasks.clear();
+  closePeek();
+  state.project = event.target.value;
+  state.snapshot = null;
+  state.selected = null;
+  state.lastVisit = localStorage.getItem(visitKey());
+  await loadSnapshot(true);
+});
 el('current-member').addEventListener('change', (event) => { state.currentMember = event.target.value; if (state.currentMember) localStorage.setItem(`rundol.currentMember.${state.project}`, state.currentMember); else localStorage.removeItem(`rundol.currentMember.${state.project}`); if (state.view === 'tasks') renderTasks(); if (state.view === 'home') renderHome(); if (el('settings-member').value !== state.currentMember) el('settings-member').value = state.currentMember; });
 el('theme-system').addEventListener('click', () => applyTheme('system')); el('theme-dark').addEventListener('click', () => applyTheme('dark')); el('theme-light').addEventListener('click', () => applyTheme('light'));
 for (const button of document.querySelectorAll('[data-task-scope]')) button.addEventListener('click', () => { state.taskScope = button.dataset.taskScope; setView('tasks'); });
@@ -937,6 +957,24 @@ function currentPolicyFromRows() {
   }
   return policy;
 }
+function currentSectionsFromRows() {
+  const sections = {};
+  for (const row of document.querySelectorAll('[data-contract-type]')) {
+    sections[row.dataset.contractType] = Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection);
+  }
+  return sections;
+}
+// 이 범위에서 덮은 값만 보낸다. 합쳐진 결과를 통째로 보내면 위에서 내려온 값까지
+// 이 범위 파일에 박혀, 나중에 상위 기본값이 나아져도 반영되지 않는다.
+function presentationInput(scope, patch) {
+  const sources = (state.snapshot.presentation && state.snapshot.presentation.sources) || {};
+  const own = sources[scope] || {};
+  const next = { scope, baseRevision: state.snapshot.revision.presentation };
+  for (const group of ['documentTypes', 'documentStates', 'policyStates', 'enforcementLevels', 'taskStatuses', 'priorities', 'profiles']) {
+    next[group] = Object.assign({}, own[group], (patch && patch[group]) || {});
+  }
+  return next;
+}
 function samePolicy(left, right) {
   return ['required', 'recommended', 'onDemand', 'disabled']
     .every((state_) => JSON.stringify((left[state_] || []).slice().sort()) === JSON.stringify((right[state_] || []).slice().sort()));
@@ -1114,6 +1152,24 @@ document.addEventListener('click', async (event) => {
   if (row && remove) { const component = remove.closest('[data-contract-section]'); const value = component.dataset.contractSection; component.remove(); setSuggestionState(row, value, false); return; }
   const add = event.target.closest('[data-component-add]');
   if (row && add) { const input = row.querySelector('[data-component-input]'); if (addContractComponent(row, input.value)) input.value = ''; return; }
+  // 지금 화면 구성을 이름 붙여 프리셋으로 남긴다. 프리셋은 프로젝트가 아니라 board.json이
+  // 소유하므로 계약 저장과 다른 곳에 쓴다. 계약은 그 이름을 가리키게만 바꾼다.
+  if (event.target.closest('#save-preset')) {
+    const key = (prompt('프리셋 이름 (영문 소문자·숫자·하이픈)', 'our-team') || '').trim();
+    if (!key) return;
+    if (!/^[a-z][a-z0-9-]*$/u.test(key)) return message('프리셋 이름은 영문 소문자로 시작하고 숫자와 하이픈만 쓸 수 있습니다.', true);
+    const label = (prompt('화면에 보일 이름', key) || key).trim();
+    try {
+      await api(projectPath('/presentation'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+        body: JSON.stringify(presentationInput('project', { profiles: { [key]: { label, policy: currentPolicyFromRows(), sections: currentSectionsFromRows() } } }))
+      });
+      await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign(contractInput(), { name: key })) });
+      await loadSnapshot(true);
+      message(`프리셋 ${label}으로 저장하고 이 프로젝트 계약을 그 프리셋으로 바꿨습니다.`);
+    } catch (error) { message(error.message, true); }
+    return;
+  }
   if (!event.target.closest('#save-contract')) return;
   try { await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(contractInput()) }); await loadSnapshot(true); message('문서 계획 계약을 저장했습니다.'); }
   catch (error) { message(error.message, true); }

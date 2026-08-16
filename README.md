@@ -28,7 +28,7 @@ repository/
 
 ## 설치
 
-Node.js 14+, npm 6+, Git 2.20+가 필요하다.
+Node.js 20+, npm 6+, Git 2.20+가 필요하다.
 
 ```bash
 npm install --global rundol

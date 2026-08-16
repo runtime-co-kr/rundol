@@ -166,6 +166,17 @@ function normalizeProfile(input, presets) {
   // 실제로는 제목만 보고 내용을 보지 않아 빈 제목 여섯 줄로도 통과했다. 나중에 그 유형을
   // 켜면 흡수해 둔 내용을 옮기라고 알려주는 경로도 없어 양쪽에 같은 주제가 남았다.
   // 사용 안 함은 이제 "이 프로젝트에서는 만들지 않는다" 하나만 뜻한다.
+  //
+  // 다만 "해당 없음"과 그 사유는 다르다. 기계가 만든 기본값이 아니라 사람이 왜 그렇게
+  // 정했는지 적어 둔 판단이고, 그 내용을 담은 곳이 여기 말고 없다. 규칙을 없앤다고 남의
+  // 기록까지 지울 이유는 없으므로 적혀 있으면 그대로 옮긴다. 새로 만들지는 않는다.
+  const carried = {};
+  for (const [type, supplied] of Object.entries(value.omissions || {})) {
+    if (!supplied || supplied.notApplicable !== true) continue;
+    const reason = scalar(supplied.reason);
+    if (reason) carried[type] = { notApplicable: true, reason };
+  }
+  if (Object.keys(carried).length) result.omissions = carried;
   return result;
 }
 
@@ -259,6 +270,15 @@ function renderDocumentProfileUnchecked(profile) {
   if (profile.schemaVersion === 2) lines.push(`  enforcement: ${profile.enforcement}`);
   lines.push(`  traits: [${profile.traits.join(', ')}]`, `  history: [${profile.history.join(', ')}]`, '  policy:');
   for (const state of POLICY_STATES) lines.push(`    ${state}: [${profile.policy[state].join(', ')}]`);
+  // 사람이 적어 둔 "해당 없음" 사유는 계약을 저장해도 그대로 남는다. 규칙을 없앤 것이
+  // 그 기록을 지울 근거는 아니다.
+  const carried = Object.entries(profile.omissions || {});
+  if (carried.length) {
+    lines.push('  omissions:');
+    for (const [type, omission] of carried) {
+      lines.push(`    ${type}:`, '      notApplicable: true', `      reason: "${String(omission.reason).replace(/"/gu, '\\"')}"`);
+    }
+  }
   return lines.join('\n');
 }
 

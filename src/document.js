@@ -103,6 +103,17 @@ function createDocument(start, input) {
   const titleTokens = ['<프로젝트명>', '<제품명>', '<요구사항 제목>', '<화면 또는 상호작용 제목>', '<데이터 영역 제목>', '<인터페이스 제목>', '<결정 제목>', '<검증 범위 제목>', '<서비스/작업 운영 절차>', '<노트 제목>'];
   for (const token of titleTokens) source = source.replaceAll(token, title.title);
   source = source.replace(/<([^>]+)>/g, (_, hint) => `작성 필요 — ${hint}`);
+  // 팀이 프리셋에 더한 절은 템플릿에 없다. 뼈대에 자리를 만들어 두지 않으면 무엇을 더
+  // 채워야 하는지 문서를 여는 사람이 알 수 없다. 이미 있는 절은 건드리지 않는다.
+  const { loadBoardPresentation, resolveProfileSections } = require('./board-presentation');
+  const presetSections = resolveProfileSections(loadBoardPresentation(layout.root, project.key), contract.profile ? contract.profile.name : null);
+  const present = new Set(source.split(/\r?\n/u).map((line) => /^##\s+(.+?)\s*#*\s*$/u.exec(line)).filter(Boolean).map((match) => match[1].trim()));
+  const missing = (presetSections[type] || []).filter((section) => !present.has(section));
+  if (missing.length) {
+    const anchor = source.indexOf('\n## 기능별 설계 계약');
+    const addition = `${missing.map((section) => `## ${section}\n\n`).join('')}`;
+    source = anchor >= 0 ? `${source.slice(0, anchor + 1)}${addition}${source.slice(anchor + 1)}` : `${source.replace(/\s*$/u, '')}\n\n${addition}`;
+  }
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
   return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null };

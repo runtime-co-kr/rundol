@@ -75,4 +75,27 @@ try {
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
-process.stdout.write('document profile tests passed\n');
+// 규칙을 없앤 것이 남의 기록까지 지울 근거는 아니다. "해당 없음"과 그 사유는 기계가 만든
+// 기본값이 아니라 사람이 왜 그렇게 정했는지 적어 둔 판단이고, 담긴 곳이 여기 말고 없다.
+{
+  const withReason = profile.normalizeProfile({
+    name: 'lean', enforcement: 'checkpoint',
+    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
+    omissions: { SCR: { notApplicable: true, reason: '이 제품에는 화면이 없다' } }
+  });
+  assert.strictEqual(withReason.omissions.SCR.notApplicable, true, '기록된 결정은 남아야 합니다');
+  assert.strictEqual(withReason.omissions.SCR.reason, '이 제품에는 화면이 없다', '사유까지 남아야 합니다');
+  const rendered = profile.renderDocumentProfile(withReason);
+  assert.ok(rendered.includes('이 제품에는 화면이 없다'), '다시 쓸 때도 사유가 남아야 합니다');
+  assert.strictEqual(profile.validateDocumentProfile(`---\n${rendered}\n---\n`).status, 'valid');
+
+  // 흡수 규칙(대상·섹션)은 기계 기본값이라 계속 제거한다. 사람이 적은 것만 남긴다.
+  const absorbed = profile.normalizeProfile({
+    name: 'lean',
+    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
+    omissions: { SCR: { absorbedBy: 'REQ', sections: ['사용자 흐름'] } }
+  });
+  assert.strictEqual(absorbed.omissions, undefined, '흡수 규칙은 남기지 않습니다');
+}
+
+process.stdout.write('document profile tests passed' + String.fromCharCode(10));

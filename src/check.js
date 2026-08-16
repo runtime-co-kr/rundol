@@ -6,6 +6,7 @@ const { readTaskStore } = require('./tasks');
 const { parseFrontmatter } = require('./frontmatter');
 const { validateDocumentProfile } = require('./document-profile');
 const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
+const { loadBoardPresentation, resolveProfilePresets } = require('./board-presentation');
 const { validateBoundaryMetadata } = require('./document-boundary');
 const { validateDocumentDiagram } = require('./document-diagram');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
@@ -611,7 +612,11 @@ function checkCompositeViews(diagnostics, layout, project) {
 function checkDocumentProfile(diagnostics, layout, project, settings) {
   if (!project.charter || !fs.existsSync(project.charter)) return;
   const source = fs.readFileSync(project.charter, 'utf8');
-  const validation = validateDocumentProfile(source);
+  // 어떤 프로필 이름이 유효한지는 board.json 상속이 정한다. 그 목록을 넘기지 않으면
+  // 팀이 만든 프리셋을 쓰는 프로젝트가 RDL-PROFILE-001로 오진되어 save와 sync가 막힌다.
+  // contract check는 통과하는데 check --strict만 실패하는 상태였다.
+  const presets = resolveProfilePresets(loadBoardPresentation(layout.root, project.key));
+  const validation = validateDocumentProfile(source, presets);
   if (!validation.present) return;
   for (const message of validation.errors) diagnostic(diagnostics, {
     code: 'RDL-PROFILE-001', category: 'profile', file: relative(layout.root, project.charter), project: project.key, message

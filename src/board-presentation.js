@@ -272,6 +272,6 @@ module.exports = {
   DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
   TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, DEFAULT_PRESENTATION,
   readConfig, mergePresentation, loadBoardPresentation,
-  resolveProfilePresets, profileChoices, presentationFile, savePresentation,
+  resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile, savePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig
 };

@@ -104,7 +104,9 @@ function doctor(start, options) {
   const settings = options || {};
   const checks = [];
   const nodeMajor = major(process.version);
-  checks.push({ id: 'node', status: nodeMajor >= 14 ? 'ok' : 'error', message: `Node.js ${process.version}`, required: '>=14' });
+  // engines와 같은 값을 봐야 한다. doctor가 통과라고 하는데 실행이 깨지면 진단이 거짓말이 된다.
+  const nodeFloor = Number.parseInt(String(require('../package.json').engines.node).replace(/[^\d]/gu, ''), 10) || 20;
+  checks.push({ id: 'node', status: nodeMajor >= nodeFloor ? 'ok' : 'error', message: `Node.js ${process.version}`, required: `>=${nodeFloor}` });
 
   const npm = run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'], { shell: process.platform === 'win32' });
   const npmOk = npm.status === 0 && atLeast(npm.stdout, [6, 0, 0]);

@@ -483,3 +483,28 @@ assert(/function policyStateLabel\(value\) \{ return presentationLabel\('policyS
 assert(!/\{ high: '높음', mid: '중간', low: '낮음' \}/u.test(app), '우선순위 라벨을 코드에 박아 두면 설정에서 바꿀 수 없습니다');
 
 console.log('board UI tests passed');
+
+// 저장 직후 경로는 대기열이 남아 있어도 스냅샷을 갈아끼운다. 그때 아직 보내지 않은 다른
+// 태스크의 낙관적 변경이 서버 값으로 되돌아가면, 그 뒤 payload가 되돌아간 값을 기준으로
+// 만들어져 먼저 누른 변경이 조용히 사라진다.
+{
+  const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function initialize'));
+  assert(/for \(const \[taskId, pending\] of state\.pendingTasks\)/u.test(load), '스냅샷 교체 뒤 대기열을 다시 얹어야 합니다');
+  assert(load.indexOf('state.snapshot = next') < load.indexOf('of state.pendingTasks'), '교체한 새 객체에 얹어야 합니다');
+  assert(load.indexOf('of state.pendingTasks') < load.indexOf('setView(state.view'), '그리기 전에 얹어야 합니다');
+}
+
+// 프로젝트를 바꾸면 이전 프로젝트의 것은 무엇도 넘어오지 않아야 한다. 예약된 저장이 남으면
+// 새 프로젝트 경로로 나가고, 열어 둔 패널은 지금 목록에 없는 항목을 계속 보여준다.
+{
+  const start = app.indexOf("el('project-switcher').addEventListener");
+  const swap = app.slice(start, start + 700);
+  assert(swap.includes('state.pendingTasks.clear()'), '예약된 태스크 저장을 비워야 합니다');
+  assert(swap.includes('clearTimeout(pending.timer)'), '예약 타이머도 꺼야 합니다');
+  assert(swap.includes('closePeek()'), '이전 프로젝트 패널을 닫아야 합니다');
+}
+
+// 편집 UI만 있고 저장 경로가 없으면 눌러도 아무 일이 없다.
+assert(app.includes("projectPath('/presentation')"), '프리셋 저장은 표시 설정 API로 나가야 합니다');
+assert(app.includes('function presentationInput'), '이 범위에서 덮은 값만 보내야 합니다');
+assert(app.includes('function currentSectionsFromRows'), '화면의 하부 요소를 모아야 합니다');
