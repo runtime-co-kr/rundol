@@ -777,6 +777,41 @@
       "statusChangedAt": "2026-08-14T01:40:59.467Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSWGAGTYDF371440DE8F3455": {
+      "title": "[기능] run drive의 verify 스텝 배선",
+      "summary": "drive가 verify 커서를 명시적으로 거부하는 fail-closed를 해제하고 verifyArtifact로 배선한다. pin된 lenses·instructions·policy로 검증하고 quorum 판정을 run.gate로 기록해 커서가 전진·재시도한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-012",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "drive가 verify 커서에서 verifyArtifact를 호출해 pin된 lenses·instructions·policy로 검증한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "검증 quorum 판정이 run.gate(exit 0/1)로 기록되어 fold 커서가 전진하거나 onFail 재시도한다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "preflight의 verify 거부가 제거되고 drive 테스트에 verify 스텝 시나리오가 추가된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-16T23:43:15.381Z",
+      "updatedAt": "2026-08-16T23:43:15.381Z",
+      "statusChangedAt": "2026-08-16T23:43:15.381Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
