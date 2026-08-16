@@ -24,6 +24,15 @@ function projectPath(path) { return `/api/projects/${encodeURIComponent(state.pr
 function presentationLabel(group, value, fallback) { const configured = state.snapshot && state.snapshot.presentation && state.snapshot.presentation[group] && state.snapshot.presentation[group][value]; return configured && (configured.label || configured) || fallback; }
 function documentTypeLabel(item) { const value = item && (item.kind || item.type); return presentationLabel('documentTypes', value, typeLabels[value] || value || '문서'); }
 function documentStateLabel(value) { return presentationLabel('documentStates', value, documentStateLabels[value] || value || '상태 없음'); }
+// 계약과 태스크가 저장하는 값은 required, checkpoint, todo 같은 ASCII 식별자다. 그 값을
+// 화면에 그대로 내보내면 읽는 사람이 뜻을 유추해야 한다. 저장값은 그대로 두고 보이는
+// 말만 표시 규칙에서 가져온다. 표기를 바꿔도 저장된 계약은 한 글자도 달라지지 않는다.
+function policyStateLabel(value) { return presentationLabel('policyStates', value, value); }
+function enforcementLabel(value) { return presentationLabel('enforcementLevels', value, value); }
+function taskStatusLabel(value) { return presentationLabel('taskStatuses', value, statusLabels[value] || value); }
+function priorityLabel(value) { return presentationLabel('priorities', value, value); }
+function presentationHint(group, value) { const configured = state.snapshot && state.snapshot.presentation && state.snapshot.presentation[group] && state.snapshot.presentation[group][value]; return (configured && configured.description) || ''; }
+function labelledEntries(group, keys) { return keys.map((key) => [key, presentationLabel(group, key, key)]); }
 
 function markdown(source) {
   if (!window.marked || !window.DOMPurify) return `<pre>${escapeHtml(source || '')}</pre>`;
@@ -352,8 +361,8 @@ function taskDetailHtml(task, mode) {
 
   const row = (label, value) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>`;
   const properties = `<dl class="task-properties">${[
-    row('상태', contextSelect('status', task.status, Object.entries(statusLabels))),
-    row('우선순위', contextSelect('priority', task.priority, [['high', '높음'], ['mid', '중간'], ['low', '낮음']])),
+    row('상태', contextSelect('status', task.status, labelledEntries('taskStatuses', Object.keys(statusLabels)))),
+    row('우선순위', contextSelect('priority', task.priority, labelledEntries('priorities', ['high', 'mid', 'low']))),
     row('소유자', contextSelect('owner', task.owner, members)),
     row('검토자', escapeHtml((task.reviewers || []).map(personName).join(', ') || '미지정')),
     row('이해관계자', escapeHtml((task.stakeholders || []).map(personName).join(', ') || '미지정')),
@@ -403,14 +412,14 @@ function taskRow(task) {
   const total = Object.keys(task.acceptanceCriteria || {}).length;
   const blockage = taskBlockage(task);
   const badge = blockage ? `<span class="task-blocked" data-blocked="${blockage.kind}" title="${escapeHtml(blockage.detail)}">${escapeHtml(blockage.label)}</span>` : '';
-  return `<button class="task-row" data-task="${task.id}"><span class="task-row-main"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>${badge}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))} · ${completed}/${total}</span></button>`;
+  return `<button class="task-row" data-task="${task.id}"><span class="task-row-main"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>${badge}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(priorityLabel(task.priority))}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))} · ${completed}/${total}</span></button>`;
 }
 // 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
 // 상태로 묶으면 완료 묶음이 생기고 기본으로 접는다. 개수는 남으므로 진행감은 잃지 않는다.
 const groupers = {
-  status: { order: () => Object.keys(statusLabels), key: (task) => task.status, label: (key) => statusLabels[key] || key },
+  status: { order: () => Object.keys(statusLabels), key: (task) => task.status, label: (key) => taskStatusLabel(key) },
   owner: { order: null, key: (task) => task.owner || '', label: (key) => personName(key) || '미지정' },
-  priority: { order: () => ['high', 'mid', 'low'], key: (task) => task.priority, label: (key) => ({ high: '높음', mid: '중간', low: '낮음' }[key] || key) }
+  priority: { order: () => ['high', 'mid', 'low'], key: (task) => task.priority, label: (key) => priorityLabel(key) }
 };
 function groupCollapsed(groupBy, key) {
   const saved = viewOption(`collapse.${groupBy}.${key}`, null);
@@ -451,7 +460,7 @@ function boardCard(task) {
   return `<button class="task-card" data-task="${escapeHtml(task.id)}" title="${escapeHtml(task.title)}">`
     + `<span class="task-card-title">${escapeHtml(task.title)}</span>`
     + `<span class="task-card-meta">`
-    + `<span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span>`
+    + `<span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(priorityLabel(task.priority))}</span>`
     + `<span class="task-card-owner">${escapeHtml(personName(task.owner))}</span>`
     + (total ? `<span class="task-card-progress">${completed}/${total}</span>` : '')
     + (blockage ? `<span class="task-blocked" data-blocked="${blockage.kind}" title="${escapeHtml(blockage.detail)}">${escapeHtml(blockage.label)}</span>` : '')
@@ -460,7 +469,7 @@ function boardCard(task) {
 function renderBoard(tasks) {
   el('board').innerHTML = Object.keys(statusLabels).map((status) => {
     const items = tasks.filter((task) => task.status === status);
-    return `<section class="column"><header class="column-head"><h2>${escapeHtml(statusLabels[status])}</h2><span class="badge">${items.length}</span></header>`
+    return `<section class="column"><header class="column-head"><h2 title="${escapeHtml(presentationHint('taskStatuses', status))}">${escapeHtml(taskStatusLabel(status))}</h2><span class="badge">${items.length}</span></header>`
       + `<div class="column-cards">${items.length ? items.map(boardCard).join('') : '<p class="column-empty">없음</p>'}</div></section>`;
   }).join('');
 }
@@ -545,7 +554,7 @@ function populateControls() { const members = state.snapshot.people.members; el(
   el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
   el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); // 새로 만드는 태스크는 아직 끝나지도, 접히지도 않았다. 종료 상태를 고르게 두면
 // 완료는 수용조건과 TST를, 반려는 사유를 요구해 생성이 그대로 거부된다.
-el('task-status').replaceChildren(...Object.entries(statusLabels).filter(([value]) => !TERMINAL_STATUSES.includes(value)).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
+el('task-status').replaceChildren(...labelledEntries('taskStatuses', Object.keys(statusLabels).filter((value) => !TERMINAL_STATUSES.includes(value))).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
 function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; renderSyncStatus(); }
 
 // 동기화는 값을 바꾸는 설정이 아니라 되돌리기 어려운 동작이다. 설정 화면이 아니라
@@ -886,7 +895,7 @@ el('settings-member').addEventListener('change', (event) => { el('current-member
 el('reset-view-options').addEventListener('click', () => { resetViewOptions(); populateControls(); setView(state.view, state.selected); message('이 프로젝트의 표시 설정을 초기값으로 되돌렸습니다.'); });
 function ensureContractSettings() {
   if (el('contract-settings')) return;
-  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></header><div class="form-grid"><label>프로필<select id="contract-profile"><option>lean</option><option>product</option><option>service</option><option>platform</option><option>assured</option></select></label><label>강제 수준<select id="contract-enforcement"><option value="advisory">advisory</option><option value="checkpoint">checkpoint</option></select></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
+  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></header><div class="form-grid"><label>프로필<select id="contract-profile"></select><small id="contract-profile-hint" class="control-hint"></small></label><label>강제 수준<select id="contract-enforcement"></select><small id="contract-enforcement-hint" class="control-hint"></small></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
 function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
 function setSuggestionState(row, value, selected) {
@@ -902,20 +911,31 @@ function addContractComponent(row, value) {
   return true;
 }
 function syncContractRow(row) {
-  const disabled = row.querySelector('[data-contract-status]').value === 'disabled';
+  const status = row.querySelector('[data-contract-status]');
+  const disabled = status.value === 'disabled';
   const omission = row.querySelector('[data-contract-omission]');
   omission.hidden = !disabled;
   for (const control of omission.querySelectorAll('select,input')) control.disabled = !disabled;
+  // 상태를 바꾸면 그 상태가 무슨 뜻인지도 따라가야 한다. 고정된 설명은 곧 거짓말이 된다.
+  const hint = status.closest('label').querySelector('.control-hint');
+  if (hint) hint.textContent = presentationHint('policyStates', status.value);
 }
 function renderContractSettings() {
   ensureContractSettings();
   const contract = state.snapshot.contract;
   if (!contract || !contract.profile) { el('contract-summary').textContent = contract ? contract.status : 'legacy-unconfigured'; el('implementation-contract-summary').textContent = ''; el('contract-rules').innerHTML = ''; return; }
   const profile = contract.profile;
+  const catalog = contract.catalog;
+  // 선택지의 value는 계약에 저장되는 값이고 보이는 글자는 표시 규칙이 정한다. 예전에는
+  // 선택지에 value 없이 프로필 이름만 적어 표시값이 곧 저장값이었고, 표기를 바꾸면
+  // 계약이 깨졌다. 이제 value는 고정이고 label만 설정을 따라간다.
+  el('contract-profile').replaceChildren(...catalog.profiles.map((name) => new Option(presentationLabel('profiles', name, name), name)));
+  el('contract-enforcement').replaceChildren(...catalog.enforcements.map((name) => new Option(enforcementLabel(name), name)));
   el('contract-profile').value = profile.name;
   el('contract-enforcement').value = profile.enforcement;
+  el('contract-profile-hint').textContent = presentationHint('profiles', profile.name);
+  el('contract-enforcement-hint').textContent = presentationHint('enforcementLevels', profile.enforcement);
   el('contract-summary').textContent = `${contract.status} · revision ${profile.revision} · 위반 ${contract.evaluation.violations.length}건`;
-  const catalog = contract.catalog;
   const trace = contract.traceability && contract.traceability.summary;
   el('implementation-contract-summary').textContent = `${catalog.implementation.version} · 기능별 독립 명세(묶음 금지) · 계산된 추적성 ${trace ? `${trace.ready}/${trace.functions} 준비` : '0/0 준비'} · 별도 인덱스 없음`;
   el('contract-rules').innerHTML = catalog.documentTypes.map((type) => {
@@ -933,7 +953,7 @@ function renderContractSettings() {
     const context = catalog.documentTypes.filter((candidate) => candidate !== type)
       .map((candidate) => `<button type="button" class="guidance-chip" data-context-toggle="${candidate}" aria-pressed="${recommendedContext.includes(candidate)}">${candidate}</button>`).join('');
     const suggestions = catalog.sections[type].map((value) => `<button type="button" class="suggestion-chip" data-component-suggestion="${escapeHtml(value)}" ${selectedComponents.includes(value) ? 'disabled' : ''}>+ ${escapeHtml(value)}</button>`).join('');
-    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>${type}를 작성할 때 함께 읽을 타입입니다. 생성을 막지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}${notApplicable ? ' data-not-applicable' : ''}>${notApplicable ? `<p class="control-hint">이 유형은 <strong>해당 없음</strong>으로 처분되어 있습니다. 사유: ${escapeHtml(configured.reason || '기록 없음')}. 흡수 대상을 지정하려면 <code>rdl contract set</code>으로 처분을 바꾸세요.</p>` : ''}<label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
+    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${escapeHtml(policyStateLabel(value))}</option>`).join('')}</select><small class="control-hint">${escapeHtml(presentationHint('policyStates', status))}</small></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>${type}를 작성할 때 함께 읽을 타입입니다. 생성을 막지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}${notApplicable ? ' data-not-applicable' : ''}>${notApplicable ? `<p class="control-hint">이 유형은 <strong>해당 없음</strong>으로 처분되어 있습니다. 사유: ${escapeHtml(configured.reason || '기록 없음')}. 흡수 대상을 지정하려면 <code>rdl contract set</code>으로 처분을 바꾸세요.</p>` : ''}<label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
   }).join('');
   for (const row of document.querySelectorAll('[data-contract-type]')) syncContractRow(row);
 }
@@ -977,7 +997,7 @@ function renderContractCompliance() {
   const profile = contract.profile;
 
   const policyRows = ['required', 'recommended', 'onDemand', 'disabled']
-    .map((name) => `<div class="property"><dt>${escapeHtml(name)}</dt><dd>${escapeHtml((profile.policy[name] || []).join(', ') || '없음')}<small>${escapeHtml(policyNote[name])}</small></dd></div>`).join('');
+    .map((name) => `<div class="property"><dt>${escapeHtml(policyStateLabel(name))}</dt><dd>${escapeHtml((profile.policy[name] || []).join(', ') || '없음')}<small>${escapeHtml(presentationHint('policyStates', name) || policyNote[name])}</small></dd></div>`).join('');
 
   const violations = (evaluation.violations || []).map((item) => `<div class="compliance-item error"><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.message)}</span></div>`);
   const findings = (diagnostics.items || []).map((item) => `<div class="compliance-item ${escapeHtml(item.severity)}"><strong>${escapeHtml(item.code)}</strong><span>${escapeHtml(item.message)}</span><small>${escapeHtml(item.artifactId || item.file || '')}</small></div>`);
@@ -1001,9 +1021,9 @@ function renderContractCompliance() {
 
   el('compliance-body').innerHTML = `
     <section class="compliance-group"><h3>계약 상태</h3><dl>
-      <div class="property"><dt>강제 수준</dt><dd>${escapeHtml(contract.enforcement)}<small>${escapeHtml(enforcementNote[contract.enforcement] || '')}</small></dd></div>
+      <div class="property"><dt>강제 수준</dt><dd>${escapeHtml(enforcementLabel(contract.enforcement))}<small>${escapeHtml(presentationHint('enforcementLevels', contract.enforcement) || enforcementNote[contract.enforcement] || '')}</small></dd></div>
       <div class="property"><dt>revision</dt><dd>${escapeHtml(String(profile.revision))}<small>계약을 바꿀 때마다 1씩 오릅니다.</small></dd></div>
-      <div class="property"><dt>프로필 이력</dt><dd>${escapeHtml((profile.history || []).join(' → '))}</dd></div>${diagrams}
+      <div class="property"><dt>프로필 이력</dt><dd>${escapeHtml((profile.history || []).map((name) => presentationLabel('profiles', name, name)).join(' → '))}</dd></div>${diagrams}
     </dl></section>
     <section class="compliance-group"><h3>정책 상태별 의미</h3><dl>${policyRows}</dl></section>
     <section class="compliance-group"><h3>계약 위반 ${violations.length}</h3>${complianceList(violations, '위반이 없습니다.')}</section>

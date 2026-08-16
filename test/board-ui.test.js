@@ -466,4 +466,16 @@ const narrow = style.slice(style.indexOf('@media (max-width: 720px)'));
 assert(!/\.sidebar-head select[^{]*\{[^}]*display:\s*none/u.test(narrow), '좁은 화면에서 프로젝트 선택기를 감추면 안 됩니다');
 assert(/\.workspace-shell,[^{]*\{[^}]*var\(--nav-Width\)/u.test(narrow), '좁은 화면에서도 기본은 펼친 사이드바여야 합니다');
 
+// 계약과 태스크가 저장하는 값은 ASCII 식별자이고 화면에 보이는 말은 표시 규칙이 정한다.
+// 둘을 섞으면 표기를 바꾸는 순간 저장된 계약이 깨진다. 예전 <option>lean</option>은
+// 표시값이 곧 저장값이라 정확히 그 구조였다.
+assert(!/<option>(lean|product|service|platform|assured)<\/option>/u.test(app), '프로필 선택지는 표시값을 저장값으로 쓰면 안 됩니다');
+assert(!/<option value="(advisory|checkpoint)">\1<\/option>/u.test(app), '강제 수준 선택지는 표시값을 저장값으로 쓰면 안 됩니다');
+for (const helper of ['policyStateLabel', 'enforcementLabel', 'taskStatusLabel', 'priorityLabel']) {
+  assert(app.includes(`function ${helper}`), `${helper}로 저장값과 표시값을 갈라야 합니다`);
+}
+// 라벨은 표시 규칙에서 오고, 규칙에 없으면 저장값을 그대로 보여 준다(끊기지 않게).
+assert(/function policyStateLabel\(value\) \{ return presentationLabel\('policyStates', value, value\); \}/u.test(app), '정책 상태 라벨은 표시 규칙에서 와야 합니다');
+assert(!/\{ high: '높음', mid: '중간', low: '낮음' \}/u.test(app), '우선순위 라벨을 코드에 박아 두면 설정에서 바꿀 수 없습니다');
+
 console.log('board UI tests passed');
