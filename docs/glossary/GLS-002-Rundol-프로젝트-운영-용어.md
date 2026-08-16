@@ -33,7 +33,7 @@ related:
 | 코드 branch | 저장소 root에서 제품 코드와 release asset을 소유하는 일반 branch | `main`, `trunk` | Rundol 문서 branch |
 | project key | 소문자 kebab-case 프로젝트 식별자 | `customer-portal` | 표시 이름, 문서 ID |
 | linked worktree | 한 Git object database의 branch를 canonical 별도 경로에 checkout한 작업 디렉터리 | `projects/rundol/` | 복사본, mount symlink |
-| 문서 계약 | `project.md.documentProfile`의 type policy, rule, omission, enforcement, revision | contract check | Board 표시 설정 |
+| 문서 계약 | `project.md.documentProfile`의 type policy, enforcement, revision | contract check | Board 표시 설정, 프로필 프리셋 |
 | canonical artifact | 정해진 type·ID·frontmatter·경로를 가진 프로젝트 정본 문서 | `REQ-019`, `ARC-004` | INDEX, 추적성 표 |
 | atomic-v1 | 구현 기능 ID마다 유형별 필수 명세를 독립적으로 완성하는 계약 | `functionIds: [COL-01]` | 여러 기능 공통 placeholder |
 | Client | device·agent·service 중 하나로 등록되고 MEMBER owner가 있는 협업 실행 주체 | `test-device` | 사용자 계정, HTTP session |

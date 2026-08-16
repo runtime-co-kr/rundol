@@ -17,41 +17,16 @@ related:
   - "[[PRD-001-Rundol-제품-요구사항|PRD-001]]"
 documentProfile:
   schemaVersion: 2
-  revision: 5
+  revision: 7
   name: lean
   enforcement: checkpoint
   traits: []
-  history: [lean, lean, lean, lean, lean]
+  history: [lean, lean, lean, lean, lean, lean, lean]
   policy:
     required: [PRD, REQ, TST]
     recommended: [ARC, ADR]
     onDemand: [MOD, API, RUN, GLS]
     disabled: [SCR]
-  rules:
-    PRD:
-      after: []
-    REQ:
-      after: [PRD]
-    ARC:
-      after: [REQ]
-    SCR:
-      after: [REQ]
-    MOD:
-      after: [REQ, ARC]
-    API:
-      after: [REQ, ARC]
-    ADR:
-      after: [ARC]
-    TST:
-      after: [REQ]
-    RUN:
-      after: [REQ, ARC]
-    GLS:
-      after: []
-  omissions:
-    SCR:
-      absorbedBy: REQ
-      sections: [사용자 흐름, 화면 상태, 입력과 검증, 접근성]
 ---
 
 # Rundol

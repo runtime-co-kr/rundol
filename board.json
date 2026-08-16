@@ -1,9 +1,10 @@
 {
   "schemaVersion": 1,
-  "documentTypes": {
-    "prd": {
-      "label": "Rundol 제품 요구사항"
-    }
-  },
-  "documentStates": {}
+  "documentTypes": {},
+  "documentStates": {},
+  "policyStates": {},
+  "enforcementLevels": {},
+  "taskStatuses": {},
+  "priorities": {},
+  "profiles": {}
 }

@@ -27,7 +27,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 
 시스템의 정본 경계는 Git이다. 애플리케이션 소스가 있는 일반 브랜치와 별도로 Workspace 설정은 `rundol/workspace`, 프로젝트 산출물은 `rundol/<project-key>` 브랜치가 소유한다. 각 브랜치는 `projects/workspace/`, `projects/<project-key>/` linked worktree로 연결된다. npm registry와 Git remote는 설치·동기화 시에만 사용하는 외부 경계이며, 문서 작성과 검증은 네트워크 없이 동작한다.
 
-문서 계획 계약은 프로젝트별 `project.md`의 `documentProfile`이 소유한다. `rules.<TYPE>.after`는 AI 추천 문맥일 뿐 생성·저장 순서를 강제하지 않으며, `policy`, `omissions`, `enforcement`, `revision`은 CLI·스킬·Board가 공유하는 계약이다.
+문서 계획 계약은 프로젝트별 `project.md`의 `documentProfile`이 소유하며, 저장하는 것은 `policy`, `enforcement`, `revision`뿐이다. 프로필 프리셋과 유형별 하부 요소는 `board.json` 상속(내장 기본값 → Workspace → 프로젝트)이 정하므로 프로젝트가 들고 다니지 않는다. 계약은 프로필 이름 하나만 저장하고 그 뜻은 읽을 때마다 다시 계산된다.
 
 구현 준비도는 각 REQ·SCR·MOD·API·TST의 `implementationContract: atomic-v1`과 `functionIds`가 소유한다. 한 파일에 여러 기능을 배치해도 각 기능은 유형별 전체 필드를 독립적으로 가지며, 추적성은 이 ID와 직접 링크에서 메모리로 계산한다. INDEX·카탈로그·추적표는 별도 정본으로 저장하지 않는다.
 
@@ -89,6 +89,6 @@ Git 자격 증명과 npm 인증 정보는 Rundol 파일에 저장하지 않고 �
 
 - Board는 단일 로컬 Node 프로세스이며 조직용 중앙 협업 서버가 아니다. 원격 다중 사용자 실시간 편집이 필요해지면 별도 서버 경계를 ADR로 검토한다.
 - 문서 계약은 정규 문서 유형 10개와 project charter를 중심으로 한다. 사용자 정의 kind가 필요해지면 호환성·migration 비용을 먼저 평가한다.
-- `rules.after`는 하위 호환 필드명 때문에 순서를 암시하지만 실제 의미는 비차단 AI 추천 문맥이다. 다음 schema major 변경 시 명시적 이름으로의 이전을 검토한다.
+- 예전 계약이 저장하던 `rules`와 `omissions` 블록은 읽되 요구하지 않는다. 다음 계약 저장에서 블록을 다시 렌더할 때 사라지므로 별도 마이그레이션 명령이 없다.
 - Board 읽기 API는 token을 요구하지 않는다. loopback 외 접근 요구가 생기면 읽기 인증과 위협 모델을 선행 설계한다.
 - 패키지 빌드는 root 소스 복제 방식이다. 컴파일 또는 독립 package 개발이 필요해지면 단일 소스 정본과 release reproducibility를 유지하는 전환 계획이 필요하다.
