@@ -535,7 +535,11 @@ function driveStepClass(step) {
   const classes = [];
   if (step && step.human === true) classes.push('human');
   if (step && step.gate) classes.push('gate');
-  if (step && !step.gate && step.human !== true && ['cli', 'adapter'].includes(step.executor)) classes.push(step.executor);
+  // verify 스텝은 원장의 transitionKind와 같은 우선순위로 분류한다. 일반 adapter로
+  // 오분류하면 run.step이 기록되고, fold는 verify 커서에 run.step을 거부하므로
+  // 커서가 전진하지 않은 채 검증(LLM 호출)이 tick마다 무한 반복된다.
+  if (step && !step.gate && step.human !== true && (step.verify || step.lenses)) classes.push('verify');
+  if (step && !step.gate && step.human !== true && !step.verify && !step.lenses && ['cli', 'adapter'].includes(step.executor)) classes.push(step.executor);
   if (classes.length !== 1) throw new Error(`drive step classification is invalid: ${step && step.id || '(missing)'}`);
   return classes[0];
 }
@@ -551,6 +555,10 @@ function preflightDriveProcedure(procedure) {
     const classification = driveStepClass(step);
     if (classification === 'human') continue;
     if (classification === 'gate') { validateDriveGate(step); continue; }
+    // drive의 verify 실행은 아직 verifyArtifact(quorum·verdict 기록)로 배선되지
+    // 않았다. 미구현을 일반 adapter 실행으로 대신하면 verdict 없는 검증이 되므로
+    // 자리표시 대신 닫는다 — verify 경계는 rdl verify가 담당한다.
+    if (classification === 'verify') throw new Error(`drive does not execute verification steps yet; run rdl verify at this boundary: ${step.id}`);
     if (!step.retrySafety || typeof step.retrySafety !== 'object' || Array.isArray(step.retrySafety) || !['operation-id', 'gate-recheck'].includes(step.retrySafety.mode)) throw new Error(`drive executable step requires retrySafety: ${step.id}`);
     if (step.retrySafety.mode === 'operation-id') {
       if (ledger.canonicalJson(Object.keys(step.retrySafety).sort()) !== ledger.canonicalJson(['mode'])) throw new Error(`operation-id retrySafety has unknown fields: ${step.id}`);
@@ -917,6 +925,12 @@ async function tickRun(start, options, dependencies) {
     const boundedResultDecision = kind === 'step-completed' ? { artifactIds } : { failureCode: result.failureCode || 'DRIVE_STEP_FAILED' };
     const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt, outcomeKind: kind, exitCode: result.exitCode, sortedArtifactIds: artifactIds, sortedDiagnosticCodes: diagnosticCodes, boundedResultDecision });
     await record({ type: 'run.step', stepId: step.id, executor: step.executor, exitCode: result.exitCode, artifactIds, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
+    // 반환값이 halted라고 말하면 원장도 halted여야 한다. 실패 outcome만 남기면
+    // fold는 running으로 남아, 다음 drive가 실패 스텝을 재개 절차 없이 다시
+    // 실행한다 — 실패를 조용히 지나가는 런은 없어야 한다.
+    if (result.exitCode !== 0) {
+      await record({ type: 'run.halted', reason: 'step-failed', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'step-failed'));
+    }
     releaseReason = result.exitCode === 0 ? 'completed' : 'halted';
     return { exitCode: result.exitCode === 0 ? 0 : 1, status: result.exitCode === 0 ? 'continue' : 'halted', reason: result.exitCode === 0 ? undefined : 'step-failed', operationId, ...(leaseContention.length ? { leaseContention } : {}) };
   } finally {

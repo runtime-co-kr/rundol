@@ -223,7 +223,10 @@ function resumeVerdictJournalChild(start, input) {
   return { event: canonical, status: committed ? 'verdict-projection-repaired' : 'verdict-canonical-replayed' };
 }
 function lensPolicy(policy, lens) {
-  const source = policy.perLens && policy.perLens[lens] || policy.lensPolicies && policy.lensPolicies[lens] || {};
+  // perLens가 없으면 최상위 flat 값이 모든 lens에 적용된다 — 절차 pin의
+  // policy는 flat 형태(BUILTIN 참조)이므로 이 폴백이 그 유일한 소비 지점이다.
+  const source = policy.perLens && policy.perLens[lens] || policy.lensPolicies && policy.lensPolicies[lens]
+    || { validators: policy.validators, quorum: policy.quorum, maxRefuted: policy.maxRefuted, maxAbstain: policy.maxAbstain, requireAdapterDiversity: policy.requireAdapterDiversity };
   const result = { validators: source.validators === undefined ? 1 : source.validators, quorum: source.quorum === undefined ? 1 : source.quorum, maxRefuted: source.maxRefuted === undefined ? 0 : source.maxRefuted, maxAbstain: source.maxAbstain === undefined ? 0 : source.maxAbstain, requireAdapterDiversity: source.requireAdapterDiversity === true };
   for (const key of ['validators', 'quorum', 'maxRefuted', 'maxAbstain']) if (!Number.isSafeInteger(result[key]) || result[key] < (key === 'quorum' || key === 'validators' ? 1 : 0)) throw new Error(`${lens}.${key} is invalid`);
   if (result.quorum > result.validators || result.maxRefuted > result.validators || result.maxAbstain > result.validators) throw new Error(`${lens} policy exceeds validators`);
@@ -333,7 +336,11 @@ async function verifyArtifact(start, input) {
   const reviewedRevision = input.runId ? revisionPin && revisionPin.strategy === 'git-commit' && revisionPin.reviewedRevision : observed.head;
   if (!REVISION.test(reviewedRevision || '')) throw new Error('run-bound verification is missing its procedure revision pin');
   if (observed.head !== reviewedRevision) throw new Error('project HEAD differs from the pinned verification revision');
-  const rootRequestId = input.rootRequestId || ledger.newRequestId(); const policy = Object.assign({}, input.policy || {}, { rootRequestId, targetId: input.targetId, reviewedRevision, lenses, allowedAdapters: [adapterName] }, input.runId ? { runId: input.runId, ownerToken } : {});
+  // 절차가 pin한 quorum·validator·diversity policy는 lenses·instructions·adapter와
+  // 같은 지위다 — 병합하지 않으면 pin이 사문이 되어 기본값으로 검증된다.
+  const pinnedPolicy = step && step.verify && step.verify.policy || null;
+  if (pinnedPolicy && input.policy && eventStore.canonicalJson(input.policy) !== eventStore.canonicalJson(pinnedPolicy)) throw new Error('run-bound verification policy must match the pinned procedure step');
+  const rootRequestId = input.rootRequestId || ledger.newRequestId(); const policy = Object.assign({}, pinnedPolicy || input.policy || {}, { rootRequestId, targetId: input.targetId, reviewedRevision, lenses, allowedAdapters: [adapterName] }, input.runId ? { runId: input.runId, ownerToken } : {});
   const commandDigest = verifyCommandDigest({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: adapterName, lenses, runId: input.runId });
   let root = journal.prepareRoot(runtimeWorkspace(layout.root), { rootRequestId, commandDigest, clientId });
   const runner = input.runAdapterOnce || require('./adapter').runAdapterOnce; const recorded = [];

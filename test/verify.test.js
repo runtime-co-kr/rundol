@@ -66,6 +66,15 @@ const majority = {
 assert.strictEqual(foldVerdicts([event({ slot: 1 }), event({ slot: 2 }), event({ slot: 3, verdict: 'abstain' })], majority).status, 'passed');
 assert.strictEqual(foldVerdicts([event({ slot: 1 }), event({ slot: 2 })], majority).status, 'human_required');
 
+// 절차 pin 형태의 flat policy: perLens 없이 최상위 값이 모든 lens에 적용된다.
+// 폴백이 없으면 pin된 quorum이 기본값 1로 무시되어 pass 1건으로 통과해버린다.
+const flat = {
+  rootRequestId, targetId: 'REQ-010', reviewedRevision, lenses: ['satisfaction-v1'], allowedAdapters: ['fixture'],
+  validators: 3, quorum: 2, maxRefuted: 0, maxAbstain: 1, requireAdapterDiversity: false
+};
+assert.strictEqual(foldVerdicts([event({ slot: 1 }), event({ slot: 2 }), event({ slot: 3, verdict: 'abstain' })], flat).status, 'passed');
+assert.strictEqual(foldVerdicts([event({ slot: 1 })], flat).status, 'human_required', 'flat policy의 quorum이 기본값으로 무시되면 안 된다');
+
 const duplicate = event({ slot: 1 });
 const conflict = Object.assign({}, duplicate, { eventId: 'EVT-CCCCCCCCCCCCCCCCCCCC', requestId: 'REQ-DDDDDDDDDDDDDDDDDDDD', verdict: 'refuted' });
 const duplicateFold = foldVerdicts([duplicate, conflict], policy);

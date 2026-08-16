@@ -299,6 +299,31 @@ const running = (async () => {
   assert.strictEqual(defaultLeaseError.status, 'error');
   assert.deepStrictEqual(driverTypes, ['driver.acquired', 'driver.released'], 'environment exit releases the default soft lease');
 
+  // 실패한 스텝은 반환값만 halted가 아니라 원장도 halted다 — run.step(exit 1) 뒤에
+  // run.halted(step-failed)가 기록되어 fold가 running으로 남지 않는다. 그렇지
+  // 않으면 다음 drive가 실패 스텝을 재개 절차 없이 다시 실행한다.
+  const failedEvents = [startEvent(restartProcedure)];
+  const failedRecords = [];
+  const failedResult = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
+    runContext: () => context(failedEvents),
+    acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
+    executeCli: () => ({ exitCode: 1, artifactIds: [] }),
+    recordEvent: (_context, event) => { failedRecords.push(event); failedEvents.push(progress(failedEvents[0], event)); }
+  });
+  assert.strictEqual(failedResult.status, 'halted');
+  assert.strictEqual(failedResult.reason, 'step-failed');
+  assert.deepStrictEqual(failedRecords.map((event) => event.type), ['run.step', 'run.halted']);
+  assert.strictEqual(failedRecords.at(-1).reason, 'step-failed');
+  assert.strictEqual(ledger.foldRun(failedEvents).status, 'halted');
+  assert.strictEqual(ledger.foldRun(failedEvents).haltReason, 'step-failed');
+
+  // drive는 verify 스텝을 아직 몰지 못한다 — 일반 adapter로 오분류해 run.step을
+  // 기록하는 대신 preflight가 명시적으로 거부한다(fail-closed).
+  assert.throws(() => preflightDriveProcedure(procedure([
+    { id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'] }, retrySafety: { mode: 'operation-id' } },
+    { id: 'sync', human: true }
+  ])), /verification steps/u);
+
   const ledgerWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-drive-ledger-'));
   const ledgerRuntimeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-drive-ledger-runtime-'));
   const previousRuntimeHome = process.env.RUNDOL_HOME;
