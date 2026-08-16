@@ -422,12 +422,17 @@ function repairTail(file) {
 function readRunEvents(directory) {
   const file = path.join(directory, 'events.jsonl');
   if (!fs.existsSync(file)) return [];
-  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/u).map((line, index) => ({ line, index })).filter((entry) => entry.line.trim());
+  const content = fs.readFileSync(file, 'utf8');
+  // 크래시 절단은 개행 없는 꼬리로만 나타난다. append는 이벤트와 개행을 한 번에
+  // 쓰므로, 개행으로 끝난 malformed 마지막 행은 절단이 아니라 원장 파손이다 —
+  // 관용하면 완결된 파일의 영구 손상이 조용히 숨는다.
+  const truncatedTail = !content.endsWith('\n');
+  const lines = content.split(/\r?\n/u).map((line, index) => ({ line, index })).filter((entry) => entry.line.trim());
   const events = [];
   for (const [position, entry] of lines.entries()) {
     try { events.push(JSON.parse(entry.line)); }
     catch (error) {
-      if (position === lines.length - 1) break;
+      if (position === lines.length - 1 && truncatedTail) break;
       throw new Error(`${file}:${entry.index + 1}: 이벤트를 파싱할 수 없습니다: ${error.message}`);
     }
   }
@@ -589,9 +594,14 @@ function ownershipState(events) {
       admitForeign(activeToken, activeClientId);
       // takeover 시도가 있었는데 유효한 것이 하나도 없으면 fail-closed다 — 진단만
       // 남기고 ACTIVE로 두면 무효 인수가 조용히 무시된다. 올바른 head의 유효
-      // takeover가 도착하면 이 충돌은 자연 해소된다(자기 치유).
+      // takeover가 도착하면 이 충돌은 자연 해소된다(자기 치유). 그 유효 takeover를
+      // 쓸 수 있도록 부모 epoch의 head를 충돌에 노출한다 — 없으면 탈출 이벤트를
+      // 구성할 정보가 API 밖에 존재하지 않아 충돌이 영구 교착이 된다.
       if (children.length) {
-        conflict = { conflictId: null, parentToken: activeToken, parentClientId: activeClientId, candidates: [], invalidTakeover: true };
+        conflict = {
+          conflictId: null, parentToken: activeToken, parentClientId: activeClientId, candidates: [], invalidTakeover: true,
+          parentHeadEventId: (ownSequence[ownSequence.length - 1] || byToken.get(activeToken)).canonical.eventId
+        };
       }
       break;
     }
@@ -876,17 +886,27 @@ function logicalAttemptForStep(events, stepId) {
   return 1 + count;
 }
 
+// operation 충돌은 상태를 덮지 못하는 경우(이미 completed_local/synced)에도
+// 항상 노출된다 — 목록을 비우면 충돌의 증거 자체가 모든 소비자에게서 사라진다.
+function finalizeFold(result, operationState) {
+  result.operationConflicts = operationState.conflicts;
+  if (!operationState.conflicts.length) return result;
+  if (['completed_local', 'synced'].includes(result.status)) {
+    result.diagnostics.push({ code: 'RDL-RUN-028', severity: 'warning', message: 'operation outcome conflict persists after completion; resolve it with run operation resolve' });
+  } else {
+    result.status = 'operation-conflict';
+    result.haltReason = 'operation-conflict';
+  }
+  return result;
+}
+
 function foldRun(events) {
   if (!events.length) return { status: 'missing', cursor: null };
   // legacy 전용 런도 같은 경로다 — 우회하면 소유권·dedup·진단(017/018/019)이
   // 호출 지점에 따라 달라지는 이중 평가기가 된다.
   const ownership = ownershipState(events);
   const operationState = operationOutcomeState(ownership.visibleEvents);
-  const result = foldProgress(operationState.effectiveEvents, ownership);
-  if (operationState.conflicts.length && !['completed_local', 'synced'].includes(result.status)) {
-    result.status = 'operation-conflict'; result.haltReason = 'operation-conflict'; result.operationConflicts = operationState.conflicts;
-  } else result.operationConflicts = [];
-  return result;
+  return finalizeFold(foldProgress(operationState.effectiveEvents, ownership), operationState);
 }
 
 function orderSharedEvents(events) {
@@ -896,11 +916,7 @@ function orderSharedEvents(events) {
 function foldSharedRun(events) {
   const ownership = ownershipState(events);
   const operationState = operationOutcomeState(ownership.visibleEvents);
-  const result = foldProgress(operationState.effectiveEvents, ownership);
-  if (operationState.conflicts.length && !['completed_local', 'synced'].includes(result.status)) {
-    result.status = 'operation-conflict'; result.haltReason = 'operation-conflict'; result.operationConflicts = operationState.conflicts;
-  } else result.operationConflicts = [];
-  return result;
+  return finalizeFold(foldProgress(operationState.effectiveEvents, ownership), operationState);
 }
 
 function runOwner(events) {
@@ -1127,12 +1143,21 @@ function takeoverRun(start, input) {
   if (client.status !== 'active') throw new Error(`inactive client cannot take over a run: ${clientId}`);
   const reconciled = reconcileRun(start, { project: project.key, runId: input.runId });
   const state = ownershipState(reconciled.events);
-  if (state.status !== 'ACTIVE') throw new Error('소유권 충돌을 먼저 해결해야 인수할 수 있습니다.');
-  if (state.ownerClientId === clientId) throw new Error(`${clientId}는 이미 이 런의 소유자입니다.`);
+  // 무효 takeover만 있는 CONFLICT는 유효한 takeover가 유일한 해소 수단이다 —
+  // 여기서도 막으면 그 이벤트를 쓸 수 있는 API가 없어 런이 영구 교착된다.
+  // 후보가 있는 실제 분기 충돌은 여전히 resolveOwnership이 먼저다.
+  const invalidTakeoverOnly = state.status === 'CONFLICT' && state.conflict && state.conflict.invalidTakeover === true;
+  if (state.status !== 'ACTIVE' && !invalidTakeoverOnly) throw new Error('소유권 충돌을 먼저 해결해야 인수할 수 있습니다.');
+  const previousClientId = invalidTakeoverOnly ? state.conflict.parentClientId : state.ownerClientId;
+  const previousOwnerToken = invalidTakeoverOnly ? state.conflict.parentToken : state.ownerToken;
+  const previousOwnerHeadEventId = invalidTakeoverOnly ? state.conflict.parentHeadEventId : state.ownerHeadEventId;
+  if (previousClientId === clientId) throw new Error(`${clientId}는 이미 이 런의 소유자입니다.`);
   const fold = foldProgress(state.visibleEvents, state);
   let basis = 'halted';
   if (fold.status !== 'halted') {
-    if (!input.force) throw new Error('정지하지 않은 런은 자동으로 인수할 수 없습니다. --force --reason을 사용하세요.');
+    if (!input.force) throw new Error(invalidTakeoverOnly
+      ? '무효 takeover 충돌의 인수는 사람의 결정입니다. --force --reason을 사용하세요.'
+      : '정지하지 않은 런은 자동으로 인수할 수 없습니다. --force --reason을 사용하세요.');
     if (!String(input.reason || '').trim()) throw new Error('--force takeover requires --reason');
     basis = 'forced';
   }
@@ -1142,10 +1167,10 @@ function takeoverRun(start, input) {
   const eventId = requestJournal.eventIdForRequest(requestId);
   const recorded = recordRunEvent(start, {
     project: project.key, runId: input.runId, rootRequestId, childKey,
-    event: { type: 'run.takeover', eventId, clientId, ownerToken: eventId, previousClientId: state.ownerClientId, previousOwnerToken: state.ownerToken, previousOwnerHeadEventId: state.ownerHeadEventId, basis, reason: basis === 'forced' ? String(input.reason).trim() : undefined }
+    event: { type: 'run.takeover', eventId, clientId, ownerToken: eventId, previousClientId, previousOwnerToken, previousOwnerHeadEventId, basis, reason: basis === 'forced' ? String(input.reason).trim() : undefined }
   });
   reconcileRun(start, { project: project.key, runId: input.runId });
-  return { runId: input.runId, project: project.key, clientId, previousClientId: state.ownerClientId, previousOwnerToken: state.ownerToken, ownerToken: eventId, basis, event: recorded.event, rootRequestId, requestId };
+  return { runId: input.runId, project: project.key, clientId, previousClientId, previousOwnerToken, ownerToken: eventId, basis, event: recorded.event, rootRequestId, requestId };
 }
 
 function projectMember(project, memberId) {

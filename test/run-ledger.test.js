@@ -164,6 +164,27 @@ try {
   assert(intruded.staleEventIds.includes(intruderHalt.eventId));
   assert(intruded.diagnostics.some((item) => item.code === 'RDL-RUN-023' && item.eventId === intruderHalt.eventId));
 
+  // 무효 takeover만 있는 런은 fail-closed CONFLICT이되 부모 epoch head가 노출되어,
+  // 그 head를 가리키는 유효 takeover 하나로 자기 치유된다 — 탈출구 없는
+  // fail-closed는 영구 교착이다.
+  const ivId = id('EVT');
+  const ivStart = ledger.createEventEnvelope(canonicalEvent({ eventId: ivId, ownerToken: ivId, rootRequestId: id('REQ'), requestId: id('REQ'), runId: 'RUN-00000000000000000003', goal: undefined, localDetail: undefined })).shared;
+  const iw = (type, clientId, ownerToken, fields) => { const eventId = id('EVT'); return ledger.createEventEnvelope(Object.assign({ schemaVersion: 2, eventId, type, rootRequestId: id('REQ'), requestId: id('REQ'), clientId, projectId: 'crm', runId: ivStart.runId, ownerToken }, fields)).shared; };
+  const ivHalt = iw('run.halted', 'laptop-a', ivId, { reason: 'manual', atStep: 'author', resumable: true });
+  const badTakeId = id('EVT');
+  const badTake = ledger.createEventEnvelope({ schemaVersion: 2, eventId: badTakeId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'desk-b', projectId: 'crm', runId: ivStart.runId, ownerToken: badTakeId, previousClientId: 'laptop-a', previousOwnerToken: ivId, previousOwnerHeadEventId: 'EVT-FFFFFFFFFFFFFFFFFFFF', basis: 'halted' }).shared;
+  const bricked = ledger.ownershipState([ivStart, ivHalt, badTake]);
+  assert.strictEqual(bricked.status, 'CONFLICT');
+  assert.strictEqual(bricked.conflict.invalidTakeover, true);
+  assert.strictEqual(bricked.conflict.conflictId, null);
+  assert.strictEqual(bricked.conflict.parentHeadEventId, ivHalt.eventId, '탈출 takeover를 구성할 부모 head가 충돌에 노출되어야 한다');
+  const healTakeId = id('EVT');
+  const healTake = ledger.createEventEnvelope({ schemaVersion: 2, eventId: healTakeId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'desk-b', projectId: 'crm', runId: ivStart.runId, ownerToken: healTakeId, previousClientId: bricked.conflict.parentClientId, previousOwnerToken: bricked.conflict.parentToken, previousOwnerHeadEventId: bricked.conflict.parentHeadEventId, basis: 'halted' }).shared;
+  const healed = ledger.ownershipState([ivStart, ivHalt, badTake, healTake]);
+  assert.strictEqual(healed.status, 'ACTIVE');
+  assert.strictEqual(healed.ownerClientId, 'desk-b');
+  assert(healed.diagnostics.some((item) => item.code === 'RDL-RUN-020' && item.eventId === badTake.eventId), '무효 takeover의 진단은 치유 후에도 남는다');
+
   // 구 epoch 커밋의 늦은 synced는 무효(RDL-RUN-026)이고, 상태를 결정한 마지막
   // completed_local과 토큰·commit이 일치하는 synced만 효력이 있다.
   const eaId = id('EVT');
@@ -269,13 +290,15 @@ try {
   const events = ledger.readRunEvents(unit);
   assert.deepStrictEqual(ledger.foldRun(events), ledger.foldRun(events));
 
-  // 중간 줄 손상은 관용 대상이 아니라 원장 파손이다.
+  // 중간 줄 손상은 관용 대상이 아니라 원장 파손이다. 개행으로 끝난 malformed
+  // 마지막 줄도 크래시 절단(개행 없는 꼬리)이 아니라 파손이다 — 읽기는 던지고
+  // append는 파손 위로의 확장을 거부한다.
   const corrupt = path.join(temporary, 'corrupt-run');
   ledger.appendRunEvent(corrupt, { type: 'run.started', runId: 'RUN-0123456789ABCDEF0124', projectId: 'crm', clientId: 'laptop-a', procedure: { name: 'x.y', revision: 1, contentHash: 'x', resolved: { name: 'x.y', revision: 1, steps: [{ id: 'a' }] } } });
   const corruptFile = path.join(corrupt, 'events.jsonl');
   fs.appendFileSync(corruptFile, '{"broken\n', 'utf8');
-  ledger.appendRunEvent(corrupt, { runId: 'RUN-0123456789ABCDEF0124', projectId: 'crm', type: 'run.step', stepId: 'a', exitCode: 0, clientId: 'laptop-a' });
   assert.throws(() => ledger.readRunEvents(corrupt), /파싱할 수 없습니다/u);
+  assert.throws(() => ledger.appendRunEvent(corrupt, { runId: 'RUN-0123456789ABCDEF0124', projectId: 'crm', type: 'run.step', stepId: 'a', exitCode: 0, clientId: 'laptop-a' }), /파싱할 수 없습니다/u);
 
   // 실제 workspace: 공유 미러, 커서 재현성, 시계 무관 소유권 사슬, 인수 규칙.
   command('git', ['init', '-b', 'main'], temporary);
@@ -353,6 +376,25 @@ try {
   assert.throws(() => ledger.takeoverRun(temporary, { project: 'crm', runId: second.runId, clientId: 'desk-b', force: true }), /--reason/u);
   const forced = ledger.takeoverRun(temporary, { project: 'crm', runId: second.runId, clientId: 'desk-b', force: true, reason: '소유 머신 분실' });
   assert.strictEqual(forced.basis, 'forced');
+
+  // 무효 takeover 교착 탈출(API): CONFLICT여도 --force --reason 인수가 부모 head를
+  // 가리키는 유효 takeover를 기록해 자기 치유한다. 후보가 있는 실제 분기 충돌이
+  // 아니라 무효 takeover 전용 경로다.
+  const escapeSettings = { schemaVersion: 1, contentHash: 'd'.repeat(64), safeResolved: {} };
+  const brickedRun = ledger.createRun(temporary, { project: 'crm', goal: '교착 탈출', clientId: 'laptop-a', procedure, settings: escapeSettings });
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: brickedRun.runId, event: { type: 'run.halted', reason: 'manual', atStep: 'author', resumable: true, clientId: 'laptop-a' } });
+  const bogusTakeId = 'EVT-00000000000000000BAD';
+  const bogusTake = ledger.createEventEnvelope({ schemaVersion: 2, eventId: bogusTakeId, type: 'run.takeover', rootRequestId: 'REQ-00000000000000000BAD', requestId: 'REQ-00000000000000001BAD', clientId: 'desk-b', projectId: 'crm', runId: brickedRun.runId, ownerToken: bogusTakeId, previousClientId: 'laptop-a', previousOwnerToken: brickedRun.event.ownerToken, previousOwnerHeadEventId: 'EVT-FFFFFFFFFFFFFFFFFFFF', basis: 'halted' }).shared;
+  ledger.mirrorRunEvent(layout, 'crm', bogusTake);
+  const brickedState = ledger.ownershipState(ledger.reconcileRun(temporary, { project: 'crm', runId: brickedRun.runId }).events);
+  assert.strictEqual(brickedState.status, 'CONFLICT');
+  assert.strictEqual(brickedState.conflict.invalidTakeover, true);
+  assert.throws(() => ledger.takeoverRun(temporary, { project: 'crm', runId: brickedRun.runId, clientId: 'desk-b' }), /--force --reason/u);
+  const escaped = ledger.takeoverRun(temporary, { project: 'crm', runId: brickedRun.runId, clientId: 'desk-b', force: true, reason: '무효 takeover 교착 해소' });
+  assert.strictEqual(escaped.basis, 'forced');
+  const escapedState = ledger.ownershipState(ledger.readSharedRunEvents(layout, 'crm', brickedRun.runId));
+  assert.strictEqual(escapedState.status, 'ACTIVE');
+  assert.strictEqual(escapedState.ownerClientId, 'desk-b');
 
   // 신버전 검사가 run 샤드를 이해한다: 정상 통과 + 위조 clientId는 RDL-RUN-003.
   const checkOutput = JSON.parse(command(process.execPath, [cli, 'check', '--root', temporary, '--json'], root));

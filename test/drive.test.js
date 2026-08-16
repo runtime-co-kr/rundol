@@ -115,6 +115,14 @@ const running = (async () => {
   assert.strictEqual(resolvedFold.status, 'running');
   assert.strictEqual(resolvedFold.cursor, 'sync');
 
+  // 완료가 operation 충돌을 은폐하지 못한다 — 상태는 completed_local로 남더라도
+  // 충돌 증거는 operationConflicts와 진단(RDL-RUN-028)으로 항상 노출된다.
+  const completedAfterConflict = progress(conflictStart, { type: 'run.completed_local', commit: 'f'.repeat(40), artifactIds: [] });
+  const maskedFold = ledger.foldRun(conflictedEvents.concat(completedAfterConflict));
+  assert.strictEqual(maskedFold.status, 'completed_local');
+  assert.strictEqual(maskedFold.operationConflicts.length, 1, '완료가 operation 충돌 증거를 지우면 안 된다');
+  assert(maskedFold.diagnostics.some((item) => item.code === 'RDL-RUN-028'));
+
   const humanStart = startEvent(procedure([{ id: 'sync', human: true }]));
   let writes = 0;
   const human = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, { runContext: () => context([humanStart]), recordEvent: () => { writes += 1; } });
