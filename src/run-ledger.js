@@ -583,6 +583,11 @@ function ownershipState(events) {
       break;
     }
     const cutoff = Math.min(...validChildren.map((child) => child.legacy ? ownSequence.length - 1 : child.cutoffIndex));
+    // legacy takeover에는 cutoff head가 없어 선행자 꼬리를 구조적으로 자를 수 없다.
+    // 침묵 대신 경고로 표면화한다 — v2 takeover(head 필수)로만 완전한 fence가 가능하다.
+    if (validChildren.some((child) => child.legacy) && ownSequence.length > 1) {
+      diagnostics.push({ code: 'RDL-RUN-027', severity: 'warning', eventId: validChildren.find((child) => child.legacy).canonical.eventId, message: 'legacy takeover has no cutoff head; the predecessor tail cannot be fenced' });
+    }
     visible.push(...ownSequence.slice(1, cutoff + 1));
     admitForeign(activeToken, activeClientId);
     if (validChildren.length === 1) {
@@ -685,6 +690,7 @@ function foldProgress(events, ownership) {
   const foreignSet = ownership && ownership.foreignTransitionEventIds ? ownership.foreignTransitionEventIds : new Set();
   const foreignTransitions = [];
   let completedLocalSeen = false;
+  const completedLocals = [];
   let spareResumes = 0;
   for (const event of events.filter((item) => !['run.started', 'run.takeover', 'run.ownership_resolved'].includes(item.type))) {
     if (status === 'ownership-conflict') break;
@@ -719,27 +725,35 @@ function foldProgress(events, ownership) {
     } else if (event.type === 'run.resumed') {
       if (status !== 'halted') spareResumes += 1;
       status = 'running'; haltReason = null; attempts = {};
-    } else if (event.type === 'run.completed_local') { status = 'completed_local'; completedLocalSeen = true; }
+    } else if (event.type === 'run.completed_local') { status = 'completed_local'; completedLocalSeen = true; completedLocals.push({ ownerToken: event.ownerToken || null, commit: event.commit || null }); }
     else if (event.type === 'run.synced') status = 'synced';
   }
   // 외래 전이(sync 실행자의 synced/halted)는 위치가 아니라 우선순위로 적용한다 —
   // 다른 샤드의 기록과 소유자 시퀀스 사이의 순서는 시계 없이 정할 수 없기 때문이다.
-  // 성공한 synced는 이전 sync 실패를 대체하고, 외래 halted는 소유자의 여분
-  // resumed(선행 halted 없이 기록된 재개)로 상쇄된다. 어느 쪽도 열거 순서에
-  // 의존하지 않으므로 fold는 이벤트 집합의 함수로 남는다.
+  // 효력은 자기 epoch에 결박된다: synced는 같은 ownerToken의 가시 completed_local과
+  // commit이 일치할 때만, halted는 활성 epoch의 토큰을 지닐 때만 상태를 바꾼다.
+  // 구 epoch 커밋에 대한 늦은 synced가 새 epoch의 완료와 결합해 런 전체를 synced로
+  // 만드는 일은 없어야 한다.
   if (foreignTransitions.length && status !== 'ownership-conflict') {
-    const foreignHalts = foreignTransitions.filter((event) => event.type === 'run.halted').sort((left, right) => String(left.eventId).localeCompare(String(right.eventId)));
-    const foreignSynced = foreignTransitions.filter((event) => event.type === 'run.synced');
+    const activeToken = ownership ? ownership.ownerToken : null;
+    const foreignHalts = foreignTransitions
+      .filter((event) => event.type === 'run.halted' && (event.ownerToken || null) === activeToken)
+      .sort((left, right) => String(left.eventId).localeCompare(String(right.eventId)));
+    // synced의 효력 기준은 "어떤 completed_local이든"이 아니라 상태를 결정한 마지막
+    // completed_local이다 — 구 epoch에서 완료됐던 커밋의 늦은 synced가 신 epoch의
+    // 완료와 결합해 런을 synced로 만들면 안 된다.
+    const lastCompleted = completedLocals[completedLocals.length - 1] || null;
+    const effectiveSynced = foreignTransitions.filter((event) => event.type === 'run.synced'
+      && lastCompleted && lastCompleted.ownerToken === (event.ownerToken || null) && lastCompleted.commit === (event.commit || null));
+    const ignoredSynced = foreignTransitions.filter((event) => event.type === 'run.synced' && !effectiveSynced.includes(event));
     const effectiveHalts = Math.max(0, foreignHalts.length - spareResumes);
     if (effectiveHalts > 0 && status !== 'synced') {
       const last = foreignHalts[foreignHalts.length - 1];
       status = 'halted';
       haltReason = HALT_REASONS.has(last.reason) ? last.reason : 'sync-failed';
     }
-    if (foreignSynced.length) {
-      if (completedLocalSeen) { status = 'synced'; haltReason = null; }
-      else diagnostics.push({ code: 'RDL-RUN-026', severity: 'warning', eventId: foreignSynced[0].eventId, message: 'run.synced without a visible run.completed_local was ignored' });
-    }
+    if (effectiveSynced.length) { status = 'synced'; haltReason = null; }
+    for (const event of ignoredSynced) diagnostics.push({ code: 'RDL-RUN-026', severity: 'warning', eventId: event.eventId, message: 'run.synced does not match a visible run.completed_local of its epoch (commit·ownerToken) and was ignored' });
   }
   for (const step of steps) if (step.onFail && !completed.has(step.id) && (attempts[step.id] || 0) >= step.onFail.maxAttempts && status === 'running') { status = 'halted'; haltReason = 'attempt-limit'; }
   const current = status === 'completed_local' || status === 'synced' ? null : cursor();
@@ -1018,8 +1032,16 @@ function recordRunEvent(start, input) {
     const existingRoot = requestJournal.loadJournal(runtime, replayRootId);
     const existingChild = existingRoot.journal.children[replayChildKey];
     if (existingChild) {
+      // 재생은 같은 요청일 때만이다. 다른 인자(commandDigest)나 다른 payload로 같은
+      // root를 재사용하면 과거 결과를 조용히 돌려주는 대신 exit 2로 거부한다.
+      if (input.commandDigest && input.commandDigest !== existingRoot.journal.commandDigest) throw new Error('request journal root command digest mismatch');
       const bytes = requestJournal.decodeChild(existingChild, replayRootId);
       const replayEvent = JSON.parse(bytes.toString('utf8'));
+      const GENERATED = new Set(['schemaVersion', 'eventId', 'rootRequestId', 'requestId', 'occurredAt', 'localDetail', 'projectId', 'runId', 'attempt', 'command', 'args']);
+      for (const [key, value] of Object.entries(input.event)) {
+        if (GENERATED.has(key) || value === undefined) continue;
+        if (canonicalJson(value) !== canonicalJson(replayEvent[key])) throw new Error(`request journal child payload mismatch: ${key}`);
+      }
       envelope = createEventEnvelope(replayEvent);
       if (envelope.canonicalDigest !== existingChild.canonicalDigest || envelope.canonical.eventId !== existingChild.eventId) throw new Error('request journal child digest mismatch');
       prepared = { base: Object.assign({}, replayEvent, { requestId: existingChild.requestId }), rootRequestId: replayRootId, childKey: replayChildKey };

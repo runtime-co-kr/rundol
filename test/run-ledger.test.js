@@ -135,6 +135,67 @@ try {
     { ownerToken: causal.ownerToken, cursor: causal.cursor, attempts: causal.attempts }
   );
 
+  // 결정성 계약: 작성자 부분열을 보존하는 모든 교차에서 fold는 단일 결과다.
+  // (작성자 내부 순서는 각자의 샤드 append 순서가 정본이고 reader가 보존을 보증한다.)
+  function interleavePreservingWriters(events, seed) {
+    let state = seed >>> 0;
+    const random = () => { state = (state * 1664525 + 1013904223) >>> 0; return state / 4294967296; };
+    const queues = new Map();
+    for (const event of events) {
+      if (!queues.has(event.clientId)) queues.set(event.clientId, []);
+      queues.get(event.clientId).push(event);
+    }
+    const writers = Array.from(queues.values());
+    const result = [];
+    while (result.length < events.length) {
+      const available = writers.filter((queue) => queue.length);
+      result.push(available[Math.floor(random() * available.length)].shift());
+    }
+    return result;
+  }
+  const foldKey = (events) => { const fold = ledger.foldSharedRun(events); return JSON.stringify({ status: fold.status, cursor: fold.cursor, completed: fold.completedSteps, owner: fold.ownerToken, stale: fold.staleEventIds }); };
+  const referenceKey = foldKey(ownershipEvents);
+  for (let seed = 1; seed <= 40; seed += 1) assert.strictEqual(foldKey(interleavePreservingWriters(ownershipEvents, seed)), referenceKey, `writer-preserving interleaving ${seed} diverged`);
+
+  // 토큰 재사용은 진단과 함께 stale이다 — 침입자의 이벤트는 상태를 바꿀 수 없다.
+  const intruderHalt = v2('run.halted', 'mallory', aReturnId, { reason: 'gate-failed', resumable: true });
+  const intruded = ledger.foldSharedRun(ownershipEvents.concat([intruderHalt]));
+  assert.strictEqual(intruded.status, causal.status);
+  assert(intruded.staleEventIds.includes(intruderHalt.eventId));
+  assert(intruded.diagnostics.some((item) => item.code === 'RDL-RUN-023' && item.eventId === intruderHalt.eventId));
+
+  // 구 epoch 커밋의 늦은 synced는 무효(RDL-RUN-026)이고, 상태를 결정한 마지막
+  // completed_local과 토큰·commit이 일치하는 synced만 효력이 있다.
+  const eaId = id('EVT');
+  const eaStart = ledger.createEventEnvelope(canonicalEvent({ eventId: eaId, ownerToken: eaId, rootRequestId: id('REQ'), requestId: id('REQ'), runId: 'RUN-00000000000000000004', goal: undefined, localDetail: undefined })).shared;
+  const epochRun = eaStart.runId;
+  const w = (type, clientId, ownerToken, fields) => { const eventId = id('EVT'); return ledger.createEventEnvelope(Object.assign({ schemaVersion: 2, eventId, type, rootRequestId: id('REQ'), requestId: id('REQ'), clientId, projectId: 'crm', runId: epochRun, ownerToken }, fields)).shared; };
+  const eaDone = w('run.completed_local', 'laptop-a', eaId, { commit: 'a'.repeat(40), artifactIds: [] });
+  const ebTakeId = id('EVT');
+  const ebTake = ledger.createEventEnvelope({ schemaVersion: 2, eventId: ebTakeId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'desk-b', projectId: 'crm', runId: epochRun, ownerToken: ebTakeId, previousClientId: 'laptop-a', previousOwnerToken: eaId, previousOwnerHeadEventId: eaDone.eventId, basis: 'forced', reason: 'rework' }).shared;
+  const ebDone = w('run.completed_local', 'desk-b', ebTakeId, { commit: 'b'.repeat(40), artifactIds: [] });
+  const lateSynced = w('run.synced', 'agent-a', eaId, { commit: 'a'.repeat(40), remoteRef: 'refs/heads/main' });
+  const staleSyncFold = ledger.foldSharedRun([eaStart, eaDone, ebTake, ebDone, lateSynced]);
+  assert.strictEqual(staleSyncFold.status, 'completed_local', '구 epoch 커밋의 늦은 synced가 런을 synced로 만들면 안 된다');
+  assert(staleSyncFold.diagnostics.some((item) => item.code === 'RDL-RUN-026'));
+  const matchingSynced = w('run.synced', 'agent-a', ebTakeId, { commit: 'b'.repeat(40), remoteRef: 'refs/heads/main' });
+  assert.strictEqual(ledger.foldSharedRun([eaStart, eaDone, ebTake, ebDone, matchingSynced]).status, 'synced');
+
+  // legacy 사슬도 작성자-보존 교차에서 단일 결과이고, cutoff head 부재는 경고(RDL-RUN-027)로 표면화된다.
+  const legacyRun = 'RUN-00000000000000000005';
+  const leg = (n, clientId, type, extra) => Object.assign({ eventId: `EVT-${String(90 + n).padStart(20, '0')}`, type, runId: legacyRun, projectId: 'crm', clientId }, extra || {});
+  const legacyProcedure = { name: 'p.legacy', revision: 1, schemaVersion: 1, contentHash: 'c'.repeat(64), resolved: { name: 'p.legacy', revision: 1, schemaVersion: 1, steps: [{ id: 'author' }, { id: 'save' }] } };
+  const legacySet = [
+    leg(1, 'laptop-a', 'run.started', { procedure: legacyProcedure }),
+    leg(2, 'laptop-a', 'run.step', { stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: [] }),
+    leg(3, 'desk-b', 'run.takeover', { previousClientId: 'laptop-a', basis: 'halted' }),
+    leg(4, 'desk-b', 'run.step', { stepId: 'save', executor: 'cli', exitCode: 0, artifactIds: [] })
+  ];
+  const legacyKey = (events) => { const fold = ledger.foldRun(events); return JSON.stringify({ status: fold.status, cursor: fold.cursor, completed: fold.completedSteps }); };
+  const legacyReference = legacyKey(legacySet);
+  for (let seed = 1; seed <= 25; seed += 1) assert.strictEqual(legacyKey(interleavePreservingWriters(legacySet, seed)), legacyReference, `legacy interleaving ${seed} diverged`);
+  assert(ledger.foldRun(legacySet).diagnostics.some((item) => item.code === 'RDL-RUN-027'), 'legacy takeover의 fence 불가는 경고로 표면화돼야 한다');
+
   // Concurrent takeover children fail closed until a complete reasoned resolution selects one decision tuple.
   const conflictStartId = id('EVT');
   const conflictStart = ledger.createEventEnvelope(canonicalEvent({ eventId: conflictStartId, ownerToken: conflictStartId, rootRequestId: id('REQ'), requestId: id('REQ'), runId: 'RUN-00000000000000000003', goal: undefined, localDetail: undefined })).shared;
@@ -274,6 +335,21 @@ try {
 
   // 정지 없는 런의 강제 인수는 사람의 결정이며 사유가 필수다.
   const second = ledger.createRun(temporary, { project: 'crm', goal: '두 번째', clientId: 'laptop-a', procedure });
+
+  // S8: 같은 root의 재시도는 저널 바이트를 그대로 재사용한다 — attempt 재계산 없음,
+  // 같은 eventId, 공유 샤드 중복 기록 없음.
+  const replayRoot = 'REQ-77777777777777777777';
+  ledger.recordRunEvent(temporary, { project: 'crm', runId: second.runId, event: { type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' } });
+  const gateInput = { type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: ['RDL-DOC-004'], clientId: 'laptop-a' };
+  const firstGate = ledger.recordRunEvent(temporary, { project: 'crm', runId: second.runId, rootRequestId: replayRoot, event: Object.assign({}, gateInput) });
+  const retryGate = ledger.recordRunEvent(temporary, { project: 'crm', runId: second.runId, rootRequestId: replayRoot, event: Object.assign({}, gateInput) });
+  assert.strictEqual(retryGate.event.eventId, firstGate.event.eventId);
+  assert.strictEqual(retryGate.event.attempt, firstGate.event.attempt);
+  // R2: 같은 root에 다른 payload 또는 다른 commandDigest가 오면 과거 결과의 조용한
+  // 치환이 아니라 거부다.
+  assert.throws(() => ledger.recordRunEvent(temporary, { project: 'crm', runId: second.runId, rootRequestId: replayRoot, event: Object.assign({}, gateInput, { exitCode: 0 }) }), /payload mismatch/u);
+  assert.throws(() => ledger.recordRunEvent(temporary, { project: 'crm', runId: second.runId, rootRequestId: replayRoot, commandDigest: 'f'.repeat(64), event: Object.assign({}, gateInput) }), /command digest mismatch/u);
+
   assert.throws(() => ledger.takeoverRun(temporary, { project: 'crm', runId: second.runId, clientId: 'desk-b', force: true }), /--reason/u);
   const forced = ledger.takeoverRun(temporary, { project: 'crm', runId: second.runId, clientId: 'desk-b', force: true, reason: '소유 머신 분실' });
   assert.strictEqual(forced.basis, 'forced');

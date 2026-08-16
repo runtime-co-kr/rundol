@@ -577,7 +577,7 @@ function checkWorkspaceStore(diagnostics, layout) {
     if (!['device', 'agent', 'service'].includes(type)) diagnostic(diagnostics, { code: 'RDL-CLIENT-003', category: 'workspace', file: relative(layout.root, file), message: `지원하지 않는 Client type입니다: ${type || '(없음)'}` });
     if (!/^MEMBER-\d{3}$/u.test(owner || '')) diagnostic(diagnostics, { code: 'RDL-CLIENT-004', category: 'workspace', file: relative(layout.root, file), message: 'Client owner는 MEMBER-ID여야 합니다.' });
     if (!['active', 'disabled', 'retired'].includes(status)) diagnostic(diagnostics, { code: 'RDL-CLIENT-005', category: 'workspace', file: relative(layout.root, file), message: `지원하지 않는 Client status입니다: ${status || '(없음)'}` });
-    clients.set(id, { owner, status });
+    clients.set(id, { owner, status, type });
   }
   if (fs.existsSync(eventsRoot)) for (const entry of fs.readdirSync(eventsRoot, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
@@ -614,6 +614,14 @@ function checkWorkspaceStore(diagnostics, layout) {
         const event = JSON.parse(line);
         if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-RUN-002', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 Client를 참조합니다: ${event.clientId || '(없음)'}` });
         if (!entry.name.startsWith(`run-${event.projectId}-${event.clientId}-${event.runId}-`)) diagnostic(diagnostics, { code: 'RDL-RUN-003', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: '런 이벤트의 프로젝트, Client 또는 runId가 파일명과 일치하지 않습니다.' });
+        // sync 전이의 신원 인가: 순수 fold는 레지스트리를 못 보므로, 레지스트리를
+        // 가진 검사 계층이 인가 매트릭스(sync 실행자 = 활성 agent/service)를 확인한다.
+        if (event.type === 'run.synced' || (event.type === 'run.halted' && ['sync-failed', 'merge-conflict'].includes(event.reason))) {
+          const client = clients.get(event.clientId);
+          if (!client || client.status !== 'active' || !['agent', 'service'].includes(client.type)) {
+            diagnostic(diagnostics, { code: 'RDL-RUN-005', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `sync 전이의 clientId가 활성 agent/service Client가 아닙니다: ${event.clientId || '(없음)'}` });
+          }
+        }
       } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-RUN-004', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL 이벤트를 파싱할 수 없습니다: ${error.message}` });
       }

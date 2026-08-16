@@ -13,7 +13,9 @@ const {
 } = require('../src/instruction-registry');
 const { runAdapterOnce, adapterEnvironment, resolveExecutable, validateResult, probeAdapter } = require('../src/adapter');
 
-const temporary = path.join(__dirname, '.tmp-adapter-test');
+// 저장소 밖 OS 임시 디렉터리를 쓴다 — teardown이 Windows에서 실패해도(잔존 핸들·
+// 읽기전용) 저장소가 오염되지 않고, 정리 실패가 스위트를 죽일 이유가 없어진다.
+const temporary = fs.mkdtempSync(path.join(require('os').tmpdir(), 'rundol-adapter-test-'));
 
 function command(cwd, args) {
   const result = spawnSync(args[0], args.slice(1), { cwd, encoding: 'utf8', windowsHide: true });
@@ -262,6 +264,19 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
   assert.throws(() => validateResult('author', '{"claims":[],"artifactIds":["REQ-001","REQ-001"]}', project), /unique/u);
   assert.throws(() => validateResult('verify', '{"verdict":"pass","findings":[],"rawOutput":"x"}', project), /unknown/u);
   process.stdout.write('adapter tests passed\n');
-})().finally(() => fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+})().finally(() => {
+  // 읽기전용 manifest를 풀고 넉넉히 재시도한다. 그래도 실패하면(타임아웃-킬된
+  // 자식의 잔존 핸들 등) OS 임시 폴더에 남는 것뿐이므로 스위트를 죽이지 않는다.
+  try {
+    for (const entry of fs.readdirSync(temporary, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile()) { try { fs.chmodSync(path.join(entry.parentPath || entry.path, entry.name), 0o666); } catch {} }
+    }
+  } catch {}
+  try {
+    fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (error) {
+    process.stderr.write(`adapter test teardown left temp dir (${error.code}): ${temporary}\n`);
+  }
+});
 
 module.exports = running;

@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 외래 sync 전이의 효력을 epoch과 커밋에 결박했다. 구 epoch 커밋의 늦은 `run.synced`가 신 epoch의 완료와 결합해 런을 synced로 만들지 못한다(`RDL-RUN-026`). sync 전이의 신원 인가는 검사 계층이 맡는다 — clientId가 활성 agent/service가 아니면 `RDL-RUN-005`.
+- 같은 요청 ID에 다른 payload나 commandDigest가 오면 저널 재생이 과거 결과를 돌려주는 대신 거부한다.
+- legacy takeover의 fence 불가를 `RDL-RUN-027` 경고로 표면화한다.
+- 커널 결정성·소유권·재생의 핵심 시나리오가 정식 회귀 테스트로 편입됐다.
+- adapter 테스트 teardown이 Windows에서 간헐적으로 스위트를 실패시키던 것을 고쳤다(OS 임시 디렉터리 이동·읽기전용 해제·비치명 정리).
+
 ## [0.29.1] - 2026-08-17
 
 ### Fixed
