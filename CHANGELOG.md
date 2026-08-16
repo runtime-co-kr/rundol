@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-16
+
+### Changed
+
+- **호환성 파괴 — `engines.node`가 `>=14`에서 `>=20`으로 올라갔습니다.** [마이그레이션 안내](docs/MIGRATION-0.23.md). The `>=14` floor had never been true: the direct dependency `marked` requires `>=20`, CI verified only 20 and 22, and the install guide said 14. Node 14–19 installed and then failed on first run. `>=20` records the range that actually works rather than removing capability, but `npm install` now succeeds and fails in different places, so it is a compatibility break. Data, document contracts, task storage, CLI arguments and the Board API are unchanged; no migration command is needed.
+- This change already shipped in `0.22.9` and `0.22.10`, which were released as PATCH with no changelog entry. That contradicts the repository's own [release policy](docs/RELEASES.md), which requires a MINOR bump and a documented migration for a compatibility break. `0.23.0` re-releases the same content under the correct classification. On Node 20 or newer the three versions behave identically.
+
+### Fixed
+
+- Consecutive task edits could be rejected. After a save the queue entry was cleared before the fresh snapshot arrived, so a click landing in that window started a new queue entry stamped with the pre-refresh revision and the next request was refused with HTTP 409. The entry now survives until the snapshot lands, and changes made in between are carried into it. The guard that keeps polling from replacing the snapshot mid-edit was doing two different jobs — protecting a document draft and protecting optimistic task rendering — and has been split, so the save path can take the new revision while the document draft protection stays absolute.
+- A task panel stayed open after moving to another screen. Tasks and People were allowed to keep the panel as a pair, so opening a task and then going to People left the previous task's panel on screen with its selection already cleared, and the reader column stayed narrowed for a panel that no longer belonged there.
+- Composite views recorded a source commit they could not prove. When `git status` itself failed the worktree was treated as clean and the current HEAD was written as the view's origin, even though checking that commit out might not reproduce the view. What cannot be proven clean is no longer claimed as clean.
+
 ## [0.22.10] - 2026-08-16
 
 ### Fixed
