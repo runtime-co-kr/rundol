@@ -6,14 +6,13 @@ const crypto = require('crypto');
 const { workspaceLayout, selectProject, yamlValue } = require('./workspace');
 const { saveSettings } = require('./settings');
 const { runGit } = require('./git');
+const { runtimeWorkspace } = require('./runtime');
+const eventStore = require('./event-store');
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const MEMBER = /^MEMBER-\d{3}$/u;
 const TYPES = new Set(['device', 'agent', 'service']);
 const CLIENT_FILE = /^client-([a-z0-9]+(?:-[a-z0-9]+)*)\.yaml$/u;
-const LEASE_FILE = /^lease-([a-z0-9]+(?:-[a-z0-9]+)*)-([a-z0-9]+(?:-[a-z0-9]+)*)-(\d{6})\.jsonl$/u;
-const MAX_EVENTS = 500;
-const MAX_BYTES = 1024 * 1024;
 
 function atomicWrite(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -116,17 +115,7 @@ function documentExists(project, documentId) {
 }
 
 function readEvents(store, scope) {
-  if (!fs.existsSync(store.events)) return [];
-  const events = [];
-  for (const name of fs.readdirSync(store.events).filter((value) => value.startsWith(`lease-${scope}-`) && LEASE_FILE.test(value)).sort()) {
-    for (const [index, line] of fs.readFileSync(path.join(store.events, name), 'utf8').split(/\r?\n/u).entries()) {
-      if (!line.trim()) continue;
-      const event = JSON.parse(line);
-      if (!name.startsWith(`lease-${scope}-${event.clientId}-`)) throw new Error(`${name}:${index + 1}의 clientId가 파일명과 일치하지 않습니다.`);
-      events.push(event);
-    }
-  }
-  return events.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || String(a.eventId).localeCompare(String(b.eventId)));
+  return eventStore.readEvents(store.events, 'lease', scope);
 }
 
 function activeLeases(events, now) {
@@ -138,19 +127,6 @@ function activeLeases(events, now) {
   }
   const at = now || Date.now();
   return Array.from(leases.values()).filter((lease) => Date.parse(lease.expiresAt) > at);
-}
-
-function eventFile(store, scope, clientId) {
-  fs.mkdirSync(store.events, { recursive: true });
-  const files = fs.readdirSync(store.events).filter((name) => name.startsWith(`lease-${scope}-${clientId}-`) && LEASE_FILE.test(name)).sort();
-  const last = files[files.length - 1];
-  if (last) {
-    const file = path.join(store.events, last);
-    const count = fs.readFileSync(file, 'utf8').split(/\r?\n/u).filter(Boolean).length;
-    if (count < MAX_EVENTS && fs.statSync(file).size < MAX_BYTES) return file;
-  }
-  const segment = last ? Number.parseInt(/-(\d{6})\.jsonl$/u.exec(last)[1], 10) + 1 : 1;
-  return path.join(store.events, `lease-${scope}-${clientId}-${String(segment).padStart(6, '0')}.jsonl`);
 }
 
 function appendLease(start, action, input) {
@@ -173,8 +149,11 @@ function appendLease(start, action, input) {
     memberId: client.owner, leaseId, baseRevision: runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout,
     occurredAt: now.toISOString(), expiresAt: action === 'release' ? null : new Date(now.getTime() + 5 * 60 * 1000).toISOString()
   };
-  const file = eventFile(store, project.key, client.id);
-  fs.appendFileSync(file, `${JSON.stringify(event)}\n`, 'utf8');
+  // append와 세그먼트 롤오버는 머신 단위 락으로 직렬화한다 — 같은 client의
+  // 동시 CLI 프로세스가 같은 샤드를 두고 경합하는 것은 clientId만으로 막지 못한다.
+  const file = eventStore.appendEvent(store.events, 'lease', project.key, client.id, event, {
+    lockDirectory: runtimeWorkspace(store.layout.root).locks
+  });
   const saved = saveSettings(store.layout.root);
   return { project: project.key, documentId: input.documentId, clientId: client.id, leaseId, type, expiresAt: event.expiresAt, file, commit: saved.commit };
 }

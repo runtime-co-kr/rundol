@@ -35,7 +35,7 @@ require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
 
-Promise.all([require('./board.test'), require('./board-workspace.test')]).catch((error) => {
+Promise.all([require('./board.test'), require('./board-workspace.test'), require('./event-store.test')]).catch((error) => {
   process.stderr.write(`${error.stack || error.message}\n`);
   process.exitCode = 1;
 });
