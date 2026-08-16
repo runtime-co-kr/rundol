@@ -39,10 +39,13 @@ function recordAction(start, input) {
   const fallbackReason = input.fallbackReason ? String(input.fallbackReason).trim() : null;
   const adopted = plannedExecutor === actualExecutor || plannedExecutor === 'hybrid';
   if (!adopted && !fallbackReason) throw new Error('권장 executor와 실제 executor가 다르면 --fallback-reason이 필요합니다.');
-  return appendDebug(start, {
+  const record = {
     type: 'action', project: input.project || null, action: resolved.action, plannedExecutor, actualExecutor, adopted,
     artifactId: input.artifactId || null, taskId: input.taskId || null, fallbackReason
-  });
+  };
+  // 런에 속한 액션은 원장과 상관시킨다. 미제공 시 기존 출력과 바이트 단위로 동일하다.
+  if (input.runId) record.runId = String(input.runId);
+  return appendDebug(start, record);
 }
 
 module.exports = { ACTIONS, EXECUTORS, normalizeAction, resolveAction, recordAction };
