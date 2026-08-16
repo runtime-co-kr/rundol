@@ -639,6 +639,19 @@ function checkDocumentProfile(diagnostics, layout, project, settings) {
       file: relative(layout.root, project.charter), project: project.key, target: violation.type,
       message: violation.message
     });
+    // 예전 계약이 갖고 있던 값은 지금 아무 데서도 읽지 않는다. 지우지 않고 남겨 두되,
+    // 남아 있다는 사실과 옮길 자리는 알려야 한다. 모르면 영영 그대로 남는다.
+    const leftoverSections = Object.entries(validation.profile.omissions || {}).filter(([, item]) => !item.notApplicable);
+    if (leftoverSections.length) diagnostic(diagnostics, {
+      code: 'RDL-PROFILE-012', category: 'profile', severity: 'warning',
+      file: relative(layout.root, project.charter), project: project.key,
+      message: `예전 흡수 설정이 남아 있습니다: ${leftoverSections.map(([type]) => type).join(', ')}. rdl contract migrate로 프리셋 하부 요소로 옮기세요.`
+    });
+    if (Object.keys(validation.profile.rules || {}).length) diagnostic(diagnostics, {
+      code: 'RDL-PROFILE-013', category: 'profile', severity: 'warning',
+      file: relative(layout.root, project.charter), project: project.key,
+      message: `예전 작성 순서 설정이 남아 있습니다: ${Object.keys(validation.profile.rules).join(', ')}. 지금은 읽지 않으므로 rdl contract migrate로 정리하세요.`
+    });
     return;
   }
   diagnostic(diagnostics, {

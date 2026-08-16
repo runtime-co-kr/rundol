@@ -170,13 +170,33 @@ function normalizeProfile(input, presets) {
   // 다만 "해당 없음"과 그 사유는 다르다. 기계가 만든 기본값이 아니라 사람이 왜 그렇게
   // 정했는지 적어 둔 판단이고, 그 내용을 담은 곳이 여기 말고 없다. 규칙을 없앤다고 남의
   // 기록까지 지울 이유는 없으므로 적혀 있으면 그대로 옮긴다. 새로 만들지는 않는다.
+  //
+  // 흡수 대상과 구성요소도 전부 기계 기본값은 아니었다. 예전 계약 화면에는 구성요소를
+  // 직접 입력하는 칸이 있었으므로 사람이 적은 값이 섞여 있다. 규칙이 사라졌다고 그 입력을
+  // 조용히 버리면 안 된다. 적혀 있으면 그대로 옮기고, 옮길 새 자리(프리셋 하부 요소)를
+  // rdl contract migrate가 안내한다. 새로 만들지는 않는다.
   const carried = {};
   for (const [type, supplied] of Object.entries(value.omissions || {})) {
-    if (!supplied || supplied.notApplicable !== true) continue;
-    const reason = scalar(supplied.reason);
-    if (reason) carried[type] = { notApplicable: true, reason };
+    if (!supplied) continue;
+    if (supplied.notApplicable === true) {
+      const reason = scalar(supplied.reason);
+      if (reason) carried[type] = { notApplicable: true, reason };
+      continue;
+    }
+    const sections = parseList(supplied.sections);
+    const absorbedBy = scalar(supplied.absorbedBy);
+    if (sections.length || absorbedBy) carried[type] = Object.assign({}, absorbedBy ? { absorbedBy } : {}, sections.length ? { sections } : {});
   }
   if (Object.keys(carried).length) result.omissions = carried;
+  // 작성 순서도 화면에서 켜고 끌 수 있었다. 지금은 아무 데서도 읽지 않지만, 읽지 않는 것과
+  // 지우는 것은 다르다. 남겨 두고 옮길 자리가 없음을 migrate가 알린다.
+  const keptRules = {};
+  for (const [type, supplied] of Object.entries(value.rules || {})) {
+    if (!supplied || supplied.after === undefined) continue;
+    const after = parseList(supplied.after);
+    if (JSON.stringify(ordered(after)) !== JSON.stringify(ordered(DEFAULT_RULES[type] || []))) keptRules[type] = { after };
+  }
+  if (Object.keys(keptRules).length) result.rules = keptRules;
   return result;
 }
 
@@ -270,13 +290,21 @@ function renderDocumentProfileUnchecked(profile) {
   if (profile.schemaVersion === 2) lines.push(`  enforcement: ${profile.enforcement}`);
   lines.push(`  traits: [${profile.traits.join(', ')}]`, `  history: [${profile.history.join(', ')}]`, '  policy:');
   for (const state of POLICY_STATES) lines.push(`    ${state}: [${profile.policy[state].join(', ')}]`);
-  // 사람이 적어 둔 "해당 없음" 사유는 계약을 저장해도 그대로 남는다. 규칙을 없앤 것이
-  // 그 기록을 지울 근거는 아니다.
+  // 사람이 적어 둔 값은 계약을 저장해도 그대로 남는다. 규칙을 없앤 것이 그 기록을 지울
+  // 근거는 아니다. 지금 코드가 읽지 않더라도, 읽지 않는 것과 지우는 것은 다르다.
+  const carriedRules = Object.entries(profile.rules || {});
+  if (carriedRules.length) {
+    lines.push('  rules:');
+    for (const [type, rule] of carriedRules) lines.push(`    ${type}:`, `      after: [${(rule.after || []).join(', ')}]`);
+  }
   const carried = Object.entries(profile.omissions || {});
   if (carried.length) {
     lines.push('  omissions:');
     for (const [type, omission] of carried) {
-      lines.push(`    ${type}:`, '      notApplicable: true', `      reason: "${String(omission.reason).replace(/"/gu, '\\"')}"`);
+      lines.push(`    ${type}:`);
+      if (omission.notApplicable) { lines.push('      notApplicable: true', `      reason: "${String(omission.reason).replace(/"/gu, '\\"')}"`); continue; }
+      if (omission.absorbedBy) lines.push(`      absorbedBy: ${omission.absorbedBy}`);
+      if (omission.sections && omission.sections.length) lines.push(`      sections: [${omission.sections.join(', ')}]`);
     }
   }
   return lines.join('\n');
@@ -333,10 +361,10 @@ function profileImpact(before, after) {
   return changes;
 }
 
-function reconfigureProject(projectFile, name, overrides) {
+function reconfigureProject(projectFile, name, overrides, presets) {
   const source = fs.readFileSync(projectFile, 'utf8');
-  const validation = validateDocumentProfile(source);
-  const existing = validation.present ? parseDocumentProfile(source) : null;
+  const validation = validateDocumentProfile(source, presets);
+  const existing = validation.present ? parseDocumentProfile(source, presets) : null;
   const migrated = existing ? migrateProfile(existing) : null;
   const settings = overrides || {};
   const next = normalizeProfile({
@@ -348,9 +376,9 @@ function reconfigureProject(projectFile, name, overrides) {
     omissions: settings.omissions || (settings.policy ? undefined : migrated && migrated.omissions),
     revision: existing ? existing.revision + 1 : 1,
     history: existing ? existing.history.concat(name) : [name]
-  });
+  }, presets);
   const impact = profileImpact(migrated, next);
-  return Object.assign(applyToProject(projectFile, next), { legacyUnconfigured: !validation.present, migratedFrom: existing && existing.schemaVersion === 1 ? 1 : null, impact });
+  return Object.assign(applyToProject(projectFile, next, presets), { legacyUnconfigured: !validation.present, migratedFrom: existing && existing.schemaVersion === 1 ? 1 : null, impact });
 }
 
 function missingActions(profile, presentTypes) {

@@ -10,7 +10,7 @@ const {
 const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
 const { CONTRACT_VERSION, IMPLEMENTATION_TYPES, REQUIRED_FIELDS_BY_TYPE, implementationTrace } = require('./implementation-contract');
 const { DIAGRAM_VERSION, DIAGRAM_CONVENTIONS } = require('./document-diagram');
-const { loadBoardPresentation, resolveProfilePresets, profileChoices } = require('./board-presentation');
+const { loadBoardPresentation, resolveProfilePresets, profileChoices, presentationFile, savePresentation } = require('./board-presentation');
 
 function documentContractCatalog() {
   const templateRoot = path.resolve(__dirname, '..', 'docs', 'templates');
@@ -167,6 +167,57 @@ function planDocumentContract(start, projectKey, input) {
   return { root: current.root, project: current.project, baseRevision: current.revision, profile: next, impact: profileImpact(before, next), evaluation };
 }
 
+// 예전 계약에 남은 값을 새 자리로 옮긴다. 흡수 구성요소는 유형별 하부 요소와 같은
+// 개념이라 프리셋으로 그대로 옮길 수 있다. 작성 순서는 옮길 자리가 없으므로 무엇이
+// 남았는지만 알린다. 지우는 것은 언제나 사람이 정한다.
+function planContractMigration(start, projectKey) {
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, projectKey, true);
+  const contract = loadDocumentContract(layout.root, project.key);
+  const profile = contract.profile || {};
+  const sections = {};
+  const notApplicable = {};
+  const orphanRules = {};
+  for (const [type, omission] of Object.entries(profile.omissions || {})) {
+    if (omission.notApplicable) { notApplicable[type] = omission.reason; continue; }
+    if (omission.sections && omission.sections.length) sections[type] = omission.sections.slice();
+  }
+  for (const [type, rule] of Object.entries(profile.rules || {})) orphanRules[type] = (rule.after || []).slice();
+  return {
+    root: layout.root,
+    project: project.key,
+    profileName: profile.name || null,
+    movable: sections,
+    keptAsRecord: notApplicable,
+    noNewHome: orphanRules,
+    target: presentationFile(layout.root, project.key, 'project')
+  };
+}
+
+function applyContractMigration(start, projectKey) {
+  const plan = planContractMigration(start, projectKey);
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, projectKey, true);
+  const moved = Object.keys(plan.movable);
+  if (moved.length) {
+    const presentation = loadBoardPresentation(layout.root, project.key);
+    const own = (presentation.sources && presentation.sources.project) || {};
+    const profiles = Object.assign({}, own.profiles);
+    const name = plan.profileName;
+    const existing = profiles[name] || {};
+    // 프리셋 이름이 내장이면 정책은 내장 것을 그대로 쓰므로 policy를 적지 않는다.
+    profiles[name] = Object.assign({}, existing, { sections: Object.assign({}, existing.sections, plan.movable) });
+    savePresentation(layout.root, project.key, 'project', Object.assign({}, own, { profiles }));
+  }
+  // 옮긴 구성요소와 옮길 자리가 없는 작성 순서는 계약에서 뺀다. 해당 없음 기록은 남긴다.
+  const source = fs.readFileSync(project.charter, 'utf8');
+  const cleaned = source
+    .replace(/^ {2}rules:\s*\n(?: {4}[A-Z]{3}:\s*\n {6}after:[^\n]*\n)+/mu, '')
+    .replace(/^( {4}[A-Z]{3}:\s*\n)(?: {6}(?:absorbedBy|sections):[^\n]*\n)+/gmu, '');
+  fs.writeFileSync(project.charter, cleaned.replace(/^ {2}omissions:\s*\n(?= {2}\S|---)/mu, ''), 'utf8');
+  return Object.assign(plan, { moved, cleaned: true });
+}
+
 function updateDocumentContract(start, projectKey, input) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, projectKey, true);
@@ -184,5 +235,6 @@ function updateDocumentContract(start, projectKey, input) {
 
 module.exports = {
   projectArtifacts, evaluateDocumentContract, loadDocumentContract,
-  documentContractCatalog, assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract
+  documentContractCatalog, assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract,
+  planContractMigration, applyContractMigration
 };

@@ -89,13 +89,27 @@ try {
   assert.ok(rendered.includes('이 제품에는 화면이 없다'), '다시 쓸 때도 사유가 남아야 합니다');
   assert.strictEqual(profile.validateDocumentProfile(`---\n${rendered}\n---\n`).status, 'valid');
 
-  // 흡수 규칙(대상·섹션)은 기계 기본값이라 계속 제거한다. 사람이 적은 것만 남긴다.
+  // 흡수 구성요소도 전부 기계 기본값은 아니었다. 예전 화면에는 직접 입력하는 칸이 있어
+  // 사람이 적은 값이 섞여 있다. 지금 코드가 읽지 않더라도 읽지 않는 것과 지우는 것은
+  // 다르므로 남긴다. 옮길 자리는 rdl contract migrate가 안내한다.
   const absorbed = profile.normalizeProfile({
     name: 'lean',
     policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
-    omissions: { SCR: { absorbedBy: 'REQ', sections: ['사용자 흐름'] } }
+    omissions: { SCR: { absorbedBy: 'REQ', sections: ['우리가 직접 적은 항목'] } },
+    rules: { REQ: { after: ['ARC'] } }
   });
-  assert.strictEqual(absorbed.omissions, undefined, '흡수 규칙은 남기지 않습니다');
+  assert.deepStrictEqual(absorbed.omissions.SCR.sections, ['우리가 직접 적은 항목'], '사람이 적은 구성요소는 남아야 합니다');
+  assert.deepStrictEqual(absorbed.rules.REQ.after, ['ARC'], '바꾼 작성 순서도 남아야 합니다');
+  const carriedRender = profile.renderDocumentProfile(absorbed);
+  assert.ok(carriedRender.includes('우리가 직접 적은 항목') && carriedRender.includes('after: [ARC]'), '다시 쓸 때도 남아야 합니다');
+
+  // 기본값 그대로인 작성 순서는 옮길 것도 알릴 것도 없으므로 남기지 않는다.
+  const defaults = profile.normalizeProfile({
+    name: 'lean',
+    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
+    rules: Object.fromEntries(profile.REGULAR_TYPES.map((type) => [type, { after: profile.DEFAULT_RULES[type] }]))
+  });
+  assert.strictEqual(defaults.rules, undefined, '기본값과 같은 작성 순서는 남기지 않습니다');
 }
 
 process.stdout.write('document profile tests passed' + String.fromCharCode(10));

@@ -498,10 +498,12 @@ console.log('board UI tests passed');
 // 새 프로젝트 경로로 나가고, 열어 둔 패널은 지금 목록에 없는 항목을 계속 보여준다.
 {
   const start = app.indexOf("el('project-switcher').addEventListener");
-  const swap = app.slice(start, start + 700);
-  assert(swap.includes('state.pendingTasks.clear()'), '예약된 태스크 저장을 비워야 합니다');
-  assert(swap.includes('clearTimeout(pending.timer)'), '예약 타이머도 꺼야 합니다');
+  const swap = app.slice(start, app.indexOf("el('current-member').addEventListener", start));
+  assert(swap.includes('clearTimeout(pending.timer)'), '예약 타이머를 꺼야 합니다');
   assert(swap.includes('closePeek()'), '이전 프로젝트 패널을 닫아야 합니다');
+  // 그냥 버리면 사용자가 눌렀다고 믿는 변경이 경고 없이 사라진다. 먼저 보내고, 못 보내면 알린다.
+  assert(swap.includes('await flushTaskUpdate(taskId)'), '대기 중인 변경을 먼저 보내야 합니다');
+  assert(/message\(`저장하지 못한 태스크 변경/u.test(swap), '버리는 변경이 있으면 알려야 합니다');
 }
 
 // 편집 UI만 있고 저장 경로가 없으면 눌러도 아무 일이 없다.

@@ -125,4 +125,33 @@ try {
   }
 }
 
-process.stdout.write('document contract tests passed\n');
+// 프리셋의 하부 요소는 기본값을 더하는 것이 아니라 대체하는 계약이다. 더하기만 하면 팀이
+// 뺀 절이 뼈대에 남아, 만들어진 문서와 contract show가 말하는 목록이 달라진다.
+{
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-sections-'));
+  try {
+    git(['init', '-b', 'main'], probe);
+    git(['config', 'user.name', 'Rundol Test'], probe);
+    git(['config', 'user.email', 'rundol@example.test'], probe);
+    fs.writeFileSync(path.join(probe, 'README.md'), '# test\n');
+    git(['add', 'README.md'], probe); git(['commit', '-m', 'initial'], probe);
+    run(['init', 'demo', '--name', 'Demo', '--profile', 'lean', '--root', probe, '--json'], probe);
+    fs.writeFileSync(path.join(probe, 'projects', 'workspace', 'board.json'), JSON.stringify({
+      schemaVersion: 1,
+      profiles: { lean: { sections: { REQ: ['배경', '요구사항', '우리 팀 보안 검토'] } } }
+    }, null, 2), 'utf8');
+
+    const created = run(['doc', 'create', 'REQ', '결제', '--owner', 'MEMBER-001', '--scope', '사용자가 결제를 승인하는 동작',
+      '--exclude', '결제 취소와 환불', '--function-id', 'PAY-01', '--related', 'project:demo', '--project', 'demo', '--root', probe, '--json'], probe);
+    const source = fs.readFileSync(created.file, 'utf8');
+    const heads = source.split(/\r?\n/u).map((line) => /^##\s+(.+?)\s*#*\s*$/u.exec(line)).filter(Boolean).map((match) => match[1].trim());
+    assert.deepStrictEqual(heads.slice(0, 3), ['배경', '요구사항', '우리 팀 보안 검토'], '프리셋이 정한 목록과 순서를 따라야 합니다');
+    assert.ok(!heads.includes('사전조건'), '프리셋이 뺀 절은 뼈대에 남으면 안 됩니다');
+    // 기능별 계약은 하부 요소가 아니라 기능의 계약이므로 그대로 남는다.
+    assert.ok(source.includes('### PAY-01'), '기능별 계약 블록은 보존되어야 합니다');
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+}
+
+process.stdout.write('document contract tests passed' + String.fromCharCode(10));

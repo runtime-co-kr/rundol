@@ -369,15 +369,19 @@ async function main() {
     if (subcommand === 'profile') {
       const profileOptions = parseOperationArgs(argv);
       if (profileOptions.positional.length) throw new Error('rdl project profile은 위치 인수를 사용하지 않습니다.');
-      if (!PROFILE_NAMES.includes(profileOptions.profile)) throw new Error('--profile <lean|product|service|platform|assured>가 필요합니다.');
+      // contract set과 같은 목록을 봐야 한다. 한쪽만 팀 프리셋을 받으면 같은 이름이
+      // 명령에 따라 되기도 하고 안 되기도 한다.
       const { workspaceLayout, selectProject } = require('../src/workspace');
       const layout = workspaceLayout(profileOptions.root);
+      const { loadBoardPresentation, resolveProfilePresets } = require('../src/board-presentation');
+      const presets = resolveProfilePresets(loadBoardPresentation(layout.root, profileOptions.project));
+      if (!Object.keys(presets).includes(profileOptions.profile)) throw new Error(`--profile <${Object.keys(presets).join('|')}>가 필요합니다.`);
       const selected = selectProject(layout, profileOptions.project, true);
       const updated = reconfigureProject(selected.charter, profileOptions.profile, {
         enforcement: profileOptions.enforcement,
         traits: profileOptions.traits.length ? profileOptions.traits : undefined,
         policy: profileOptions.policySpecified ? profileOptions.policy : undefined
-      });
+      }, presets);
       const registry = require('../src/document').registry(selected);
       const present = Array.from(registry.keys()).map((id) => /^([A-Z]{3})-/u.exec(id)).filter(Boolean).map((match) => match[1]);
       printOperation({ root: layout.root, project: selected.key, profile: updated.profile.name, enforcement: updated.profile.enforcement, traits: updated.profile.traits, revision: updated.profile.revision, history: updated.profile.history, legacyUnconfigured: updated.legacyUnconfigured, migratedFrom: updated.migratedFrom, impact: updated.impact, file: updated.file, missing: missingActions(updated.profile, present), contract: loadDocumentContract(layout.root, selected.key) }, profileOptions.json);
@@ -424,7 +428,14 @@ async function main() {
       printOperation(Object.assign({ action: options.write ? 'written' : 'computed' }, result), options.json);
       return 0;
     }
-    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, trace, plan, set, diagram입니다.');
+    // 예전 계약에 남은 값을 새 자리로 옮긴다. 계획을 먼저 보여주고 --write일 때만 쓴다.
+    if (subcommand === 'migrate') {
+      const { planContractMigration, applyContractMigration } = require('../src/document-contract');
+      const result = options.write ? applyContractMigration(options.root, options.project) : planContractMigration(options.root, options.project);
+      printOperation(Object.assign({ action: options.write ? 'migrated' : 'planned' }, result), options.json);
+      return 0;
+    }
+    if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, trace, plan, set, migrate, diagram입니다.');
     // 고를 수 있는 프로필은 내장 다섯 개가 아니라 board.json 상속이 정한 목록이다.
     // 팀이 만든 프리셋을 CLI가 거절하면 화면에서만 쓸 수 있는 반쪽 기능이 된다.
     {

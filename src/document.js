@@ -99,21 +99,34 @@ function createDocument(start, input) {
   if (boundary) source = source.replace(/^scope:\s*.*$/mu, `scope: ${yamlQuote(boundary.scope)}`)
     .replace(/^excludes:\s*\r?\n(?:\s{2}-[^\r\n]*\r?\n?)+/mu, `excludes:\n${boundary.excludes.map((value) => `  - ${yamlQuote(value)}`).join('\n')}\n`);
   if (functionIds.length) source = source.replace(/^granularity:\s*bounded-v1\s*$/mu, `granularity: bounded-v1\n${renderImplementationMetadata(functionIds)}`);
-  if (IMPLEMENTATION_TYPES.includes(type)) source += renderFunctionContracts(type, functionIds);
+  // 기능별 계약은 유형의 하부 요소가 아니라 기능의 계약이다. 아래 하부 요소 재구성이
+  // 건드리지 않도록 맨 마지막에 붙인다. 유형마다 제목이 달라(설계/검증) 문구로 찾으면 놓친다.
+  const functionContracts = IMPLEMENTATION_TYPES.includes(type) ? renderFunctionContracts(type, functionIds) : '';
   const titleTokens = ['<프로젝트명>', '<제품명>', '<요구사항 제목>', '<화면 또는 상호작용 제목>', '<데이터 영역 제목>', '<인터페이스 제목>', '<결정 제목>', '<검증 범위 제목>', '<서비스/작업 운영 절차>', '<노트 제목>'];
   for (const token of titleTokens) source = source.replaceAll(token, title.title);
   source = source.replace(/<([^>]+)>/g, (_, hint) => `작성 필요 — ${hint}`);
-  // 팀이 프리셋에 더한 절은 템플릿에 없다. 뼈대에 자리를 만들어 두지 않으면 무엇을 더
-  // 채워야 하는지 문서를 여는 사람이 알 수 없다. 이미 있는 절은 건드리지 않는다.
+  // 프리셋의 하부 요소는 기본값을 더하는 것이 아니라 대체하는 계약이다. 더하기만 하면
+  // 팀이 뺀 절이 뼈대에 그대로 남아, 만들어진 문서와 contract show가 말하는 목록이 달라진다.
+  // 템플릿에 있던 절이라도 프리셋에 없으면 뼈대에서 뺀다. 순서도 프리셋을 따른다.
   const { loadBoardPresentation, resolveProfileSections } = require('./board-presentation');
   const presetSections = resolveProfileSections(loadBoardPresentation(layout.root, project.key), contract.profile ? contract.profile.name : null);
-  const present = new Set(source.split(/\r?\n/u).map((line) => /^##\s+(.+?)\s*#*\s*$/u.exec(line)).filter(Boolean).map((match) => match[1].trim()));
-  const missing = (presetSections[type] || []).filter((section) => !present.has(section));
-  if (missing.length) {
-    const anchor = source.indexOf('\n## 기능별 설계 계약');
-    const addition = `${missing.map((section) => `## ${section}\n\n`).join('')}`;
-    source = anchor >= 0 ? `${source.slice(0, anchor + 1)}${addition}${source.slice(anchor + 1)}` : `${source.replace(/\s*$/u, '')}\n\n${addition}`;
+  const wanted = presetSections[type] || [];
+  if (wanted.length) {
+    const lines = source.split(/\r?\n/u);
+    const heads = lines.map((line, index) => ({ index, match: /^##\s+(.+?)\s*#*\s*$/u.exec(line) })).filter((item) => item.match);
+    if (heads.length) {
+      const first = heads[0].index;
+      const bodyOf = (name) => {
+        const at = heads.find((item) => item.match[1].trim() === name);
+        if (!at) return null;
+        const next = heads.find((item) => item.index > at.index);
+        return lines.slice(at.index, next ? next.index : lines.length).join('\n').replace(/\s*$/u, '');
+      };
+      const rebuilt = wanted.map((section) => bodyOf(section) || `## ${section}\n`).join('\n\n');
+      source = `${lines.slice(0, first).join('\n').replace(/\s*$/u, '')}\n\n${rebuilt}\n`;
+    }
   }
+  if (functionContracts) source += functionContracts;
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
   return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null };

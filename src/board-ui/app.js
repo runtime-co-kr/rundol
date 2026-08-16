@@ -677,8 +677,20 @@ el('global-search').addEventListener('input', (event) => { state.query = event.t
 // 남아 있으면 새 프로젝트 경로로 나가고, 열어 둔 패널은 지금 목록에 없는 항목을 계속 보여준다.
 el('project-switcher').addEventListener('change', async (event) => {
   markVisit();
-  for (const [, pending] of state.pendingTasks) clearTimeout(pending.timer);
-  state.pendingTasks.clear();
+  // 방금 누른 변경이 아직 대기열에 있으면 먼저 보낸다. 그냥 버리면 사용자가 눌렀다고
+  // 믿는 것이 경고도 없이 사라진다. 보내지 못하면 무엇이 남았는지 알리고 되돌린다.
+  const waiting = Array.from(state.pendingTasks.keys());
+  for (const taskId of waiting) {
+    const pending = state.pendingTasks.get(taskId);
+    if (pending) clearTimeout(pending.timer);
+    try { await flushTaskUpdate(taskId); } catch { /* 아래에서 남은 것으로 함께 알린다 */ }
+  }
+  const stranded = Array.from(state.pendingTasks.keys());
+  if (stranded.length) {
+    for (const [, pending] of state.pendingTasks) clearTimeout(pending.timer);
+    state.pendingTasks.clear();
+    message(`저장하지 못한 태스크 변경 ${stranded.length}건을 버리고 프로젝트를 바꿉니다: ${stranded.join(', ')}`, true);
+  }
   closePeek();
   state.project = event.target.value;
   state.snapshot = null;
@@ -996,7 +1008,10 @@ function refreshProfileState() {
   const selected = el('contract-profile').value;
   const choice = profileChoice(selected);
   const rows = currentPolicyFromRows();
-  const matches = Boolean(choice && choice.policy && samePolicy(choice.policy, rows));
+  // 정책만 비교하면 하부 요소를 고쳐도 프리셋과 같다고 보아 저장할 길이 열리지 않는다.
+  // 프리셋이 정하는 것은 정책과 하부 요소 둘이므로 둘 다 봐야 한다.
+  const matches = Boolean(choice && choice.policy && samePolicy(choice.policy, rows)
+    && JSON.stringify(choice.sections || {}) === JSON.stringify(currentSectionsFromRows()));
   const hint = el('contract-profile-hint');
   const save = el('save-preset');
   if (!document.querySelector('[data-contract-type]')) return;
@@ -1147,11 +1162,11 @@ document.addEventListener('change', (event) => {
 document.addEventListener('click', async (event) => {
   const row = event.target.closest('[data-contract-type]');
   const suggestion = event.target.closest('[data-component-suggestion]');
-  if (row && suggestion) { addContractComponent(row, suggestion.dataset.componentSuggestion); return; }
+  if (row && suggestion) { addContractComponent(row, suggestion.dataset.componentSuggestion); refreshProfileState(); return; }
   const remove = event.target.closest('[data-component-remove]');
-  if (row && remove) { const component = remove.closest('[data-contract-section]'); const value = component.dataset.contractSection; component.remove(); setSuggestionState(row, value, false); return; }
+  if (row && remove) { const component = remove.closest('[data-contract-section]'); const value = component.dataset.contractSection; component.remove(); setSuggestionState(row, value, false); refreshProfileState(); return; }
   const add = event.target.closest('[data-component-add]');
-  if (row && add) { const input = row.querySelector('[data-component-input]'); if (addContractComponent(row, input.value)) input.value = ''; return; }
+  if (row && add) { const input = row.querySelector('[data-component-input]'); if (addContractComponent(row, input.value)) { input.value = ''; refreshProfileState(); } return; }
   // 지금 화면 구성을 이름 붙여 프리셋으로 남긴다. 프리셋은 프로젝트가 아니라 board.json이
   // 소유하므로 계약 저장과 다른 곳에 쓴다. 계약은 그 이름을 가리키게만 바꾼다.
   if (event.target.closest('#save-preset')) {
@@ -1164,9 +1179,19 @@ document.addEventListener('click', async (event) => {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
         body: JSON.stringify(presentationInput('project', { profiles: { [key]: { label, policy: currentPolicyFromRows(), sections: currentSectionsFromRows() } } }))
       });
-      await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign(contractInput(), { name: key })) });
-      await loadSnapshot(true);
-      message(`프리셋 ${label}으로 저장하고 이 프로젝트 계약을 그 프리셋으로 바꿨습니다.`);
+      // 프리셋은 board.json에, 계약은 project.md에 쓰므로 한 번에 끝나지 않는다. 둘째가
+      // 실패하면 프리셋만 남는데, 그 상태에서 화면이 옛 revision을 들고 있으면 다시 눌러도
+      // 충돌로 막힌다. 실패해도 스냅샷을 새로 받아 재시도가 가능하게 두고, 무엇이 됐고
+      // 무엇이 남았는지 말한다.
+      const contractPayload = Object.assign(contractInput(), { name: key });
+      try {
+        await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(contractPayload) });
+        await loadSnapshot(true);
+        message(`프리셋 ${label}으로 저장하고 이 프로젝트 계약을 그 프리셋으로 바꿨습니다.`);
+      } catch (error) {
+        await loadSnapshot(true);
+        message(`프리셋 ${label}은 저장했지만 계약을 바꾸지 못했습니다: ${error.message} 프로필에서 ${label}을 고르고 계약 저장을 다시 누르세요.`, true);
+      }
     } catch (error) { message(error.message, true); }
     return;
   }
