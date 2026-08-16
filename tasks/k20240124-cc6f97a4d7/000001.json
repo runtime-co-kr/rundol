@@ -853,6 +853,35 @@
       "statusChangedAt": "2026-08-16T23:43:27.551Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSWGB19W05A58C057D0A9AA5": {
+      "title": "[설계] run 원장 v2 작성자 시퀀스 번호 채택 결정",
+      "summary": "fold 결정성은 현재 작성자 부분열 보존 입력 계약으로 보증된다. 엄밀한 집합 함수화를 위한 v2 canonical 작성자 시퀀스 번호 추가는 canonical 바이트를 바꾸는 스키마 확장이므로, 외부 소비자가 없고 쿼리 엔진이 projection을 굳히기 전인 지금 채택 여부를 결정해야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "PRD-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "채택 여부가 결정되고 근거가 ADR로 기록된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "채택 시 v2 canonical 변경 범위와 기존 이벤트 영향이 명세된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-16T23:43:41.875Z",
+      "updatedAt": "2026-08-16T23:43:41.875Z",
+      "statusChangedAt": "2026-08-16T23:43:41.875Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
