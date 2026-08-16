@@ -1,27 +1,10 @@
 {
   "schemaVersion": 1,
-  "documentTypes": {
-    "charter": { "label": "프로젝트 헌장", "description": "프로젝트의 목표, 범위와 거버넌스", "order": 0 },
-    "prd": { "label": "제품 요구사항", "description": "제품 목표, 사용자 가치와 범위", "order": 10 },
-    "requirement": { "label": "요구사항", "description": "검증 가능한 기능과 품질 요구", "order": 20 },
-    "architecture": { "label": "아키텍처", "description": "시스템 경계와 구조 결정", "order": 30 },
-    "screen": { "label": "화면 설계", "description": "사용자 흐름, 화면 상태와 접근성", "order": 40 },
-    "model": { "label": "데이터 모델", "description": "데이터 구조, 관계와 불변식", "order": 50 },
-    "api": { "label": "인터페이스", "description": "요청, 응답, 오류와 호환성 계약", "order": 60 },
-    "decision": { "label": "의사결정 기록", "description": "중요 결정과 대안, 근거와 결과", "order": 70 },
-    "test": { "label": "검증", "description": "테스트 전략, 시나리오와 통과 기준", "order": 80 },
-    "runbook": { "label": "운영 가이드", "description": "배포, 관측, 장애 대응과 복구", "order": 90 },
-    "glossary": { "label": "용어집", "description": "프로젝트 공통 용어와 정의", "order": 100 },
-    "clipping": { "label": "수집 노트", "description": "정규화 전 임시 참고 자료", "order": 110 }
-  },
-  "documentStates": {
-    "draft": { "label": "초안", "description": "작성 중이며 계약 검증이 끝나지 않음", "order": 0 },
-    "proposed": { "label": "제안", "description": "검토를 위해 제안됨", "order": 10 },
-    "review": { "label": "검토 중", "description": "책임자의 검토가 진행 중", "order": 20 },
-    "approved": { "label": "승인됨", "description": "승인되어 적용 가능함", "order": 30 },
-    "active": { "label": "활성", "description": "현재 유효한 정본", "order": 40 },
-    "deprecated": { "label": "폐기 예정", "description": "대체 문서로 전환 중", "order": 50 },
-    "archived": { "label": "보관됨", "description": "현재 사용하지 않는 기록", "order": 60 },
-    "unread": { "label": "미확인", "description": "아직 검토되지 않은 수집 자료", "order": 70 }
-  }
+  "documentTypes": {},
+  "documentStates": {},
+  "policyStates": {},
+  "enforcementLevels": {},
+  "taskStatuses": {},
+  "priorities": {},
+  "profiles": {}
 }
