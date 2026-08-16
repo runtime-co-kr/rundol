@@ -12,11 +12,6 @@ excludes:
 implementationContract: atomic-v1
 functionIds:
   - HRN-01
-  - HRN-02
-  - HRN-03
-  - HRN-04
-  - HRN-05
-  - HRN-06
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
@@ -31,6 +26,11 @@ related:
   - "[[ARC-002-Rundol-시스템-아키텍처|ARC-002]]"
   - "[[ADR-003-문서-계약과-표시-설정의-소유-경계|ADR-003]]"
   - "[[TST-002-문서-계획-계약-검증|TST-002]]"
+  - "[[REQ-034-구현-문서-계약-검사|REQ-034]]"
+  - "[[REQ-035-구현-준비도-태스크-게이트|REQ-035]]"
+  - "[[REQ-036-계산형-기능-추적성|REQ-036]]"
+  - "[[REQ-037-브랜치와-worktree-경계|REQ-037]]"
+  - "[[REQ-038-AI-스킬-작업-흐름|REQ-038]]"
 ---
 
 # 명령줄 인공지능 스킬 보드 통합 규격
@@ -40,6 +40,8 @@ related:
 Rundol은 동일한 프로젝트 상태를 CLI, AI 스킬과 로컬 Board라는 세 표면으로 다룬다. 세 표면이 서로 다른 규칙을 구현하면 AI는 잘못된 문서 순서를 강제하고, Board는 CLI에서 허용하지 않는 변경을 저장하며, 사용자는 어느 결과가 정본인지 판단할 수 없게 된다.
 
 이 규격은 세 표면의 책임과 권한, AI가 설계를 진행하는 순서, 문서·태스크·검증·동기화 경계를 현재 구현에 맞춰 고정한다. 핵심 원칙은 CLI와 공용 도메인 서비스가 실행 권위자이고, 스킬은 그 기능을 올바른 순서로 호출하는 오케스트레이터이며, Board는 동일 서비스를 사람이 이해하기 쉽게 가시화하는 어댑터라는 것이다.
+
+이 문서는 규격의 배경과 구현 문서 생성 기능을 나른다. 계약 검사는 [[REQ-034-구현-문서-계약-검사|REQ-034]], 준비도 게이트는 [[REQ-035-구현-준비도-태스크-게이트|REQ-035]], 계산형 추적성은 [[REQ-036-계산형-기능-추적성|REQ-036]], 브랜치·worktree 경계는 [[REQ-037-브랜치와-worktree-경계|REQ-037]], AI 스킬 작업 흐름은 [[REQ-038-AI-스킬-작업-흐름|REQ-038]]이 각각 기능 하나씩 나른다 — 문서 1개 = 기능 1개 계약에 따른 분리다.
 
 ```mermaid
 flowchart LR
@@ -271,173 +273,3 @@ sequenceDiagram
 #### 수용 기준
 
 - 같은 문서에 여러 function-id를 주어도 각 ID가 유형별 전체 필드를 가진 독립 섹션으로 생성된다.
-
-### HRN-02
-
-#### 입력
-
-- atomic-v1 구현 문서의 frontmatter와 기능별 본문
-
-#### 출력
-
-- 기능 ID별 누락·미확정·묶음·중복·무원천 진단
-
-#### 업무 규칙
-
-- 범위 표기, 한 행의 복수 기능, 공유 placeholder·수용기준을 허용하지 않고 각 기능의 유형별 필드를 모두 검사한다.
-
-#### 상태와 전이
-
-- 일반 strict에서는 legacy 문서를 경고하고 implementation 모드에서는 준비되지 않은 계약을 오류로 승격한다.
-
-#### 권한과 승인
-
-- 공용 검사기가 판정하며 스킬과 Board는 진단의 심각도와 의미를 재정의하지 않는다.
-
-#### 정상·오류·취소
-
-- 완전한 독립 계약은 통과하고 외부 문서로의 규칙 위임, 결정되지 않은 값과 누락 필드는 기능 ID를 대상으로 실패한다.
-
-#### 감사 기록
-
-- 진단은 code, file, artifactId, target과 line을 안정된 JSON으로 반환한다.
-
-#### 수용 기준
-
-- 한 파일의 여러 완전한 기능은 통과하고 `PAY-01~04` 또는 한 통합 행은 RDL-IMPL-004 오류가 된다.
-
-### HRN-03
-
-#### 입력
-
-- REQ와 TST를 연결한 Rundol 태스크, acceptance와 목표 상태
-
-#### 출력
-
-- atomic-v1 implementationReadiness 태스크 또는 완료 전환 거부
-
-#### 업무 규칙
-
-- 새 구현 태스크는 readiness 계약을 기록하고 done 전에 모든 acceptance, TST 링크와 기능별 REQ-TST 대응을 검증한다.
-
-#### 상태와 전이
-
-- 완료 전 상태에서는 진행할 수 있으나 미완성 구현 계약으로 완료 전환할 수 없다.
-
-#### 권한과 승인
-
-- task service만 상태와 acceptance operation을 기록하며 owner와 reviewer는 project.md 등록 멤버를 사용한다.
-
-#### 정상·오류·취소
-
-- 완전한 REQ·TST와 acceptance는 완료를 허용하고 초기 안내값·기능 누락은 기존 상태를 보존한다.
-
-#### 감사 기록
-
-- readiness, 상태 변경, acceptance operation과 커밋이 프로젝트 태스크 shard에 남는다.
-
-#### 수용 기준
-
-- 초기 템플릿을 연결한 태스크는 완료가 거부되고 모든 기능 계약을 채운 뒤 같은 전환이 성공한다.
-
-### HRN-04
-
-#### 입력
-
-- 프로젝트 정규 문서의 functionIds와 직접 related·task 링크
-
-#### 출력
-
-- 기능별 REQ·설계·TST 문서와 ready·missing을 포함한 계산형 trace JSON
-
-#### 업무 규칙
-
-- 추적성은 실행 시 계산하며 INDEX, 목록, 카탈로그 또는 추적성 매트릭스 문서를 정본으로 저장하지 않는다.
-
-#### 상태와 전이
-
-- 문서 추가·삭제·링크 변경에 따라 다음 조회 결과만 바뀌며 별도 동기화 대상 파일은 없다.
-
-#### 권한과 승인
-
-- 모든 사용자는 읽을 수 있고 정본 변경 권한은 원래 문서·태스크 경계를 따른다.
-
-#### 정상·오류·취소
-
-- REQ와 TST가 있으면 ready, 누락 시 missing을 반환하고 인덱스 성격 문서 생성은 거부한다.
-
-#### 감사 기록
-
-- trace 결과는 `generated: true`, `persistedIndex: false`를 명시하고 근거 ID를 반환한다.
-
-#### 수용 기준
-
-- `rdl contract trace`가 모든 선언 기능을 중복 정본 없이 계산하고 인덱스 제목의 doc create가 실패한다.
-
-### HRN-05
-
-#### 입력
-
-- Git worktree 목록, Workspace registry, 현재 코드 브랜치와 원격 HEAD
-
-#### 출력
-
-- 코드·Workspace·프로젝트 역할별 기대 branch/worktree와 위반 진단
-
-#### 업무 규칙
-
-- 코드 기본 브랜치는 origin/HEAD의 main·master·사용자 정의 표준을 따르고 Rundol 전용 ref는 정확히 같은 이름으로만 push한다.
-
-#### 상태와 전이
-
-- init·attach·repair 전에는 읽기 전용 discovery를 수행하고 유효 연결 후 managed pre-push 경계를 설치한다.
-
-#### 권한과 승인
-
-- 코드 파일은 루트 코드 worktree, 프로젝트 문서·태스크는 `rundol/{project-key}`, registry는 rundol/workspace만 소유한다.
-
-#### 정상·오류·취소
-
-- 올바른 역할은 통과하고 잘못된 branch·점유 경로·교차 push·삭제 push는 변경 전에 차단한다.
-
-#### 감사 기록
-
-- boundary JSON은 currentCodeBranch, primaryBranch, roles, worktrees와 violations를 반환한다.
-
-#### 수용 기준
-
-- 원격 HEAD가 main, master, trunk인 저장소에서 각각 표준 기본 브랜치를 감지하면서 현재 기능 브랜치를 허용한다.
-
-### HRN-06
-
-#### 입력
-
-- 사용자 의도, init·boundary·contract show·next 결과와 2~4개 관련 문서
-
-#### 출력
-
-- 정본 문서 유형, Rundol 태스크, 검증·save·sync 순서를 지키는 AI 작업 흐름
-
-#### 업무 규칙
-
-- 스킬은 DESIGN.md와 인덱스를 만들지 않고 기능을 묶지 않으며 CLI evaluator 진단을 최종 실행 판단으로 사용한다.
-
-#### 상태와 전이
-
-- 연결 확인 후 계약을 읽고 태스크를 doing으로 전환하며 검사 통과 후 acceptance와 done·sync를 진행한다.
-
-#### 권한과 승인
-
-- AI는 본문·코드를 작성하고 CLI는 ID·상태·검증·Git 동기화를 담당한다.
-
-#### 정상·오류·취소
-
-- 경계와 계약이 유효하면 진행하고 conflict·checkpoint·implementation 오류에서는 정본 변경과 완료를 중단한다.
-
-#### 감사 기록
-
-- 사용한 task, 관련 문서, check 결과와 sync 커밋으로 AI 작업 결과를 재구성할 수 있다.
-
-#### 수용 기준
-
-- Codex·Claude·Copilot에 설치된 스킬이 동일한 atomic-v1·무인덱스·브랜치 경계 순서를 안내한다.
