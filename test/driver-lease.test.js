@@ -114,7 +114,10 @@ try {
   const mismatchedRun = 'RUN-FFFFFFFFFFFFFFFFFFFF';
   const wrongEnvelope = driverEnvelope({ ...acquired, runId: mismatchedRun });
   fs.writeFileSync(path.join(eventsRoot, 'driver', `driver-crm-agent-a-${ids.runId}-000002.jsonl`), `${JSON.stringify(wrongEnvelope.shared)}\n`, 'utf8');
-  assert.throws(() => readDriverEvents(eventsRoot, 'crm', mismatchedRun), /runId does not match/u);
+  // 격리: 다른 런의 샤드에 심긴 오염은 그 런의 조회에 나타나지 않는다.
+  assert.deepStrictEqual(readDriverEvents(eventsRoot, 'crm', mismatchedRun), []);
+  // 자기 샤드 무결성: 자기 런의 파일에서 파일명과 다른 runId는 여전히 큰 소리로 실패한다.
+  assert.throws(() => readDriverEvents(eventsRoot, 'crm', ids.runId), /runId does not match/u);
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

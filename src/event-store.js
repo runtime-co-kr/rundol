@@ -132,8 +132,12 @@ function readEvents(eventsRoot, kind, scope, options) {
   const directory = eventsDirectory(eventsRoot, kind);
   if (!fs.existsSync(directory)) return [];
   const prefix = shardPrefix(kind, scope);
+  // runId 파일 필터: run 스코프 kind는 파일명에 runId가 박혀 있어, 다른 런 샤드의
+  // 손상이 이 런의 읽기 경로를 오염시키지 못하게 격리할 수 있다.
+  const runFilter = options && options.runId ? `-${options.runId}-` : null;
+  if (runFilter && !definition.runScoped) throw new Error(`${kind} events are not run-scoped`);
   const events = [];
-  for (const name of fs.readdirSync(directory).filter((value) => value.startsWith(prefix) && definition.pattern.test(value)).sort()) {
+  for (const name of fs.readdirSync(directory).filter((value) => value.startsWith(prefix) && definition.pattern.test(value) && (!runFilter || value.includes(runFilter))).sort()) {
     for (const [index, line] of fs.readFileSync(path.join(directory, name), 'utf8').split(/\r?\n/u).entries()) {
       if (!line.trim()) continue;
       const event = JSON.parse(line);
@@ -142,7 +146,9 @@ function readEvents(eventsRoot, kind, scope, options) {
       events.push(event);
     }
   }
-  const unique = deduplicateEvents(events);
+  // dedupe:false는 kind-인지 소비자(run/driver fold)가 검증·dedup·충돌 진단을
+  // 단일 정의로 수행하는 경로다 — 원시 레코드를 그대로 돌려준다.
+  const unique = options && options.dedupe === false ? events : deduplicateEvents(events);
   if (options && options.sort === 'file') return unique;
   return unique.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || String(a.eventId).localeCompare(String(b.eventId)));
 }

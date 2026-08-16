@@ -365,7 +365,10 @@ function normalizeRecords(events) {
     let record;
     try { record = event.schemaVersion === 2 ? canonicalRecord(event) : legacyRecord(event); }
     catch (error) {
-      diagnostics.push({ code: 'RDL-RUN-021', severity: 'error', eventId: event && event.eventId, message: error.message });
+      // v2 레코드의 canonical 손상은 legacy-malformed(021)가 아니라 자기 계열(017)로
+      // 진단한다 — digest 정의는 정규화 하나뿐이고, 그에 어긋난 v2 레코드를 legacy로
+      // 낙인하면 혼합 버전 조사가 엉뚱한 곳을 파게 된다.
+      diagnostics.push({ code: event && event.schemaVersion === 2 ? 'RDL-RUN-017' : 'RDL-RUN-021', severity: 'error', eventId: event && event.eventId, message: error.message });
       continue;
     }
     if (!groups.has(record.canonical.eventId)) groups.set(record.canonical.eventId, []);
@@ -512,22 +515,60 @@ function ownershipState(events) {
   start.ownerToken = start.ownerToken || start.canonical.ownerToken;
   const byToken = new Map([[start.ownerToken, start]]);
   for (const record of records.filter((item) => item.canonical.type === 'run.takeover')) byToken.set(record.ownerToken || record.canonical.ownerToken, record);
+  // 순서의 정본은 병합 배열의 위치가 아니라 각 작성자 샤드의 append 순서다.
+  // 입력은 공유-우선으로 결합되므로(unionRunEvents) 작성자 내부 순서는 어떤
+  // 열거에서도 동일하고, fold는 이벤트 집합의 함수가 된다.
+  const writerSequence = new Map();
+  for (const record of records) {
+    const writer = record.canonical.clientId;
+    if (!writerSequence.has(writer)) writerSequence.set(writer, []);
+    record.writerIndex = writerSequence.get(writer).length;
+    writerSequence.get(writer).push(record);
+  }
+  const isEpochRecord = (record) => !['run.started', 'run.takeover', 'run.ownership_resolved'].includes(record.canonical.type);
+  // epoch 소속은 (ownerToken, 소유자 clientId) 결박이다. 소유자 자신의 이벤트와
+  // 인가된 외래 전이(sync 실행자의 synced/halted)만 epoch에 들어온다. 그 밖의
+  // 토큰 재사용은 진단과 함께 stale이 되어 상태를 바꿀 수 없다.
+  const epochOwn = (token, ownerClientId) => (writerSequence.get(ownerClientId) || []).filter((record) => record.ownerToken === token && isEpochRecord(record));
+  const epochForeign = (token, ownerClientId) => records.filter((record) => record.ownerToken === token && isEpochRecord(record) && record.canonical.clientId !== ownerClientId);
+  const foreignTransitionEventIds = new Set();
+  // 외래 halted의 인가 형태는 sync가 만드는 것뿐이다. 신원(활성 agent/service 멤버)
+  // 검증은 쓰기 경로의 몫이고, 순수한 fold는 형태만 제한한다 — 그 밖의 사유를 단
+  // 외래 halted는 토큰을 재사용한 침입으로 진단된다.
+  const SYNC_HALT_REASONS = new Set(['sync-failed', 'merge-conflict']);
+  const admitForeign = (token, ownerClientId) => {
+    for (const record of epochForeign(token, ownerClientId)) {
+      if (record.canonical.type === 'run.synced' || (record.canonical.type === 'run.halted' && SYNC_HALT_REASONS.has(record.canonical.reason))) {
+        foreignTransitionEventIds.add(record.canonical.eventId);
+        visible.push(record);
+      } else if (record.canonical.type === 'run.operation_resolved') {
+        // 인가 매트릭스가 허용한 비소유자 forced 해소다. 정당성은 여기가 아니라
+        // operationOutcomeState의 conflictId·후보 대조가 검증한다.
+        visible.push(record);
+      } else {
+        diagnostics.push({ code: 'RDL-RUN-023', severity: 'error', eventId: record.canonical.eventId, message: 'event clientId does not match the epoch owner' });
+      }
+    }
+  };
   const visible = [start];
   const selectedTokens = new Set([start.ownerToken]);
   let activeToken = start.ownerToken;
   let activeClientId = start.canonical.clientId;
   let parentClientId = activeClientId;
   let conflict = null;
-  const epochRecords = (token) => records.filter((record) => record.ownerToken === token && !['run.started', 'run.takeover', 'run.ownership_resolved'].includes(record.canonical.type));
   for (let guard = 0; guard < records.length + 2; guard += 1) {
     const children = records.filter((record) => record.canonical.type === 'run.takeover' && (record.previousOwnerToken || record.canonical.previousOwnerToken) === activeToken);
+    const ownSequence = [byToken.get(activeToken)].concat(epochOwn(activeToken, activeClientId)).filter(Boolean);
     const validChildren = [];
     for (const child of children) {
       const canonical = child.canonical;
-      if (!child.legacy && canonical.previousClientId !== activeClientId) continue;
+      if (!child.legacy && canonical.previousClientId !== activeClientId) {
+        diagnostics.push({ code: 'RDL-RUN-025', severity: 'error', eventId: canonical.eventId, message: 'takeover previousClientId does not match the epoch owner' });
+        continue;
+      }
       if (!child.legacy) {
-        const predecessor = [byToken.get(activeToken)].concat(epochRecords(activeToken)).filter(Boolean);
-        const headIndex = predecessor.findIndex((record) => record.canonical.eventId === canonical.previousOwnerHeadEventId);
+        // cutoff는 병합 배열 인덱스가 아니라 이전 소유자 자기 시퀀스에서의 위치다.
+        const headIndex = ownSequence.findIndex((record) => record.canonical.eventId === canonical.previousOwnerHeadEventId);
         if (headIndex < 0) {
           diagnostics.push({ code: 'RDL-RUN-020', severity: 'error', eventId: canonical.eventId, message: 'takeover cutoff head is missing from predecessor epoch' });
           continue;
@@ -537,12 +578,13 @@ function ownershipState(events) {
       validChildren.push(child);
     }
     if (!validChildren.length) {
-      visible.push(...epochRecords(activeToken));
+      visible.push(...ownSequence.slice(1));
+      admitForeign(activeToken, activeClientId);
       break;
     }
-    const predecessor = [byToken.get(activeToken)].concat(epochRecords(activeToken)).filter(Boolean);
-    const cutoff = Math.min(...validChildren.map((child) => child.legacy ? predecessor.length - 1 : child.cutoffIndex));
-    visible.push(...predecessor.slice(1, cutoff + 1));
+    const cutoff = Math.min(...validChildren.map((child) => child.legacy ? ownSequence.length - 1 : child.cutoffIndex));
+    visible.push(...ownSequence.slice(1, cutoff + 1));
+    admitForeign(activeToken, activeClientId);
     if (validChildren.length === 1) {
       const child = validChildren[0];
       visible.push(child);
@@ -590,6 +632,10 @@ function ownershipState(events) {
   const visibleSet = new Set(visible.map((record) => record.canonical.eventId));
   const stale = records.filter((record) => !visibleSet.has(record.canonical.eventId));
   for (const record of stale.filter((item) => item.legacy && item.ownerToken)) diagnostics.push({ code: 'RDL-RUN-020', severity: 'warning', eventId: record.canonical.eventId, message: 'legacy event is after the immutable ownership cutoff' });
+  // ownerHead는 소유자 자기 시퀀스의 마지막 가시 이벤트다 — 외래 전이나 병합
+  // 배열 위치가 아니라 작성자 append 순서에서 결정되므로, takeover에 기록되는
+  // cutoff가 열거 순서에 오염되지 않는다.
+  const ownVisible = conflict ? [] : [byToken.get(activeToken)].concat(epochOwn(activeToken, activeClientId)).filter(Boolean).filter((record) => visibleSet.has(record.canonical.eventId));
   const result = {
     mode: conflict ? 'ownership-conflict' : 'active',
     status: conflict ? 'CONFLICT' : 'ACTIVE',
@@ -601,7 +647,8 @@ function ownershipState(events) {
     parentClientId: conflict ? conflict.parentClientId : parentClientId,
     visibleEvents: visible.map((record) => record.event),
     staleEvents: stale.map((record) => record.event),
-    ownerHeadEventId: conflict ? null : (visible.filter((record) => record.ownerToken === activeToken || record.canonical.ownerToken === activeToken).pop() || byToken.get(activeToken)).canonical.eventId
+    foreignTransitionEventIds,
+    ownerHeadEventId: conflict ? null : (ownVisible[ownVisible.length - 1] || byToken.get(activeToken)).canonical.eventId
   };
   result.token = result.ownerToken;
   result.client = result.ownerClientId;
@@ -635,8 +682,13 @@ function foldProgress(events, ownership) {
   let haltReason = status === 'ownership-conflict' ? 'ownership-conflict' : null;
   const strict = started.schemaVersion === 2;
   const cursor = () => order.find((identifier) => !completed.has(identifier)) || null;
+  const foreignSet = ownership && ownership.foreignTransitionEventIds ? ownership.foreignTransitionEventIds : new Set();
+  const foreignTransitions = [];
+  let completedLocalSeen = false;
+  let spareResumes = 0;
   for (const event of events.filter((item) => !['run.started', 'run.takeover', 'run.ownership_resolved'].includes(item.type))) {
     if (status === 'ownership-conflict') break;
+    if (foreignSet.has(event.eventId)) { foreignTransitions.push(event); continue; }
     const current = cursor();
     const step = current ? byId.get(current) : null;
     const invalid = (message) => diagnostics.push({ code: 'RDL-RUN-022', severity: 'error', eventId: event.eventId, message });
@@ -665,9 +717,29 @@ function foldProgress(events, ownership) {
     } else if (event.type === 'run.halted') {
       status = 'halted'; haltReason = HALT_REASONS.has(event.reason) ? event.reason : 'manual';
     } else if (event.type === 'run.resumed') {
+      if (status !== 'halted') spareResumes += 1;
       status = 'running'; haltReason = null; attempts = {};
-    } else if (event.type === 'run.completed_local') status = 'completed_local';
+    } else if (event.type === 'run.completed_local') { status = 'completed_local'; completedLocalSeen = true; }
     else if (event.type === 'run.synced') status = 'synced';
+  }
+  // 외래 전이(sync 실행자의 synced/halted)는 위치가 아니라 우선순위로 적용한다 —
+  // 다른 샤드의 기록과 소유자 시퀀스 사이의 순서는 시계 없이 정할 수 없기 때문이다.
+  // 성공한 synced는 이전 sync 실패를 대체하고, 외래 halted는 소유자의 여분
+  // resumed(선행 halted 없이 기록된 재개)로 상쇄된다. 어느 쪽도 열거 순서에
+  // 의존하지 않으므로 fold는 이벤트 집합의 함수로 남는다.
+  if (foreignTransitions.length && status !== 'ownership-conflict') {
+    const foreignHalts = foreignTransitions.filter((event) => event.type === 'run.halted').sort((left, right) => String(left.eventId).localeCompare(String(right.eventId)));
+    const foreignSynced = foreignTransitions.filter((event) => event.type === 'run.synced');
+    const effectiveHalts = Math.max(0, foreignHalts.length - spareResumes);
+    if (effectiveHalts > 0 && status !== 'synced') {
+      const last = foreignHalts[foreignHalts.length - 1];
+      status = 'halted';
+      haltReason = HALT_REASONS.has(last.reason) ? last.reason : 'sync-failed';
+    }
+    if (foreignSynced.length) {
+      if (completedLocalSeen) { status = 'synced'; haltReason = null; }
+      else diagnostics.push({ code: 'RDL-RUN-026', severity: 'warning', eventId: foreignSynced[0].eventId, message: 'run.synced without a visible run.completed_local was ignored' });
+    }
   }
   for (const step of steps) if (step.onFail && !completed.has(step.id) && (attempts[step.id] || 0) >= step.onFail.maxAttempts && status === 'running') { status = 'halted'; haltReason = 'attempt-limit'; }
   const current = status === 'completed_local' || status === 'synced' ? null : cursor();
@@ -829,13 +901,52 @@ function mirrorRunEvent(layout, projectKey, event) {
 function readSharedRunEvents(layout, projectKey, runId) {
   const eventsRoot = workspaceEventsRoot(layout);
   if (!eventsRoot) return [];
-  return eventStore.readEvents(eventsRoot, 'run', projectKey, { sort: 'file' }).filter((event) => event.runId === runId);
+  // 파일 수준 runId 필터 + dedupe 없음: 다른 런 샤드의 손상이 이 런의 읽기를
+  // 오염시키지 못하고(격리), 같은 런의 충돌은 예외가 아니라 normalizeRecords의
+  // 진단(RDL-RUN-017/018)으로 fold에 흐른다. digest 검증도 kind-인지 정규화
+  // 한 곳에서만 수행된다 — 같은 레코드에 digest 정의가 둘이면 외부 레코드가
+  // 잘못된 코드로 낙인된다.
+  return eventStore.readEvents(eventsRoot, 'run', projectKey, { sort: 'file', runId: runId, dedupe: false }).filter((event) => event.runId === runId);
+}
+
+function stripNoncanonical(event) {
+  const projected = {};
+  for (const [key, value] of Object.entries(event || {})) {
+    if (['canonicalDigest', 'occurredAt', 'localDetail'].includes(key) || value === undefined) continue;
+    projected[key] = value;
+  }
+  return projected;
 }
 
 function unionRunEvents(localEvents, sharedEvents) {
-  const normalized = normalizeRecords(localEvents.concat(sharedEvents));
-  if (normalized.diagnostics.some((item) => item.code === 'RDL-RUN-017' || item.code === 'RDL-RUN-018')) throw new Error(normalized.diagnostics.find((item) => item.code === 'RDL-RUN-017' || item.code === 'RDL-RUN-018').message);
-  return normalized.records.map((record) => record.event);
+  // 공유 샤드를 앞에 둔다. 작성자별 append 순서의 정본은 그 작성자의 공유 샤드이고,
+  // 로컬 파일은 복구 재기록으로 순서가 어긋날 수 있다. 정확히 같은 레코드만
+  // 접어서 합치고, 같은 eventId의 상충 변형은 둘 다 보존한다 — 충돌은 여기서
+  // 던질 일이 아니라 fold의 진단(RDL-RUN-017/018)이 판정할 일이다.
+  const sharedById = new Map();
+  for (const event of sharedEvents) {
+    if (!event || !event.eventId) continue;
+    if (!sharedById.has(event.eventId)) sharedById.set(event.eventId, []);
+    sharedById.get(event.eventId).push(event);
+  }
+  const sameRecord = (twin, event) => ((twin.canonicalDigest && event.canonicalDigest)
+    ? twin.canonicalDigest === event.canonicalDigest
+    : canonicalJson(stripNoncanonical(twin)) === canonicalJson(stripNoncanonical(event)));
+  // 정확히 같은 레코드의 로컬 변형이 localDetail을 들고 있으면 그 변형을 쓴다 —
+  // localDetail은 canonical 밖의 로컬 payload라 공유 샤드에는 없다.
+  const detailTwin = new Map();
+  const localOnly = localEvents.filter((event) => {
+    if (!event || !event.eventId) return true;
+    const twins = sharedById.get(event.eventId);
+    if (!twins) return true;
+    const matched = twins.some((twin) => sameRecord(twin, event));
+    if (matched && event.localDetail !== undefined) detailTwin.set(event.eventId, event);
+    return !matched;
+  });
+  return sharedEvents.map((event) => {
+    const twin = event && event.eventId ? detailTwin.get(event.eventId) : undefined;
+    return twin && sameRecord(event, twin) ? twin : event;
+  }).concat(localOnly);
 }
 
 function reconcileRun(start, input) {
@@ -894,17 +1005,43 @@ function recordRunEvent(start, input) {
     const shared = mirrorRunEvent(layout, project.key, appended.event);
     return { project: project.key, event: appended.event, file: appended.file, shared };
   }
-  const prepared = prepareV2Event(start, project, input.runId, input);
-  const envelope = createEventEnvelope(prepared.base);
   const runtime = runtimeWorkspace(layout.root);
+  // 재시도는 준비된 canonical 바이트를 그대로 재사용한다 — attempt처럼 fold에
+  // 의존하는 값을 다시 계산하면 크래시 이후의 재시도가 다른 바이트를 만들어
+  // 멱등성이 깨진다. driver-lease가 이미 쓰는 decode-재사용 패턴과 같다.
+  const replayRootId = input.rootRequestId || input.event.rootRequestId || null;
+  const replayChildKey = input.childKey || `event:${input.event.type}:${input.runId}`;
+  let prepared = null;
+  let envelope = null;
+  let root = null;
+  if (replayRootId && fs.existsSync(requestJournal.journalFile(runtime, replayRootId))) {
+    const existingRoot = requestJournal.loadJournal(runtime, replayRootId);
+    const existingChild = existingRoot.journal.children[replayChildKey];
+    if (existingChild) {
+      const bytes = requestJournal.decodeChild(existingChild, replayRootId);
+      const replayEvent = JSON.parse(bytes.toString('utf8'));
+      envelope = createEventEnvelope(replayEvent);
+      if (envelope.canonicalDigest !== existingChild.canonicalDigest || envelope.canonical.eventId !== existingChild.eventId) throw new Error('request journal child digest mismatch');
+      prepared = { base: Object.assign({}, replayEvent, { requestId: existingChild.requestId }), rootRequestId: replayRootId, childKey: replayChildKey };
+      root = existingRoot;
+    }
+  }
+  if (!prepared) {
+    prepared = prepareV2Event(start, project, input.runId, input);
+    envelope = createEventEnvelope(prepared.base);
+  }
   const commandDigest = input.commandDigest || sha256(Buffer.from(canonicalJson({ projectId: project.key, runId: input.runId, type: prepared.base.type, clientId: prepared.base.clientId }), 'utf8'));
-  const root = requestJournal.prepareRoot(runtime, { rootRequestId: prepared.rootRequestId, commandDigest, clientId: prepared.base.clientId });
+  if (!root) root = requestJournal.prepareRoot(runtime, { rootRequestId: prepared.rootRequestId, commandDigest, clientId: prepared.base.clientId });
   const child = requestJournal.prepareChild(root, { childKey: prepared.childKey, canonicalBytes: envelope.canonicalBytes, occurredAt: prepared.base.occurredAt, runId: input.runId });
-  if (child.eventId !== prepared.base.eventId || child.requestId !== prepared.base.requestId) throw new Error('request journal identity mismatch');
-  const shared = mirrorRunEvent(layout, project.key, envelope.shared);
+  if (child.eventId !== envelope.canonical.eventId || (prepared.base.requestId && child.requestId !== prepared.base.requestId)) throw new Error('request journal identity mismatch');
+  const shared = existingShared.some((event) => event.eventId === envelope.canonical.eventId)
+    ? null
+    : mirrorRunEvent(layout, project.key, envelope.shared);
   requestJournal.updateChild(root, prepared.childKey, 'canonical-committed');
   try {
-    const appended = appendRunEvent(runDirectory(project.root, input.runId), envelope.local);
+    const directory = runDirectory(project.root, input.runId);
+    const alreadyLocal = readRunEvents(directory).some((event) => event.eventId === envelope.canonical.eventId);
+    const appended = alreadyLocal ? { event: envelope.local, file: path.join(directory, 'events.jsonl') } : appendRunEvent(directory, envelope.local);
     requestJournal.updateChild(root, prepared.childKey, 'complete');
     return { project: project.key, event: appended.event, file: appended.file, shared, canonicalCommitted: true, projectionDegraded: false, rootRequestId: prepared.rootRequestId, requestId: prepared.base.requestId };
   } catch (error) {

@@ -110,13 +110,12 @@ function appendJournaledDriverEvent(eventsRoot, input, options) {
 }
 function readDriverEvents(eventsRoot, projectId, runId) {
   if (!SIMPLE_ID.test(projectId || '') || !RUN_ID.test(runId || '')) throw new Error('driver read identity is invalid');
-  return eventStore.readEvents(eventsRoot, 'driver', projectId, { sort: 'file' })
-    .filter((event) => event.runId === runId)
-    .map((event) => {
-      const normalized = normalizeDriverEvent(event);
-      if (!event.canonicalDigest || driverEnvelope(normalized).canonicalDigest !== event.canonicalDigest) throw new Error(`driver canonicalDigest mismatch: ${event.eventId}`);
-      return Object.assign(normalized, { canonicalDigest: event.canonicalDigest }, event.occurredAt === undefined ? {} : { occurredAt: event.occurredAt });
-    });
+  // 원시 레코드를 돌려준다 — 검증·dedup·충돌 판정은 foldDriverLeases의 관용
+  // 경로(RDL-DRIVER-001/002)가 단일 정의로 수행한다. 읽기에서 던지면 손상
+  // 하나가 전체 읽기 경로를 오염시키고, 진단으로 설계된 코드가 도달 불능이 된다.
+  // 파일 수준 runId 필터가 다른 런 샤드의 손상을 격리한다.
+  return eventStore.readEvents(eventsRoot, 'driver', projectId, { sort: 'file', runId, dedupe: false })
+    .filter((event) => event && event.runId === runId);
 }
 function foldDriverLeases(input, options) {
   const diagnostics = [];

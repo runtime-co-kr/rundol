@@ -655,22 +655,33 @@ function transitionRuns(config, apply, settings) {
   if (!config.project) return [];
   const ledger = require('./run-ledger');
   const transitions = [];
-  for (const run of ledger.listRuns(config.worktree)) {
-    const event = apply(run);
+  for (const summary of ledger.listRuns(config.worktree)) {
+    // 소유권은 로컬 파일이 아니라 공유를 먼저 reconcile한 union에서 도출한다.
+    // 다른 클라이언트의 takeover는 공유에만 있을 수 있고, 죽은 토큰으로 기록된
+    // 전이는 잘린 epoch에 떨어져 보이지 않게 된다.
+    const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId: summary.runId }) : null;
+    const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, summary.runId));
+    const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion === 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
+    const event = apply(fold);
     if (!event) continue;
-    const localEvents = ledger.readRunEvents(ledger.runDirectory(config.worktree, run.runId));
-    const ownership = typeof ledger.ownershipState === 'function' ? ledger.ownershipState(localEvents) : null;
-    const ownerToken = run.ownerToken || (ownership && ownership.ownerToken) || null;
-    if (!ownerToken && localEvents.some((item) => item && item.schemaVersion === 2)) throw new Error(`${run.runId}의 ACTIVE ownerToken을 확인할 수 없습니다.`);
+    let ownerToken = null;
+    if (events.some((item) => item && item.schemaVersion === 2)) {
+      const ownership = ledger.ownershipState(events);
+      if (ownership.status !== 'ACTIVE') {
+        transitions.push({ runId: summary.runId, type: event.type, skipped: 'ownership-not-active' });
+        continue;
+      }
+      ownerToken = ownership.ownerToken;
+    }
     const recorded = ledger.recordRunEvent(config.root, {
       project: config.project,
-      runId: run.runId,
+      runId: summary.runId,
       rootRequestId: settings.rootRequestId || settings.requestId,
-      childKey: `transition:${config.project}:${run.runId}:${event.commit || 'none'}:${event.type}`,
+      childKey: `transition:${config.project}:${summary.runId}:${event.commit || 'none'}:${event.type}`,
       commandDigest: settings.commandDigest,
       event: Object.assign({}, event, { clientId: settings.clientId, ...(ownerToken ? { ownerToken } : {}) })
     });
-    transitions.push({ runId: run.runId, type: event.type, recorded });
+    transitions.push({ runId: summary.runId, type: event.type, recorded });
   }
   return transitions;
 }

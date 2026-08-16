@@ -796,7 +796,7 @@ async function tickRun(start, options, dependencies) {
     const kind = result.exitCode === 0 ? 'gate-passed' : 'gate-failed';
     const diagnostics = Array.from(new Set(result.diagnosticCodes || [])).sort();
     const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt: attempt, outcomeKind: kind, exitCode: result.exitCode, sortedArtifactIds: [], sortedDiagnosticCodes: diagnostics, boundedResultDecision: { diagnostics } });
-    await record({ type: 'run.gate', stepId: step.id, command: 'check', args: substituteDriveArgs(step.gate.args, driveSubstitution(context, null)), exitCode: result.exitCode, diagnostics, attempt: (context.fold.attempts[step.id] || 0) + 1, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
+    await record({ type: 'run.gate', stepId: step.id, command: 'check', args: substituteDriveArgs(step.gate.args, driveSubstitution(context, null)), exitCode: result.exitCode, diagnostics, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
     if (result.exitCode === 1) {
       await record({ type: 'run.halted', reason: 'gate-failed', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'gate-failed'));
       return { exitCode: 1, status: 'halted', reason: 'gate-failed', operationId };
