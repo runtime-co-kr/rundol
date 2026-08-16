@@ -425,7 +425,14 @@ async function main() {
       return 0;
     }
     if (!['plan', 'set'].includes(subcommand)) throw new Error('지원하는 contract 하위 명령은 show, next, check, trace, plan, set, diagram입니다.');
-    if (!PROFILE_NAMES.includes(options.profile)) throw new Error('--profile <lean|product|service|platform|assured>가 필요합니다.');
+    // 고를 수 있는 프로필은 내장 다섯 개가 아니라 board.json 상속이 정한 목록이다.
+    // 팀이 만든 프리셋을 CLI가 거절하면 화면에서만 쓸 수 있는 반쪽 기능이 된다.
+    {
+      const { loadBoardPresentation, resolveProfilePresets } = require('../src/board-presentation');
+      const { workspaceLayout } = require('../src/workspace');
+      const available = Object.keys(resolveProfilePresets(loadBoardPresentation(workspaceLayout(options.root).root, options.project)));
+      if (!available.includes(options.profile)) throw new Error(`--profile <${available.join('|')}>가 필요합니다.`);
+    }
     if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
     const input = { name: options.profile };
     if (options.enforcement) input.enforcement = options.enforcement;

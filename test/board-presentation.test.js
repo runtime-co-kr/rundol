@@ -55,4 +55,39 @@ try {
   fs.rmSync(temporary, { recursive: true, force: true });
 }
 
+// 프리셋은 내장 다섯 개로 끝나지 않는다. 팀이 board.json에 자기 프리셋을 정의하면
+// 그 이름이 계약에 저장되고 CLI와 화면 모두에서 고를 수 있어야 한다.
+{
+  const { resolveProfilePresets, profileChoices } = require('../src/board-presentation');
+  const { DEFAULT_POLICIES, REGULAR_TYPES } = require('../src/document-profile');
+
+  const builtin = resolveProfilePresets(null);
+  assert.deepStrictEqual(Object.keys(builtin).sort(), Object.keys(DEFAULT_POLICIES).sort(), '설정이 없으면 내장 프리셋만 남습니다');
+
+  const custom = resolveProfilePresets({ profiles: { 'our-team': { label: '우리 팀', policy: { required: ['REQ', 'TST'], disabled: ['SCR'] } } } });
+  assert.deepStrictEqual(custom['our-team'].required, ['REQ', 'TST']);
+  assert.deepStrictEqual(custom['our-team'].disabled, ['SCR']);
+  // 어디에도 배치되지 않은 유형이 사라지면 그 유형은 계약에서 없는 것이 되어 검사도 안내도 못 받는다.
+  const placed = new Set([].concat(custom['our-team'].required, custom['our-team'].recommended, custom['our-team'].onDemand, custom['our-team'].disabled));
+  assert.deepStrictEqual(Array.from(placed).sort(), REGULAR_TYPES.slice().sort(), '빠뜨린 유형은 필요할 때로 들어가야 합니다');
+  assert.ok(builtin.lean && custom.lean, '커스텀을 더해도 내장은 남아야 합니다');
+
+  const choices = profileChoices({ profiles: { 'our-team': { label: '우리 팀', order: 5, policy: { required: ['REQ'] } } } });
+  const ours = choices.find((item) => item.name === 'our-team');
+  assert.strictEqual(ours.label, '우리 팀');
+  assert.strictEqual(ours.builtin, false, '커스텀 프리셋은 내장으로 표시되면 안 됩니다');
+  assert.strictEqual(choices.find((item) => item.name === 'lean').builtin, true);
+
+  // 커스텀 프로필 키는 저장값이므로 표시용 한글이 그대로 들어오면 안 된다.
+  const bad = path.join(os.tmpdir(), 'rundol-preset-bad.json');
+  fs.writeFileSync(bad, JSON.stringify({ schemaVersion: 1, profiles: { '우리팀': { label: 'x', policy: { required: ['REQ'] } } } }), 'utf8');
+  assert.throws(() => readConfig(bad), /프로필 이름은 영문 소문자/u);
+  // 정책 없는 커스텀 프로필은 조용히 service로 되돌아가므로 아예 거절한다.
+  fs.writeFileSync(bad, JSON.stringify({ schemaVersion: 1, profiles: { 'our-team': { label: '우리 팀' } } }), 'utf8');
+  assert.throws(() => readConfig(bad), /policy가 필요합니다/u);
+  fs.writeFileSync(bad, JSON.stringify({ schemaVersion: 1, profiles: { 'our-team': { policy: { required: ['REQ'], recommended: ['REQ'] } } } }), 'utf8');
+  assert.throws(() => readConfig(bad), /두 상태에 걸쳐/u);
+  fs.rmSync(bad, { force: true });
+}
+
 process.stdout.write('board presentation tests passed\n');

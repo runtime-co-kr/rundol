@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
+const { REGULAR_TYPES, DEFAULT_POLICIES } = require('./document-profile');
 
 const DOCUMENT_TYPE_KEYS = ['charter', 'prd', 'requirement', 'architecture', 'screen', 'model', 'api', 'decision', 'test', 'runbook', 'glossary', 'clipping'];
 const DOCUMENT_STATE_KEYS = ['draft', 'proposed', 'active', 'review', 'approved', 'deprecated', 'archived', 'unread'];
@@ -85,9 +86,37 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// 프로필은 다른 그룹과 달리 키가 열려 있다. 팀이 자기 프리셋을 만들 수 있어야 하기
+// 때문이다. 대신 키는 저장값이므로 표시용 한글이 그대로 들어오지 않도록 형식을 못박고,
+// 내장에 없는 이름은 정책을 반드시 함께 적게 한다. 정책 없는 커스텀 프로필은 조용히
+// service로 되돌아가, 사용자가 만든 적 없는 계약이 저장된다.
+const PROFILE_KEY_PATTERN = /^[a-z][a-z0-9-]*$/u;
+const PROFILE_ENTRY_FIELDS = ENTRY_FIELDS.concat(['policy']);
+
+function validateProfilePolicy(key, policy, file) {
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) throw new Error(`${file}: profiles.${key}.policy는 객체여야 합니다.`);
+  for (const state of Object.keys(policy)) {
+    if (!POLICY_STATE_KEYS.includes(state)) throw new Error(`${file}: 지원하지 않는 정책 상태입니다: profiles.${key}.policy.${state}`);
+    if (!Array.isArray(policy[state])) throw new Error(`${file}: profiles.${key}.policy.${state}는 배열이어야 합니다.`);
+    for (const type of policy[state]) if (!REGULAR_TYPES.includes(type)) throw new Error(`${file}: 알 수 없는 문서 유형입니다: profiles.${key}.policy.${state}의 ${type}`);
+  }
+  const seen = new Set();
+  for (const state of POLICY_STATE_KEYS) for (const type of policy[state] || []) {
+    if (seen.has(type)) throw new Error(`${file}: profiles.${key}.policy에서 ${type}이 두 상태에 걸쳐 있습니다.`);
+    seen.add(type);
+  }
+  if (!seen.size) throw new Error(`${file}: profiles.${key}.policy가 비어 있습니다. 최소한 하나의 유형을 배치하세요.`);
+}
+
 function validateEntry(group, key, entry, file) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`${file}: ${group}.${key}는 객체여야 합니다.`);
-  for (const field of Object.keys(entry)) if (!ENTRY_FIELDS.includes(field)) throw new Error(`${file}: 지원하지 않는 필드입니다: ${group}.${key}.${field}`);
+  const fields = group === 'profiles' ? PROFILE_ENTRY_FIELDS : ENTRY_FIELDS;
+  for (const field of Object.keys(entry)) if (!fields.includes(field)) throw new Error(`${file}: 지원하지 않는 필드입니다: ${group}.${key}.${field}`);
+  if (group === 'profiles') {
+    if (!PROFILE_KEY_PATTERN.test(key)) throw new Error(`${file}: 프로필 이름은 영문 소문자와 숫자, 하이픈만 쓸 수 있습니다: ${key}`);
+    if (entry.policy !== undefined) validateProfilePolicy(key, entry.policy, file);
+    else if (!PROFILE_KEYS.includes(key)) throw new Error(`${file}: 내장에 없는 프로필 ${key}에는 policy가 필요합니다.`);
+  }
   if (entry.label !== undefined && (typeof entry.label !== 'string' || !entry.label.trim())) throw new Error(`${file}: ${group}.${key}.label은 비어 있지 않은 문자열이어야 합니다.`);
   if (entry.description !== undefined && (typeof entry.description !== 'string' || !entry.description.trim())) throw new Error(`${file}: ${group}.${key}.description은 비어 있지 않은 문자열이어야 합니다.`);
   if (entry.order !== undefined && !Number.isInteger(entry.order)) throw new Error(`${file}: ${group}.${key}.order는 정수여야 합니다.`);
@@ -106,7 +135,7 @@ function readConfig(file) {
     const entries = value[group] || {};
     if (!entries || typeof entries !== 'object' || Array.isArray(entries)) throw new Error(`${file}: ${group}는 객체여야 합니다.`);
     for (const [key, entry] of Object.entries(entries)) {
-      if (!keys.includes(key)) throw new Error(`${file}: 지원하지 않는 ${group} 키입니다: ${key}`);
+      if (group !== 'profiles' && !keys.includes(key)) throw new Error(`${file}: 지원하지 않는 ${group} 키입니다: ${key}`);
       validateEntry(group, key, entry, file);
     }
   }
@@ -137,6 +166,71 @@ function loadBoardPresentation(start, projectKey) {
   return effective;
 }
 
+// 내장 프리셋은 코드가, 팀 프리셋은 board.json이 갖는다. 계약이 저장하는 것은 프로필
+// 이름 하나뿐이므로, 그 이름이 무슨 정책인지는 언제나 여기서 다시 계산된다.
+function resolveProfilePresets(presentation) {
+  const presets = {};
+  for (const [name, policy] of Object.entries(DEFAULT_POLICIES)) presets[name] = JSON.parse(JSON.stringify(policy));
+  for (const [name, entry] of Object.entries((presentation && presentation.profiles) || {})) {
+    if (!entry || !entry.policy) continue;
+    const policy = {};
+    const seen = new Set();
+    for (const state of POLICY_STATE_KEYS) {
+      policy[state] = (entry.policy[state] || []).filter((type) => REGULAR_TYPES.includes(type) && !seen.has(type) && (seen.add(type), true));
+    }
+    // 어디에도 배치되지 않은 유형은 필요할 때로 둔다. 빠뜨린 유형이 조용히 사라지면
+    // 그 유형은 계약에서 아예 없는 것이 되어 검사도 안내도 받지 못한다.
+    for (const type of REGULAR_TYPES) if (!seen.has(type)) policy.onDemand.push(type);
+    presets[name] = policy;
+  }
+  return presets;
+}
+
+function profileChoices(presentation) {
+  const presets = resolveProfilePresets(presentation);
+  const entries = (presentation && presentation.profiles) || {};
+  return Object.keys(presets).sort((left, right) => {
+    const leftOrder = entries[left] && Number.isInteger(entries[left].order) ? entries[left].order : 1000;
+    const rightOrder = entries[right] && Number.isInteger(entries[right].order) ? entries[right].order : 1000;
+    return leftOrder - rightOrder || (left < right ? -1 : left > right ? 1 : 0);
+  }).map((name) => ({
+    name,
+    label: (entries[name] && entries[name].label) || name,
+    description: (entries[name] && entries[name].description) || '',
+    builtin: PROFILE_KEYS.includes(name),
+    policy: presets[name]
+  }));
+}
+
+function presentationFile(start, projectKey, scope) {
+  const layout = workspaceLayout(start);
+  if (scope === 'workspace') return path.join(layout.root, 'projects', 'workspace', 'board.json');
+  if (scope === 'project') return path.join(selectProject(layout, projectKey, true).root, 'board.json');
+  throw new Error(`알 수 없는 설정 범위입니다: ${scope}`);
+}
+
+// 화면에서 고친 표시 규칙을 그 범위의 board.json에 쓴다. 쓰기 전에 읽을 때와 같은
+// 검증을 통과시킨다. 통과하지 못하면 파일을 건드리지 않는다. 반쯤 적용된 설정은
+// 잘못된 설정보다 나쁘다.
+function savePresentation(start, projectKey, scope, input) {
+  const file = presentationFile(start, projectKey, scope);
+  const next = { schemaVersion: 1 };
+  for (const group of Object.keys(PRESENTATION_GROUPS)) {
+    const supplied = (input && input[group]) || {};
+    if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied)) throw new Error(`${group}는 객체여야 합니다.`);
+    next[group] = {};
+    for (const [key, entry] of Object.entries(supplied)) {
+      validateEntry(group, key, entry, file);
+      next[group][key] = entry;
+    }
+  }
+  const temporary = `${file}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  fs.renameSync(temporary, file);
+  return { file, scope };
+}
+
 function renderWorkspaceBoardConfig() {
   return `${JSON.stringify(DEFAULT_PRESENTATION, null, 2)}\n`;
 }
@@ -151,5 +245,6 @@ module.exports = {
   DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
   TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, DEFAULT_PRESENTATION,
   readConfig, mergePresentation, loadBoardPresentation,
+  resolveProfilePresets, profileChoices, presentationFile, savePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig
 };

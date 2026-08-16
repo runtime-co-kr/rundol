@@ -929,11 +929,15 @@ function renderContractSettings() {
   // 선택지의 value는 계약에 저장되는 값이고 보이는 글자는 표시 규칙이 정한다. 예전에는
   // 선택지에 value 없이 프로필 이름만 적어 표시값이 곧 저장값이었고, 표기를 바꾸면
   // 계약이 깨졌다. 이제 value는 고정이고 label만 설정을 따라간다.
-  el('contract-profile').replaceChildren(...catalog.profiles.map((name) => new Option(presentationLabel('profiles', name, name), name)));
+  // 고를 수 있는 프로필은 내장 다섯 개가 아니라 board.json 상속이 정한 목록이다.
+  // 팀이 만든 프리셋은 라벨과 설명을 함께 들고 온다.
+  const choices = catalog.profileChoices || catalog.profiles.map((name) => ({ name, label: presentationLabel('profiles', name, name), description: '' }));
+  el('contract-profile').replaceChildren(...choices.map((item) => new Option(item.label || presentationLabel('profiles', item.name, item.name), item.name)));
   el('contract-enforcement').replaceChildren(...catalog.enforcements.map((name) => new Option(enforcementLabel(name), name)));
   el('contract-profile').value = profile.name;
   el('contract-enforcement').value = profile.enforcement;
-  el('contract-profile-hint').textContent = presentationHint('profiles', profile.name);
+  const chosen = choices.find((item) => item.name === profile.name);
+  el('contract-profile-hint').textContent = (chosen && chosen.description) || presentationHint('profiles', profile.name);
   el('contract-enforcement-hint').textContent = presentationHint('enforcementLevels', profile.enforcement);
   el('contract-summary').textContent = `${contract.status} · revision ${profile.revision} · 위반 ${contract.evaluation.violations.length}건`;
   const trace = contract.traceability && contract.traceability.summary;

@@ -108,8 +108,9 @@ function ordered(values) {
   return Array.from(new Set(values || [])).sort((left, right) => REGULAR_TYPES.indexOf(left) - REGULAR_TYPES.indexOf(right));
 }
 
-function normalizePolicy(name, supplied, traits) {
-  const base = DEFAULT_POLICIES[name];
+function normalizePolicy(name, supplied, traits, presets) {
+  const table = presets || DEFAULT_POLICIES;
+  const base = table[name] || DEFAULT_POLICIES.service;
   const policy = {};
   for (const state of POLICY_STATES) {
     const explicit = supplied && Object.prototype.hasOwnProperty.call(supplied, state);
@@ -135,12 +136,16 @@ function normalizePolicy(name, supplied, traits) {
   return policy;
 }
 
-function normalizeProfile(input) {
+// presets가 오면 팀이 board.json에 정의한 프로필까지 유효한 이름으로 본다. 없으면
+// 내장 다섯 개만 남는다. 모르는 이름을 service로 되돌리는 규칙은 그대로 두되, 판단
+// 근거를 코드가 아니라 넘겨받은 목록으로 옮긴 것이다.
+function normalizeProfile(input, presets) {
   const value = input || {};
+  const known = presets ? Object.keys(presets) : PROFILE_NAMES;
   const schemaVersion = value.schemaVersion === 1 ? 1 : 2;
-  const name = PROFILE_NAMES.includes(value.name) ? value.name : 'service';
+  const name = known.includes(value.name) ? value.name : 'service';
   const traits = Array.from(new Set(parseList(value.traits).filter((trait) => TRAITS.includes(trait)))).sort((left, right) => TRAITS.indexOf(left) - TRAITS.indexOf(right));
-  const policy = normalizePolicy(name, value.policy, traits);
+  const policy = normalizePolicy(name, value.policy, traits, presets);
   const history = parseList(value.history);
   const result = {
     schemaVersion,
@@ -175,7 +180,7 @@ function normalizeProfile(input) {
   return result;
 }
 
-function parseDocumentProfile(source) {
+function parseDocumentProfile(source, presets) {
   const raw = parseRawProfile(source);
   if (!raw) return null;
   const schemaVersion = Number.parseInt(raw.schemaVersion, 10) || 1;
@@ -189,20 +194,24 @@ function parseDocumentProfile(source) {
     policy: raw.policy,
     rules: raw.rules,
     omissions: raw.omissions
-  });
+  }, presets);
 }
 
-function validateDocumentProfile(source) {
+function validateDocumentProfile(source, presets) {
   const raw = parseRawProfile(source);
   if (!raw) return { present: false, errors: [], profile: null, status: 'legacy-unconfigured' };
+  // 팀이 정의한 프리셋도 유효한 이름이다. 목록을 넘겨받지 못하면 내장 다섯 개만 인정한다.
+  const known = presets ? Object.keys(presets) : PROFILE_NAMES;
   const errors = [];
   const schemaVersion = Number.parseInt(raw.schemaVersion, 10);
   if (!Number.isInteger(schemaVersion)) errors.push('documentProfile.schemaVersion이 필요합니다.');
   else if (![1, 2].includes(schemaVersion)) errors.push(`지원하지 않는 documentProfile schemaVersion입니다: ${raw.schemaVersion}`);
-  if (!PROFILE_NAMES.includes(raw.name)) errors.push(`지원하지 않는 문서 프로필입니다: ${raw.name || '(없음)'}`);
+  if (!known.includes(raw.name)) errors.push(`지원하지 않는 문서 프로필입니다: ${raw.name || '(없음)'}`);
   for (const trait of raw.traits) if (!TRAITS.includes(trait)) errors.push(`지원하지 않는 project trait입니다: ${trait}`);
   if (raw.revision !== null && (!/^\d+$/u.test(raw.revision) || Number.parseInt(raw.revision, 10) < 1)) errors.push(`documentProfile revision은 1 이상의 정수여야 합니다: ${raw.revision}`);
-  for (const item of raw.history) if (!PROFILE_NAMES.includes(item)) errors.push(`documentProfile history에 지원하지 않는 프로필이 있습니다: ${item}`);
+  // 이력은 지난 기록이라 지금 없는 프리셋 이름이 남아 있을 수 있다. 그것 때문에
+  // 계약 전체가 invalid가 되면, 프리셋 하나를 지웠다고 프로젝트가 멈춘다.
+  for (const item of raw.history) if (!/^[a-z][a-z0-9-]*$/u.test(item)) errors.push(`documentProfile history에 올바르지 않은 프로필 이름이 있습니다: ${item}`);
   const occurrences = new Map();
   for (const state of POLICY_STATES) {
     if (!Object.prototype.hasOwnProperty.call(raw.policy, state)) { errors.push(`policy.${state}가 없습니다.`); continue; }
@@ -235,15 +244,16 @@ function validateDocumentProfile(source) {
     }
     for (const type of Object.keys(raw.omissions)) if (!(raw.policy.disabled || []).includes(type)) errors.push(`활성 문서에는 omission을 지정할 수 없습니다: ${type}`);
   }
-  const profile = parseDocumentProfile(source);
+  const profile = parseDocumentProfile(source, presets);
   let status = errors.length ? 'invalid' : schemaVersion === 1 ? 'migration-required' : 'valid';
   if (Number.isInteger(schemaVersion) && schemaVersion > 2) status = 'unsupported-schema';
   return { present: true, errors: Array.from(new Set(errors)), profile, status };
 }
 
-function assertProfileInput(input) {
+function assertProfileInput(input, presets) {
   const value = input || {};
-  if (value.name !== undefined && !PROFILE_NAMES.includes(value.name)) throw new Error(`지원하지 않는 문서 프로필입니다: ${value.name}`);
+  const known = presets ? Object.keys(presets) : PROFILE_NAMES;
+  if (value.name !== undefined && !known.includes(value.name)) throw new Error(`지원하지 않는 문서 프로필입니다: ${value.name}`);
   if (value.schemaVersion !== undefined && ![1, 2].includes(value.schemaVersion)) throw new Error(`지원하지 않는 documentProfile schemaVersion입니다: ${value.schemaVersion}`);
   if (value.enforcement !== undefined && !ENFORCEMENTS.includes(value.enforcement)) throw new Error(`지원하지 않는 enforcement입니다: ${value.enforcement}`);
   for (const trait of parseList(value.traits)) if (!TRAITS.includes(trait)) throw new Error(`지원하지 않는 project trait입니다: ${trait}`);
@@ -303,9 +313,9 @@ function migrateProfile(input) {
   });
 }
 
-function applyToProject(projectFile, input) {
-  assertProfileInput(input);
-  const profile = normalizeProfile(input);
+function applyToProject(projectFile, input, presets) {
+  assertProfileInput(input, presets);
+  const profile = normalizeProfile(input, presets);
   const original = fs.readFileSync(projectFile, 'utf8');
   const bom = original.startsWith('\uFEFF') ? '\uFEFF' : '';
   const content = (bom ? original.slice(1) : original).replace(/\r\n/g, '\n');

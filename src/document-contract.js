@@ -10,6 +10,7 @@ const {
 const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
 const { CONTRACT_VERSION, IMPLEMENTATION_TYPES, REQUIRED_FIELDS_BY_TYPE, implementationTrace } = require('./implementation-contract');
 const { DIAGRAM_VERSION, DIAGRAM_CONVENTIONS } = require('./document-diagram');
+const { loadBoardPresentation, resolveProfilePresets, profileChoices } = require('./board-presentation');
 
 function documentContractCatalog() {
   const templateRoot = path.resolve(__dirname, '..', 'docs', 'templates');
@@ -164,8 +165,12 @@ function loadDocumentContract(start, projectKey) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, projectKey, true);
   const source = fs.readFileSync(project.charter, 'utf8');
-  const validation = validateDocumentProfile(source);
-  const catalog = documentContractCatalog();
+  // 어떤 프로필이 있는지는 코드가 아니라 board.json 상속이 정한다. 팀이 만든 프리셋도
+  // 유효한 이름이어야 계약이 그 이름을 지키고, 화면도 그 목록을 그대로 보여 준다.
+  const presentation = loadBoardPresentation(layout.root, project.key);
+  const presets = resolveProfilePresets(presentation);
+  const validation = validateDocumentProfile(source, presets);
+  const catalog = Object.assign(documentContractCatalog(), { profiles: Object.keys(presets), profileChoices: profileChoices(presentation) });
   if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, evaluation: null, catalog };
   if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, errors: validation.errors, evaluation: null, catalog };
   const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
@@ -215,11 +220,17 @@ function planDocumentContract(start, projectKey, input) {
     delete merged.policy;
     delete merged.omissions;
   }
+  const presets = resolveProfilePresets(loadBoardPresentation(workspaceLayout(start).root, projectKey));
+  if (settings.name && !Object.prototype.hasOwnProperty.call(presets, settings.name)) {
+    const error = new Error(`알 수 없는 문서 프로필입니다: ${settings.name}. board.json에 정의하거나 내장 프로필 중에서 고르세요.`);
+    error.statusCode = 400;
+    throw error;
+  }
   const next = normalizeProfile(Object.assign(merged, {
     schemaVersion: 2,
     revision: before ? before.revision + 1 : 1,
     history: before ? before.history.concat(settings.name || before.name) : [settings.name || 'service']
-  }));
+  }), presets);
   const evaluation = evaluateDocumentContract(next, projectArtifacts(selectProject(workspaceLayout(start), projectKey, true)));
   return { root: current.root, project: current.project, baseRevision: current.revision, profile: next, impact: profileImpact(before, next), evaluation };
 }
@@ -235,7 +246,7 @@ function updateDocumentContract(start, projectKey, input) {
     throw error;
   }
   const planned = planDocumentContract(layout.root, project.key, input);
-  applyToProject(project.charter, planned.profile);
+  applyToProject(project.charter, planned.profile, resolveProfilePresets(loadBoardPresentation(layout.root, project.key)));
   return Object.assign(loadDocumentContract(layout.root, project.key), { impact: planned.impact });
 }
 
