@@ -133,6 +133,7 @@ documentProfile:
 - 진행 점검: 작업 시작과 종료 때 Rundol 태스크 상태와 acceptance를 갱신한다.
 - 산출물 검토: 문서 작성 직후 artifact strict 검사, 구현 전 implementation 검사, 릴리스 전 전체 release check를 수행한다.
 - 이해관계자 공유: 패치마다 CHANGELOG와 마이그레이션 영향을 갱신하고 GitHub 릴리스 및 npm 게시 결과를 확인한다.
+- 용어 기준: 문서와 태스크에 쓰는 운영 용어는 [[GLS-002-Rundol-프로젝트-운영-용어|GLS-002]]를 따른다.
 
 ## 완료 정의
 

@@ -72,7 +72,7 @@ flowchart LR
 | 규격 ID | 인터페이스 | 필수 결과 |
 |---|---|---|
 | RDL-SPEC-001 | `rdl init --json` | 연결 상태를 `created`, `attached`, `repaired`, `already-connected`, `needs-selection`, `conflict` 중 하나로 반환한다. |
-| RDL-SPEC-002 | `rdl contract show`, `rdl contract next`, `rdl contract check` | profile, revision, ready, 추천 문맥, omission과 violations를 공용 evaluator 결과로 반환한다. |
+| RDL-SPEC-002 | `rdl contract show`, `rdl contract next`, `rdl contract check` | profile, revision, ready, 작성 순서 참고값과 violations를 공용 evaluator 결과로 반환한다. |
 | RDL-SPEC-003 | `rdl doc create` | 문서 유형, owner, related를 검증하고 정규 ID·경로·frontmatter를 생성한다. |
 | RDL-SPEC-004 | `rdl task add`, `rdl task set`, `rdl task acceptance` | 완료조건과 추적 링크를 가진 태스크를 shard·operation·commit으로 기록한다. |
 | RDL-SPEC-005 | `rdl check --strict`, `rdl save`, `rdl sync` | 계약·거버넌스·링크·태스크 품질 게이트를 공유하고 checkpoint 위반을 persistence 전에 차단한다. |
@@ -82,18 +82,18 @@ flowchart LR
 
 ### AI 설계 진행 순서
 
-Rundol 스킬은 모든 프로젝트에 고정 문서 전체를 순서대로 만들지 않는다. 먼저 계약을 읽고 현재 책임에 맞는 문서 유형을 선택한다. `rules.after`는 참고하면 좋은 추천 문맥이며 누락돼도 생성을 차단하지 않는다.
+Rundol 스킬은 모든 프로젝트에 고정 문서 전체를 순서대로 만들지 않는다. 먼저 계약을 읽고 현재 책임에 맞는 문서 유형을 선택한다. `contract next`가 함께 주는 작성 순서 참고값은 내장 상수에서 계산한 안내이며 누락돼도 생성을 차단하지 않는다.
 
 ```mermaid
 flowchart TD
-    START["1. rdl init --json\nWorkspace 연결 확인"] --> CONTRACT["2. contract show + next\n정책·ready·omission 확인"]
+    START["1. rdl init --json\nWorkspace 연결 확인"] --> CONTRACT["2. contract show + next\n정책·ready·하부 요소 확인"]
     CONTRACT --> INTENT{"3. 지금 결정할 설계 책임은?"}
     INTENT -->|"제품 문제·사용자·성과"| PRD["PRD"]
     INTENT -->|"동작·규칙·품질·수용조건"| REQ["REQ"]
     INTENT -->|"시스템 경계·컴포넌트·배포"| ARC["ARC"]
     INTENT -->|"화면 흐름·상태·접근성"| SCR{"SCR 활성?"}
     SCR -->|"예"| SCRDOC["SCR"]
-    SCR -->|"아니오"| ABSORB["omission 대상 문서에\n필수 구성요소 흡수"]
+    SCR -->|"아니오"| RAISE["소유자에게 알린다\n계약에서 상태를 먼저 바꾼다"]
     INTENT -->|"데이터 구조·불변식"| MOD["MOD"]
     INTENT -->|"명령·HTTP·이벤트 계약"| API["API"]
     INTENT -->|"중요 선택·대안·근거"| ADR["ADR"]
@@ -104,7 +104,7 @@ flowchart TD
     REQ --> TASK
     ARC --> TASK
     SCRDOC --> TASK
-    ABSORB --> TASK
+    RAISE --> TASK
     MOD --> TASK
     API --> TASK
     ADR --> TASK
@@ -132,13 +132,13 @@ flowchart TD
 1. CLI JSON 결과와 공용 도메인 서비스 결과가 계약의 최종 실행 판단이다. 스킬과 Board는 이를 재해석해 다른 차단 규칙을 만들지 않는다.
 2. 스킬은 `init → contract show → contract next → 문서 라우팅 → task add → doc create/본문 작성 → contract check → strict/structure → acceptance → save → sync` 순서를 기본으로 사용한다.
 3. 제품·품질 요구는 REQ, 화면 흐름은 SCR, 시스템 구조는 ARC, 중요 결정은 ADR, 구현은 태스크로 라우팅하며 범용 `DESIGN.md`를 정본으로 만들지 않는다.
-4. disabled 문서 유형은 생성하지 않고 `omissions.<TYPE>.absorbedBy` 문서에 계약이 요구하는 구성요소를 남긴다.
-5. 추천 문맥 누락은 UI에 표시할 수 있으나 문서 생성, save, sync를 차단하지 않는다.
+4. disabled 문서 유형은 생성하지 않는다. 그 유형이 필요해지면 계약에서 상태를 먼저 바꾸고, 내용을 다른 유형 문서에 담아 대신하지 않는다.
+5. 작성 순서 참고값 누락은 UI에 표시할 수 있으나 문서 생성, save, sync를 차단하지 않는다.
 6. CLI가 생성·상태 변경·수용조건·동기화를 담당하고 AI는 본문과 코드를 작성한다. charter·문서 본문 편집은 hybrid 작업으로 취급한다.
 7. Board GET은 snapshot을 제공하고 POST는 session token을 요구한다. 문서·태스크·계약 변경은 stale revision을 거부한다.
-8. Board 계약 설정은 정책 상태, 읽기 전용 AI 추천 문맥, omission 대상과 자유 편집 가능한 필수 구성요소를 표시한다.
+8. Board 계약 설정은 프로필, 강제 수준, 유형별 정책 상태와 프리셋이 정한 하부 요소를 표시하고, 프로필 선택을 정책 상태에 즉시 미리보기로 반영한다.
 9. Board는 task owner, reviewer, stakeholder, links, deps와 acceptance를 공용 task service로 갱신한다.
-10. `checkpoint`에서 required·disabled·omission 위반은 strict, save, sync를 차단한다. recommended 누락은 warning으로 유지한다.
+10. `checkpoint`에서 required와 disabled 위반은 strict, save, sync를 차단한다. recommended 누락은 warning으로 유지한다.
 11. 완료 태스크는 모든 acceptance가 완료되고 TST 문서를 연결해야 한다.
 12. 모든 변경은 해당 프로젝트 ref에 커밋되고 Workspace 설정은 프로젝트 ref보다 먼저 동기화한다.
 
@@ -153,7 +153,7 @@ sequenceDiagram
     AI->>S: 설계 요청
     S->>C: init, contract show, contract next
     C->>P: profile·revision·실제 문서 평가
-    P-->>C: ready·추천 문맥·omission·violations
+    P-->>C: ready·작성 순서 참고값·violations
     C-->>S: 안정된 JSON 결과
     S-->>AI: 문서 유형과 관련 문맥 제시
     AI->>C: task add, doc create
@@ -177,7 +177,7 @@ sequenceDiagram
     participant API as Local Board API
     participant E as Contract evaluator
     participant PM as project.md
-    U->>UI: 정책·omission 구성요소 편집
+    U->>UI: 프로필 선택과 정책 상태 편집
     UI->>API: POST /contract + token + baseRevision
     API->>E: 변경 계획·검증
     alt revision 일치
@@ -196,8 +196,8 @@ sequenceDiagram
 | 연결된 단일 프로젝트 | `rdl init --json` | `already-connected`와 현재 계약 반환 |
 | 원격 다중 프로젝트 | 비대화형 init | `needs-selection`과 후보를 반환하고 쓰지 않음 |
 | invalid 또는 unsupported 계약 | 문서 생성·저장 | 변경 전에 거부하고 contract check 안내 |
-| 추천 문맥 없음 | non-disabled 문서 생성 | 생성 허용, `missingRecommendedContext`만 표시 |
-| disabled 문서 유형 | 문서 생성 | 거부하고 omission 대상·구성요소 안내 |
+| 작성 순서 참고값 미충족 | non-disabled 문서 생성 | 생성 허용, `missingRecommendedContext`만 표시 |
+| disabled 문서 유형 | 문서 생성 | 거부하고 계약에서 상태를 먼저 바꾸라고 안내 |
 | stale Board revision | 문서·태스크·계약 POST | HTTP 409와 current 상태 반환 |
 | 유효하지 않은 Board token | 변경 요청 | HTTP 403, 파일 미변경 |
 | checkpoint 위반 | save 또는 sync | push 전 실패 |
@@ -208,10 +208,10 @@ sequenceDiagram
 
 - [x] CLI가 init, contract, doc, task, check, save, sync와 board 명령을 안정된 JSON 경계로 제공한다.
 - [x] 스킬이 설계 책임을 PRD·REQ·ARC·SCR·MOD·API·ADR·TST·RUN·GLS와 태스크로 라우팅한다.
-- [x] 추천 문맥이 비차단 안내이며 disabled와 checkpoint 위반만 해당 경계에서 차단된다.
+- [x] 작성 순서 참고값이 비차단 안내이며 disabled와 checkpoint 위반만 해당 경계에서 차단된다.
 - [x] Board snapshot이 documents, tasks, people, clients, leases, sync, contract와 presentation을 같은 프로젝트 revision 집합으로 제공한다.
 - [x] Board 쓰기 API가 token과 revision을 검증하고 stale 변경에 409를 반환한다.
-- [x] Board 계약 UI가 강제 선행 그래프 없이 추천 문맥과 자유 구성요소 편집을 제공한다.
+- [x] Board 계약 UI가 강제 선행 그래프 없이 프리셋 선택과 정책 상태 편집을 제공한다.
 - [x] CLI·스킬·Board의 설계·검증·동기화 순서가 본 문서의 Mermaid 흐름으로 설명된다.
 
 ## 비기능 요구
@@ -219,7 +219,7 @@ sequenceDiagram
 | 품질 속성 | 기준 | 측정 방법 |
 |---|---|---|
 | 일관성 | 같은 프로젝트 상태에서 CLI contract와 Board snapshot의 revision·violations가 동일 | contract·Board 통합 테스트 |
-| 결정성 | 같은 계약과 artifact 집합에서 ready·추천 문맥·omission 결과가 동일 | evaluator deep equality 테스트 |
+| 결정성 | 같은 계약과 artifact 집합에서 ready·작성 순서 참고값 결과가 동일 | evaluator deep equality 테스트 |
 | 안전성 | discovery, plan, stale update, migration dry-run이 승인 전 정본을 변경하지 않음 | bootstrap·contract·migration 회귀 테스트 |
 | 추적성 | 모든 완료 태스크가 REQ와 TST 증거로 연결 | `rdl check --strict` |
 | AI 호환성 | 약한 모델도 한 번에 2–4개 관련 문맥과 명시적 CLI 순서로 작업 가능 | 스킬 정적 계약과 대표 시나리오 검토 |

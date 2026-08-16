@@ -17,6 +17,7 @@ related:
   - "[[REQ-010-문서-계획-계약-요구사항|REQ-010]]"
   - "[[REQ-011-보드-문서-계획과-표시-설정-요구사항|REQ-011]]"
   - "[[TST-002-문서-계획-계약-검증|TST-002]]"
+  - "[[ADR-006-화면-전이-소유권과-파생-뷰-배달-경계|ADR-006]]"
 ---
 
 # 런돌 시스템 아키텍처
@@ -38,7 +39,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 | CLI 진입점 `bin/rdl.js` | 명령 파싱, 프로젝트 선택, 도메인 서비스 호출과 JSON 출력 | 없음 | Workspace, state, check, document, Board 서비스 | 프로젝트 책임자 |
 | Workspace·bootstrap | 로컬/원격 Rundol 상태 발견, manifest·ref·worktree 연결과 복구 | Workspace registry, project manifest | Git | 프로젝트 책임자 |
 | 프로젝트 상태·태스크 | 태스크 shard, operation, projection, save·sync와 semantic merge | `tasks/**`, `.rundol/state` 로컬 projection | Git, collaboration store | 프로젝트 책임자 |
-| 문서·계약 evaluator | 정규 문서 생성, profile 정규화, omission·checkpoint 평가 | `project.md`, `docs/**` | 문서 템플릿, frontmatter parser | 프로젝트 책임자 |
+| 문서·계약 evaluator | 정규 문서 생성, profile 정규화, 정책·checkpoint 평가 | `project.md`, `docs/**`, `board.json` 프리셋 | 문서 템플릿, frontmatter parser | 프로젝트 책임자 |
 | 구현 계약 검사기 | 기능별 유형 전용 필드, 미확정 규칙, 묶음 명세와 REQ·TST 대응 검증 | 진단과 계산형 trace | 정규 문서 registry, task links | 검토자·품질 담당자 |
 | 검증기 | 거버넌스, 태스크, 링크, 문서 계약, Vault와 구조 진단 | 진단 결과만 생성 | Workspace·문서·태스크 reader | 검토자·품질 담당자 |
 | Collaboration store | Client registry와 lease event 저장·조회 | `projects/workspace/clients`, `events` | Workspace branch | 운영 담당자 |
@@ -48,7 +49,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 ## 데이터 흐름
 
 1. `rdl init`은 현재 Git 저장소에서 manifest, Rundol refs와 worktree를 읽어 `created|attached|repaired|already-connected|needs-selection|conflict` 동작을 결정한다.
-2. 문서 작업 전 CLI는 `project.md` 계약과 실제 `docs/**` registry를 읽어 `ready`, 추천 문맥, omission 상태와 위반을 계산한다.
+2. 문서 작업 전 CLI는 `project.md` 계약, `board.json` 프리셋과 실제 `docs/**` registry를 읽어 `ready`, 작성 순서 참고값과 위반을 계산한다.
 3. `rdl doc create`는 등록 owner, 관련 산출물과 function-id를 검증한 뒤 기능별 독립 계약 섹션을 가진 정규 파일을 만든다.
 4. AI 또는 사용자는 기능별 본문을 편집하고 `rdl check --strict --implementation`과 계산형 `rdl contract trace`로 구현 준비도를 검증한다.
 5. 태스크 명령은 client별 shard를 갱신하고 operation과 projection을 기록한 뒤 프로젝트 브랜치에 커밋하며 구현 태스크의 done 전환을 기능별 REQ·TST 계약으로 제한한다.
@@ -77,7 +78,7 @@ Rundol은 기존 Git 저장소 안에서 프로젝트 문서, 태스크, 책임�
 | 안전성 | 자동 연결·migration·cleanup이 사용자 파일을 잃지 않음 | discovery-before-write, conflict preflight, dry-run과 rollback | bootstrap, migration, structure 회귀 테스트 |
 | 동시성 | Board와 다중 Client 변경의 stale write 방지 | revision, lease, semantic merge, HTTP 409 | Board workspace와 Git 통합 테스트 |
 | 배포 신뢰성 | package 경계와 버전이 항상 일치 | version-check, tarball install, OIDC trusted publishing | `npm run release:check`와 Release workflow |
-| 사용성 | 문서 계약이 작은 프로젝트와 AI 작업을 과도하게 차단하지 않음 | 추천 문맥 비차단, omission 명시, Board 자유 구성요소 편집 | contract/Board UI 테스트와 브라우저 검증 |
+| 사용성 | 문서 계약이 작은 프로젝트와 AI 작업을 과도하게 차단하지 않음 | 작성 순서 참고값 비차단, 프리셋 미리보기, 유형별 하부 요소 안내 | contract/Board UI 테스트와 브라우저 검증 |
 
 ## 보안과 개인정보
 
