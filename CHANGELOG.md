@@ -23,6 +23,15 @@
 - 크래시 재시도가 준비된 canonical 바이트를 그대로 재사용한다 — attempt 재계산으로 digest가 갈려 멱등성이 깨지던 것을 driver-lease의 decode-재사용 패턴으로 통일했다. 같은 요청 ID에 다른 payload나 commandDigest가 오면 저널 재생이 과거 결과를 돌려주는 대신 거부한다.
 - 읽기 경로의 dedup을 런 단위로 격리했다. 다른 런 샤드의 손상이 이 런의 읽기를 오염시키지 못하고, 같은 런의 충돌은 예외가 아니라 `RDL-RUN-017/018` 진단으로 fold에 흐른다. digest 정의는 정규화 하나로 남아, 원시 digest로 쓰인 v2 레코드가 legacy로 낙인되지 않는다.
 - driver lease가 실행 판단에 연결됐다. leaseId가 `(operationId, clientId, ownerToken, rootRequestId)`의 함수가 되어 파티션의 두 실행자와 크래시 후 재기동이 서로 다른 유효 사슬로 노출되고, acquire 직후 read-back이 자기 사슬 invalid를 lease-lost 정지로 전이시킨다. 파티션의 다른 유효 사슬은 `leaseContention`으로 tick 결과에 노출된다 — 상호 배제 약속이 아니라 가시성이며, 실행 안전은 operationId 멱등성이 보증한다.
+- 무효 takeover만 있는 fail-closed CONFLICT에 탈출구가 생겼다. 충돌이 부모 epoch의 head를 노출하고, `--force --reason` 인수가 그 head를 가리키는 정상 유효 takeover를 기록해 자기 치유한다 — 이전에는 그 takeover를 쓸 유일한 API가 CONFLICT에서 거부되어 런이 영구 교착이었다.
+- drive 실패가 원장에도 남는다. 실패한 스텝은 `run.step`(exit 1)에 더해 `run.halted`(reason `step-failed`, 재개 가능)를 기록해, 반환값은 halted인데 fold는 running인 채 다음 drive가 실패 스텝을 재개 절차 없이 재실행하던 것을 막는다.
+- operation 충돌은 completed_local/synced 뒤에서도 은폐되지 않는다 — `operationConflicts` 목록은 항상 노출되고, 완료 뒤에 남은 충돌은 `RDL-RUN-028` 경고로 표면화된다.
+- drive는 verify 스텝을 명시적으로 거부한다(fail-closed). 일반 adapter로 오분류해 `run.step`을 기록하면 원장이 거부해 커서가 전진하지 않은 채 검증(LLM 호출)이 tick마다 무한 반복될 수 있었다. drive의 verify 배선(verifyArtifact·quorum·verdict 기록)은 다음 마이너의 기능 작업이다.
+- 절차가 pin한 verify policy(validators·quorum·maxRefuted·maxAbstain·diversity)가 `verifyArtifact`에 병합된다 — 이전에는 pin이 사문이 되어 기본값 quorum 1로 검증됐다. perLens 없는 flat policy는 모든 lens에 적용되고, pin과 다른 호출자 policy는 거부된다.
+- sync 전이 대상을 공유 run 샤드와의 union으로 열거한다. 로컬 `.rundol/runs`는 git으로 전파되지 않아, 새 clone의 sync 실행자가 다른 클라이언트의 런을 열거조차 못 해 synced/halted 전이가 누락됐다.
+- 개행으로 끝난 malformed 마지막 행은 크래시 절단이 아니라 원장 파손으로 판정한다 — 읽기가 던지고 append도 파손 위로의 확장을 거부한다. 크래시 절단 관용은 개행 없는 꼬리에만 적용된다.
+- watch의 `remoteIntervalSeconds`가 실제로 적용된다 — 검증만 되고 읽히지 않는 죽은 설정이라 원격 fetch가 스캔 주기(기본 5초)마다 나가던 것을 자체 주기로 제한한다.
+- verifier의 작업 트리 불변 계약을 실패 경로에서도 검사한다. 파일을 바꾼 뒤 실패·timeout으로 끝난 verifier는 `ADAPTER_VERIFIER_MUTATED` 진단으로 귀속이 남는다.
 - force 소유권 해소의 도달 불능 가드를 교정했다 — 부모 epoch 소유 멤버는 자기 소유의 다른 클라이언트로 자기 충돌을 승인할 수 없다.
 - run 결박 verdict fold에 ownerToken이 없으면 명시적 오류이고, verdict eventId 충돌은 `RDL-VERDICT-004` 진단이다.
 - legacy takeover의 fence 불가를 `RDL-RUN-027` 경고로 표면화한다.

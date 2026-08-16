@@ -240,6 +240,31 @@ const running = (async () => {
   assert.strictEqual(remoteOutput.filter((record) => record.type === 'watch.remote.relation').length, 1, 'unchanged remote relation is deduplicated');
   remoteOutput.forEach(validateWatchRecord);
 
+  // remote 관찰은 remoteIntervalSeconds 자체 주기를 따른다 — 설정이 검증만 되고
+  // 적용되지 않으면 스캔 주기마다 원격 fetch가 나간다.
+  const intervalRoot = fixture('remote-interval');
+  fs.writeFileSync(path.join(intervalRoot, 'projects', 'demo', 'harness.json'), `${JSON.stringify({ schemaVersion: 1, revision: 1, watch: { scanIntervalSeconds: 5, remoteIntervalSeconds: 300 } })}\n`, 'utf8');
+  const intervalHead = command(intervalRoot, ['git', 'rev-parse', 'HEAD']);
+  const intervalAbort = new AbortController();
+  let intervalScans = 0;
+  let intervalFetches = 0;
+  let intervalClock = 0;
+  const intervalResult = await runWatch(intervalRoot, { project: 'demo', remote: true, watchId: 'WATCH-00000000000000000011', signal: intervalAbort.signal }, {
+    acquireLock: () => ({ release() {} }),
+    inputSnapshot: () => { intervalScans += 1; if (intervalScans >= 4) intervalAbort.abort(); return snapshot(intervalHead, initialRevision); },
+    checkWorkspace: () => ({ diagnostics: [] }),
+    writeRecords: () => {},
+    remoteScopes: [{ scope: 'project' }],
+    observeRemoteScope: () => { intervalFetches += 1; return relation; },
+    watchFactory: () => ({ close() {} }),
+    setTimeout: (callback) => setTimeout(callback, 1),
+    clearTimeout,
+    now: () => { intervalClock += 5000; return intervalClock; }
+  });
+  assert.strictEqual(intervalResult.exitCode, 0);
+  assert(intervalScans >= 4, '연속 감시는 여러 스캔을 수행해야 한다');
+  assert.strictEqual(intervalFetches, 1, 'remoteIntervalSeconds 이내에는 스캔마다 원격을 관찰하지 않는다');
+
   let released = false;
   const onceRoot = fixture('once');
   const onceHead = command(onceRoot, ['git', 'rev-parse', 'HEAD']);

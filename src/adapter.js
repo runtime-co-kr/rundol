@@ -486,13 +486,17 @@ async function runAdapterOnce(invocation, executionOptions) {
         try { fs.unlinkSync(resultFile); } catch (_) {}
       }
       const category = execution.category;
+      // verifier의 작업 트리 불변 계약은 실패 경로에서도 검사한다 — 성공 경로만
+      // 지키면 파일을 바꾼 뒤 실패·timeout으로 끝난 verifier의 위반이 조용히
+      // 사라진다. 위반은 실패 사유에 더해 별도 진단으로 귀속을 남긴다.
+      const mutated = invocation.mode === 'verify' && canonicalJson(gitSnapshot(projectRoot)) !== canonicalJson(beforeGit);
       const receipt = failureReceipt(directory, baseReceipt, category, resultHash);
       const diagnosticCode = category === 'child-failure'
         ? 'ADAPTER_CHILD_FAILED'
         : category === 'timeout'
           ? 'ADAPTER_TIMEOUT'
           : category === 'cancelled' ? 'ADAPTER_CANCELLED' : 'ADAPTER_SPAWN_FAILED';
-      return { ...responseBase, exitCode: category === 'child-failure' ? 1 : 2, status: category, receipt, diagnosticCodes: [diagnosticCode] };
+      return { ...responseBase, exitCode: category === 'child-failure' ? 1 : 2, status: category, receipt, diagnosticCodes: mutated ? [diagnosticCode, 'ADAPTER_VERIFIER_MUTATED'] : [diagnosticCode] };
     }
     if (!fs.existsSync(resultFile)) throw new Error('Adapter exited successfully without result.json.');
     revalidateTrustedFile(projectRoot, target, 'targetPath');

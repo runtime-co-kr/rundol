@@ -100,6 +100,7 @@ else if (mode === 'author') fs.writeFileSync(result, JSON.stringify({ claims: ['
 else if (mode === 'sentinel') { fs.writeFileSync(require('path').join(process.cwd(), 'sentinel-spawned'), 'spawned'); fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] })); }
 else if (mode === 'worktree-create') { fs.writeFileSync(require('path').join(process.cwd(), 'post-created.txt'), 'created'); fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] })); }
 else if (mode === 'worktree-modify') { fs.writeFileSync(require('path').join(process.cwd(), 'docs', 'REQ-001.md'), '# changed!\\n'); fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] })); }
+else if (mode === 'mutate-failure') { fs.writeFileSync(require('path').join(process.cwd(), 'docs', 'REQ-001.md'), '# mutated before failure\\n'); process.exit(3); }
 else if (mode === 'worktree-delete') { fs.unlinkSync(require('path').join(process.cwd(), 'docs', 'TST-001.md')); fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] })); }
 else if (mode === 'absolute') fs.writeFileSync(result, JSON.stringify({ verdict: 'refuted', findings: [{ summary: 'bad', location: { file: '/escape.md' } }] }));
 else if (mode === 'extra') fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [], transcript: 'forbidden' }));
@@ -260,6 +261,14 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
     if (fixtureMode === 'worktree-modify') write(path.join(project, 'docs', 'REQ-001.md'), '# REQ-001\n');
     if (fixtureMode === 'worktree-delete') write(path.join(project, 'docs', 'TST-001.md'), '# TST-001\n');
   }
+
+  // verifier의 불변 계약은 실패 경로에서도 검사된다 — 파일을 바꾼 뒤 실패로 끝난
+  // verifier는 실패 사유에 더해 변형 진단으로 귀속이 남아야 한다.
+  const mutateFailure = await runAdapterOnce(invocation(project, 'INV-00000000000000000014', 'verify', 'mutate-failure'));
+  assert.strictEqual(mutateFailure.exitCode, 1, JSON.stringify(mutateFailure));
+  assert.strictEqual(mutateFailure.status, 'child-failure');
+  assert(mutateFailure.diagnosticCodes.includes('ADAPTER_VERIFIER_MUTATED'), `실패한 verifier의 작업 트리 변형이 진단되지 않았습니다: ${JSON.stringify(mutateFailure.diagnosticCodes)}`);
+  write(path.join(project, 'docs', 'REQ-001.md'), '# REQ-001\n');
 
   assert.throws(() => validateResult('author', '{"claims":[],"artifactIds":["REQ-001","REQ-001"]}', project), /unique/u);
   assert.throws(() => validateResult('verify', '{"verdict":"pass","findings":[],"rawOutput":"x"}', project), /unknown/u);

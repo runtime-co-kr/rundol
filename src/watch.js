@@ -387,6 +387,12 @@ function releaseLock(lock) {
 async function runContinuous(session, settings, deps) {
   const harness = loadHarnessSettings(session.layout.root, { project: session.project.key });
   const interval = harness.runtimeResolved.watch.scanIntervalSeconds * 1000;
+  // remote 관찰은 자체 주기(remoteIntervalSeconds)를 따른다 — 설정만 검증하고
+  // 적용하지 않으면 스캔 주기(기본 5초)마다 원격 fetch가 나간다. null이면
+  // 스캔마다 관찰한다(기존 동작).
+  const remoteIntervalMs = harness.runtimeResolved.watch.remoteIntervalSeconds ? harness.runtimeResolved.watch.remoteIntervalSeconds * 1000 : null;
+  const currentInstant = deps.now || Date.now;
+  let lastRemoteAt = null;
   const timers = { set: deps.setTimeout || setTimeout, clear: deps.clearTimeout || clearTimeout };
   const controller = settings.signal ? null : new AbortController();
   const signal = settings.signal || controller.signal;
@@ -402,7 +408,10 @@ async function runContinuous(session, settings, deps) {
     watcher = watcherFactory(session.project.root, () => { if (wake) wake(); });
     while (!signal.aborted) {
       await session.scanOnce();
-      await session.observeRemote();
+      if (!remoteIntervalMs || lastRemoteAt === null || currentInstant() - lastRemoteAt >= remoteIntervalMs) {
+        await session.observeRemote();
+        lastRemoteAt = currentInstant();
+      }
       if (signal.aborted) break;
       await new Promise((resolve) => {
         let timer = timers.set(() => { wake = null; resolve(); }, interval);

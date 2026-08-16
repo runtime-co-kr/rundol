@@ -956,6 +956,23 @@ function readSharedRunEvents(layout, projectKey, runId) {
   return eventStore.readEvents(eventsRoot, 'run', projectKey, { sort: 'file', runId: runId, dedupe: false }).filter((event) => event.runId === runId);
 }
 
+// 공유 run 샤드에서 프로젝트의 run ID를 열거한다. 로컬 .rundol/runs는 git으로
+// 전파되지 않으므로, 로컬 열거만 쓰는 소비자는 다른 클라이언트가 만든 런을
+// 새 clone에서 영영 보지 못한다.
+function listSharedRunIds(layout, projectKey) {
+  const eventsRoot = workspaceEventsRoot(layout);
+  if (!eventsRoot) return [];
+  const directory = path.join(eventsRoot, 'run');
+  if (!fs.existsSync(directory)) return [];
+  const ids = new Set();
+  for (const name of fs.readdirSync(directory)) {
+    if (!name.startsWith(`run-${projectKey}-`)) continue;
+    const match = /-(RUN-[A-F0-9]{20})-\d{6}\.jsonl$/u.exec(name);
+    if (match) ids.add(match[1]);
+  }
+  return Array.from(ids).sort();
+}
+
 function stripNoncanonical(event) {
   const projected = {};
   for (const [key, value] of Object.entries(event || {})) {
@@ -1212,7 +1229,7 @@ function resolveOwnership(start, input) {
 module.exports = {
   RUN_ID, EVENT_ID, REQUEST_ID, DIGEST, CHECKPOINT_TYPES, canonicalJson, sha256, newRunId, newRequestId, deterministicRunId,
   runDirectory, validateProcedure, normalizeRunEvent, createEventEnvelope, appendRunEvent, readRunEvents, createRun,
-  foldRun, runOwner, listRuns, recordRunEvent, mirrorRunEvent, readSharedRunEvents, unionRunEvents, reconcileRun,
+  foldRun, runOwner, listRuns, listSharedRunIds, recordRunEvent, mirrorRunEvent, readSharedRunEvents, unionRunEvents, reconcileRun,
   candidateConflictId, ownershipState, orderSharedEvents, foldSharedRun, takeoverRun, resolveOwnership,
   normalizeOperationDecision, operationIdFor, outcomeDigestFor, createOperation,
   normalizeOperationCandidates, operationConflictId, operationOutcomeState, logicalAttemptForStep

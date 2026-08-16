@@ -51,6 +51,17 @@ try {
   assert.strictEqual(synced.transitions[0].type, 'run.synced');
   const remoteEvents = git(['--git-dir', remote, 'grep', '-n', 'run.synced', 'refs/heads/rundol/workspace'], temporary);
   assert(remoteEvents.includes(started.runId), 'the same sync must publish run.synced to the workspace ref');
+
+  // 공유 원장에만 있는 런 — 다른 클라이언트의 런을 새 clone에서 sync하는 상황의
+  // 재현이다. 로컬 .rundol/runs는 git으로 전파되지 않으므로, 전이 열거가 로컬만
+  // 보면 이 런의 synced 전이가 영영 누락된다.
+  const second = rdl(['run', 'start', 'quick-sync', '--project', 'crm', '--client-id', 'device-a']);
+  rdl(['run', 'step', '--run', second.runId, '--project', 'crm', '--client-id', 'device-a']);
+  rdl(['run', 'complete', '--run', second.runId, '--project', 'crm', '--client-id', 'device-a']);
+  fs.rmSync(path.join(temporary, 'projects', 'crm', '.rundol', 'runs', second.runId), { recursive: true, force: true });
+  const sharedOnly = rdl(['sync', '--project', 'crm', '--client-id', 'sync-agent']);
+  assert.strictEqual(sharedOnly.pushed, true);
+  assert(sharedOnly.transitions.some((item) => item.runId === second.runId && item.type === 'run.synced'), '공유 원장에만 있는 런도 synced 전이를 받아야 한다');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

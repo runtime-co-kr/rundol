@@ -655,12 +655,20 @@ function transitionRuns(config, apply, settings) {
   if (!config.project) return [];
   const ledger = require('./run-ledger');
   const transitions = [];
-  for (const summary of ledger.listRuns(config.worktree)) {
+  // 전이 대상은 로컬 .rundol/runs만이 아니다 — 로컬 원장은 git으로 전파되지
+  // 않으므로, 새 clone의 sync 실행자는 공유 샤드에만 있는 런을 로컬 열거로는
+  // 영영 보지 못해 synced/halted 전이가 누락된다. 공유 run 샤드와 union으로 연다.
+  const runIds = new Set(ledger.listRuns(config.worktree).map((run) => run.runId));
+  if (typeof ledger.listSharedRunIds === 'function') {
+    const { workspaceLayout } = require('./workspace');
+    for (const runId of ledger.listSharedRunIds(workspaceLayout(config.root), config.project)) runIds.add(runId);
+  }
+  for (const runId of Array.from(runIds).sort()) {
     // 소유권은 로컬 파일이 아니라 공유를 먼저 reconcile한 union에서 도출한다.
     // 다른 클라이언트의 takeover는 공유에만 있을 수 있고, 죽은 토큰으로 기록된
     // 전이는 잘린 epoch에 떨어져 보이지 않게 된다.
-    const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId: summary.runId }) : null;
-    const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, summary.runId));
+    const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId }) : null;
+    const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, runId));
     const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion === 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const event = apply(fold);
     if (!event) continue;
@@ -668,20 +676,20 @@ function transitionRuns(config, apply, settings) {
     if (events.some((item) => item && item.schemaVersion === 2)) {
       const ownership = ledger.ownershipState(events);
       if (ownership.status !== 'ACTIVE') {
-        transitions.push({ runId: summary.runId, type: event.type, skipped: 'ownership-not-active' });
+        transitions.push({ runId, type: event.type, skipped: 'ownership-not-active' });
         continue;
       }
       ownerToken = ownership.ownerToken;
     }
     const recorded = ledger.recordRunEvent(config.root, {
       project: config.project,
-      runId: summary.runId,
+      runId,
       rootRequestId: settings.rootRequestId || settings.requestId,
-      childKey: `transition:${config.project}:${summary.runId}:${event.commit || 'none'}:${event.type}`,
+      childKey: `transition:${config.project}:${runId}:${event.commit || 'none'}:${event.type}`,
       commandDigest: settings.commandDigest,
       event: Object.assign({}, event, { clientId: settings.clientId, ...(ownerToken ? { ownerToken } : {}) })
     });
-    transitions.push({ runId: summary.runId, type: event.type, recorded });
+    transitions.push({ runId, type: event.type, recorded });
   }
   return transitions;
 }
