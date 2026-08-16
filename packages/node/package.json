@@ -1,6 +1,6 @@
 {
   "name": "@rundol/node",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "Rundol collaboration node runtime",
   "license": "Apache-2.0",
   "repository": {
@@ -29,7 +29,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rundol/core": "0.24.0",
-    "@rundol/protocol": "0.24.0"
+    "@rundol/core": "0.25.0",
+    "@rundol/protocol": "0.25.0"
   }
 }
