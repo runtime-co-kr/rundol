@@ -30,6 +30,21 @@ const DOCUMENT_SECTION_CATALOG = {
   RUN: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구', '정기 작업'],
   GLS: ['용어', '식별자와 코드']
 };
+// 유형마다 그 문서가 채워야 하는 하부 요소. 템플릿이 제안하는 것이 아니라 실제로 쓰인
+// 문서에서 뽑았다(free-loan 213건 + rundol 44건 기준, 그 유형 문서의 60% 이상이 가진 절).
+// 프리셋이 이 목록을 갖고, 프로필을 바꾸면 함께 따라온다.
+const DEFAULT_SECTIONS = {
+  PRD: ['문제와 배경', '사용자', '목표와 성공 지표', '범위', '제약과 가정', '마일스톤'],
+  REQ: ['배경', '요구사항', '사전조건', '동작 규칙', '상태와 예외', '수용 기준', '비기능 요구', '제외 범위'],
+  ARC: ['컨텍스트와 경계', '컴포넌트', '데이터 흐름', '실행과 배포', '품질 속성', '보안과 개인정보', '알려진 제약'],
+  SCR: ['진입', '사용자 흐름', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것'],
+  MOD: ['엔티티', '관계', '불변식', '인덱스와 조회', '보존과 개인정보', '마이그레이션'],
+  API: ['엔드포인트', '오류 계약', '호환성과 버전', '제약'],
+  ADR: ['맥락', '결정 기준', '선택지', '결정', '결과'],
+  TST: ['목적과 범위', '테스트 수준', '시나리오', '비기능 검증', '테스트 데이터와 환경', '통과 기준'],
+  RUN: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구', '정기 작업'],
+  GLS: ['용어', '식별자와 코드']
+};
 const DEFAULT_OMISSIONS = {
   PRD: { absorbedBy: 'REQ', sections: ['문제와 배경', '사용자', '목표와 성공 지표', '범위'] },
   REQ: { absorbedBy: 'PRD', sections: ['요구사항', '상태와 예외', '수용 기준', '비기능 요구'] },
@@ -157,26 +172,13 @@ function normalizeProfile(input, presets) {
   };
   if (schemaVersion === 1) return result;
   result.enforcement = ENFORCEMENTS.includes(value.enforcement) ? value.enforcement : 'checkpoint';
-  result.rules = {};
-  for (const type of REGULAR_TYPES) {
-    const supplied = value.rules && value.rules[type];
-    result.rules[type] = { after: ordered(supplied && supplied.after !== undefined ? parseList(supplied.after) : DEFAULT_RULES[type]) };
-  }
-  result.omissions = {};
-  for (const type of policy.disabled) {
-    const supplied = value.omissions && value.omissions[type];
-    if (supplied && supplied.notApplicable === true) {
-      result.omissions[type] = { notApplicable: true, reason: scalar(supplied.reason) };
-      continue;
-    }
-    const fallback = DEFAULT_OMISSIONS[type];
-    const active = POLICY_STATES.slice(0, 3).flatMap((state) => policy[state]);
-    const absorbedBy = scalar(supplied && supplied.absorbedBy) || (active.includes(fallback.absorbedBy) ? fallback.absorbedBy : active.find((candidate) => candidate !== type));
-    result.omissions[type] = {
-      absorbedBy,
-      sections: parseList(supplied && supplied.sections).length ? parseList(supplied.sections) : fallback.sections.slice()
-    };
-  }
+  // rules는 더 이상 프로젝트가 들고 다니는 상태가 아니다. "REQ는 PRD 다음"이라는 지식은
+  // 프로젝트마다 다르지 않아 아무도 바꾸지 않았고, 바꿔도 아무것도 막지 않았다.
+  // 지식은 DEFAULT_RULES 상수로 남고 contract next가 거기서 계산한다.
+  // 흡수도 없앴다. 유형 A의 내용이 유형 B 문서 안에 제목 문자열로 있어야 한다는 규칙이었는데,
+  // 실제로는 제목만 보고 내용을 보지 않아 빈 제목 여섯 줄로도 통과했다. 나중에 그 유형을
+  // 켜면 흡수해 둔 내용을 옮기라고 알려주는 경로도 없어 양쪽에 같은 주제가 남았다.
+  // 사용 안 함은 이제 "이 프로젝트에서는 만들지 않는다" 하나만 뜻한다.
   return result;
 }
 
@@ -224,25 +226,15 @@ function validateDocumentProfile(source, presets) {
   if (schemaVersion === 2) {
     if (!ENFORCEMENTS.includes(raw.enforcement)) errors.push(`지원하지 않는 enforcement입니다: ${raw.enforcement || '(없음)'}`);
     for (const type of REGULAR_TYPES) {
-      if (!raw.rules[type] || !Array.isArray(raw.rules[type].after)) { errors.push(`rules.${type}.after가 없습니다.`); continue; }
-      for (const dependency of raw.rules[type].after) {
+      // 예전 파일에 남아 있는 rules는 읽되 요구하지 않는다. 있으면 그냥 무시되고,
+      // 다음 계약 저장에서 블록을 다시 렌더할 때 자연스럽게 사라진다.
+      if (!raw.rules[type]) continue;
+      for (const dependency of raw.rules[type].after || []) {
         if (!REGULAR_TYPES.includes(dependency)) errors.push(`rules.${type}.after에 지원하지 않는 유형이 있습니다: ${dependency}`);
-        if (dependency === type) errors.push(`rules.${type}.after는 자기 자신을 참조할 수 없습니다.`);
       }
     }
-    for (const type of raw.policy.disabled || []) {
-      const omission = raw.omissions[type];
-      if (!omission) { errors.push(`omissions.${type}의 생략 처리가 없습니다.`); continue; }
-      if (omission.notApplicable === true) {
-        if (!scalar(omission.reason)) errors.push(`omissions.${type}.reason이 필요합니다.`);
-      } else {
-        if (!REGULAR_TYPES.includes(omission.absorbedBy) || omission.absorbedBy === type) errors.push(`omissions.${type}.absorbedBy가 올바르지 않습니다.`);
-        const targetStates = (occurrences.get(omission.absorbedBy) || []);
-        if (targetStates.includes('disabled')) errors.push(`omissions.${type}.absorbedBy는 비활성 문서일 수 없습니다: ${omission.absorbedBy}`);
-        if (!Array.isArray(omission.sections) || omission.sections.length === 0) errors.push(`omissions.${type}.sections가 필요합니다.`);
-      }
-    }
-    for (const type of Object.keys(raw.omissions)) if (!(raw.policy.disabled || []).includes(type)) errors.push(`활성 문서에는 omission을 지정할 수 없습니다: ${type}`);
+    // 예전 파일에 남아 있는 omissions는 읽되 요구하지 않는다. rules와 같이, 다음 계약
+    // 저장에서 블록을 다시 렌더할 때 자연스럽게 사라진다.
   }
   const profile = parseDocumentProfile(source, presets);
   let status = errors.length ? 'invalid' : schemaVersion === 1 ? 'migration-required' : 'valid';
@@ -280,17 +272,6 @@ function renderDocumentProfileUnchecked(profile) {
   if (profile.schemaVersion === 2) lines.push(`  enforcement: ${profile.enforcement}`);
   lines.push(`  traits: [${profile.traits.join(', ')}]`, `  history: [${profile.history.join(', ')}]`, '  policy:');
   for (const state of POLICY_STATES) lines.push(`    ${state}: [${profile.policy[state].join(', ')}]`);
-  if (profile.schemaVersion === 2) {
-    lines.push('  rules:');
-    for (const type of REGULAR_TYPES) lines.push(`    ${type}:`, `      after: [${profile.rules[type].after.join(', ')}]`);
-    lines.push('  omissions:');
-    for (const type of profile.policy.disabled) {
-      const omission = profile.omissions[type];
-      lines.push(`    ${type}:`);
-      if (omission.notApplicable) lines.push('      notApplicable: true', `      reason: "${omission.reason.replace(/"/g, '\\"')}"`);
-      else lines.push(`      absorbedBy: ${omission.absorbedBy}`, `      sections: [${omission.sections.join(', ')}]`);
-    }
-  }
   return lines.join('\n');
 }
 
@@ -340,8 +321,6 @@ function profileImpact(before, after) {
       const oldState = before && POLICY_STATES.find((state) => before.policy[state].includes(type));
       const newState = POLICY_STATES.find((state) => after.policy[state].includes(type));
       if (oldState !== newState) changes.push({ field: `policy.${type}`, from: oldState, to: newState });
-      const oldAfter = before && before.rules && before.rules[type] ? before.rules[type].after : [];
-      if (JSON.stringify(oldAfter) !== JSON.stringify(after.rules[type].after)) changes.push({ field: `rules.${type}.after`, from: oldAfter, to: after.rules[type].after });
     }
   }
   return changes;
@@ -359,7 +338,6 @@ function reconfigureProject(projectFile, name, overrides) {
     enforcement: settings.enforcement || (migrated && migrated.enforcement) || 'checkpoint',
     traits: settings.traits || (migrated && migrated.traits) || [],
     policy: settings.policy || undefined,
-    rules: settings.rules || (migrated && migrated.rules),
     omissions: settings.omissions || (settings.policy ? undefined : migrated && migrated.omissions),
     revision: existing ? existing.revision + 1 : 1,
     history: existing ? existing.history.concat(name) : [name]
@@ -377,7 +355,7 @@ function missingActions(profile, presentTypes) {
 }
 
 module.exports = {
-  REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS,
+  REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_SECTIONS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS,
   normalizeProfile, assertProfileInput, parseDocumentProfile, validateDocumentProfile, renderDocumentProfile,
   migrateProfile, applyToProject, reconfigureProject, profileImpact, missingActions
 };

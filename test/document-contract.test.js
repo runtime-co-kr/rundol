@@ -61,55 +61,35 @@ try {
     name: 'lean',
     revision: 1,
     enforcement: 'checkpoint',
-    policy: { required: ['REQ'], recommended: [], onDemand: catalog.documentTypes.filter((t) => t !== 'REQ' && t !== 'SCR'), disabled: ['SCR'] },
-    rules: Object.fromEntries(catalog.documentTypes.map((type) => [type, { after: [] }])),
-    omissions: { SCR: { absorbedBy: 'REQ', sections: ['사용자 흐름', '화면 상태'] } }
+    policy: { required: ['REQ'], recommended: [], onDemand: catalog.documentTypes.filter((t) => t !== 'REQ' && t !== 'SCR'), disabled: ['SCR'] }
   };
-  const artifact = (id, sections) => ({ id, type: 'REQ', source: sections.map((s) => `## ${s}\n내용\n`).join('') });
-  const evaluation = evaluateDocumentContract(profile, [
-    artifact('REQ-001', ['사용자 흐름', '화면 상태']),
-    artifact('REQ-002', ['사용자 흐름']),
-    artifact('REQ-003', [])
-  ]);
-  const scr = evaluation.absorbed.find((item) => item.type === 'SCR');
-  assert.strictEqual(scr.satisfied, true, '한 문서가 모두 가지면 충족이다');
-  assert.deepStrictEqual(scr.complete, ['REQ-001']);
-  assert.deepStrictEqual(scr.partial, ['REQ-002'], '일부만 가진 문서를 가려낸다');
-  assert.deepStrictEqual(scr.absent, ['REQ-003'], '전혀 없는 문서는 따로 센다');
-  assert.deepStrictEqual(scr.coverage.find((c) => c.id === 'REQ-002').missing, ['화면 상태']);
-  assert.strictEqual(evaluation.violations.length, 0, '일부 보유는 계약 위반이 아니다. 차단하지 않는다');
+  const artifact = (id, type, sections) => ({ id, type, source: (sections || []).map((s) => `## ${s}\n내용\n`).join('') });
 
-  // 대상 문서가 하나도 섹션을 갖지 않으면 그때는 유형 판정 자체가 실패한다
-  const empty = evaluateDocumentContract(profile, [artifact('REQ-001', [])]);
-  const emptyScr = empty.absorbed.find((item) => item.type === 'SCR');
-  assert.strictEqual(emptyScr.satisfied, false);
-  assert.deepStrictEqual(emptyScr.absent, ['REQ-001']);
-  assert.deepStrictEqual(emptyScr.partial, []);
+  const clean = evaluateDocumentContract(profile, [artifact('REQ-001', 'REQ', [])]);
+  assert.deepStrictEqual(clean.violations, [], '사용 안 함인 유형이 없으면 위반이 없다');
+  assert.deepStrictEqual(clean.absorbed, [], '흡수 현황은 더 이상 계산하지 않는다');
 
-  // 구성요소가 여러 문서에 흩어져 있으면, 섹션별로는 다 있어도 충족이 아니다.
-  // 어느 문서도 그 주제를 온전히 설명하지 않는다.
-  const split = evaluateDocumentContract(profile, [artifact('REQ-001', ['사용자 흐름']), artifact('REQ-002', ['화면 상태'])]);
-  const splitScr = split.absorbed.find((item) => item.type === 'SCR');
-  assert.strictEqual(splitScr.satisfied, false, '절반씩 나눠 가지면 충족이 아니다');
-  assert.deepStrictEqual(splitScr.complete, []);
-  assert.deepStrictEqual(splitScr.missingSections, [], '섹션 자체는 어딘가에 다 있다');
-  assert.deepStrictEqual(split.violations.map((v) => v.code), ['omission-sections-split']);
+  const present = evaluateDocumentContract(profile, [artifact('REQ-001', 'REQ', []), artifact('SCR-001', 'SCR', [])]);
+  assert.deepStrictEqual(present.violations.map((v) => v.code), ['disabled-present'], '만들면 그것만 위반이다');
+
+  // 예전에는 이 절들을 REQ가 갖고 있는지 따졌다. 이제 판정에 아무 영향이 없다.
+  const withSections = evaluateDocumentContract(profile, [artifact('REQ-001', 'REQ', ['사용자 흐름', '화면 상태'])]);
+  assert.deepStrictEqual(withSections.violations, [], '절을 갖고 있든 아니든 판정은 같다');
 }
 
-// 일부 보유 진단은 고쳐야 할 문서를 가리켜야 한다. 헌장을 가리키면 열어봐도 할 일이 없다.
+// 흡수 진단은 코드에서 사라져야 한다. 남겨 두면 평가기가 만들지 않는 위반을 기다린다.
 {
   const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
-  const rule = check.slice(check.indexOf("code: 'RDL-PROFILE-010'"), check.indexOf("code: 'RDL-PROFILE-010'") + 320);
-  assert.ok(rule.includes('artifact && artifact.file'), 'RDL-PROFILE-010은 해당 문서 경로를 보고해야 합니다.');
-  assert.ok(check.includes("'omission-sections-split': 'RDL-PROFILE-011'"), '분산 위반에 코드가 필요합니다.');
+  for (const code of ['RDL-PROFILE-006', 'RDL-PROFILE-007', 'RDL-PROFILE-010', 'RDL-PROFILE-011']) {
+    assert.ok(!check.includes(code), `${code}은 흡수와 함께 제거되어야 합니다.`);
+  }
+  assert.ok(check.includes("'disabled-present': 'RDL-PROFILE-004'"), '사용 안 함 위반은 남아야 합니다.');
 }
 
-// 진단은 경고이며 강제 수준과 무관하게 저장·동기화를 막지 않는다
+// 권장 누락은 강제 수준과 무관하게 언제나 경고다. 차단하면 권장이 아니라 필수가 된다.
 {
   const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
-  const rule = check.slice(check.indexOf("code: 'RDL-PROFILE-010'"), check.indexOf("code: 'RDL-PROFILE-010'") + 200);
-  assert.ok(rule.includes("severity: 'warning'"), 'RDL-PROFILE-010은 경고여야 합니다.');
-  assert.ok(!rule.includes('settings.strict'), '강제 수준에 따라 오류로 올리지 않습니다.');
+  assert.ok(check.includes("violation.code === 'recommended-missing' ? 'warning' : severity"), '권장 누락은 언제나 경고여야 합니다.');
 }
 
 // 흡수 처분은 유형마다 따로 세운 결정이다. 계약을 저장할 때마다 보내온 값으로 통째
@@ -123,35 +103,23 @@ try {
     fs.writeFileSync(path.join(contractRoot, 'README.md'), '# test\n');
     git(['add', 'README.md'], contractRoot); git(['commit', '-m', 'initial'], contractRoot);
     run(['init', 'demo', '--name', 'Demo', '--profile', 'lean', '--root', contractRoot, '--json'], contractRoot);
-    const { planDocumentContract, updateDocumentContract, loadDocumentContract } = require('../src/document-contract');
-    const target = 'SCR';
+    const { loadDocumentContract } = require('../src/document-contract');
     const started = loadDocumentContract(contractRoot, 'demo');
-    const policy = { required: started.profile.policy.required.filter((type) => type !== target), recommended: started.profile.policy.recommended.filter((type) => type !== target), onDemand: started.profile.policy.onDemand.filter((type) => type !== target), disabled: started.profile.policy.disabled.concat(started.profile.policy.disabled.includes(target) ? [] : [target]) };
-    updateDocumentContract(contractRoot, 'demo', { baseRevision: started.revision, policy });
-    const base = loadDocumentContract(contractRoot, 'demo');
-    assert.ok(base.profile.omissions[target] && base.profile.omissions[target].sections.length, '비활성 유형에 기본 구성요소가 있어야 이 검사가 성립합니다.');
+    assert.strictEqual(started.profile.omissions, undefined, '계약은 더 이상 흡수 설정을 갖지 않습니다');
+    assert.strictEqual(started.profile.rules, undefined, '계약은 더 이상 작성 순서를 갖지 않습니다');
 
-    // 1) 구성요소를 비워 보내면 지금 값을 지운 것이 아니라 그대로 둔다
-    const emptied = planDocumentContract(contractRoot, 'demo', {
-      omissions: Object.assign({}, base.profile.omissions, { [target]: { absorbedBy: base.profile.omissions[target].absorbedBy, sections: [] } })
-    });
-    assert.deepStrictEqual(emptied.profile.omissions[target].sections, base.profile.omissions[target].sections, '빈 구성요소가 기존 설정을 지웠습니다.');
-
-    // 2) 직접 정한 구성요소는 그대로 살아남는다
-    const custom = planDocumentContract(contractRoot, 'demo', {
-      omissions: Object.assign({}, base.profile.omissions, { [target]: { absorbedBy: base.profile.omissions[target].absorbedBy, sections: ['우리가 정한 항목'] } })
-    });
-    assert.deepStrictEqual(custom.profile.omissions[target].sections, ['우리가 정한 항목']);
-
-    // 3) 해당 없음 처분은 화면이 만들어 보내는 흡수 대상·구성요소에 덮이지 않는다
-    updateDocumentContract(contractRoot, 'demo', { baseRevision: base.revision, omissions: Object.assign({}, base.profile.omissions, { [target]: { notApplicable: true, reason: '이 제품에는 없는 영역' } }) });
-    const after = loadDocumentContract(contractRoot, 'demo');
-    assert.strictEqual(after.profile.omissions[target].notApplicable, true, '해당 없음 처분이 기록되어야 합니다.');
-    const overwritten = planDocumentContract(contractRoot, 'demo', {
-      omissions: Object.assign({}, after.profile.omissions, { [target]: { absorbedBy: 'REQ', sections: [] } })
-    });
-    assert.strictEqual(overwritten.profile.omissions[target].notApplicable, true, '해당 없음 처분이 저장 한 번에 사라졌습니다.');
-    assert.strictEqual(overwritten.profile.omissions[target].reason, '이 제품에는 없는 영역', '처분 사유까지 보존해야 합니다.');
+    // 팀 프리셋이 정한 하부 요소가 계약 카탈로그에 실려 화면과 CLI가 같은 값을 본다.
+    fs.writeFileSync(path.join(contractRoot, 'projects', 'workspace', 'board.json'), JSON.stringify({
+      schemaVersion: 1,
+      profiles: { 'our-team': { label: '우리 팀', policy: { required: ['REQ', 'TST'] }, sections: { REQ: ['배경', '요구사항', '우리 팀 검토 항목'] } } }
+    }, null, 2), 'utf8');
+    const withPreset = loadDocumentContract(contractRoot, 'demo');
+    const ours = withPreset.catalog.profileChoices.find((item) => item.name === 'our-team');
+    assert.deepStrictEqual(ours.sections.REQ, ['배경', '요구사항', '우리 팀 검토 항목'], '프리셋이 정한 하부 요소가 실려야 합니다');
+    // 프리셋이 정하지 않은 유형은 실제 문서에서 뽑은 기본값을 쓴다.
+    const { DEFAULT_SECTIONS } = require('../src/document-profile');
+    assert.deepStrictEqual(ours.sections.ADR, DEFAULT_SECTIONS.ADR, '정하지 않은 유형은 기본 하부 요소를 씁니다');
+    assert.deepStrictEqual(withPreset.catalog.profileChoices.find((item) => item.name === 'lean').sections.REQ, DEFAULT_SECTIONS.REQ);
   } finally {
     fs.rmSync(contractRoot, { recursive: true, force: true });
   }

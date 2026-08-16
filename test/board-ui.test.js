@@ -22,8 +22,10 @@ assert(html.includes('id="theme-dark"'), 'Settings must provide dark theme mode'
 assert(html.includes('id="theme-light"'), 'Settings must provide light theme mode');
 assert(app.includes('id="contract-settings"'), 'Settings must expose the document contract editor');
 assert(app.includes('data-contract-status'), 'Contract editor must expose document policy status');
-assert(app.includes('data-contract-target'), 'Contract editor must expose omission absorption targets');
-assert(app.includes('data-contract-components'), 'Contract editor must expose absorbed component requirements');
+// 흡수를 없앴으므로 흡수 대상 선택도 없다. 하부 요소는 흡수가 아니라 프리셋이 갖는다.
+assert(!app.includes('data-contract-target'), '흡수 대상 선택은 남으면 안 됩니다');
+assert(app.includes('data-contract-components'), 'Contract editor must expose the per-type sections');
+assert(app.includes('data-contract-sections'), '하부 요소는 만드는 유형에 붙어야 합니다');
 assert(!app.includes('data-contract-after'), 'Contract editor must not expose a hard prerequisite graph');
 assert(app.includes('AI 추천 문맥'), 'Contract editor must present non-blocking AI context guidance');
 assert(app.includes('data-contract-section'), 'Contract editor must expose required component values');
@@ -205,11 +207,13 @@ assert(app.includes("document.addEventListener('visibilitychange'"), '폴링은 
 assert(app.includes('function stopPolling'), '폴링은 멈출 수 있어야 합니다');
 assert(!app.includes('setInterval(() => loadSnapshot(true), 3000)'), '고정 3초 폴링은 유지하지 않습니다');
 
-// AI 추천 문맥은 편집 가능하되 생성 게이트가 아니다.
-assert(app.includes('data-context-toggle'), 'AI 추천 문맥은 프로젝트마다 바꿀 수 있어야 합니다');
-assert(app.includes('생성을 막지 않습니다'), 'AI 추천 문맥이 게이트가 아님을 화면에서 밝혀야 합니다');
-assert(app.includes('[data-context-toggle][aria-pressed="true"]'), '추천 문맥은 저장 payload에 실려야 합니다');
-assert(style.includes(".guidance-chip[aria-pressed='true']"), '켜진 추천 문맥은 구별되어야 합니다');
+// AI 추천 문맥은 프로젝트가 들고 다니던 상태에서 상수로 옮겼다. 유형마다 토글 아홉 개씩
+// 아흔 개를 두고 있었는데, 아무것도 막지 않고 아직 만들지 않은 유형에만 나타나며 기본값
+// 그대로 쓰였다. 설정에서 빼고 저장 payload에서도 뺀다. 남겨 두면 저장할 때마다 보존해야
+// 하고, 빠뜨리면 조용히 빈 값이 되는 종류의 상태가 하나 더 늘어난다.
+assert(!app.includes('data-context-toggle'), 'AI 추천 문맥 토글은 설정 화면에서 빠져야 합니다');
+assert(!/rules\[type\]|profile\.rules/u.test(app), '화면이 더 이상 rules를 읽으면 안 됩니다');
+assert(!/name: el\('contract-profile'\)[^;]*rules/u.test(app), '저장 payload에 rules가 실리면 안 됩니다');
 
 // 반려는 완료와 반대 방향의 게이트다. 완료조건이 남아도 닫히지만 사유가 없으면 닫히지 않는다.
 assert(html.includes('id="cancellation-dialog"'), '반려는 사유를 받는 입력이 필요합니다');

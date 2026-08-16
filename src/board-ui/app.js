@@ -895,7 +895,7 @@ el('settings-member').addEventListener('change', (event) => { el('current-member
 el('reset-view-options').addEventListener('click', () => { resetViewOptions(); populateControls(); setView(state.view, state.selected); message('이 프로젝트의 표시 설정을 초기값으로 되돌렸습니다.'); });
 function ensureContractSettings() {
   if (el('contract-settings')) return;
-  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><button id="save-contract" class="primary">계약 저장</button></header><div class="form-grid"><label>프로필<select id="contract-profile"></select><small id="contract-profile-hint" class="control-hint"></small></label><label>강제 수준<select id="contract-enforcement"></select><small id="contract-enforcement-hint" class="control-hint"></small></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
+  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><div class="page-actions"><button id="save-preset" hidden>프리셋으로 저장</button><button id="save-contract" class="primary">계약 저장</button></div></header><div class="form-grid"><label>프로필<select id="contract-profile"></select><small id="contract-profile-hint" class="control-hint"></small></label><label>강제 수준<select id="contract-enforcement"></select><small id="contract-enforcement-hint" class="control-hint"></small></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
 function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
 function setSuggestionState(row, value, selected) {
@@ -913,12 +913,60 @@ function addContractComponent(row, value) {
 function syncContractRow(row) {
   const status = row.querySelector('[data-contract-status]');
   const disabled = status.value === 'disabled';
-  const omission = row.querySelector('[data-contract-omission]');
-  omission.hidden = !disabled;
-  for (const control of omission.querySelectorAll('select,input')) control.disabled = !disabled;
+  // 만들지 않는 유형에는 하부 요소를 물을 이유가 없다.
+  const sections = row.querySelector('[data-contract-sections]');
+  if (sections) { sections.hidden = disabled; for (const control of sections.querySelectorAll('input,button')) control.disabled = disabled; }
   // 상태를 바꾸면 그 상태가 무슨 뜻인지도 따라가야 한다. 고정된 설명은 곧 거짓말이 된다.
   const hint = status.closest('label').querySelector('.control-hint');
   if (hint) hint.textContent = presentationHint('policyStates', status.value);
+}
+// 프리셋을 고르면 그 프리셋이 무엇인지 아래에서 바로 보여야 한다. 지금까지는 선택만
+// 바뀌고 정책 상태는 그대로라, 무엇이 달라지는지 저장해 봐야 알 수 있었다. 화면에서
+// 미리 칠하고 실제 반영은 계약 저장에서 한다.
+function profileChoice(name) { return (state.profileChoices || []).find((item) => item.name === name) || null; }
+// 지금 고른 프리셋이 정한 하부 요소. 프로필을 바꾸면 이 목록도 함께 따라온다.
+function currentPresetSections() {
+  const chosen = profileChoice(el('contract-profile') && el('contract-profile').value);
+  return (chosen && chosen.sections) || {};
+}
+function currentPolicyFromRows() {
+  const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
+  for (const row of document.querySelectorAll('[data-contract-type]')) {
+    const status = row.querySelector('[data-contract-status]').value;
+    if (policy[status]) policy[status].push(row.dataset.contractType);
+  }
+  return policy;
+}
+function samePolicy(left, right) {
+  return ['required', 'recommended', 'onDemand', 'disabled']
+    .every((state_) => JSON.stringify((left[state_] || []).slice().sort()) === JSON.stringify((right[state_] || []).slice().sort()));
+}
+function applyProfilePreset(name) {
+  const choice = profileChoice(name);
+  if (!choice || !choice.policy) return false;
+  for (const row of document.querySelectorAll('[data-contract-type]')) {
+    const type = row.dataset.contractType;
+    const next = ['required', 'recommended', 'onDemand', 'disabled'].find((key) => (choice.policy[key] || []).includes(type)) || 'onDemand';
+    row.querySelector('[data-contract-status]').value = next;
+    syncContractRow(row);
+  }
+  return true;
+}
+// 행을 직접 손대면 더 이상 어느 프리셋과도 같지 않다. 그때는 프리셋 이름을 그대로 두어
+// 사용자가 고르지 않은 구성이 그 이름으로 저장되게 두지 않고, 이름을 붙일 길을 연다.
+function refreshProfileState() {
+  const selected = el('contract-profile').value;
+  const choice = profileChoice(selected);
+  const rows = currentPolicyFromRows();
+  const matches = Boolean(choice && choice.policy && samePolicy(choice.policy, rows));
+  const hint = el('contract-profile-hint');
+  const save = el('save-preset');
+  if (!document.querySelector('[data-contract-type]')) return;
+  hint.textContent = matches
+    ? (choice && choice.description) || presentationHint('profiles', selected)
+    : `${(choice && choice.label) || selected}와 달라진 구성입니다. 이대로 계약을 저장하면 이 프로젝트에만 적용되고, 다시 쓰려면 프리셋으로 이름을 붙이세요.`;
+  hint.classList.toggle('diverged', !matches);
+  if (save) save.hidden = matches || !choice;
 }
 function renderContractSettings() {
   ensureContractSettings();
@@ -932,34 +980,27 @@ function renderContractSettings() {
   // 고를 수 있는 프로필은 내장 다섯 개가 아니라 board.json 상속이 정한 목록이다.
   // 팀이 만든 프리셋은 라벨과 설명을 함께 들고 온다.
   const choices = catalog.profileChoices || catalog.profiles.map((name) => ({ name, label: presentationLabel('profiles', name, name), description: '' }));
+  state.profileChoices = choices;
   el('contract-profile').replaceChildren(...choices.map((item) => new Option(item.label || presentationLabel('profiles', item.name, item.name), item.name)));
   el('contract-enforcement').replaceChildren(...catalog.enforcements.map((name) => new Option(enforcementLabel(name), name)));
   el('contract-profile').value = profile.name;
   el('contract-enforcement').value = profile.enforcement;
-  const chosen = choices.find((item) => item.name === profile.name);
-  el('contract-profile-hint').textContent = (chosen && chosen.description) || presentationHint('profiles', profile.name);
   el('contract-enforcement-hint').textContent = presentationHint('enforcementLevels', profile.enforcement);
   el('contract-summary').textContent = `${contract.status} · revision ${profile.revision} · 위반 ${contract.evaluation.violations.length}건`;
   const trace = contract.traceability && contract.traceability.summary;
   el('implementation-contract-summary').textContent = `${catalog.implementation.version} · 기능별 독립 명세(묶음 금지) · 계산된 추적성 ${trace ? `${trace.ready}/${trace.functions} 준비` : '0/0 준비'} · 별도 인덱스 없음`;
   el('contract-rules').innerHTML = catalog.documentTypes.map((type) => {
     const status = Object.keys(profile.policy).find((key) => profile.policy[key].includes(type));
-    const configured = profile.omissions[type];
-    // 해당 없음은 흡수 대상도 구성요소도 갖지 않는 별개의 처분이다. 기본값으로 채워
-    // 보여주면 저장할 때 그 결정이 지워지므로, 처분 자체를 화면에 남긴다.
-    const notApplicable = Boolean(configured && configured.notApplicable);
-    const omission = notApplicable ? catalog.defaultOmissions[type] : (configured || catalog.defaultOmissions[type]);
-    const selectedComponents = notApplicable ? [] : (omission.sections || []);
-    const targetOptions = catalog.documentTypes.filter((candidate) => candidate !== type).map((candidate) => `<option value="${candidate}" ${candidate === omission.absorbedBy ? 'selected' : ''}>${candidate}</option>`).join('');
-    // AI 추천 문맥은 보기만 되고 바꿀 수 없어, 프로젝트마다 다른 작성 순서를 담지 못했다.
-    // 이 타입을 쓸 때 함께 읽어야 할 타입을 켜고 끈다. 생성을 막는 게이트가 아니라 작성 안내다.
-    const recommendedContext = profile.rules[type].after;
-    const context = catalog.documentTypes.filter((candidate) => candidate !== type)
-      .map((candidate) => `<button type="button" class="guidance-chip" data-context-toggle="${candidate}" aria-pressed="${recommendedContext.includes(candidate)}">${candidate}</button>`).join('');
-    const suggestions = catalog.sections[type].map((value) => `<button type="button" class="suggestion-chip" data-component-suggestion="${escapeHtml(value)}" ${selectedComponents.includes(value) ? 'disabled' : ''}>+ ${escapeHtml(value)}</button>`).join('');
-    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${escapeHtml(policyStateLabel(value))}</option>`).join('')}</select><small class="control-hint">${escapeHtml(presentationHint('policyStates', status))}</small></label></header><div class="contract-guidance"><span>AI 추천 문맥</span><div class="guidance-chips">${context}</div><small>${type}를 작성할 때 함께 읽을 타입입니다. 생성을 막지 않습니다.</small></div><div class="contract-omission" data-contract-omission ${status === 'disabled' ? '' : 'hidden'}${notApplicable ? ' data-not-applicable' : ''}>${notApplicable ? `<p class="control-hint">이 유형은 <strong>해당 없음</strong>으로 처분되어 있습니다. 사유: ${escapeHtml(configured.reason || '기록 없음')}. 흡수 대상을 지정하려면 <code>rdl contract set</code>으로 처분을 바꾸세요.</p>` : ''}<label>흡수 대상<select data-contract-target aria-label="${type} 흡수 대상">${targetOptions}</select></label><section class="contract-components" aria-label="${type} 필수 구성요소"><strong>필수 구성요소</strong><div class="component-list" data-contract-components>${selectedComponents.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 구성요소 직접 추가" placeholder="구성요소 직접 추가"><button type="button" data-component-add>추가</button></div><div class="component-suggestions"><small>템플릿 제안</small><div>${suggestions}</div></div></section><p class="control-hint">템플릿 제안을 사용하거나 프로젝트에 필요한 항목을 자유롭게 추가·삭제할 수 있습니다.</p></div></article>`;
+    // 하부 요소는 프리셋이 갖는다. 흡수 시절에는 "사용 안 함"인 유형에만 붙어 있었는데,
+    // 정작 필요한 곳은 실제로 만드는 유형이다. 이 유형의 문서를 쓸 때 무엇을 채워야
+    // 하는지가 프리셋의 일부이고, 프로필을 바꾸면 이 목록도 함께 따라온다.
+    const sections = (currentPresetSections()[type] || []).slice();
+    const suggestions = catalog.sections[type].filter((value) => !sections.includes(value))
+      .map((value) => `<button type="button" class="suggestion-chip" data-component-suggestion="${escapeHtml(value)}">+ ${escapeHtml(value)}</button>`).join('');
+    return `<article class="contract-row" data-contract-type="${type}"><header><strong>${type}</strong><label>정책 상태<select data-contract-status aria-label="${type} 정책 상태">${catalog.policyStates.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${escapeHtml(policyStateLabel(value))}</option>`).join('')}</select><small class="control-hint">${escapeHtml(presentationHint('policyStates', status))}</small></label></header><section class="contract-components" data-contract-sections aria-label="${type} 하부 요소"${status === 'disabled' ? ' hidden' : ''}><strong>하부 요소</strong><div class="component-list" data-contract-components>${sections.map(contractComponent).join('')}</div><div class="component-add"><input data-component-input aria-label="${type} 하부 요소 직접 추가" placeholder="하부 요소 직접 추가"><button type="button" data-component-add>추가</button></div>${suggestions ? `<div class="component-suggestions"><small>이 프로젝트 문서에서 발견된 것</small><div>${suggestions}</div></div>` : ''}</section></article>`;
   }).join('');
   for (const row of document.querySelectorAll('[data-contract-type]')) syncContractRow(row);
+  refreshProfileState();
 }
 function renderPresentationSettings() {
   let section = el('presentation-settings');
@@ -1065,19 +1106,17 @@ document.addEventListener('click', async (event) => {
 });
 function contractInput() {
   const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
-  const rules = {}; const omissions = {};
   for (const row of document.querySelectorAll('[data-contract-type]')) {
-    const type = row.dataset.contractType; const status = row.querySelector('[data-contract-status]').value;
-    policy[status].push(type); rules[type] = { after: Array.from(row.querySelectorAll('[data-context-toggle][aria-pressed="true"]')).map((item) => item.dataset.contextToggle) };
-    // 해당 없음 처분은 이 화면이 편집하지 않는다. 흡수 대상과 구성요소를 짜서 보내면
-    // 서버가 그것을 새 처분으로 받아 사유째 지워버린다. 아예 보내지 않아야 보존된다.
-    if (status === 'disabled' && !row.querySelector('[data-contract-omission][data-not-applicable]')) omissions[type] = { absorbedBy: row.querySelector('[data-contract-target]').value, sections: Array.from(row.querySelectorAll('[data-contract-section]')).map((item) => item.dataset.contractSection) };
+    policy[row.querySelector('[data-contract-status]').value].push(row.dataset.contractType);
   }
-  return { baseRevision: state.snapshot.contract.revision, name: el('contract-profile').value, enforcement: el('contract-enforcement').value, policy, rules, omissions };
+  return { baseRevision: state.snapshot.contract.revision, name: el('contract-profile').value, enforcement: el('contract-enforcement').value, policy };
 }
 document.addEventListener('change', (event) => {
   const status = event.target.closest('[data-contract-status]');
-  if (status) syncContractRow(status.closest('[data-contract-type]'));
+  if (status) { syncContractRow(status.closest('[data-contract-type]')); refreshProfileState(); }
+  // 프리셋을 고르면 그 구성을 아래에 즉시 칠한다. 저장은 계약 저장 버튼이 한다.
+  if (event.target.id === 'contract-profile') { applyProfilePreset(event.target.value); refreshProfileState(); }
+  if (event.target.id === 'contract-enforcement') el('contract-enforcement-hint').textContent = presentationHint('enforcementLevels', event.target.value);
 });
 document.addEventListener('click', async (event) => {
   const row = event.target.closest('[data-contract-type]');
@@ -1087,8 +1126,6 @@ document.addEventListener('click', async (event) => {
   if (row && remove) { const component = remove.closest('[data-contract-section]'); const value = component.dataset.contractSection; component.remove(); setSuggestionState(row, value, false); return; }
   const add = event.target.closest('[data-component-add]');
   if (row && add) { const input = row.querySelector('[data-component-input]'); if (addContractComponent(row, input.value)) input.value = ''; return; }
-  const context = event.target.closest('[data-context-toggle]');
-  if (row && context) { context.setAttribute('aria-pressed', context.getAttribute('aria-pressed') !== 'true'); return; }
   if (!event.target.closest('#save-contract')) return;
   try { await api(projectPath('/contract'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(contractInput()) }); await loadSnapshot(true); message('문서 계획 계약을 저장했습니다.'); }
   catch (error) { message(error.message, true); }

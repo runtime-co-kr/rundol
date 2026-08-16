@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { REGULAR_TYPES, DEFAULT_POLICIES } = require('./document-profile');
+const { REGULAR_TYPES, DEFAULT_POLICIES, DEFAULT_SECTIONS } = require('./document-profile');
 
 const DOCUMENT_TYPE_KEYS = ['charter', 'prd', 'requirement', 'architecture', 'screen', 'model', 'api', 'decision', 'test', 'runbook', 'glossary', 'clipping'];
 const DOCUMENT_STATE_KEYS = ['draft', 'proposed', 'active', 'review', 'approved', 'deprecated', 'archived', 'unread'];
@@ -53,8 +53,8 @@ const DEFAULT_PRESENTATION = {
   policyStates: {
     required: { label: '필수', description: '이 유형의 문서가 반드시 있어야 한다', order: 0 },
     recommended: { label: '권장', description: '없어도 막지 않지만 있는 편이 좋다', order: 10 },
-    onDemand: { label: '필요할 때', description: '해당하는 상황에만 만든다', order: 20 },
-    disabled: { label: '사용 안 함', description: '만들지 않고 내용을 다른 문서에 흡수한다', order: 30 }
+    onDemand: { label: '선택', description: '만들어도 되고 만들지 않아도 된다. 어느 쪽이든 알리지 않는다', order: 20 },
+    disabled: { label: '사용 안 함', description: '이 프로젝트에서는 만들지 않는다. 생성이 차단된다', order: 30 }
   },
   enforcementLevels: {
     advisory: { label: '권고', description: '위반을 알리되 저장과 동기화를 막지 않는다', order: 0 },
@@ -91,7 +91,18 @@ function clone(value) {
 // 내장에 없는 이름은 정책을 반드시 함께 적게 한다. 정책 없는 커스텀 프로필은 조용히
 // service로 되돌아가, 사용자가 만든 적 없는 계약이 저장된다.
 const PROFILE_KEY_PATTERN = /^[a-z][a-z0-9-]*$/u;
-const PROFILE_ENTRY_FIELDS = ENTRY_FIELDS.concat(['policy']);
+const PROFILE_ENTRY_FIELDS = ENTRY_FIELDS.concat(['policy', 'sections']);
+
+// 하부 요소는 유형마다 그 문서가 채워야 하는 절이다. 흡수 시절에는 "사용 안 함"인
+// 유형에만 붙어 있었는데, 정작 필요한 곳은 실제로 만드는 유형이다.
+function validateProfileSections(key, sections, file) {
+  if (!sections || typeof sections !== 'object' || Array.isArray(sections)) throw new Error(`${file}: profiles.${key}.sections는 객체여야 합니다.`);
+  for (const [type, list] of Object.entries(sections)) {
+    if (!REGULAR_TYPES.includes(type)) throw new Error(`${file}: 알 수 없는 문서 유형입니다: profiles.${key}.sections.${type}`);
+    if (!Array.isArray(list)) throw new Error(`${file}: profiles.${key}.sections.${type}는 배열이어야 합니다.`);
+    for (const item of list) if (typeof item !== 'string' || !item.trim()) throw new Error(`${file}: profiles.${key}.sections.${type}에 빈 값이 있습니다.`);
+  }
+}
 
 function validateProfilePolicy(key, policy, file) {
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)) throw new Error(`${file}: profiles.${key}.policy는 객체여야 합니다.`);
@@ -116,6 +127,7 @@ function validateEntry(group, key, entry, file) {
     if (!PROFILE_KEY_PATTERN.test(key)) throw new Error(`${file}: 프로필 이름은 영문 소문자와 숫자, 하이픈만 쓸 수 있습니다: ${key}`);
     if (entry.policy !== undefined) validateProfilePolicy(key, entry.policy, file);
     else if (!PROFILE_KEYS.includes(key)) throw new Error(`${file}: 내장에 없는 프로필 ${key}에는 policy가 필요합니다.`);
+    if (entry.sections !== undefined) validateProfileSections(key, entry.sections, file);
   }
   if (entry.label !== undefined && (typeof entry.label !== 'string' || !entry.label.trim())) throw new Error(`${file}: ${group}.${key}.label은 비어 있지 않은 문자열이어야 합니다.`);
   if (entry.description !== undefined && (typeof entry.description !== 'string' || !entry.description.trim())) throw new Error(`${file}: ${group}.${key}.description은 비어 있지 않은 문자열이어야 합니다.`);
@@ -163,6 +175,9 @@ function loadBoardPresentation(start, projectKey) {
     workspace: { file: workspaceFile, configured: Boolean(workspace) },
     project: { file: projectFile, configured: Boolean(projectOverride) }
   };
+  // 합쳐진 값만으로는 편집할 수 없다. 어떤 항목이 이 범위에서 덮인 것이고 어떤 것이
+  // 위에서 내려온 것인지 구분해야, 지운다는 뜻과 같은 값으로 덮는다는 뜻이 갈린다.
+  effective.sources = { builtin: clone(DEFAULT_PRESENTATION), workspace, project: projectOverride };
   return effective;
 }
 
@@ -186,6 +201,17 @@ function resolveProfilePresets(presentation) {
   return presets;
 }
 
+// 프리셋이 하부 요소를 따로 정하지 않으면 실제 문서에서 뽑은 기본값을 쓴다.
+function resolveProfileSections(presentation, name) {
+  const entry = (presentation && presentation.profiles && presentation.profiles[name]) || {};
+  const sections = {};
+  for (const type of REGULAR_TYPES) {
+    const supplied = entry.sections && entry.sections[type];
+    sections[type] = Array.isArray(supplied) ? supplied.slice() : (DEFAULT_SECTIONS[type] || []).slice();
+  }
+  return sections;
+}
+
 function profileChoices(presentation) {
   const presets = resolveProfilePresets(presentation);
   const entries = (presentation && presentation.profiles) || {};
@@ -198,7 +224,8 @@ function profileChoices(presentation) {
     label: (entries[name] && entries[name].label) || name,
     description: (entries[name] && entries[name].description) || '',
     builtin: PROFILE_KEYS.includes(name),
-    policy: presets[name]
+    policy: presets[name],
+    sections: resolveProfileSections(presentation, name)
   }));
 }
 

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const {
-  REGULAR_TYPES, POLICY_STATES, PROFILE_NAMES, ENFORCEMENTS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS, normalizeProfile, migrateProfile,
+  REGULAR_TYPES, POLICY_STATES, PROFILE_NAMES, ENFORCEMENTS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS, DEFAULT_RULES, normalizeProfile, migrateProfile,
   parseDocumentProfile, validateDocumentProfile, applyToProject, profileImpact
 } = require('./document-profile');
 const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
@@ -97,54 +97,18 @@ function evaluateDocumentContract(profileInput, artifactInput) {
   for (const type of profile.policy.recommended) if (!present.has(type)) violations.push({ code: 'recommended-missing', type, message: `권장 문서가 없습니다: ${type}` });
   for (const type of profile.policy.disabled) if (present.has(type)) violations.push({ code: 'disabled-present', type, message: `비활성 문서가 존재합니다: ${type}` });
 
-  const omissionStatus = {};
-  for (const type of profile.policy.disabled) {
-    const omission = profile.omissions[type];
-    if (omission.notApplicable) {
-      omissionStatus[type] = { type, disposition: 'notApplicable', reason: omission.reason, satisfied: true };
-      continue;
-    }
-    const targets = byType.get(omission.absorbedBy) || [];
-    const missingSections = omission.sections.filter((section) => !targets.some((target) => hasSection(target.source, section)));
-    const coverage = targets.map((target) => {
-      const has = omission.sections.filter((section) => hasSection(target.source, section));
-      return { id: target.id, has, missing: omission.sections.filter((section) => !has.includes(section)) };
-    });
-    // 일부만 가진 문서는 그 주제를 다루기 시작해 놓고 나머지를 빠뜨린 것이라 미완성이라
-    // 단정할 수 있다. 전혀 없는 문서는 그 주제를 안 다룰 수 있어 판정하지 않는다.
-    const complete = coverage.filter((item) => !item.missing.length).map((item) => item.id);
-    const partial = coverage.filter((item) => item.has.length && item.missing.length).map((item) => item.id);
-    // 충족은 한 문서가 구성요소를 온전히 담을 때만 성립한다. 섹션별로 아무 문서나 있으면
-    // 통과시키면, 둘이 절반씩 나눠 가져 어느 쪽도 그 주제를 온전히 설명하지 않는데도
-    // 흡수됐다고 판정된다. 흡수는 내용을 옮기는 것이지 조각내는 것이 아니다.
-    const satisfied = complete.length > 0;
-    omissionStatus[type] = {
-      type,
-      disposition: 'absorbed',
-      absorbedBy: omission.absorbedBy,
-      sections: omission.sections,
-      missingSections,
-      satisfied,
-      coverage,
-      complete,
-      partial,
-      absent: coverage.filter((item) => !item.has.length).map((item) => item.id)
-    };
-    if (!targets.length) violations.push({ code: 'omission-target-missing', type, target: omission.absorbedBy, message: `${type} 생략 내용을 흡수할 ${omission.absorbedBy} 문서가 없습니다.` });
-    else if (missingSections.length) for (const section of missingSections) violations.push({ code: 'omission-section-missing', type, target: omission.absorbedBy, section, message: `${type} 생략 내용의 필수 구성요소가 ${omission.absorbedBy}에 없습니다: ${section}` });
-    else if (!satisfied) violations.push({ code: 'omission-sections-split', type, target: omission.absorbedBy, message: `${type} 생략 내용의 필수 구성요소가 여러 ${omission.absorbedBy} 문서에 흩어져 있습니다. 한 문서가 모두 담아야 합니다: ${partial.join(', ')}` });
-  }
-
-  function dependencySatisfied(type) {
-    if (present.has(type)) return true;
-    if (profile.policy.disabled.includes(type)) return Boolean(omissionStatus[type] && omissionStatus[type].satisfied);
-    return false;
-  }
+  // 사용 안 함은 이제 "만들지 않는다" 하나만 뜻한다. 흡수 판정은 제목 문자열만 보고
+  // 내용을 보지 않아 빈 제목으로도 통과했고, 나중에 그 유형을 켜면 흡수해 둔 내용을
+  // 옮기라고 알려주는 경로도 없었다. 보증이 없는 규칙에 유형마다 설정을 달고 있었다.
+  function dependencySatisfied(type) { return present.has(type); }
   const ready = [];
   for (const type of REGULAR_TYPES) {
     const state = policyState(profile, type);
     if (state === 'disabled' || present.has(type)) continue;
-    const recommendedContext = profile.rules[type].after.slice();
+    // 작성 순서 지식은 프로젝트마다 다르지 않아 상수로 둔다. 예전에는 프로젝트가 이 값을
+    // 들고 다녔는데, 아무것도 막지 않으면서 유형마다 설정 항목을 하나씩 만들고 저장할
+    // 때마다 보존해야 했다. 보존을 빠뜨리면 조용히 빈 값이 되는 종류의 상태였다.
+    const recommendedContext = (DEFAULT_RULES[type] || []).slice();
     const missingRecommendedContext = recommendedContext.filter((dependency) => !dependencySatisfied(dependency));
     ready.push({ type, state, recommendedContext, missingRecommendedContext, after: recommendedContext, waitingFor: [] });
   }
@@ -156,7 +120,7 @@ function evaluateDocumentContract(profileInput, artifactInput) {
     present: Array.from(present).sort((left, right) => REGULAR_TYPES.indexOf(left) - REGULAR_TYPES.indexOf(right)),
     ready,
     blocked: [],
-    absorbed: Object.values(omissionStatus),
+    absorbed: [],
     violations
   };
 }
@@ -185,40 +149,20 @@ function assertDocumentCreationAllowed(start, projectKey, type) {
   if (contract.status === 'legacy-unconfigured') return contract;
   if (contract.status === 'invalid' || contract.status === 'unsupported-schema') throw new Error(`문서 계약이 ${contract.status} 상태입니다. rdl contract check로 수정하세요.`);
   const upper = String(type || '').toUpperCase();
-  if (contract.profile.policy.disabled.includes(upper)) throw new Error(`문서 계약에서 ${upper} 유형은 비활성입니다. 생략 규칙의 대상 문서에 내용을 포함하세요.`);
+  if (contract.profile.policy.disabled.includes(upper)) throw new Error(`문서 계약에서 ${upper} 유형은 사용 안 함입니다. 이 유형이 필요하면 계약에서 상태를 먼저 바꾸세요.`);
   return contract;
 }
 
 // 흡수 처분은 유형마다 따로 세운 결정이다. 보내온 값이 그 결정을 담고 있지 않으면
 // 지금 것을 그대로 둔다. 통째로 갈아끼우면, 계약 화면이 표현하지 못하는 처분(해당 없음과
 // 그 사유)이 저장 한 번에 카탈로그 기본값으로 바뀌어 사라진다.
-function mergeOmissions(before, supplied) {
-  if (!before) return supplied;
-  if (!supplied) return before;
-  const result = Object.assign({}, supplied);
-  for (const [type, previous] of Object.entries(before)) {
-    const incoming = supplied[type];
-    if (!incoming) { result[type] = previous; continue; }
-    if (incoming.notApplicable === true) continue;
-    // 해당 없음이던 유형을 구성요소 없이 되돌려 보내면 되돌릴 뜻이 없었다고 본다.
-    if (previous.notApplicable === true && !(Array.isArray(incoming.sections) && incoming.sections.length)) { result[type] = previous; continue; }
-    if (Array.isArray(incoming.sections) && incoming.sections.length) continue;
-    result[type] = Object.assign({}, incoming, { sections: previous.sections });
-  }
-  return result;
-}
-
 function planDocumentContract(start, projectKey, input) {
   const current = loadDocumentContract(start, projectKey);
   const before = current.profile;
   const settings = input || {};
   const merged = Object.assign({}, before || {}, settings);
-  if (Object.prototype.hasOwnProperty.call(settings, 'omissions')) {
-    merged.omissions = mergeOmissions(before && before.omissions, settings.omissions);
-  }
   if (before && settings.name && settings.name !== before.name && !Object.prototype.hasOwnProperty.call(settings, 'policy')) {
     delete merged.policy;
-    delete merged.omissions;
   }
   const presets = resolveProfilePresets(loadBoardPresentation(workspaceLayout(start).root, projectKey));
   if (settings.name && !Object.prototype.hasOwnProperty.call(presets, settings.name)) {

@@ -22,31 +22,37 @@ const canonicalB = profile.normalizeProfile({ name: 'lean', traits: ['ui', 'oper
 assert.deepStrictEqual(canonicalA, canonicalB);
 assert.strictEqual(canonicalA.schemaVersion, 2);
 assert.strictEqual(canonicalA.enforcement, 'checkpoint');
-assert.deepStrictEqual(canonicalA.rules.REQ.after, ['PRD']);
+// 작성 순서는 프로젝트가 들고 다니던 상태에서 상수로 옮겼다. 프로필에는 남지 않는다.
+assert.strictEqual(canonicalA.rules, undefined, '프로필은 더 이상 rules를 갖지 않습니다');
+assert.deepStrictEqual(profile.DEFAULT_RULES.REQ, ['PRD'], '작성 순서 지식 자체는 상수로 남습니다');
 assert.throws(() => profile.renderDocumentProfile({ name: 'service', policy: { required: ['PRD', 'PRD'], recommended: [], onDemand: [], disabled: [] } }), /중복/u);
 assert.throws(() => profile.renderDocumentProfile({ name: 'unknown' }), /지원하지 않는/u);
 
-const withOmission = profile.normalizeProfile({
+// 흡수는 없앴다. 사용 안 함은 "만들지 않는다" 하나만 뜻하고, 프로필은 그 유형에 대해
+// 아무 부가 설정도 들고 다니지 않는다. 제목만 보고 내용을 보지 않던 판정이 사라졌다.
+const withDisabled = profile.normalizeProfile({
   name: 'lean',
   policy: { required: ['PRD', 'REQ'], recommended: [], onDemand: ['ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] }
 });
-assert.strictEqual(withOmission.omissions.SCR.absorbedBy, 'REQ');
-assert.deepStrictEqual(withOmission.omissions.SCR.sections, ['사용자 흐름', '전이', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것']);
-for (const type of profile.REGULAR_TYPES) assert(profile.DOCUMENT_SECTION_CATALOG[type].length > 0, `${type} must define document sections`);
-const rendered = profile.renderDocumentProfile(withOmission);
+assert.strictEqual(withDisabled.omissions, undefined, '프로필은 더 이상 흡수 설정을 갖지 않습니다');
+for (const type of profile.REGULAR_TYPES) assert(profile.DEFAULT_SECTIONS[type].length > 0, `${type}의 하부 요소가 정의되어야 합니다`);
+const rendered = profile.renderDocumentProfile(withDisabled);
+assert(!rendered.includes('omissions:'), '렌더 결과에 흡수 블록이 남으면 안 됩니다');
+assert(!rendered.includes('rules:'), '렌더 결과에 작성 순서 블록이 남으면 안 됩니다');
 assert.strictEqual(profile.validateDocumentProfile(`---\n${rendered}\n---\n`).status, 'valid');
-assert.strictEqual(profile.validateDocumentProfile(`---\n${rendered.replace('      after: [PRD]', '      after: [ARC]').replace('      after: [REQ]', '      after: [REQ, PRD]')}\n---\n`).status, 'valid', 'Recommended context may be cyclic because it never blocks authoring');
-assert(profile.validateDocumentProfile(`---\n${rendered.replace(/    SCR:\n      absorbedBy:[\s\S]*?(?=\n---|$)/u, '')}\n---\n`).errors.some((message) => message.includes('생략 처리')));
 
-const completeReq = { id: 'REQ-001', type: 'REQ', source: '# 요구사항\n## 사용자 흐름\n## 전이\n## 바인딩\n## 상태\n## 접근성과 반응형\n## 디자인에 없는 것\n' };
-const evaluation = evaluateDocumentContract(withOmission, [{ id: 'PRD-001', type: 'PRD', source: '# PRD' }, completeReq]);
+// 사용 안 함인 유형의 문서가 있으면 그것만 위반이다. 흡수 여부는 더 이상 묻지 않는다.
+const evaluation = evaluateDocumentContract(withDisabled, [{ id: 'PRD-001', type: 'PRD', source: '# PRD' }, { id: 'REQ-001', type: 'REQ', source: '# 요구사항' }]);
 assert.strictEqual(evaluation.violations.filter((item) => item.code !== 'recommended-missing').length, 0);
-assert.strictEqual(evaluation.absorbed[0].satisfied, true);
+assert.deepStrictEqual(evaluation.absorbed, []);
+const withScr = evaluateDocumentContract(withDisabled, [{ id: 'PRD-001', type: 'PRD', source: '# PRD' }, { id: 'REQ-001', type: 'REQ', source: '# 요구사항' }, { id: 'SCR-001', type: 'SCR', source: '# 화면' }]);
+assert(withScr.violations.some((item) => item.code === 'disabled-present'), '사용 안 함인 유형을 만들면 위반입니다');
 assert(evaluation.ready.some((item) => item.type === 'ARC'));
 assert.strictEqual(evaluation.blocked.length, 0);
 assert(evaluation.ready.find((item) => item.type === 'ADR').missingRecommendedContext.includes('ARC'));
 assert(!evaluation.violations.some((item) => item.code === 'after-missing'));
-assert.deepStrictEqual(evaluation, evaluateDocumentContract(withOmission, [completeReq, { id: 'PRD-001', type: 'PRD', source: '# PRD' }]));
+// 판정은 문서 순서에 좌우되지 않는다.
+assert.deepStrictEqual(evaluation, evaluateDocumentContract(withDisabled, [{ id: 'REQ-001', type: 'REQ', source: '# 요구사항' }, { id: 'PRD-001', type: 'PRD', source: '# PRD' }]));
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-profile-'));
 try {
