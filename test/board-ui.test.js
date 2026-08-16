@@ -277,7 +277,9 @@ assert(style.includes('.search input'), '.search input 규칙이 있어야 합�
 
 // 태스크 peek은 속성 패널 폭으로는 완료조건이 읽히지 않는다.
 assert(app.includes("classList.add('peek-open')"), '태스크를 열면 읽을 폭을 확보해야 합니다');
-assert(app.includes("if (view !== 'tasks' && view !== 'people') document.body.classList.remove('peek-open')"), '목록이 없는 화면으로 가면 원래 폭으로 되돌려야 합니다');
+// 예전에는 tasks와 people을 한꺼번에 허용해, 태스크 peek을 연 채 People로 가면
+// 패널이 그대로 남았다. 남기는 조건은 아래 PEEK_VIEWS 단정이 맡는다.
+assert(!app.includes("view !== 'tasks' && view !== 'people'"), '화면 종류를 묶어서 허용하면 서로의 패널이 남습니다');
 // 사람도 태스크와 같은 방식으로 옆에서 연다. 화면을 갈아치우면 명단 맥락을 잃는다.
 assert(app.includes('function personDetailHtml'), '사람은 옆에서 열려야 합니다');
 assert(app.includes('data-person='), '명단 항목이 선택 가능해야 합니다');
@@ -308,8 +310,8 @@ assert(html.includes('id="task-acceptance"'), '생성 다이얼로그가 완료�
 
 // 편집 중 스냅샷을 갈아끼우면 draft가 최신 revision을 달고 저장되어 남의 변경을 덮어쓴다.
 const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function loadSnapshot') + 900);
-assert(load.includes('if (isEditing()) return;'), '편집 중에는 스냅샷을 교체하지 않아야 합니다');
-assert(load.indexOf('if (isEditing()) return;') < load.indexOf('state.snapshot = next'), '가드가 교체보다 먼저여야 합니다');
+assert(load.includes('if (isDocumentEditing()) return;'), '편집 중에는 스냅샷을 교체하지 않아야 합니다');
+assert(load.indexOf('if (isDocumentEditing()) return;') < load.indexOf('state.snapshot = next'), '가드가 교체보다 먼저여야 합니다');
 
 // ✓와 ○는 같은 자리에 같은 크기로 그려져 멀리서 구분되지 않았고, 20px 글리프만
 // 누를 수 있어 계속 빗나갔다. 행 전체를 버튼으로 두고 상태는 네모칸으로 그린다.
@@ -361,9 +363,33 @@ assert(save.indexOf("el('document-editor').hidden = true") < save.indexOf('loadS
 assert(app.includes('function remainingChanges'), '전송 중 쌓인 변경을 따로 갈무리해야 합니다');
 assert(app.includes('pending.sending'), '같은 태스크를 두 번 동시에 보내지 않아야 합니다');
 {
-  const flush = app.slice(app.indexOf('async function flushTaskUpdate'), app.indexOf('function remainingChanges'));
-  assert(flush.indexOf('await loadSnapshot(true)') < flush.indexOf('queueTaskUpdate(task, later)'), '남은 변경은 최신 revision을 받은 뒤에 보내야 합니다');
+  const flush = app.slice(app.indexOf('async function flushTaskUpdate'), app.indexOf('function takePendingTask'));
+  assert(flush.indexOf('await loadSnapshot(true, { settlingTask: true })') < flush.indexOf('queueTaskUpdate(task, later)'), '남은 변경은 최신 revision을 받은 뒤에 보내야 합니다');
   assert(!flush.includes('setTimeout'), '스냅샷 갱신을 기다리지 않는 타이머로 이어 보내면 낡은 revision이 나갑니다');
+  // 대기열을 스냅샷보다 먼저 비우면, 스냅샷을 받는 사이의 클릭이 갱신 전 revision으로
+  // 새 대기열을 만든다. 그 요청은 낡은 revision을 달고 나가 409로 거절된다.
+  assert(flush.indexOf('await loadSnapshot(true, { settlingTask: true })') < flush.indexOf('takePendingTask(taskId, sent)'), '대기열은 최신 revision을 받은 뒤에 비워야 합니다');
+  assert(!flush.includes('state.pendingTasks.delete'), '대기열 정리는 takePendingTask 한 곳이 맡아야 합니다');
+}
+// 저장 직후 경로는 대기열이 남아 있어도 스냅샷을 갈아끼워야 새 revision을 받는다.
+// 반면 문서 편집 중에는 어떤 경로에서도 갈아끼우지 않는다. draft의 base revision까지
+// 최신이 되어 저장이 남의 변경을 조용히 덮어쓰기 때문이다.
+assert(app.includes('function isDocumentEditing'), '두 가드는 성격이 달라 나뉘어야 합니다');
+{
+  const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function initialize'));
+  assert(load.includes('if (isDocumentEditing()) return;'), '문서 편집 가드는 우회 경로가 없어야 합니다');
+  assert(/state\.pendingTasks\.size > 0 && !\(options && options\.settlingTask\)/u.test(load), '태스크 대기열 가드는 저장 직후 경로에서만 열려야 합니다');
+}
+
+// peek을 연 채 다른 화면으로 가면 선택은 풀리는데 패널이 남아, 없는 선택의 내용을
+// 계속 보여주고 본문 폭까지 좁힌 채였다. 화면과 종류가 맞고 고른 항목이 있을 때만 남긴다.
+assert(app.includes('const PEEK_VIEWS'), '어떤 화면이 어떤 peek을 갖는지 한곳에 두어야 합니다');
+assert(app.includes('function dismissPeek'), '패널을 접는 일과 선택을 푸는 일은 나뉘어야 합니다');
+{
+  const mark = app.slice(app.indexOf('function markViewOnBody'), app.indexOf('function setView(view, selected)'));
+  assert(/state\.selected && PEEK_VIEWS\[view\] === document\.body\.dataset\.peekKind/u.test(mark), 'peek은 선택과 종류가 모두 맞을 때만 남아야 합니다');
+  assert(mark.includes('dismissPeek()'), '맞지 않으면 패널을 접어야 합니다');
+  assert(!mark.includes('closePeek()'), 'setView가 이미 정한 선택을 여기서 다시 지우면 안 됩니다');
 }
 
 // 새로 만드는 태스크는 아직 끝나지도 접히지도 않았다. 종료 상태는 고를 수 없어야 한다.

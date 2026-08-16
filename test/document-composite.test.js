@@ -235,3 +235,23 @@ assert.strictEqual(phantom.transitions.length, 0, '존재하지 않는 화면의
     fs.rmSync(probe, { recursive: true, force: true });
   }
 }
+
+// git status를 읽지 못하면 깨끗함을 증명할 수 없다. 그때 HEAD를 정확한 출처인 양 적으면
+// 그 commit을 checkout해도 같은 뷰가 나오지 않는다. 증명할 수 없을 때는 revision을 비운다.
+{
+  const { sourceRevision } = require('../src/document-composite');
+  const stub = (results) => (args) => results[args[0]];
+
+  const clean = sourceRevision(stub({ 'rev-parse': { status: 0, stdout: 'abc1234\n' }, status: { status: 0, stdout: '' } }), '.');
+  assert.deepStrictEqual(clean, { revision: 'abc1234', dirty: false }, '깨끗하면 HEAD를 적는다');
+
+  const dirty = sourceRevision(stub({ 'rev-parse': { status: 0, stdout: 'abc1234\n' }, status: { status: 0, stdout: ' M a.md\n' } }), '.');
+  assert.deepStrictEqual(dirty, { revision: '', dirty: true }, 'dirty면 revision을 비운다');
+
+  const unreadable = sourceRevision(stub({ 'rev-parse': { status: 0, stdout: 'abc1234\n' }, status: { status: 128, stdout: '' } }), '.');
+  assert.strictEqual(unreadable.revision, '', 'status를 못 읽으면 HEAD를 출처로 적지 않는다');
+  assert.strictEqual(unreadable.dirty, true, '증명할 수 없으면 깨끗하다고 하지 않는다');
+
+  const headless = sourceRevision(stub({ 'rev-parse': { status: 128, stdout: '' } }), '.');
+  assert.strictEqual(headless.revision, '', 'HEAD가 없으면 revision도 없다');
+}

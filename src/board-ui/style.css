@@ -274,6 +274,7 @@ button:disabled:hover {
 .person-row,
 .task-row,
 .task-card,
+.metric,
 .component-chip button,
 .guidance-chip,
 .acceptance-item {
@@ -1044,8 +1045,12 @@ body.peek-open[data-peek-kind='task'] #expand-context {
 .entity-card,
 .document-card,
 .person-card,
+/* 지표는 그 수를 만든 화면으로 가는 문이다. button이므로 전역 규칙의 가운데 정렬과
+   고정 높이를 되돌려야 카드 모양이 유지된다. */
 .metric {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
   align-content: start;
   gap: var(--spacing-0_5);
   padding: var(--spacing-2);
@@ -1053,6 +1058,10 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   border-radius: var(--large-BorderRadius);
   background: var(--surface-01-BackgroundColor);
   text-align: left;
+}
+
+.metric:hover {
+  border-color: var(--field-hover-BorderColor);
 }
 
 .entity-card:hover,

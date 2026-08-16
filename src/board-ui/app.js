@@ -144,10 +144,11 @@ async function flushTaskUpdate(taskId) {
   const sent = Object.assign({}, pending.changes);
   try {
     await api(projectPath(`/tasks/${encodeURIComponent(taskId)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify(Object.assign({ baseRevision: pending.baseRevision }, sent)) });
-    const later = remainingChanges(pending, sent);
-    state.pendingTasks.delete(taskId);
-    // 먼저 최신 revision을 받는다. 이 전에 다시 큐에 넣으면 낡은 revision으로 나가 409가 난다.
-    await loadSnapshot(true);
+    // 최신 revision을 받을 때까지 이 pending을 살려 둔다. 여기서 먼저 지우면 스냅샷을
+    // 받는 사이의 클릭이 갱신 전 revision으로 새 pending을 만들어, 그 다음 요청이
+    // 낡은 revision을 달고 나가 409로 거절된다.
+    await loadSnapshot(true, { settlingTask: true });
+    const later = takePendingTask(taskId, sent);
     if (later) {
       const task = state.snapshot.tasks.tasks.find((item) => item.id === taskId);
       if (task) queueTaskUpdate(task, later);
@@ -155,11 +156,20 @@ async function flushTaskUpdate(taskId) {
     redrawTask(taskId);
     if (!state.pendingTasks.has(taskId)) message('태스크 변경을 파일에 저장했습니다.');
   } catch (error) {
-    state.pendingTasks.delete(taskId);
-    await loadSnapshot(true);
+    await loadSnapshot(true, { settlingTask: true });
+    takePendingTask(taskId, null);
     redrawTask(taskId);
     message(`변경을 되돌렸습니다: ${error.message}`, true);
   }
+}
+// 스냅샷을 받은 뒤에 부른다. 보낸 것과 다른 필드만 남겨 돌려주고 대기열을 정리한다.
+// 살아 있는 동안 쌓인 타이머도 함께 끈다. 두면 지워진 항목을 향해 한 번 더 발화한다.
+function takePendingTask(taskId, sent) {
+  const pending = state.pendingTasks.get(taskId);
+  if (!pending) return null;
+  clearTimeout(pending.timer);
+  state.pendingTasks.delete(taskId);
+  return sent ? remainingChanges(pending, sent) : null;
 }
 // 보내는 사이 값이 또 바뀐 필드만 골라낸다. 없으면 null.
 function remainingChanges(pending, sent) {
@@ -199,11 +209,17 @@ function breadcrumb(parts) {
     return index ? `<span class="breadcrumb-sep">›</span>${node}` : node;
   }).join('');
 }
+// 어떤 화면이 어떤 종류의 peek을 열 수 있는지. 여기 없는 화면은 peek을 갖지 않는다.
+const PEEK_VIEWS = { tasks: 'task', people: 'person' };
 function markViewOnBody(view) {
   for (const name of Array.from(document.body.classList)) if (name.startsWith('view-')) document.body.classList.remove(name);
   document.body.classList.add(`view-${view}`);
-  // 넓은 peek은 목록에서 고른 항목을 여는 자리다. 목록이 없는 화면으로 가면 되돌린다.
-  if (view !== 'tasks' && view !== 'people') document.body.classList.remove('peek-open');
+  // peek은 그 화면의 목록에서 고른 항목을 여는 자리다. 화면을 옮기면 그 항목은 지금
+  // 목록에 없다. tasks와 people을 한꺼번에 허용했더니 태스크 peek을 연 채 People로
+  // 가면 선택은 풀렸는데 패널은 남아, 없는 선택의 내용을 계속 보여주고 본문 폭까지
+  // 좁힌 채였다. 화면과 종류가 맞고 고른 항목이 있을 때만 남긴다.
+  if (state.selected && PEEK_VIEWS[view] === document.body.dataset.peekKind) return;
+  dismissPeek();
 }
 function setView(view, selected) {
   if (!state.snapshot) return;
@@ -232,7 +248,15 @@ function documentCard(documentValue) {
 }
 function renderHome() {
   const data = state.snapshot; const tasks = data.tasks.tasks; const documents = data.documents; const attention = data.attention;
-  el('metrics').innerHTML = [[tasks.length, '전체 태스크'], [documents.length, '프로젝트 문서'], [tasks.filter((task) => task.status === 'review').length, '검토 요청'], [attention.length, '조치 필요']].map(([value, label]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join('');
+  // 숫자를 보고 그 목록으로 갈 수 없으면 요약이 막다른 길이 된다. 지금까지 div였고
+  // 눌러도 아무 일이 없었다. 각 지표를 그 수를 만든 화면으로 보낸다.
+  const metrics = [
+    [tasks.length, '전체 태스크', 'data-view="tasks"'],
+    [documents.length, '프로젝트 문서', 'data-view="documents"'],
+    [tasks.filter((task) => task.status === 'review').length, '검토 요청', 'data-view="review"'],
+    [attention.length, '조치 필요', 'data-focus-attention="1"']
+  ];
+  el('metrics').innerHTML = metrics.map(([value, label, action]) => `<button type="button" class="metric" ${action}><strong>${value}</strong><span>${label}</span></button>`).join('');
   el('attention-count').textContent = attention.length;
   // 태스크는 그 태스크로 가고 동기화 항목은 동기화를 실행한다. 예전에는 둘 다 운영 상태
   // 화면으로 보냈는데 그 화면은 헤더와 이 목록의 중복이라 없앴다.
@@ -545,14 +569,17 @@ function renderSyncStatus() {
 }
 // 편집 중에는 화면을 다시 그리지 않는다. setView가 renderDocument를 거쳐 편집기를 닫으므로
 // 폴링이 3초마다 입력 중인 내용을 지워버린다. 스냅샷은 계속 받되 렌더링만 미룬다.
-function isEditing() { return !el('document-editor').hidden || state.pendingTasks.size > 0; }
-async function loadSnapshot(silent) {
+// 두 가드는 성격이 다르다. 문서 편집 중 스냅샷을 갈아끼우면 draft가 기반으로 삼은
+// revision까지 최신이 되어 저장이 남의 변경을 조용히 덮어쓴다. 이건 안전 문제라 어떤
+// 경로에서도 어기지 않는다. 반면 태스크 변경이 큐에 있는 동안의 폴링은 낙관적 표시를
+// 지우는 표시 문제이고, 저장 직후 새 revision을 받는 경로는 오히려 갈아끼워야 한다.
+function isDocumentEditing() { return !el('document-editor').hidden; }
+function isEditing() { return isDocumentEditing() || state.pendingTasks.size > 0; }
+async function loadSnapshot(silent, options) {
   try {
     const next = await api(projectPath('/board-snapshot'));
-    // 편집 중에는 스냅샷을 갈아끼우지 않는다. 그리기만 미루고 값은 바꿔버리면 draft가
-    // 기반으로 삼은 revision까지 최신으로 바뀌어, 저장할 때 낙관적 동시성 검사가
-    // 통과해 버린다. 그 사이 남이 고친 내용을 충돌 없이 덮어쓰게 된다.
-    if (isEditing()) return;
+    if (isDocumentEditing()) return;
+    if (state.pendingTasks.size > 0 && !(options && options.settlingTask)) return;
     const changed = !state.snapshot || JSON.stringify(state.snapshot.revision) !== JSON.stringify(next.revision);
     state.snapshot = next;
     if (changed) { renderNavigation(); populateControls(); updateHealth(); setView(state.view, state.selected); }
@@ -665,14 +692,19 @@ for (const [mode, id] of Object.entries(taskModes)) {
   });
 }
 // peek이 본문을 덮으므로 닫는 길이 분명해야 한다. 겹쳐 띄우는 UI의 관례를 따른다.
-function closePeek() {
-  if (!document.body.classList.contains('peek-open')) return false;
+// 패널을 접는 일과 선택을 푸는 일을 나눈다. 화면 전환은 setView가 이미 선택을
+// 정했으므로, 거기서 다시 지우면 방금 연 항목까지 함께 지워진다.
+function dismissPeek() {
   document.body.classList.remove('peek-open');
   delete document.body.dataset.peekKind;
-  state.selected = null;
   for (const row of document.querySelectorAll('.peeked')) row.classList.remove('peeked');
   el('context-content').hidden = true;
   el('context-empty').hidden = false;
+}
+function closePeek() {
+  if (!document.body.classList.contains('peek-open')) return false;
+  dismissPeek();
+  state.selected = null;
   return true;
 }
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closePeek(); });
@@ -841,6 +873,14 @@ async function runSync() {
 }
 el('sync-status').addEventListener('click', runSync);
 document.addEventListener('click', (event) => { if (event.target.closest('[data-run-sync]')) runSync(); });
+// 조치 필요는 옮겨 갈 화면이 따로 없다. 같은 화면 아래 목록이 그 내역이므로 그리로 데려간다.
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('[data-focus-attention]')) return;
+  const list = el('attention-list');
+  list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const first = list.querySelector('.attention-item');
+  if (first) first.focus();
+});
 // 보기 기준은 설정에도 두되 헤더의 것과 값을 공유한다.
 el('settings-member').addEventListener('change', (event) => { el('current-member').value = event.target.value; el('current-member').dispatchEvent(new Event('change')); });
 el('reset-view-options').addEventListener('click', () => { resetViewOptions(); populateControls(); setView(state.view, state.selected); message('이 프로젝트의 표시 설정을 초기값으로 되돌렸습니다.'); });
