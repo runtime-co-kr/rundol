@@ -103,7 +103,10 @@ function verdictEventsRoot(layout) { return path.join(layout.root, 'projects', '
 function readVerdicts(start, input) {
   const layout = workspaceLayout(start); const project = selectProject(layout, input.project, true);
   if (layout.schemaVersion < 6) return [];
-  return eventStore.readEvents(verdictEventsRoot(layout), 'verdict', project.key, { sort: 'file' }).map(normalizeVerdictEvent).filter((event) => (!input.targetId || event.targetId === input.targetId) && (!input.runId || event.runId === input.runId));
+  // 원시 레코드를 돌려준다 — 검증·dedup·충돌 진단은 foldVerdicts의 관용 경로가
+  // 단일 정의로 수행한다 (RDL-VERDICT-001/004). 읽기에서 던지면 손상 하나가
+  // 전체 verdict 경로를 오염시킨다.
+  return eventStore.readEvents(verdictEventsRoot(layout), 'verdict', project.key, { sort: 'file', dedupe: false }).filter((event) => event && (!input.targetId || event.targetId === input.targetId) && (!input.runId || event.runId === input.runId));
 }
 function verifyCommandDigest(input) {
   const normalized = { command: 'verify', projectId: input.project, targetId: input.targetId, reviewedRevision: input.reviewedRevision, clientId: input.clientId, adapter: input.adapter, lenses: Array.from(new Set(input.lenses || [])).sort() };
@@ -230,8 +233,25 @@ function foldVerdicts(events, policy) {
   const requiredLenses = Array.from(new Set(policy.lenses || policy.requiredLenses || [])).sort();
   if (!REQUEST_ID.test(policy.rootRequestId || '') || !ARTIFACT_ID.test(policy.targetId || '') || !REVISION.test(policy.reviewedRevision || policy.currentRevision || '') || !requiredLenses.length || requiredLenses.some((lens) => !SIMPLE_ID.test(lens))) throw new Error('verdict policy identity is invalid');
   const revision = policy.reviewedRevision || policy.currentRevision; const allowed = policy.allowedAdapters ? new Set(policy.allowedAdapters) : null;
+  // run 결박 정책은 ownerToken 없이는 성립하지 않는다 — 조용한 전량 필터로
+  // human_required로 강등되는 대신 명시적 오류다.
+  if (policy.runId && !policy.ownerToken) throw new Error('run-bound verdict fold requires the run ownerToken');
   const diagnostics = []; const accepted = [];
+  // eventId 충돌은 예외가 아니라 진단이다: 같은 eventId의 상충 변형은 전부 제외하고
+  // RDL-VERDICT-004로 남긴다. 정확 중복은 하나로 접는다.
+  const byEventId = new Map(); const conflicted = new Set(); const anonymous = [];
   for (const raw of events || []) {
+    const key = raw && raw.eventId;
+    if (!key) { anonymous.push(raw); continue; }
+    const previous = byEventId.get(key);
+    if (!previous) { byEventId.set(key, raw); continue; }
+    const same = (previous.canonicalDigest && raw.canonicalDigest)
+      ? previous.canonicalDigest === raw.canonicalDigest
+      : eventStore.canonicalJson(previous) === eventStore.canonicalJson(raw);
+    if (!same && !conflicted.has(key)) { conflicted.add(key); diagnostics.push({ code: 'RDL-VERDICT-004', eventId: key, message: 'verdict eventId has conflicting canonical projections' }); }
+  }
+  const deduplicated = anonymous.concat(Array.from(byEventId.entries()).filter(([key]) => !conflicted.has(key)).map(([, value]) => value));
+  for (const raw of deduplicated) {
     let event; try { event = normalizeVerdictEvent(raw); } catch (error) { diagnostics.push({ code: 'RDL-VERDICT-001', message: error.message }); continue; }
     if (event.rootRequestId !== policy.rootRequestId || event.targetId !== policy.targetId || event.reviewedRevision !== revision || !requiredLenses.includes(event.lens) || (allowed && !allowed.has(event.adapter.name)) || (policy.runId && (event.runId !== policy.runId || event.ownerToken !== policy.ownerToken))) continue;
     accepted.push(event);

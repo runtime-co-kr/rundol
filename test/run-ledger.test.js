@@ -225,21 +225,21 @@ try {
   });
   assert(started.event.eventId.startsWith('EVT-'));
 
-  ledger.appendRunEvent(unit, { type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
   let fold = ledger.foldRun(ledger.readRunEvents(unit));
   assert.strictEqual(fold.cursor, 'mech-gate');
   assert.deepStrictEqual(fold.completedSteps, ['author']);
 
   // 게이트 실패 → goto로 author 재작업, attempts는 fold가 계산.
-  ledger.appendRunEvent(unit, { type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: ['RDL-DOC-004'], clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: ['RDL-DOC-004'], clientId: 'laptop-a' });
   fold = ledger.foldRun(ledger.readRunEvents(unit));
   assert.strictEqual(fold.cursor, 'author');
   assert.strictEqual(fold.attempts['mech-gate'], 1);
   assert.deepStrictEqual(fold.lastGate.diagnostics, ['RDL-DOC-004']);
 
   // 상한 도달: halted 이벤트 없이도 fold가 attempt-limit을 강제.
-  ledger.appendRunEvent(unit, { type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
-  ledger.appendRunEvent(unit, { type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: [], clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: [], clientId: 'laptop-a' });
   fold = ledger.foldRun(ledger.readRunEvents(unit));
   assert.strictEqual(fold.status, 'halted');
   assert.strictEqual(fold.haltReason, 'attempt-limit');
@@ -249,17 +249,17 @@ try {
   const beforeCrash = ledger.foldRun(ledger.readRunEvents(unit));
   fs.appendFileSync(file, '{"type":"run.gate","exitCo', 'utf8');
   assert.deepStrictEqual(ledger.foldRun(ledger.readRunEvents(unit)), beforeCrash);
-  ledger.appendRunEvent(unit, { type: 'run.resumed', fromStep: 'author', clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.resumed', fromStep: 'author', clientId: 'laptop-a' });
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/u).filter(Boolean)) JSON.parse(line);
 
   // 재개는 시도 예산을 되살린다. 이후 통과한 스텝의 과거 실패는 소급되지 않는다.
   fold = ledger.foldRun(ledger.readRunEvents(unit));
   assert.strictEqual(fold.status, 'running');
   assert.strictEqual(fold.cursor, 'author');
-  ledger.appendRunEvent(unit, { type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
-  ledger.appendRunEvent(unit, { type: 'run.gate', stepId: 'mech-gate', exitCode: 0, diagnostics: [], clientId: 'laptop-a' });
-  ledger.appendRunEvent(unit, { type: 'run.step', stepId: 'save', executor: 'cli', exitCode: 0, clientId: 'laptop-a' });
-  ledger.appendRunEvent(unit, { type: 'run.completed_local', commit: 'abc', clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.gate', stepId: 'mech-gate', exitCode: 0, diagnostics: [], clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.step', stepId: 'save', executor: 'cli', exitCode: 0, clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.completed_local', commit: 'abc', clientId: 'laptop-a' });
   fold = ledger.foldRun(ledger.readRunEvents(unit));
   assert.strictEqual(fold.status, 'completed_local');
   assert.strictEqual(fold.cursor, null);
@@ -274,7 +274,7 @@ try {
   ledger.appendRunEvent(corrupt, { type: 'run.started', runId: 'RUN-0123456789ABCDEF0124', projectId: 'crm', clientId: 'laptop-a', procedure: { name: 'x.y', revision: 1, contentHash: 'x', resolved: { name: 'x.y', revision: 1, steps: [{ id: 'a' }] } } });
   const corruptFile = path.join(corrupt, 'events.jsonl');
   fs.appendFileSync(corruptFile, '{"broken\n', 'utf8');
-  ledger.appendRunEvent(corrupt, { type: 'run.step', stepId: 'a', exitCode: 0, clientId: 'laptop-a' });
+  ledger.appendRunEvent(corrupt, { runId: 'RUN-0123456789ABCDEF0124', projectId: 'crm', type: 'run.step', stepId: 'a', exitCode: 0, clientId: 'laptop-a' });
   assert.throws(() => ledger.readRunEvents(corrupt), /파싱할 수 없습니다/u);
 
   // 실제 workspace: 공유 미러, 커서 재현성, 시계 무관 소유권 사슬, 인수 규칙.

@@ -6,6 +6,11 @@
 
 ### Fixed
 
+- strict 검증이 런이 아니라 이벤트의 스키마를 따른다 — legacy 런에 유입된 v2 이벤트도 커서·종류 검증을 받는다. legacy 전용 런도 소유권·dedup·진단이 같은 단일 fold 경로를 지난다.
+- 유효하지 않은 takeover 시도만 있는 런은 ACTIVE로 조용히 남는 대신 CONFLICT로 fail-closed한다(유효 takeover 도착 시 자연 해소). 토큰 없는 v2 `run.halted`는 쓰기가 거부하고 유입분은 `RDL-RUN-024`로 진단한다. 충돌 상태에서도 커서·완료 진행은 보존된다.
+- force 소유권 해소의 도달 불능 가드를 교정했다 — 부모 epoch 소유 멤버는 자기 소유의 다른 클라이언트로 자기 충돌을 승인할 수 없다.
+- run 결박 verdict fold에 ownerToken이 없으면 명시적 오류이고, verdict eventId 충돌은 `RDL-VERDICT-004` 진단이다.
+
 - 외래 sync 전이의 효력을 epoch과 커밋에 결박했다. 구 epoch 커밋의 늦은 `run.synced`가 신 epoch의 완료와 결합해 런을 synced로 만들지 못한다(`RDL-RUN-026`). sync 전이의 신원 인가는 검사 계층이 맡는다 — clientId가 활성 agent/service가 아니면 `RDL-RUN-005`.
 - 같은 요청 ID에 다른 payload나 commandDigest가 오면 저널 재생이 과거 결과를 돌려주는 대신 거부한다.
 - legacy takeover의 fence 불가를 `RDL-RUN-027` 경고로 표면화한다.

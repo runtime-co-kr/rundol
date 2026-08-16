@@ -25,7 +25,7 @@ const TYPE_FIELDS = {
   'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
   'run.gate': { required: ['ownerToken', 'stepId', 'command', 'args', 'exitCode', 'diagnostics', 'attempt'], optional: ['operation'] },
   'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['operation'] },
-  'run.halted': { required: ['reason', 'resumable'], optional: ['ownerToken', 'atStep', 'operation'] },
+  'run.halted': { required: ['reason', 'resumable', 'ownerToken'], optional: ['atStep', 'operation'] },
   'run.resumed': { required: ['ownerToken', 'fromStep'], optional: [] },
   'run.takeover': { required: ['ownerToken', 'previousClientId', 'previousOwnerToken', 'previousOwnerHeadEventId', 'basis'], optional: ['reason'] },
   'run.ownership_resolved': { required: ['conflictId', 'candidates', 'selectedDecisionEventId', 'selectedOwnerToken', 'resolverMemberId', 'reason', 'forced'], optional: [] },
@@ -247,6 +247,13 @@ function normalizeRunEvent(event) {
   if (!definition) throw new Error(`unknown canonical run event type: ${event.type || '(missing)'}`);
   const allowed = BASE_FIELDS.concat(definition.required, definition.optional, ['canonicalDigest', 'occurredAt', 'localDetail']);
   assertExactKeys(event, allowed, event.type);
+  // 토큰 없는 v2 halted는 어느 epoch에도 속하지 못해 조용히 소멸하던 형태다 —
+  // 스키마가 거부하고 전용 코드로 진단한다.
+  if (event.type === 'run.halted' && event.ownerToken === undefined) {
+    const error = new Error('run.halted requires ownerToken');
+    error.rdlCode = 'RDL-RUN-024';
+    throw error;
+  }
   for (const field of BASE_FIELDS.concat(definition.required)) if (event[field] === undefined) throw new Error(`${event.type}.${field} is required`);
   if (!EVENT_ID.test(event.eventId || '') || !REQUEST_ID.test(event.rootRequestId || '') || !REQUEST_ID.test(event.requestId || '') || !SIMPLE_ID.test(event.clientId || '') || !SIMPLE_ID.test(event.projectId || '') || !RUN_ID.test(event.runId || '')) throw new Error(`${event.type} contains an invalid identity`);
   const normalized = {};
@@ -368,7 +375,7 @@ function normalizeRecords(events) {
       // v2 레코드의 canonical 손상은 legacy-malformed(021)가 아니라 자기 계열(017)로
       // 진단한다 — digest 정의는 정규화 하나뿐이고, 그에 어긋난 v2 레코드를 legacy로
       // 낙인하면 혼합 버전 조사가 엉뚱한 곳을 파게 된다.
-      diagnostics.push({ code: event && event.schemaVersion === 2 ? 'RDL-RUN-017' : 'RDL-RUN-021', severity: 'error', eventId: event && event.eventId, message: error.message });
+      diagnostics.push({ code: error.rdlCode || (event && event.schemaVersion === 2 ? 'RDL-RUN-017' : 'RDL-RUN-021'), severity: 'error', eventId: event && event.eventId, message: error.message });
       continue;
     }
     if (!groups.has(record.canonical.eventId)) groups.set(record.canonical.eventId, []);
@@ -580,6 +587,12 @@ function ownershipState(events) {
     if (!validChildren.length) {
       visible.push(...ownSequence.slice(1));
       admitForeign(activeToken, activeClientId);
+      // takeover 시도가 있었는데 유효한 것이 하나도 없으면 fail-closed다 — 진단만
+      // 남기고 ACTIVE로 두면 무효 인수가 조용히 무시된다. 올바른 head의 유효
+      // takeover가 도착하면 이 충돌은 자연 해소된다(자기 치유).
+      if (children.length) {
+        conflict = { conflictId: null, parentToken: activeToken, parentClientId: activeClientId, candidates: [], invalidTakeover: true };
+      }
       break;
     }
     const cutoff = Math.min(...validChildren.map((child) => child.legacy ? ownSequence.length - 1 : child.cutoffIndex));
@@ -683,9 +696,10 @@ function foldProgress(events, ownership) {
   const artifactIds = [];
   const diagnostics = ownership ? ownership.diagnostics.slice() : [];
   let lastGate = null;
-  let status = ownership && ownership.status === 'CONFLICT' ? 'ownership-conflict' : 'running';
-  let haltReason = status === 'ownership-conflict' ? 'ownership-conflict' : null;
-  const strict = started.schemaVersion === 2;
+  // 소유권 충돌이어도 가시 이벤트까지의 진행(커서·완료)은 계산해 보존한다 —
+  // 충돌을 해소하려는 사람이 "진행이 없던 런"으로 오독하지 않게. 상태 덮어쓰기는 맨 끝에서.
+  let status = 'running';
+  let haltReason = null;
   const cursor = () => order.find((identifier) => !completed.has(identifier)) || null;
   const foreignSet = ownership && ownership.foreignTransitionEventIds ? ownership.foreignTransitionEventIds : new Set();
   const foreignTransitions = [];
@@ -693,12 +707,13 @@ function foldProgress(events, ownership) {
   const completedLocals = [];
   let spareResumes = 0;
   for (const event of events.filter((item) => !['run.started', 'run.takeover', 'run.ownership_resolved'].includes(item.type))) {
-    if (status === 'ownership-conflict') break;
     if (foreignSet.has(event.eventId)) { foreignTransitions.push(event); continue; }
     const current = cursor();
     const step = current ? byId.get(current) : null;
     const invalid = (message) => diagnostics.push({ code: 'RDL-RUN-022', severity: 'error', eventId: event.eventId, message });
-    if (['run.step', 'run.gate', 'run.forced'].includes(event.type) && strict) {
+    // strict는 런이 아니라 이벤트의 스키마를 따른다 — legacy로 시작한 런이라도
+    // v2 이벤트에는 v2 커서·종류 검증이 적용된다.
+    if (['run.step', 'run.gate', 'run.forced'].includes(event.type) && event.schemaVersion === 2) {
       if (status !== 'running' || event.stepId !== current) { invalid('progress event does not target the active cursor'); continue; }
       const kind = transitionKind(step);
       if (event.type === 'run.step' && kind !== 'step') { invalid(`run.step cannot complete a ${kind} step`); continue; }
@@ -710,7 +725,7 @@ function foldProgress(events, ownership) {
     } else if (event.type === 'run.gate') {
       lastGate = { stepId: event.stepId, exitCode: event.exitCode, diagnostics: event.diagnostics || [] };
       if (event.exitCode === 0) completed.add(event.stepId);
-      else if (event.exitCode === 1 || !strict) {
+      else if (event.exitCode === 1 || event.schemaVersion !== 2) {
         attempts[event.stepId] = (attempts[event.stepId] || 0) + 1;
         const definition = byId.get(event.stepId);
         if (definition && definition.onFail) {
@@ -757,6 +772,8 @@ function foldProgress(events, ownership) {
   }
   for (const step of steps) if (step.onFail && !completed.has(step.id) && (attempts[step.id] || 0) >= step.onFail.maxAttempts && status === 'running') { status = 'halted'; haltReason = 'attempt-limit'; }
   const current = status === 'completed_local' || status === 'synced' ? null : cursor();
+  // 충돌 상태 덮어쓰기는 진행 계산이 끝난 뒤다 — completed·cursor는 보존된다.
+  if (ownership && ownership.status === 'CONFLICT') { status = 'ownership-conflict'; haltReason = 'ownership-conflict'; }
   return {
     runId: started.runId, projectId: started.projectId,
     procedure: { name: started.procedure.name, revision: started.procedure.revision, contentHash: started.procedure.contentHash },
@@ -861,8 +878,8 @@ function logicalAttemptForStep(events, stepId) {
 
 function foldRun(events) {
   if (!events.length) return { status: 'missing', cursor: null };
-  const hasOwnership = events.some((event) => event.type === 'run.takeover' || event.type === 'run.ownership_resolved' || event.schemaVersion === 2);
-  if (!hasOwnership) return foldProgress(events, null);
+  // legacy 전용 런도 같은 경로다 — 우회하면 소유권·dedup·진단(017/018/019)이
+  // 호출 지점에 따라 달라지는 이중 평가기가 된다.
   const ownership = ownershipState(events);
   const operationState = operationOutcomeState(ownership.visibleEvents);
   const result = foldProgress(operationState.effectiveEvents, ownership);
@@ -1150,9 +1167,11 @@ function resolveOwnership(start, input) {
   const parentClient = getClient(start, state.conflict.parentClientId);
   const isParentClient = clientId === state.conflict.parentClientId;
   if (!isParentClient) {
-    if (!input.force || !['agent', 'service'].includes(client.type) || client.type === 'device') throw new Error('a non-parent resolver requires an agent/service client with --force');
+    if (!input.force || !['agent', 'service'].includes(client.type)) throw new Error('a non-parent resolver requires an agent/service client with --force');
     if (!String(input.reason || '').trim()) throw new Error('forced ownership resolution requires reason');
-    if (client.owner === parentClient.owner && client.type === 'device') throw new Error('a non-parent device cannot force ownership resolution');
+    // 인가 매트릭스: force는 「다른 멤버」의 agent/service만이다 — 부모 epoch 소유
+    // 멤버가 자기 소유의 다른 클라이언트로 자기 충돌을 승인하는 길을 막는다.
+    if (client.owner === parentClient.owner) throw new Error('the parent epoch owner member cannot force-resolve through their own client');
   }
   const reason = normalizeText(input.reason || '', 'reason', 1000, false);
   if (!reason) throw new Error('ownership resolution requires reason');
