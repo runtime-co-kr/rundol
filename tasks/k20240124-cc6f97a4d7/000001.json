@@ -917,6 +917,35 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSWGBAOWE27391003B0FC92E": {
+      "title": "[개선] 이벤트 샤드 파일명의 프로젝트 접두 모호성 해소",
+      "summary": "하이픈 포함 프로젝트 키(a와 a-b)의 샤드 파일명 접두가 겹칠 수 있다. 현재는 읽기 시 clientId 대조로 시끄럽게 실패해 조용한 오염은 없지만, 구분자 강화 또는 키 제약으로 접두 자체를 유일하게 만들어야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "low",
+      "links": [
+        "PRD-001"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "하이픈 포함 프로젝트 키의 샤드 접두 충돌 케이스가 테스트로 고정된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "구분자 강화 또는 프로젝트 키 제약 중 해소 방안이 결정되어 적용된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-16T23:43:54.079Z",
+      "updatedAt": "2026-08-16T23:43:54.079Z",
+      "statusChangedAt": "2026-08-16T23:43:54.079Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
