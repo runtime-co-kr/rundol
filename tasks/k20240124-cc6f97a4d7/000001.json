@@ -882,6 +882,41 @@
       "statusChangedAt": "2026-08-16T23:43:41.875Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSWGB1SEC0E8476B375068A7": {
+      "title": "[개선] 스킬과 태스크 매니저 연계 강화",
+      "summary": "실작업에서 AI 스킬 흐름이 태스크 매니저와 연계되지 않아 정본·코드 변경이 태스크 없이 진행되는 사례가 관찰됐다. 스킬이 작업 시작·종료 시 태스크 확인·생성·doing 전환·acceptance 반영·done·sync를 흐름에 내장하도록 안내와 게이트를 강화한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-038",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "스킬이 작업 시작 시 연결 태스크 확인·생성과 doing 전환을 흐름에 포함한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "작업 종료 시 acceptance 반영과 done 전환·sync가 흐름에 포함된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "태스크 없이 정본을 변경하는 경로가 스킬 안내에서 예외로 표면화된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-16T23:43:42.541Z",
+      "updatedAt": "2026-08-16T23:43:42.541Z",
+      "statusChangedAt": "2026-08-16T23:43:42.541Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
