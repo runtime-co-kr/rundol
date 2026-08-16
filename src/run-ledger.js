@@ -10,7 +10,7 @@ const { getClient } = require('./collaboration-store');
 const eventStore = require('./event-store');
 
 const RUN_ID = /^RUN-[A-F0-9]{20}$/u;
-const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.takeover']);
+const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.synced', 'run.takeover']);
 const HALT_REASONS = new Set(['gate-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual']);
 
 function canonicalJson(value) {
@@ -147,12 +147,16 @@ function foldRun(events) {
   const completed = new Set();
   let attempts = {};
   const forcedSteps = [];
+  const artifactIds = [];
   let lastGate = null;
   let status = 'running';
   let haltReason = null;
 
   for (const event of events.slice(1)) {
-    if (event.type === 'run.step' && event.exitCode === 0) completed.add(event.stepId);
+    if (event.type === 'run.step' && event.exitCode === 0) {
+      completed.add(event.stepId);
+      for (const artifactId of event.artifactIds || []) if (!artifactIds.includes(artifactId)) artifactIds.push(artifactId);
+    }
     else if (event.type === 'run.gate') {
       lastGate = { stepId: event.stepId, exitCode: event.exitCode, diagnostics: event.diagnostics || [] };
       if (event.exitCode === 0) completed.add(event.stepId);
@@ -176,6 +180,7 @@ function foldRun(events) {
       haltReason = null;
       attempts = {};
     } else if (event.type === 'run.completed_local') status = 'completed_local';
+    else if (event.type === 'run.synced') status = 'synced';
   }
 
   // fold가 시도 상한을 강제한다: halted 이벤트가 없어도 상한 도달이면 전진 불가.
@@ -187,7 +192,7 @@ function foldRun(events) {
     }
   }
 
-  const cursor = status === 'completed_local' ? null : (order.find((identifier) => !completed.has(identifier)) || null);
+  const cursor = status === 'completed_local' || status === 'synced' ? null : (order.find((identifier) => !completed.has(identifier)) || null);
   return {
     runId: started.runId,
     projectId: started.projectId,
@@ -198,9 +203,19 @@ function foldRun(events) {
     completedSteps: order.filter((identifier) => completed.has(identifier)),
     attempts,
     forcedSteps,
+    artifactIds,
     lastGate,
     haltReason
   };
+}
+
+// 현재 소유자: 시작 client에서 출발해 takeover 사슬을 따라간 마지막 client다.
+function runOwner(events) {
+  let owner = null;
+  for (const event of events) {
+    if (event.type === 'run.started' || event.type === 'run.takeover') owner = event.clientId;
+  }
+  return owner;
 }
 
 function listRuns(projectRoot) {
@@ -313,12 +328,13 @@ function takeoverRun(start, input) {
     occurredAt: new Date().toISOString()
   };
   // 새 소유자의 로컬 원장을 공유 이벤트로 재구성한다 — 파생이므로 언제든 다시 만들 수 있다.
+  // takeover 이벤트를 포함해 소유권 사슬이 로컬에서도 복원되게 한다 (fold는 takeover를 무시한다).
   const directory = runDirectory(project.root, input.runId);
   fs.mkdirSync(directory, { recursive: true });
   const file = path.join(directory, 'events.jsonl');
-  fs.writeFileSync(file, ordered.filter((event) => event.type !== 'run.takeover').map((event) => JSON.stringify(event)).join('\n').concat('\n'), 'utf8');
+  fs.writeFileSync(file, ordered.concat([takeover]).map((event) => JSON.stringify(event)).join('\n').concat('\n'), 'utf8');
   mirrorRunEvent(layout, project.key, takeover);
   return { runId: input.runId, project: project.key, clientId, previousClientId: currentOwner, basis, directory };
 }
 
-module.exports = { RUN_ID, CHECKPOINT_TYPES, newRunId, runDirectory, validateProcedure, appendRunEvent, readRunEvents, createRun, foldRun, listRuns, recordRunEvent, readSharedRunEvents, foldSharedRun, takeoverRun };
+module.exports = { RUN_ID, CHECKPOINT_TYPES, canonicalJson, newRunId, runDirectory, validateProcedure, appendRunEvent, readRunEvents, createRun, foldRun, runOwner, listRuns, recordRunEvent, readSharedRunEvents, foldSharedRun, takeoverRun };

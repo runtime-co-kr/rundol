@@ -42,13 +42,15 @@ function sleep(milliseconds) {
 function withAppendLock(lockDirectory, name, action) {
   fs.mkdirSync(lockDirectory, { recursive: true });
   const lock = path.join(lockDirectory, `${name}.lock`);
-  const deadline = Date.now() + 2000;
+  const deadline = Date.now() + 5000;
   for (;;) {
     try {
       fs.mkdirSync(lock);
       break;
     } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
+      // Windows에서는 다른 프로세스의 rmdir과 겹친 mkdir이 EEXIST 대신 일시적
+      // EPERM/EACCES/ENOENT를 던질 수 있다. 전부 재시도 대상이다.
+      if (!['EEXIST', 'EPERM', 'EACCES', 'ENOENT'].includes(error.code)) throw error;
       if (Date.now() > deadline) throw new Error(`이벤트 저장 락을 얻지 못했습니다: ${lock}`);
       let stale = false;
       try {

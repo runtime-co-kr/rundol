@@ -84,4 +84,4 @@ async function main() {
   process.stdout.write('event store tests passed\n');
 }
 
-module.exports = main().finally(() => fs.rmSync(temporary, { recursive: true, force: true }));
+module.exports = main().finally(() => fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));

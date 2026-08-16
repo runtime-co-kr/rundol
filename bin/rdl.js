@@ -39,6 +39,15 @@ Usage:
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
   rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
   rdl lease list --project <key> [--json]
+  rdl run start <절차이름> --project <key> --client-id <id> [--goal <목표>] [--json]
+  rdl run next --run <RUN-ID> --project <key> [--json]
+  rdl run step --run <RUN-ID> --project <key> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--json]
+  rdl run gate --run <RUN-ID> --project <key> [--step <id>] [--force --reason <사유>] [--json]
+  rdl run halt|resume|complete --run <RUN-ID> --project <key> [--json]
+  rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--json]
+  rdl run list --project <key> [--json]
+  rdl run log --run <RUN-ID> --project <key> [--json]
+  rdl run procedures [--project <key>] [--json]
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                    [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
@@ -124,7 +133,7 @@ function parseOperationArgs(argv) {
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
     else if (value === '--write') options.write = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -620,6 +629,31 @@ async function main() {
       if (!options.clientId) throw new Error('--client-id <id>가 필요합니다.');
       printOperation(appendLease(options.root, subcommand, { project: options.project, clientId: options.clientId, documentId: options.positional[0] }), options.json);
     }
+    return 0;
+  }
+  if (command === 'run') {
+    const subcommand = argv.shift();
+    const options = parseOperationArgs(argv);
+    const run = require('../src/run');
+    const requireRun = () => { if (!options.run) throw new Error('--run <RUN-ID>가 필요합니다.'); return options; };
+    if (subcommand === 'start') printOperation(run.startRun(options.root, options), options.json);
+    else if (subcommand === 'next') printOperation(run.nextStep(options.root, requireRun()), options.json);
+    else if (subcommand === 'step') printOperation(run.reportStep(options.root, requireRun()), options.json);
+    else if (subcommand === 'gate') {
+      const result = run.runGate(options.root, requireRun());
+      printOperation(result, options.json);
+      return result.exitCode === 0 ? 0 : 1;
+    } else if (subcommand === 'halt') printOperation(run.haltRun(options.root, requireRun()), options.json);
+    else if (subcommand === 'resume') printOperation(run.resumeRun(options.root, requireRun()), options.json);
+    else if (subcommand === 'complete') printOperation(run.completeRun(options.root, requireRun()), options.json);
+    else if (subcommand === 'takeover') {
+      requireRun();
+      const { takeoverRun } = require('../src/run-ledger');
+      printOperation(takeoverRun(options.root, { project: options.project, runId: options.run, clientId: options.clientId, force: options.force, reason: options.reason }), options.json);
+    } else if (subcommand === 'list') printOperation(run.listRunsCommand(options.root, options), options.json);
+    else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
+    else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
+    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, halt, resume, complete, takeover, list, log, procedures입니다.');
     return 0;
   }
   if (command === 'task') {

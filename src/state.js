@@ -611,10 +611,44 @@ function syncProjectState(config, settings) {
   return { root: config.root, project: config.project || null, branch: config.branch, remote, action, commit, saved: saved.changed, pushed: settings.push !== false, projection: config.projection };
 }
 
+// 런의 두 번째 완료: 병합에서 살아남아 push까지 마친 뒤에만 synced다.
+// sync의 어떤 실패든(의미 충돌, sharded 병합, push) 진행 중이거나 로컬 완료인
+// 런을 재개 가능한 halted로 전이시킨다 — 실패를 조용히 지나가는 런은 없다.
+function transitionRuns(config, apply) {
+  if (!config.project) return;
+  try {
+    const ledger = require('./run-ledger');
+    for (const run of ledger.listRuns(config.worktree)) {
+      const event = apply(run);
+      if (!event) continue;
+      const owner = ledger.runOwner(ledger.readRunEvents(ledger.runDirectory(config.worktree, run.runId)));
+      ledger.recordRunEvent(config.root, { project: config.project, runId: run.runId, event: Object.assign({ clientId: owner }, event) });
+    }
+  } catch {
+    // 원장 전이 실패가 sync 자체의 결과를 가리면 안 된다. 전이는 다음 sync가 다시 시도한다.
+  }
+}
+
+function syncProjectStateWithRuns(config, settings) {
+  try {
+    const result = syncProjectState(config, settings);
+    if (result.pushed) transitionRuns(config, (run) => (run.status === 'completed_local'
+      ? { type: 'run.synced', commit: result.commit, remoteRef: `refs/remotes/${result.remote}/${result.branch}` }
+      : null));
+    return result;
+  } catch (error) {
+    const reason = /충돌/u.test(error.message || '') ? 'merge-conflict' : 'sync-failed';
+    transitionRuns(config, (run) => (run.status === 'running' || run.status === 'completed_local'
+      ? { type: 'run.halted', reason, atStep: run.cursor, resumable: true }
+      : null));
+    throw error;
+  }
+}
+
 function syncState(start, options) {
   const settings = options || {};
   const settingsResult = syncSettings(start, settings);
-  const results = workspaceStateConfigs(start, settings.project).map((config) => syncProjectState(config, settings));
+  const results = workspaceStateConfigs(start, settings.project).map((config) => syncProjectStateWithRuns(config, settings));
   return results.length === 1 ? Object.assign(results[0], { settings: settingsResult }) : { root: results[0].root, settings: settingsResult, pushed: results.every((item) => item.pushed), projects: results };
 }
 

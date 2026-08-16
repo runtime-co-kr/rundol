@@ -35,6 +35,15 @@ rdl client register <client-id> --name <name> --type <device|agent|service> --ow
 rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
 rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
 rdl lease list --project <key> [--json]
+rdl run start <절차이름> --project <key> --client-id <id> [--goal <목표>] [--json]
+rdl run next --run <RUN-ID> --project <key> [--json]
+rdl run step --run <RUN-ID> --project <key> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--json]
+rdl run gate --run <RUN-ID> --project <key> [--step <id>] [--force --reason <사유>] [--json]
+rdl run halt|resume|complete --run <RUN-ID> --project <key> [--json]
+rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--json]
+rdl run list --project <key> [--json]
+rdl run log --run <RUN-ID> --project <key> [--json]
+rdl run procedures [--project <key>] [--json]
 rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                  [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                  [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
@@ -302,6 +311,32 @@ rdl conflict resolve --project memo --strategy ours
 ```
 
 마이그레이션은 단일 `tasks.json`을 클라이언트별 segment로 분리한다. 충돌 해결의 `ours`와 `theirs`는 기록된 충돌 전체에 같은 전략을 적용한다. 문서별·필드별 대화형 선택은 아직 제공하지 않는다. `rdl conflict clear`는 pending 기록만 제거한다.
+
+## 런 실행 관리
+
+```bash
+rdl run procedures --project memo --json
+rdl run start document.authored --project memo --client-id laptop-a --goal "결제 REQ"
+rdl run next --run RUN-... --project memo --json
+rdl run step --run RUN-... --project memo --step create --artifact-id REQ-001
+rdl run gate --run RUN-... --project memo
+rdl run halt --run RUN-... --project memo
+rdl run resume --run RUN-... --project memo
+rdl run complete --run RUN-... --project memo
+rdl run takeover --run RUN-... --project memo --client-id desk-b --force --reason "소유 머신 분실"
+rdl run list --project memo --json
+rdl run log --run RUN-... --project memo --json
+```
+
+런은 목표, 단계, 게이트, 결과를 `RUN-ID`로 묶는 실행 단위다. 진행 상태는 저장되지 않고 프로젝트 로컬 `.rundol/runs/<RUN-ID>/events.jsonl` 원장을 읽기 시점에 fold해 재계산한다. 프로세스가 어디에서 중단돼도 다음 읽기가 커서, 시도 횟수, 정지 사유를 복원한다.
+
+절차는 내장 기본값 → Workspace `projects/workspace/procedures.json` → 프로젝트 `projects/<key>/procedures.json` 순서로 상속한다. 오버라이드는 스텝 추가와 파라미터 조이기만 허용하며 게이트 제거, 게이트 명령 변경, 시도 상한 확대, 사람 게이트 제거는 로드 시점에 거부된다. 런은 시작 시점의 절차 정의 전문을 pin하므로 이후 정의가 바뀌거나 삭제돼도 시작 계약으로 완주한다.
+
+`next`는 클라이언트 중립 인터페이스다. 커서 스텝의 실행 방법(명령 argv, 게이트, 사람 게이트 여부)을 반환하고, 일반 스텝은 `step`으로 완료를 보고하며, 게이트 스텝은 `gate`가 rdl 하위 명령을 셸 없이 직접 실행해 종료 코드로만 전진한다. `--force --reason` 우회는 forced 이벤트로 기록을 남긴다. 게이트 실패의 재작업 루프는 절차의 시도 상한이 강제하며, 상한 도달 시 런은 재개 가능한 정지 상태가 된다.
+
+커서를 결정하는 이벤트는 Workspace의 `events/run/` 아래 클라이언트+런 샤드로 복제된다. 다른 머신은 공유 이벤트만 읽어도 같은 커서를 복원한다. 인수(takeover)는 이전 소유자의 정지가 보일 때만 자동이고, 정지 없이 중단된 런은 `--force --reason`으로 사람이 결정한다. 벽시계 시간은 어떤 인수 판정에도 쓰이지 않는다.
+
+`rdl sync`가 성공하면 `completed_local` 런이 `synced`로 전이한다 — 런의 완료는 저장이 아니라 병합 생존이다. sync 실패는 관련 런을 재개 가능한 정지로 전이시킨다. `rdl check`는 run 샤드의 파일명(`RDL-RUN-001`), Client 등록(`RDL-RUN-002`), 파일명과 이벤트 필드의 일치(`RDL-RUN-003`), JSONL 파싱(`RDL-RUN-004`)을 검사한다.
 
 ## 문서 생성
 
