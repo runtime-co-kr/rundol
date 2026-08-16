@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-08-17
+
+### Fixed
+
+- **fold가 이벤트 집합의 함수가 됐다.** 같은 이벤트 집합이 열거 순서에 따라 여덟 가지 fold 결과를 내던 것을 고쳤다: 순서의 정본을 병합 배열에서 각 작성자 샤드의 append 순서로 옮기고, epoch 소속을 `(ownerToken, 소유자 clientId)` 결박으로 정하며, takeover cutoff를 이전 소유자 자기 시퀀스의 위치로 해석한다. 작성자 부분열을 보존하는 교차 3,000종에서 fold 결과는 하나다.
+- 타 클라이언트의 소유자 토큰 재사용이 무진단 수용되던 것을 `RDL-RUN-023`으로 진단하고 stale 처리한다. epoch에 들어오는 외래 이벤트는 sync 실행자의 `run.synced`·sync 사유 `run.halted`와 인가된 비소유자 `run.operation_resolved`뿐이며, 외래 전이는 위치가 아니라 우선순위로 적용되어 사전순 병합에서 `run.synced`가 소실되지 않는다. sync 전이 작성자도 공유를 먼저 reconcile한 union에서 소유권을 도출한다.
+- 크래시 재시도가 준비된 canonical 바이트를 그대로 재사용한다 — attempt 재계산으로 digest가 갈려 멱등성이 깨지던 것을 driver-lease의 decode-재사용 패턴으로 통일했다.
+- 읽기 경로의 dedup을 런 단위로 격리했다. 다른 런 샤드의 손상이 이 런의 읽기를 오염시키지 못하고, 같은 런의 충돌은 예외가 아니라 `RDL-RUN-017/018` 진단으로 fold에 흐른다. digest 정의는 정규화 하나로 남아, 원시 digest로 쓰인 v2 레코드가 legacy로 낙인되지 않는다.
+
 ## [0.29.0] - 2026-08-17
 
 ### Added
