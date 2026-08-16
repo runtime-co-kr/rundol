@@ -40,6 +40,11 @@ try {
   rdl(['contract', 'set', '--project', 'crm', '--profile', 'lean', '--enforcement', 'advisory']);
   rdl(['client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'device', '--owner', 'MEMBER-001']);
 
+  // 문서 1개 = 기능 1개 기본: REQ에 기능 2개는 --grouped로도 열리지 않는다.
+  const rejectedCreate = rdlRaw(['doc', 'create', 'REQ', '결제 요구', '--project', 'crm', '--owner', 'MEMBER-001', '--scope', '결제 승인 요구', '--exclude', '환불 흐름', '--function-id', 'PAY-01', '--function-id', 'PAY-02', '--grouped', '--reason', '사유']);
+  assert.notStrictEqual(rejectedCreate.status, 0);
+  assert(/기능 1개만/u.test(rejectedCreate.stderr), rejectedCreate.stderr);
+
   // 내장 절차가 단일 소스로 열거된다.
   const procedures = rdl(['run', 'procedures', '--project', 'crm']);
   const authored = procedures.procedures.find((item) => item.name === 'document.authored');

@@ -56,7 +56,7 @@ Usage:
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
-                 [--function-id <기능-ID>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
+                 [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
   rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
@@ -127,6 +127,7 @@ function parseOperationArgs(argv) {
     else if (value === '--new') options.new = true;
     else if (value === '--no-push') options.push = false;
     else if (value === '--force') options.force = true;
+    else if (value === '--grouped') options.grouped = true;
     else if (value === '--apply') options.apply = true;
     else if (value === '--once') options.once = true;
     else if (value === '--done') options.done = true;

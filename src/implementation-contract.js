@@ -5,6 +5,11 @@ const { parseFrontmatter } = require('./frontmatter');
 
 const CONTRACT_VERSION = 'atomic-v1';
 const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'API', 'TST']);
+// 문서 1개 = 기능 1개가 기본 계약이다. 합침은 groupingReason 선언이 있는 opt-in이며
+// 유형별 정책을 따른다. 근거는 실사용 정본 측정이다: TST가 기능 여럿을 검증하는 것은
+// 자연스럽고(TST-002=11), REQ가 기능 여럿을 요구하는 것은 과합침이다(REQ-010=5).
+// forbidden 유형은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다.
+const GROUPING_POLICY = Object.freeze({ REQ: 'forbidden', SCR: 'forbidden', TST: 'declared', MOD: 'declared', API: 'declared' });
 const FUNCTION_ID_PATTERN = /^[A-Z][A-Z0-9]{1,7}-\d{2,4}$/u;
 const FUNCTION_ID_GLOBAL = /\b[A-Z][A-Z0-9]{1,7}-\d{2,4}\b/gu;
 const PLACEHOLDER_PATTERN = /(?:작성\s*필요|미정|추후[^\r\n]{0,40}확정|별도[^\r\n]{0,40}확정|원본(?:\s+문서)?\s*(?:기준|적용|참조)|todo|tbd|<[^>]+>)/iu;
@@ -94,6 +99,26 @@ function validateImplementationDocument(document, options) {
   const ids = functionIds(meta);
   if (ids.length === 0) issues.push({ code: 'RDL-IMPL-002', severity: 'error', message: '구현 문서는 functionIds에 기능 ID를 하나 이상 선언해야 합니다.' });
   for (const id of ids) if (!FUNCTION_ID_PATTERN.test(id)) issues.push({ code: 'RDL-IMPL-003', severity: 'error', target: id, message: `기능 ID 형식이 잘못되었습니다: ${id}` });
+  // 문서 1개 = 기능 1개 기본. 다기능은 groupingReason+groupingFunctions 평면 키로
+  // 선언한 opt-in만 허용하고, 유형 정책이 선언의 효력을 정한다. 진단은 001/006과 같은
+  // 단계 도입이다 — 일반 검사에서는 경고, 구현 준비도 게이트에서는 오류. 정본 분해가
+  // 끝나면 상시 오류로 승격을 검토한다.
+  const groupingReason = String(meta.groupingReason || '').trim();
+  const groupingFunctions = unique((Array.isArray(meta.groupingFunctions) ? meta.groupingFunctions : []).map((value) => String(value).trim()).filter(Boolean));
+  if (ids.length > 1) {
+    const policy = GROUPING_POLICY[type];
+    if (policy === 'forbidden') issues.push({ code: 'RDL-IMPL-014', severity: strictSeverity, message: `${type} 문서는 기능 1개만 나릅니다. 기능마다 문서를 분리하세요.` });
+    else if (!groupingReason) issues.push({ code: 'RDL-IMPL-013', severity: strictSeverity, message: `기능 ${ids.length}개를 나르는 문서에는 groupingReason 선언이 필요합니다. 문서 1개가 기능 1개를 나르는 것이 기본입니다.` });
+    else {
+      const declared = new Set(groupingFunctions);
+      const idSet = new Set(ids);
+      const mismatch = groupingFunctions.length === 0 || groupingFunctions.some((id) => !idSet.has(id)) || ids.some((id) => !declared.has(id));
+      if (mismatch) issues.push({ code: 'RDL-IMPL-015', severity: strictSeverity, message: 'groupingFunctions는 functionIds와 같은 집합이어야 합니다. 합친 범위를 정확히 선언하세요.' });
+      else if (type === 'MOD' || type === 'API') issues.push({ code: 'RDL-IMPL-017', severity: 'warning', message: `${type} 다기능 묶음입니다. 사유를 검토하세요: ${groupingReason}` });
+    }
+  } else if (groupingReason || groupingFunctions.length) {
+    issues.push({ code: 'RDL-IMPL-015', severity: strictSeverity, message: '단일 기능 문서에는 grouping 선언을 두지 않습니다.' });
+  }
   for (const grouped of groupedFunctionLines(parsed.body, ids)) issues.push({ code: 'RDL-IMPL-004', severity: 'error', line: parsed.bodyStartLine + grouped.line - 1, message: `기능 ID를 한 행이나 범위로 묶어 명세할 수 없습니다. 같은 문서 안에서도 각 기능을 독립 계약으로 작성하세요: ${grouped.value}` });
   if (IMPLEMENTATION_TYPES.includes(type)) {
     const sections = functionSections(parsed.body);
@@ -144,6 +169,15 @@ function validateImplementationTrace(artifactInput, options) {
     if (reqOwners.has(id)) issues.push({ code: 'RDL-IMPL-009', severity: 'error', target: id, artifactId: artifact.id, message: `기능 ID가 여러 REQ에 중복 정의되었습니다: ${id}` });
     else reqOwners.set(id, artifact.id);
   }
+  // 기능 정본 유일성: 한 기능이 같은 유형의 문서 여럿에 흩어지는 것을 막는다.
+  // REQ는 009가 이미 상시 오류로 지키고 있고, 나머지 유형은 새 계약이므로 단계 도입한다.
+  for (const type of ['SCR', 'MOD', 'API', 'TST']) {
+    const owners = new Map();
+    for (const artifact of artifacts.filter((item) => item.type === type)) for (const id of artifact.functionIds) {
+      if (owners.has(id)) issues.push({ code: 'RDL-IMPL-016', severity: settings.implementation ? 'error' : 'warning', target: id, artifactId: artifact.id, message: `기능 ID가 여러 ${type} 문서에 중복 선언되었습니다: ${id} (${owners.get(id)}에 이미 있음)` });
+      else owners.set(id, artifact.id);
+    }
+  }
   const trace = implementationTrace(artifactInput);
   for (const entry of trace.entries) {
     if ((!entry.artifacts.REQ || entry.artifacts.REQ.length === 0) && Object.keys(entry.artifacts).some((type) => type !== 'REQ')) issues.push({ code: 'RDL-IMPL-011', severity: 'error', target: entry.functionId, message: `REQ 원천 계약 없이 하위 산출물이 기능 ID를 참조합니다: ${entry.functionId}` });
@@ -177,6 +211,11 @@ function renderImplementationMetadata(ids) {
   return `implementationContract: ${CONTRACT_VERSION}\nfunctionIds:\n${ids.map((id) => `  - ${id}`).join('\n')}`;
 }
 
+// grouping 선언은 평면 키다 — parseFrontmatter는 중첩 맵을 읽지 않는다.
+function renderGroupingMetadata(reason, ids) {
+  return `groupingReason: ${JSON.stringify(String(reason).trim())}\ngroupingFunctions:\n${ids.map((id) => `  - ${id}`).join('\n')}`;
+}
+
 function renderFunctionContracts(type, ids) {
   const heading = type === 'TST' ? '기능별 검증 계약' : '기능별 설계 계약';
   return `\n## ${heading}\n\n${ids.map((id) => `### ${id}\n\n${REQUIRED_FIELDS_BY_TYPE[type].map((field) => `#### ${field}\n\n- 작성 필요: ${id} ${field}`).join('\n\n')}`).join('\n\n')}\n`;
@@ -187,7 +226,7 @@ function renderTestCoverage(ids) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, REQUIRED_FUNCTION_FIELDS, REQUIRED_FIELDS_BY_TYPE,
+  CONTRACT_VERSION, IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, GROUPING_POLICY, REQUIRED_FUNCTION_FIELDS, REQUIRED_FIELDS_BY_TYPE,
   functionIds, isIndexArtifact, validateImplementationDocument, implementationTrace, validateImplementationTrace,
-  validateTaskImplementationReadiness, renderImplementationMetadata, renderFunctionContracts, renderTestCoverage
+  validateTaskImplementationReadiness, renderImplementationMetadata, renderGroupingMetadata, renderFunctionContracts, renderTestCoverage
 };

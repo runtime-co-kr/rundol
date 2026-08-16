@@ -8,8 +8,9 @@ const {
 const fields = ['입력', '출력', '업무 규칙', '상태와 전이', '권한과 승인', '정상·오류·취소', '감사 기록', '수용 기준'];
 const testFields = ['사전 조건', '입력과 데이터', '실행 절차', '기대 결과', '오류와 취소', '증거', '수용 기준'];
 
-function frontmatter(id, type, functionIds) {
-  return `---\nid: ${id}\ntitle: 기능 계약\nimplementationContract: atomic-v1\nfunctionIds:\n${functionIds.map((value) => `  - ${value}`).join('\n')}\n---\n\n# 기능 계약\n`;
+function frontmatter(id, type, functionIds, grouping) {
+  const declaration = grouping ? `\ngroupingReason: ${JSON.stringify(grouping.reason || '')}\ngroupingFunctions:\n${(grouping.functions || functionIds).map((value) => `  - ${value}`).join('\n')}` : '';
+  return `---\nid: ${id}\ntitle: 기능 계약\nimplementationContract: atomic-v1\nfunctionIds:\n${functionIds.map((value) => `  - ${value}`).join('\n')}${declaration}\n---\n\n# 기능 계약\n`;
 }
 
 function feature(id, override) {
@@ -24,9 +25,55 @@ function document(source, file) {
   return { source, file: file || 'REQ-001-기능-계약.md', relativeFile: file || 'REQ-001-기능-계약.md' };
 }
 
-function testAtomicFunctionsInOneDocument() {
-  const source = frontmatter('REQ-001', 'REQ', ['MEM-01', 'MEM-02']) + feature('MEM-01') + feature('MEM-02');
+// 문서 1개 = 기능 1개가 기본 계약이다. 다기능이 무결하던 옛 계약은
+// 유형 정책과 grouping 선언의 opt-in으로 바뀌었다.
+function testSingleFunctionRemainsClean() {
+  const source = frontmatter('REQ-001', 'REQ', ['MEM-01']) + feature('MEM-01');
   assert.deepStrictEqual(validateImplementationDocument(document(source), { implementation: true }), []);
+}
+
+function testGranularityContract() {
+  // REQ 다기능: 완전한 선언이 있어도 금지 — 분리가 유일한 해소.
+  const req = frontmatter('REQ-001', 'REQ', ['MEM-01', 'MEM-02'], { reason: '정당한 사유' }) + feature('MEM-01') + feature('MEM-02');
+  const reqIssues = validateImplementationDocument(document(req), { implementation: true });
+  assert(reqIssues.some((item) => item.code === 'RDL-IMPL-014' && item.severity === 'error'));
+
+  // 선언 없는 다기능은 위반이고, 일반 검사에서는 경고로 단계 도입된다.
+  const undeclared = frontmatter('TST-001', 'TST', ['MEM-01', 'MEM-02']) + testFeature('MEM-01') + testFeature('MEM-02');
+  assert(validateImplementationDocument(document(undeclared, 'TST-001-검증.md'), { implementation: true }).some((item) => item.code === 'RDL-IMPL-013' && item.severity === 'error'));
+  assert(validateImplementationDocument(document(undeclared, 'TST-001-검증.md'), {}).some((item) => item.code === 'RDL-IMPL-013' && item.severity === 'warning'));
+
+  // TST는 선언이 완전하면 조용히 통과한다.
+  const declared = frontmatter('TST-001', 'TST', ['MEM-01', 'MEM-02'], { reason: '한 시나리오 흐름의 검증 묶음' }) + testFeature('MEM-01') + testFeature('MEM-02');
+  assert.deepStrictEqual(validateImplementationDocument(document(declared, 'TST-001-검증.md'), { implementation: true }), []);
+
+  // 사유가 비었거나 범위가 functionIds와 다르면 형식 위반이다.
+  const emptyReason = frontmatter('TST-001', 'TST', ['MEM-01', 'MEM-02'], { reason: '  ' }) + testFeature('MEM-01') + testFeature('MEM-02');
+  assert(validateImplementationDocument(document(emptyReason, 'TST-001-검증.md'), { implementation: true }).some((item) => item.code === 'RDL-IMPL-013'));
+  const mismatched = frontmatter('TST-001', 'TST', ['MEM-01', 'MEM-02'], { reason: '사유', functions: ['MEM-01'] }) + testFeature('MEM-01') + testFeature('MEM-02');
+  assert(validateImplementationDocument(document(mismatched, 'TST-001-검증.md'), { implementation: true }).some((item) => item.code === 'RDL-IMPL-015'));
+
+  // 단일 기능 문서의 grouping 선언은 군더더기가 아니라 위반이다.
+  const stray = frontmatter('TST-001', 'TST', ['MEM-01'], { reason: '사유' }) + testFeature('MEM-01');
+  assert(validateImplementationDocument(document(stray, 'TST-001-검증.md'), { implementation: true }).some((item) => item.code === 'RDL-IMPL-015'));
+
+  // MOD·API는 선언으로 허용하되 사유를 경고로 항상 표면화한다.
+  const modFields = REQUIRED_FIELDS_BY_TYPE.MOD.map((field) => (id) => `#### ${field}\n\n- ${id}의 확정된 ${field} 내용`);
+  const modBody = (id) => `\n### ${id}\n\n${modFields.map((render) => render(id)).join('\n\n')}\n`;
+  const mod = frontmatter('MOD-001', 'MOD', ['MEM-01', 'MEM-02'], { reason: '같은 집계의 상태를 공유' }) + modBody('MEM-01') + modBody('MEM-02');
+  const modIssues = validateImplementationDocument(document(mod, 'MOD-001-모델.md'), { implementation: true });
+  assert(modIssues.some((item) => item.code === 'RDL-IMPL-017' && item.severity === 'warning'));
+  assert(!modIssues.some((item) => item.severity === 'error'));
+}
+
+function testFunctionCanonicalUniqueness() {
+  // 같은 기능 ID가 같은 유형 문서 둘 이상에 흩어지면 위반이다 (REQ는 기존 009가 지킨다).
+  const first = { id: 'TST-001', type: 'TST', file: 'TST-001.md', source: frontmatter('TST-001', 'TST', ['PAY-01']) + testFeature('PAY-01') };
+  const second = { id: 'TST-002', type: 'TST', file: 'TST-002.md', source: frontmatter('TST-002', 'TST', ['PAY-01']) + testFeature('PAY-01') };
+  const req = { id: 'REQ-001', type: 'REQ', file: 'REQ-001.md', source: frontmatter('REQ-001', 'REQ', ['PAY-01']) + feature('PAY-01') };
+  const issues = validateImplementationTrace([req, first, second], { implementation: true }).issues;
+  assert(issues.some((item) => item.code === 'RDL-IMPL-016' && item.severity === 'error' && item.target === 'PAY-01'));
+  assert.deepStrictEqual(validateImplementationTrace([req, first, second], {}).issues.filter((item) => item.code === 'RDL-IMPL-016').map((item) => item.severity), ['warning']);
 }
 
 function testGroupedSpecificationRejected() {
@@ -73,7 +120,9 @@ function testIndexArtifactNames() {
   assert.strictEqual(isIndexArtifact('데이터베이스 인덱스 설계'), false);
 }
 
-testAtomicFunctionsInOneDocument();
+testSingleFunctionRemainsClean();
+testGranularityContract();
+testFunctionCanonicalUniqueness();
 testGroupedSpecificationRejected();
 testUnresolvedRuleRejectedAtReadiness();
 testEveryImplementationTypeRequiresStandaloneFields();

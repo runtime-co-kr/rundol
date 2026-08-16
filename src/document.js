@@ -9,8 +9,8 @@ const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
 const { assertBoundaryInput } = require('./document-boundary');
 const {
-  IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, isIndexArtifact,
-  renderImplementationMetadata, renderFunctionContracts
+  IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, GROUPING_POLICY, isIndexArtifact,
+  renderImplementationMetadata, renderGroupingMetadata, renderFunctionContracts
 } = require('./implementation-contract');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
@@ -73,8 +73,16 @@ function createDocument(start, input) {
   const title = safeTitle(input.title);
   const boundary = type === 'NTE' ? null : assertBoundaryInput(type, { scope: input.scope, excludes: input.excludes });
   const functionIds = Array.from(new Set((input.functionIds || []).map((value) => String(value).trim()).filter(Boolean)));
-  if (IMPLEMENTATION_TYPES.includes(type) && functionIds.length === 0) throw new Error(`${type} 문서는 --function-id <기능-ID>가 하나 이상 필요합니다. 여러 기능을 한 문서에 담을 수 있지만 기능별 계약은 독립적으로 작성해야 합니다.`);
+  if (IMPLEMENTATION_TYPES.includes(type) && functionIds.length === 0) throw new Error(`${type} 문서는 --function-id <기능-ID>가 하나 이상 필요합니다.`);
   for (const functionId of functionIds) if (!FUNCTION_ID_PATTERN.test(functionId)) throw new Error(`기능 ID 형식이 잘못되었습니다: ${functionId}`);
+  // 문서 1개 = 기능 1개가 기본이다. 합침은 --grouped --reason의 명시적 opt-in이고,
+  // forbidden 유형(REQ·SCR)은 선언으로도 열리지 않는다 — 분리가 유일한 길이다.
+  const groupingReason = String(input.reason || '').trim();
+  if (functionIds.length > 1) {
+    if (GROUPING_POLICY[type] === 'forbidden') throw new Error(`${type} 문서는 기능 1개만 나릅니다. 기능마다 문서를 분리하세요: ${functionIds.join(', ')}`);
+    if (!input.grouped) throw new Error(`기능 ${functionIds.length}개를 한 문서에 담으려면 --grouped와 --reason <합침 사유>로 명시해야 합니다.`);
+    if (!groupingReason) throw new Error('--grouped에는 --reason <합침 사유>가 필요합니다.');
+  } else if (input.grouped) throw new Error('--grouped는 --function-id가 2개 이상일 때만 의미가 있습니다.');
   const collaboration = readCollaboration(layout.root, project.key);
   const owner = collaboration.members.find((member) => member.id === input.owner);
   if (!owner) throw new Error(`project.md에 등록된 --owner <MEMBER-ID>가 필요합니다: ${input.owner || '(없음)'}`);
@@ -98,7 +106,7 @@ function createDocument(start, input) {
     .replaceAll('<topic>', input.feature || title.filename.toLowerCase());
   if (boundary) source = source.replace(/^scope:\s*.*$/mu, `scope: ${yamlQuote(boundary.scope)}`)
     .replace(/^excludes:\s*\r?\n(?:\s{2}-[^\r\n]*\r?\n?)+/mu, `excludes:\n${boundary.excludes.map((value) => `  - ${yamlQuote(value)}`).join('\n')}\n`);
-  if (functionIds.length) source = source.replace(/^granularity:\s*bounded-v1\s*$/mu, `granularity: bounded-v1\n${renderImplementationMetadata(functionIds)}`);
+  if (functionIds.length) source = source.replace(/^granularity:\s*bounded-v1\s*$/mu, `granularity: bounded-v1\n${renderImplementationMetadata(functionIds)}${functionIds.length > 1 ? `\n${renderGroupingMetadata(groupingReason, functionIds)}` : ''}`);
   // 기능별 계약은 유형의 하부 요소가 아니라 기능의 계약이다. 아래 하부 요소 재구성이
   // 건드리지 않도록 맨 마지막에 붙인다. 유형마다 제목이 달라(설계/검증) 문구로 찾으면 놓친다.
   const functionContracts = IMPLEMENTATION_TYPES.includes(type) ? renderFunctionContracts(type, functionIds) : '';

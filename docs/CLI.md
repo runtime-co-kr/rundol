@@ -52,7 +52,7 @@ rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|
 rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
 rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
 rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
-               [--function-id <기능-ID>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
+               [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
 rdl doc migrate [--project <key>] [--apply] [--json]
 rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
 rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
@@ -339,6 +339,8 @@ rdl run log --run RUN-... --project memo --json
 `rdl sync`가 성공하면 `completed_local` 런이 `synced`로 전이한다 — 런의 완료는 저장이 아니라 병합 생존이다. sync 실패는 관련 런을 재개 가능한 정지로 전이시킨다. `rdl check`는 run 샤드의 파일명(`RDL-RUN-001`), Client 등록(`RDL-RUN-002`), 파일명과 이벤트 필드의 일치(`RDL-RUN-003`), JSONL 파싱(`RDL-RUN-004`)을 검사한다.
 
 ## 문서 생성
+
+문서 1개가 기능 1개를 나르는 것이 기본 계약이다. `--function-id`를 2개 이상 주려면 `--grouped --reason <합침 사유>`로 명시해야 하고, scaffold는 frontmatter에 `groupingReason`과 `groupingFunctions`를 기록한다. REQ와 SCR은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다. TST는 선언으로 허용되고, MOD와 API는 허용하되 검사가 사유를 경고로 항상 표면화한다. `rdl check`는 선언 없는 다기능(`RDL-IMPL-013`), 금지 유형의 다기능(`RDL-IMPL-014`), 선언 형식 위반(`RDL-IMPL-015`), 같은 기능 ID가 같은 유형 문서 여럿에 흩어진 것(`RDL-IMPL-016`)을 진단한다. 이 진단들은 일반 검사에서 경고이고 `--implementation` 준비도 게이트에서 오류다 — 기존 문서의 정리가 끝나면 상시 오류로 승격을 검토한다.
 
 `rdl init --guided`는 UI, data, API, component, operations, security/regulation, terminology 신호를 질문하고 최종 traits와 policy만 `project.md`에 저장한다. 같은 설정을 자동화할 때는 `--profile`과 반복 가능한 `--trait`를 사용한다. `rdl project profile --json` 결과에는 revision/history, 누락 required 유형과 다음 `rdl doc create` 명령이 포함된다. 정책을 직접 override할 때는 네 상태 옵션을 모두 지정하고 모든 정규 유형을 정확히 한 번 포함해야 한다.
 
