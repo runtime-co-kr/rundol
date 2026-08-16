@@ -5,6 +5,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { initializeWorkspace } = require('../src/init');
+const { initState } = require('../src/state');
 
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'bin', 'rdl.js');
@@ -177,9 +179,33 @@ related: []
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
+function testInvalidDriverShardIsDiagnosed() {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-check-driver-'));
+  try {
+    for (const args of [['init', '-b', 'main'], ['config', 'user.name', 'Rundol Test'], ['config', 'user.email', 'rundol@example.test']]) {
+      const result = spawnSync('git', args, { cwd: temp, encoding: 'utf8' });
+      assert.strictEqual(result.status, 0, result.stderr);
+    }
+    fs.writeFileSync(path.join(temp, 'README.md'), '# test\n', 'utf8');
+    spawnSync('git', ['add', '.'], { cwd: temp });
+    assert.strictEqual(spawnSync('git', ['commit', '-m', 'initial'], { cwd: temp }).status, 0);
+    initializeWorkspace(temp, 'demo', 'Demo');
+    initState(temp, { project: 'demo' });
+    const driverRoot = path.join(temp, 'projects', 'workspace', 'events', 'driver');
+    fs.mkdirSync(driverRoot, { recursive: true });
+    fs.writeFileSync(path.join(driverRoot, 'driver-invalid.jsonl'), '{}\n', 'utf8');
+    const result = run(['check', '--root', temp, '--json']);
+    const output = JSON.parse(result.stdout);
+    assert(output.diagnostics.some((item) => item.code === 'RDL-DRIVER-010'));
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 testTmsFixture();
 testMissingReference();
 testLegacySpecIsRejectedInStrictMode();
 testAliasIsNotAFileTarget();
 testProjectGovernanceCannotBeSkipped();
+testInvalidDriverShardIsDiagnosed();
 process.stdout.write('check tests passed\n');

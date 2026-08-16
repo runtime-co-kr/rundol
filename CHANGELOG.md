@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-08-16
+
+### Added
+
+- `rdl run drive`가 멱등 절차를 정본 커서부터 사람·sync 경계까지 실행한다. operation ID, retry-safety preflight, driver lease, owner fencing, 충돌 감지·명시적 resolution, 실행 중 lease heartbeat와 프로세스 트리 취소를 포함한다.
+
+## [0.31.0] - 2026-08-16
+
+### Added
+
+- `rdl watch`가 안정된 입력 snapshot을 기준으로 진단 NDJSON과 선택적 원격 tip 관계를 관찰한다. Board와 같은 revision 계산기, PID 생존 기반 단일 프로세스 락, 진단 dedup/cache 복구를 사용하며 프로젝트 정본이나 원장을 변경하지 않는다.
+
+## [0.30.0] - 2026-08-16
+
+### Added
+
+- 불변 instruction/lens registry와 격리된 one-shot adapter 실행 커널, `rdl verify`, client-sharded verdict 원장, deterministic quorum fold, verification request 재개를 추가했다.
+
+## [0.29.0] - 2026-08-16
+
+### Changed
+
+- Run 원장을 schema v2 canonical envelope와 causal owner token으로 강화했다. takeover conflict/resolution, off-cursor fencing, shared-first idempotent append, request journal 복구, pinned harness settings와 same-sync `run.synced` 전파를 포함한다.
+
 ## [0.28.1] - 2026-08-16
 
 ### Changed

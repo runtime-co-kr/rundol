@@ -11,6 +11,8 @@ const { validateBoundaryMetadata } = require('./document-boundary');
 const { validateDocumentDiagram } = require('./document-diagram');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
+const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
+const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -614,6 +616,60 @@ function checkWorkspaceStore(diagnostics, layout) {
         if (!entry.name.startsWith(`run-${event.projectId}-${event.clientId}-${event.runId}-`)) diagnostic(diagnostics, { code: 'RDL-RUN-003', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: '런 이벤트의 프로젝트, Client 또는 runId가 파일명과 일치하지 않습니다.' });
       } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-RUN-004', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL 이벤트를 파싱할 수 없습니다: ${error.message}` });
+      }
+    }
+  }
+  const verdictRoot = path.join(eventsRoot, 'verdict');
+  if (fs.existsSync(verdictRoot)) for (const entry of fs.readdirSync(verdictRoot, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(verdictRoot, entry.name);
+    if (!/^verdict-[a-z0-9]+(?:-[a-z0-9]+)*-[a-z0-9]+(?:-[a-z0-9]+)*-\d{6}\.jsonl$/u.test(entry.name)) {
+      diagnostic(diagnostics, { code: 'RDL-VERDICT-010', category: 'workspace', file: relative(layout.root, file), message: '검증 verdict 이벤트 파일명이 표준 패턴과 다릅니다.' });
+      continue;
+    }
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/u).entries()) {
+      if (!line.trim()) continue;
+      let event;
+      try {
+        event = JSON.parse(line);
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-VERDICT-011', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL verdict 이벤트를 파싱할 수 없습니다: ${error.message}` });
+        continue;
+      }
+      if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-VERDICT-012', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 Client를 참조합니다: ${event.clientId || '(없음)'}` });
+      if (!entry.name.startsWith(`verdict-${event.projectId}-${event.clientId}-`)) diagnostic(diagnostics, { code: 'RDL-VERDICT-013', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: 'verdict 이벤트의 프로젝트 또는 Client가 파일명과 일치하지 않습니다.' });
+      try {
+        normalizeVerdictEvent(event);
+        const expected = verdictEnvelope(event).canonicalDigest;
+        if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical verdict projection과 일치하지 않습니다.');
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-VERDICT-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `verdict schema/envelope가 유효하지 않습니다: ${error.message}` });
+      }
+    }
+  }
+  const driverRoot = path.join(eventsRoot, 'driver');
+  if (fs.existsSync(driverRoot)) for (const entry of fs.readdirSync(driverRoot, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(driverRoot, entry.name);
+    if (!/^driver-[a-z0-9]+(?:-[a-z0-9]+)*-[a-z0-9]+(?:-[a-z0-9]+)*-RUN-[A-F0-9]{20}-\d{6}\.jsonl$/u.test(entry.name)) {
+      diagnostic(diagnostics, { code: 'RDL-DRIVER-010', category: 'workspace', file: relative(layout.root, file), message: 'driver event shard filename is invalid.' });
+      continue;
+    }
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/u).entries()) {
+      if (!line.trim()) continue;
+      let event;
+      try { event = JSON.parse(line); } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-DRIVER-011', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `driver JSONL is invalid: ${error.message}` });
+        continue;
+      }
+      if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-DRIVER-012', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `driver event references an unknown client: ${event.clientId || '(missing)'}` });
+      if (!entry.name.startsWith(`driver-${event.projectId}-${event.clientId}-${event.runId}-`)) diagnostic(diagnostics, { code: 'RDL-DRIVER-013', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: 'driver event project/client/run identity differs from its filename.' });
+      try {
+        const normalized = normalizeDriverEvent(event);
+        const expected = driverEnvelope(normalized).canonicalDigest;
+        if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest differs from the canonical driver projection');
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-DRIVER-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `driver schema/envelope is invalid: ${error.message}` });
       }
     }
   }

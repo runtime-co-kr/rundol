@@ -9,7 +9,10 @@ const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency } = require('./tasks');
-const { initSettings, saveSettings, syncSettings } = require('./settings');
+const { initSettings, saveSettings, prepareSettings, finalizeSettings } = require('./settings');
+const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
+const { getClient } = require('./collaboration-store');
+const { readCollaboration } = require('./collaboration');
 const { runtimeWorkspace } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
@@ -22,6 +25,17 @@ function atomicWrite(file, content) {
 
 function canonicalJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function syncCommandDigest(settings) {
+  const command = {
+    command: 'sync',
+    project: settings.project || null,
+    remote: settings.remote || 'origin',
+    push: settings.push !== false,
+    clientId: settings.clientId || null
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(command), 'utf8').digest('hex');
 }
 
 function sameDirectory(left, right) {
@@ -550,7 +564,16 @@ function saveState(start, options) {
   return results.length === 1 ? Object.assign(results[0], { settings: settingsResult }) : { root: results[0].root, settings: settingsResult, changed: results.some((item) => item.changed) || Boolean(settingsResult && settingsResult.changed), projects: results };
 }
 
-function syncProjectState(config, settings) {
+function waitForSyncRetry(seconds, settings) {
+  if (typeof settings.sleep === 'function') return settings.sleep(seconds);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+}
+
+function nonFastForward(result) {
+  return /non-fast-forward|fetch first|rejected/u.test(`${result.stderr}\n${result.stdout}`);
+}
+
+function prepareProjectState(config, settings) {
   const remote = settings.remote || 'origin';
   const saved = saveProjectState(config, settings);
   if (!refExists(config.root, config.ref)) initProjectState(config);
@@ -607,49 +630,112 @@ function syncProjectState(config, settings) {
   } else action = 'publish-new';
   materialize(config);
   validateProjection(config);
-  if (settings.push !== false) runGit(['push', remote, `${config.ref}:${config.ref}`], { cwd: config.root });
-  return { root: config.root, project: config.project || null, branch: config.branch, remote, action, commit, saved: saved.changed, pushed: settings.push !== false, projection: config.projection };
+  return { root: config.root, project: config.project || null, branch: config.branch, remote, action, commit, saved: saved.changed, pushed: false, projection: config.projection };
+}
+
+function syncProjectState(config, settings) {
+  const policy = settings.retryPolicy || { retryBackoffSeconds: [1, 2, 4], maxAttempts: 3 };
+  if (settings.push === false) return prepareProjectState(config, settings);
+  let prepared = null;
+  let pushed = null;
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    prepared = prepareProjectState(config, settings);
+    pushed = runGit(['push', prepared.remote, `${config.ref}:${config.ref}`], { cwd: config.root, allowFailure: true });
+    if (pushed.status === 0) return Object.assign({}, prepared, { pushed: true, attempts: attempt, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout });
+    if (!nonFastForward(pushed) || attempt === policy.maxAttempts) break;
+    waitForSyncRetry(policy.retryBackoffSeconds[attempt - 1], settings);
+  }
+  throw new Error(`project push 실패${nonFastForward(pushed) ? ' (retry exhausted)' : ''}: ${(pushed.stderr || pushed.stdout).trim()}`);
 }
 
 // 런의 두 번째 완료: 병합에서 살아남아 push까지 마친 뒤에만 synced다.
 // sync의 어떤 실패든(의미 충돌, sharded 병합, push) 진행 중이거나 로컬 완료인
 // 런을 재개 가능한 halted로 전이시킨다 — 실패를 조용히 지나가는 런은 없다.
-function transitionRuns(config, apply) {
-  if (!config.project) return;
-  try {
-    const ledger = require('./run-ledger');
-    for (const run of ledger.listRuns(config.worktree)) {
-      const event = apply(run);
-      if (!event) continue;
-      const owner = ledger.runOwner(ledger.readRunEvents(ledger.runDirectory(config.worktree, run.runId)));
-      ledger.recordRunEvent(config.root, { project: config.project, runId: run.runId, event: Object.assign({ clientId: owner }, event) });
-    }
-  } catch {
-    // 원장 전이 실패가 sync 자체의 결과를 가리면 안 된다. 전이는 다음 sync가 다시 시도한다.
+function transitionRuns(config, apply, settings) {
+  if (!config.project) return [];
+  const ledger = require('./run-ledger');
+  const transitions = [];
+  for (const run of ledger.listRuns(config.worktree)) {
+    const event = apply(run);
+    if (!event) continue;
+    const localEvents = ledger.readRunEvents(ledger.runDirectory(config.worktree, run.runId));
+    const ownership = typeof ledger.ownershipState === 'function' ? ledger.ownershipState(localEvents) : null;
+    const ownerToken = run.ownerToken || (ownership && ownership.ownerToken) || null;
+    if (!ownerToken && localEvents.some((item) => item && item.schemaVersion === 2)) throw new Error(`${run.runId}의 ACTIVE ownerToken을 확인할 수 없습니다.`);
+    const recorded = ledger.recordRunEvent(config.root, {
+      project: config.project,
+      runId: run.runId,
+      rootRequestId: settings.rootRequestId || settings.requestId,
+      childKey: `transition:${config.project}:${run.runId}:${event.commit || 'none'}:${event.type}`,
+      commandDigest: settings.commandDigest,
+      event: Object.assign({}, event, { clientId: settings.clientId, ...(ownerToken ? { ownerToken } : {}) })
+    });
+    transitions.push({ runId: run.runId, type: event.type, recorded });
   }
+  return transitions;
 }
 
 function syncProjectStateWithRuns(config, settings) {
   try {
     const result = syncProjectState(config, settings);
-    if (result.pushed) transitionRuns(config, (run) => (run.status === 'completed_local'
+    const transitions = result.pushed ? transitionRuns(config, (run) => (run.status === 'completed_local'
       ? { type: 'run.synced', commit: result.commit, remoteRef: `refs/remotes/${result.remote}/${result.branch}` }
-      : null));
-    return result;
+      : null), settings) : [];
+    return Object.assign({}, result, { transitions });
   } catch (error) {
     const reason = /충돌/u.test(error.message || '') ? 'merge-conflict' : 'sync-failed';
-    transitionRuns(config, (run) => (run.status === 'running' || run.status === 'completed_local'
-      ? { type: 'run.halted', reason, atStep: run.cursor, resumable: true }
-      : null));
+    try {
+      transitionRuns(config, (run) => (run.status === 'running' || run.status === 'completed_local'
+        ? { type: 'run.halted', reason, ...(run.cursor ? { atStep: run.cursor } : {}), resumable: true }
+        : null), settings);
+    } catch (transitionError) {
+      throw new AggregateError([error, transitionError], `sync 실패(${error.message}) 후 run.halted 전이도 실패했습니다: ${transitionError.message}`);
+    }
     throw error;
   }
 }
 
+function preflightSyncClient(start, configs, clientId) {
+  if (configs.every((config) => !config.schemaVersion || config.schemaVersion < 6)) return null;
+  if (!clientId) throw new Error('--client-id <id>가 필요합니다.');
+  const client = getClient(start, clientId);
+  if (client.status !== 'active') throw new Error(`sync 실행 Client가 비활성 상태입니다: ${clientId}`);
+  if (!['agent', 'service'].includes(client.type)) throw new Error(`sync 실행 Client는 agent 또는 service여야 합니다: ${clientId}`);
+  for (const config of configs) {
+    if (!config.project) continue;
+    const collaboration = readCollaboration(config.root, config.project);
+    const member = collaboration.members.find((item) => item.id === client.owner);
+    if (!member || member.fields['상태'] !== 'active') throw new Error(`${config.project}의 active member가 소유한 Client가 아닙니다: ${clientId}`);
+  }
+  return client;
+}
+
 function syncState(start, options) {
-  const settings = options || {};
-  const settingsResult = syncSettings(start, settings);
-  const results = workspaceStateConfigs(start, settings.project).map((config) => syncProjectStateWithRuns(config, settings));
-  return results.length === 1 ? Object.assign(results[0], { settings: settingsResult }) : { root: results[0].root, settings: settingsResult, pushed: results.every((item) => item.pushed), projects: results };
+  const settings = Object.assign({}, options || {});
+  const configs = workspaceStateConfigs(start, settings.project);
+  preflightSyncClient(start, configs, settings.clientId);
+  if (!settings.rootRequestId && !settings.requestId) settings.rootRequestId = require('./run-ledger').newRequestId();
+  if (!settings.commandDigest) settings.commandDigest = syncCommandDigest(settings);
+  const harnessByProject = new Map(configs.map((config) => [config.project, loadHarnessSettings(start, { project: config.project })]));
+  const workspacePolicy = retryPolicy(harnessByProject.get(configs[0].project));
+  const settingsPrepared = prepareSettings(start, Object.assign({}, settings, { push: false, retryPolicy: workspacePolicy }));
+  const results = [];
+  try {
+    for (const config of configs) {
+      const harness = harnessByProject.get(config.project);
+      results.push(syncProjectStateWithRuns(config, Object.assign({}, settings, { retryPolicy: retryPolicy(harness) })));
+    }
+    const settingsResult = finalizeSettings(start, Object.assign({}, settings, { retryPolicy: workspacePolicy }));
+    const workspaceResult = settingsPrepared ? Object.assign({}, settingsPrepared, settingsResult, { prepared: true }) : settingsResult;
+    return results.length === 1 ? Object.assign(results[0], { settings: workspaceResult, rootRequestId: settings.rootRequestId || settings.requestId }) : { root: results[0].root, settings: workspaceResult, pushed: results.every((item) => item.pushed), rootRequestId: settings.rootRequestId || settings.requestId, projects: results };
+  } catch (error) {
+    try {
+      finalizeSettings(start, Object.assign({}, settings, { retryPolicy: workspacePolicy }));
+    } catch (finalizeError) {
+      throw new AggregateError([error, finalizeError], `sync 실패 상태의 workspace finalization도 실패했습니다: ${finalizeError.message}`);
+    }
+    throw error;
+  }
 }
 
 function migrateTaskStorage(start, options) {
@@ -682,4 +768,4 @@ function migrateTaskStorage(start, options) {
   }
 }
 
-module.exports = { initState, refreshState, saveState, taskSet, taskAcceptance, taskUpdate, taskCreate, syncState, migrateTaskStorage, stateConfig: workspaceStateConfig, canonicalJson };
+module.exports = { initState, refreshState, saveState, taskSet, taskAcceptance, taskUpdate, taskCreate, syncState, migrateTaskStorage, stateConfig: workspaceStateConfig, canonicalJson, prepareProjectState, syncProjectState, transitionRuns, preflightSyncClient };

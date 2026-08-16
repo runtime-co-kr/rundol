@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const MAX_EVENTS = 500;
 const MAX_BYTES = 1024 * 1024;
@@ -15,7 +16,8 @@ const RUN_ID = 'RUN-[A-F0-9]{20}';
 const KINDS = {
   lease: { flat: true, pattern: new RegExp(`^lease-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
   run: { flat: false, runScoped: true, pattern: new RegExp(`^run-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') },
-  verdict: { flat: false, pattern: new RegExp(`^verdict-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
+  verdict: { flat: false, pattern: new RegExp(`^verdict-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
+  driver: { flat: false, runScoped: true, pattern: new RegExp(`^driver-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') }
 };
 
 function kindDefinition(kind) {
@@ -35,6 +37,58 @@ function shardPrefix(kind, scope, clientId, runId) {
 
 function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalProjection(event) {
+  const projected = {};
+  for (const [key, value] of Object.entries(event || {})) {
+    if (['canonicalDigest', 'occurredAt', 'localDetail'].includes(key) || value === undefined) continue;
+    projected[key] = value;
+  }
+  return projected;
+}
+
+function projectionDigest(event) {
+  return crypto.createHash('sha256').update(Buffer.from(canonicalJson(canonicalProjection(event)), 'utf8')).digest('hex');
+}
+
+function validateProjection(event) {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('event must be an object');
+  if (!event.canonicalDigest) return null;
+  if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest)) throw new Error(`invalid canonicalDigest for ${event.eventId || '(missing eventId)'}`);
+  const computed = projectionDigest(event);
+  if (computed !== event.canonicalDigest) throw new Error(`canonicalDigest mismatch for ${event.eventId || '(missing eventId)'}`);
+  return computed;
+}
+
+function deduplicateEvents(events) {
+  const byId = new Map();
+  const result = [];
+  for (const event of events) {
+    validateProjection(event);
+    if (!event.eventId) {
+      result.push(event);
+      continue;
+    }
+    const previous = byId.get(event.eventId);
+    if (!previous) {
+      byId.set(event.eventId, event);
+      result.push(event);
+      continue;
+    }
+    if (previous.canonicalDigest && event.canonicalDigest && previous.canonicalDigest === event.canonicalDigest) continue;
+    if (!previous.canonicalDigest && !event.canonicalDigest && canonicalJson(canonicalProjection(previous)) === canonicalJson(canonicalProjection(event))) continue;
+    throw new Error(`eventId corruption: ${event.eventId}`);
+  }
+  return result;
 }
 
 // append와 세그먼트 롤오버("읽고→판단→append")를 같은 머신의 동시 프로세스 사이에서 직렬화한다.
@@ -84,11 +138,13 @@ function readEvents(eventsRoot, kind, scope, options) {
       if (!line.trim()) continue;
       const event = JSON.parse(line);
       if (!name.startsWith(shardPrefix(kind, scope, event.clientId))) throw new Error(`${name}:${index + 1}의 clientId가 파일명과 일치하지 않습니다.`);
+      if (definition.runScoped && !name.startsWith(shardPrefix(kind, scope, event.clientId, event.runId))) throw new Error(`${name}:${index + 1} runId does not match the shard filename.`);
       events.push(event);
     }
   }
-  if (options && options.sort === 'file') return events;
-  return events.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || String(a.eventId).localeCompare(String(b.eventId)));
+  const unique = deduplicateEvents(events);
+  if (options && options.sort === 'file') return unique;
+  return unique.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || String(a.eventId).localeCompare(String(b.eventId)));
 }
 
 function selectShard(eventsRoot, kind, scope, clientId, options) {
@@ -111,6 +167,26 @@ function selectShard(eventsRoot, kind, scope, clientId, options) {
 
 function appendEvent(eventsRoot, kind, scope, clientId, event, options) {
   const write = () => {
+    if (event && event.localDetail !== undefined) throw new Error('localDetail cannot be written to a shared event shard');
+    validateProjection(event);
+    const definition = kindDefinition(kind);
+    const directory = eventsDirectory(eventsRoot, kind);
+    if (fs.existsSync(directory) && event.eventId) {
+      const prefix = shardPrefix(kind, scope);
+      for (const name of fs.readdirSync(directory).filter((value) => value.startsWith(prefix) && definition.pattern.test(value)).sort()) {
+        const file = path.join(directory, name);
+        for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/u).filter(Boolean)) {
+          const current = JSON.parse(line);
+          if (current.eventId !== event.eventId) continue;
+          validateProjection(current);
+          const same = current.canonicalDigest && event.canonicalDigest
+            ? current.canonicalDigest === event.canonicalDigest
+            : canonicalJson(canonicalProjection(current)) === canonicalJson(canonicalProjection(event));
+          if (!same) throw new Error(`eventId corruption: ${event.eventId}`);
+          return file;
+        }
+      }
+    }
     const file = selectShard(eventsRoot, kind, scope, clientId, options);
     fs.appendFileSync(file, `${JSON.stringify(event)}\n`, 'utf8');
     if (options && options.fsync) {
@@ -121,7 +197,10 @@ function appendEvent(eventsRoot, kind, scope, clientId, event, options) {
   };
   const lockDirectory = options && options.lockDirectory;
   if (!lockDirectory) return write();
-  return withAppendLock(lockDirectory, `events-${kind}-${scope}-${clientId}`, write);
+  const lockName = kind === 'driver'
+    ? `append-driver-${scope}-${clientId}-${options && options.runId}`
+    : `events-${kind}-${scope}-${options && options.runId ? options.runId : clientId}`;
+  return withAppendLock(lockDirectory, lockName, write);
 }
 
-module.exports = { MAX_EVENTS, MAX_BYTES, KINDS, eventsDirectory, readEvents, selectShard, appendEvent, withAppendLock };
+module.exports = { MAX_EVENTS, MAX_BYTES, KINDS, eventsDirectory, canonicalJson, canonicalProjection, projectionDigest, validateProjection, deduplicateEvents, readEvents, selectShard, appendEvent, withAppendLock };

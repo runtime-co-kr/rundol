@@ -6,8 +6,37 @@ const path = require('path');
 const { parseFrontmatter } = require('./frontmatter');
 const { runGit } = require('./git');
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().filter((key) => value[key] !== undefined).map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalRevision(value) {
+  return crypto.createHash('sha256').update(Buffer.from(canonicalJson(value), 'utf8')).digest('hex');
+}
+
 function entityRevision(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  return canonicalRevision(value);
+}
+
+function documentRevision(metadata, body) {
+  const input = arguments.length === 1 && metadata && typeof metadata === 'object' && Object.prototype.hasOwnProperty.call(metadata, 'metadata') && Object.prototype.hasOwnProperty.call(metadata, 'body')
+    ? metadata
+    : { metadata, body };
+  return canonicalRevision({ metadata: input.metadata, body: input.body });
+}
+
+function projectRevision(documents) {
+  if (!Array.isArray(documents)) throw new Error('documents must be an array');
+  const entries = documents.map((document) => {
+    if (!document || typeof document.id !== 'string' || !/^[a-f0-9]{64}$/u.test(document.revision || '')) throw new Error('project revision requires document id/revision pairs');
+    return [document.id, document.revision];
+  }).sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]));
+  if (new Set(entries.map(([id]) => id)).size !== entries.length) throw new Error('project revision document IDs must be unique');
+  return canonicalRevision(entries);
 }
 
 function markdownFiles(root) {
@@ -41,7 +70,7 @@ function listDocuments(project) {
       file: path.relative(project.root, file).replace(/\\/g, '/'),
       body: parsed.body,
       modifiedAt: fs.statSync(file).mtime.toISOString(),
-      revision: entityRevision({ metadata: parsed.data, body: parsed.body })
+      revision: documentRevision(parsed.data, parsed.body)
     });
   }
   return documents.sort((left, right) => String(left.id).localeCompare(String(right.id)));
@@ -73,4 +102,4 @@ function syncStatus(project) {
   };
 }
 
-module.exports = { entityRevision, listDocuments, syncStatus };
+module.exports = { canonicalJson, canonicalRevision, entityRevision, documentRevision, projectRevision, listDocuments, syncStatus };

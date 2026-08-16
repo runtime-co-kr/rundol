@@ -32,6 +32,9 @@ async function main() {
   const runId = 'RUN-0123456789ABCDEF0123';
   const runFile = eventStore.appendEvent(eventsRoot, 'run', 'crm', 'laptop-a', event('laptop-a', 1), { runId });
   assert.strictEqual(runFile, path.join(eventsRoot, 'run', `run-crm-laptop-a-${runId}-000001.jsonl`));
+  const driverFile = eventStore.appendEvent(eventsRoot, 'driver', 'crm', 'laptop-a', event('laptop-a', 2), { runId });
+  assert.strictEqual(driverFile, path.join(eventsRoot, 'driver', `driver-crm-laptop-a-${runId}-000001.jsonl`));
+  assert.strictEqual(eventStore.KINDS.lease.flat, true, 'registering driver must not change the legacy lease layout');
 
   // 등록되지 않은 kind는 거부한다.
   assert.throws(() => eventStore.readEvents(eventsRoot, 'unknown', 'crm'), /등록되지 않은 이벤트 종류/u);

@@ -7,6 +7,8 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { findWorkspaceRoot } = require('./workspace');
 const { skillSource, skillTargets, SKILL_NAME } = require('./skill');
+const { loadHarnessSettings } = require('./harness-settings');
+const { probeAdapter } = require('./adapter');
 
 // doctor가 통과라고 하는데 실행이 깨지면 진단이 거짓말이 된다. package.json을 런타임에
 // 읽으면 설치 레이아웃마다 상대 경로가 달라 깨지므로 값을 여기 두고, engines와 같은지는
@@ -45,6 +47,11 @@ function sanitize(value) {
   return String(value || '')
     .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/giu, '$1***@')
     .replace(/\b(?:glpat|ghp|github_pat)-?[A-Za-z0-9_-]+\b/gu, '***');
+}
+
+function sanitizeAdapterValue(value) {
+  const home = os.homedir();
+  return sanitize(value).replaceAll(home, '<home>').replace(/[\r\n]+/gu, ' ').slice(0, 300);
 }
 
 function executableCandidates(name) {
@@ -143,11 +150,40 @@ function doctor(start, options) {
   const staleSkills = skillStates.filter((item) => item.status !== 'current');
   checks.push({ id: 'skills', status: staleSkills.length ? 'warn' : 'ok', message: staleSkills.length ? '누락·구버전 또는 사용자 관리 스킬이 있습니다.' : '관리되는 AI 클라이언트 스킬이 최신입니다.', targets: skillStates, remediation: staleSkills.length ? 'rdl skill install을 실행하세요. 사용자 관리 디렉터리를 교체할 때만 --force를 사용하세요.' : undefined });
 
+  let workspace = null;
   try {
-    const workspace = findWorkspaceRoot(start || process.cwd());
+    workspace = findWorkspaceRoot(start || process.cwd());
     checks.push({ id: 'workspace', status: 'ok', message: `Rundol Workspace ${workspace}` });
   } catch (error) {
     checks.push({ id: 'workspace', status: 'info', message: '현재 위치는 Rundol Workspace가 아닙니다.' });
+  }
+
+
+  if (workspace) {
+    try {
+      const harness = loadHarnessSettings(workspace, { project: settings.project });
+      for (const [name, adapter] of Object.entries(harness.runtimeResolved.adapters).sort(([left], [right]) => left.localeCompare(right))) {
+        if (adapter.enabled !== true) {
+          checks.push({ id: `adapter:${name}`, status: 'info', message: `Adapter ${name} is disabled.` });
+          continue;
+        }
+        try {
+          const probe = probeAdapter(adapter, { cwd: workspace, timeout: settings.adapterProbeTimeout || 5000 });
+          const ok = probe.status === 0;
+          checks.push({
+            id: `adapter:${name}`,
+            status: ok ? 'ok' : 'error',
+            message: ok ? `Adapter ${name}: ${sanitizeAdapterValue(probe.version || path.basename(probe.executable))}` : `Adapter ${name} --version probe failed.`,
+            executable: path.basename(probe.executable),
+            remediation: ok ? undefined : `Check the executable and bounded --version behavior for adapter ${name}.`
+          });
+        } catch (error) {
+          checks.push({ id: `adapter:${name}`, status: 'error', message: `Adapter ${name} executable is unavailable.`, detail: sanitizeAdapterValue(error.message), remediation: `Install or correct the configured executable for adapter ${name}.` });
+        }
+      }
+    } catch (error) {
+      checks.push({ id: 'harness-settings', status: 'error', message: 'Harness adapter settings are invalid.', detail: sanitizeAdapterValue(error.message), remediation: 'Correct harness.json before running an adapter.' });
+    }
   }
 
   if (settings.gitUrl) checks.push(remoteCheck(settings.gitUrl));

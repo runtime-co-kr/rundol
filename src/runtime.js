@@ -52,4 +52,145 @@ function ensureRuntime(workspace) {
   return workspace;
 }
 
-module.exports = { runtimeHome, repositoryRoot, remoteUrl, workspaceId, runtimeWorkspace, ensureRuntime };
+function processIsAlive(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error && error.code === 'EPERM';
+  }
+}
+
+function processLockName(kind, projectId) {
+  if (!/^[a-z][a-z0-9-]*$/u.test(kind || '')) throw new Error(`invalid process lock kind: ${kind || '(missing)'}`);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(projectId || '')) throw new Error(`invalid process lock project: ${projectId || '(missing)'}`);
+  return `${kind}-${projectId}`;
+}
+
+function readProcessLock(file) {
+  let value;
+  try { value = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) {
+    const wrapped = new Error(`process lock is corrupt: ${file}: ${error.message}`);
+    wrapped.code = error.code;
+    throw wrapped;
+  }
+  const keys = Object.keys(value || {}).sort();
+  const expected = ['kind', 'pid', 'projectId', 'schemaVersion', 'token', 'workspaceId'];
+  if (JSON.stringify(keys) !== JSON.stringify(expected) || value.schemaVersion !== 1 || !/^[a-z][a-z0-9-]*$/u.test(value.kind || '') || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value.projectId || '') || !/^[a-f0-9]{16}$/u.test(value.workspaceId || '') || !Number.isSafeInteger(value.pid) || value.pid < 1 || !/^[a-f0-9]{32}$/u.test(value.token || '')) {
+    throw new Error(`process lock is corrupt: ${file}`);
+  }
+  return value;
+}
+
+function acquireProcessLock(lockDirectory, input) {
+  let settings = input || {};
+  if (lockDirectory && typeof lockDirectory === 'object' && typeof input === 'string') {
+    const separator = input.indexOf('-');
+    const kind = separator > 0 ? input.slice(0, separator) : '';
+    const projectId = separator > 0 ? input.slice(separator + 1) : '';
+    if (!/^[a-z][a-z0-9]*$/u.test(kind) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(projectId) || !lockDirectory.locks || !lockDirectory.id) throw new Error(`invalid process lock key: ${input}`);
+    settings = { kind, projectId, workspaceId: lockDirectory.id };
+    lockDirectory = lockDirectory.locks;
+  }
+  const kind = settings.kind || 'watch';
+  const name = processLockName(kind, settings.projectId);
+  if (!/^[a-f0-9]{16}$/u.test(settings.workspaceId || '')) throw new Error('process lock requires a workspaceId');
+  const pid = settings.pid === undefined ? process.pid : settings.pid;
+  if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('process lock requires a positive PID');
+  const token = settings.token || crypto.randomBytes(16).toString('hex');
+  if (!/^[a-f0-9]{32}$/u.test(token)) throw new Error('process lock token is invalid');
+  const alive = settings.isAlive || processIsAlive;
+  fs.mkdirSync(lockDirectory, { recursive: true });
+  const file = path.join(lockDirectory, `${name}.lock`);
+  const record = { schemaVersion: 1, kind, workspaceId: settings.workspaceId, projectId: settings.projectId, pid, token };
+  const maximumAttempts = 128;
+  let acquired = false;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    let descriptor;
+    try {
+      descriptor = fs.openSync(file, 'wx');
+      try {
+        fs.writeFileSync(descriptor, `${JSON.stringify(record)}\n`, 'utf8');
+        fs.fsyncSync(descriptor);
+      } finally {
+        fs.closeSync(descriptor);
+      }
+      acquired = true;
+      break;
+    } catch (error) {
+      if (descriptor !== undefined) try { fs.closeSync(descriptor); } catch {}
+      if (error.code !== 'EEXIST') throw error;
+      let current;
+      try { current = readProcessLock(file); } catch (readError) {
+        if (readError.code === 'ENOENT') continue;
+        throw readError;
+      }
+      if (current.kind !== kind || current.workspaceId !== settings.workspaceId || current.projectId !== settings.projectId) throw new Error(`process lock identity mismatch: ${file}`);
+      if (alive(current.pid)) {
+        const locked = new Error(`${kind} is already running for project ${settings.projectId} (pid ${current.pid})`);
+        locked.code = 'RDL_PROCESS_LOCKED';
+        locked.lock = current;
+        throw locked;
+      }
+      const stale = `${file}.stale-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+      try {
+        fs.renameSync(file, stale);
+        try { fs.unlinkSync(stale); } catch {}
+      } catch (renameError) {
+        if (!['ENOENT', 'EEXIST', 'EPERM', 'EACCES'].includes(renameError.code)) throw renameError;
+      }
+    }
+  }
+  if (!acquired) {
+    const error = new Error(`process lock recovery did not converge: ${file}`);
+    error.code = 'RDL_PROCESS_LOCK_BUSY';
+    throw error;
+  }
+  let released = false;
+  function release() {
+    if (released) return false;
+    let current;
+    try { current = readProcessLock(file); } catch (error) {
+      if (error.code === 'ENOENT' || !fs.existsSync(file)) { released = true; return false; }
+      throw error;
+    }
+    if (current.pid !== pid || current.token !== token) {
+      const error = new Error(`process lock ownership changed: ${file}`);
+      error.code = 'RDL_PROCESS_LOCK_LOST';
+      throw error;
+    }
+    fs.unlinkSync(file);
+    released = true;
+    return true;
+  }
+  return { file, name, pid, token, record, release };
+}
+
+function withProcessLock(lockDirectory, input, action) {
+  const lock = acquireProcessLock(lockDirectory, input);
+  let result;
+  try { result = action(lock); } catch (error) { lock.release(); throw error; }
+  if (result && typeof result.then === 'function') return result.finally(() => lock.release());
+  lock.release();
+  return result;
+}
+
+function bindProcessLockSignals(lock, signals) {
+  if (!lock || typeof lock.release !== 'function') throw new Error('a process lock handle is required');
+  const selected = signals || ['SIGINT', 'SIGTERM'];
+  const handlers = new Map();
+  for (const signal of selected) {
+    const handler = () => { try { lock.release(); } catch {} };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+  return function unbind() {
+    for (const [signal, handler] of handlers) process.removeListener(signal, handler);
+  };
+}
+
+module.exports = {
+  runtimeHome, repositoryRoot, remoteUrl, workspaceId, runtimeWorkspace, ensureRuntime,
+  processIsAlive, processLockName, readProcessLock, acquireProcessLock, withProcessLock, bindProcessLockSignals
+};

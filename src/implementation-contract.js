@@ -196,11 +196,12 @@ function validateTaskImplementationReadiness(artifactInput) {
     frontmatter: artifact.frontmatter || parseFrontmatter(artifact.source || '')
   }));
   const issues = [];
-  const requirements = artifacts.filter((artifact) => artifact.type === 'REQ');
-  const tests = artifacts.filter((artifact) => artifact.type === 'TST');
+  const implementationArtifacts = artifacts.filter((artifact) => IMPLEMENTATION_TYPES.includes(artifact.type));
+  const requirements = implementationArtifacts.filter((artifact) => artifact.type === 'REQ');
+  const tests = implementationArtifacts.filter((artifact) => artifact.type === 'TST');
   if (requirements.length === 0) issues.push({ code: 'RDL-IMPL-020', severity: 'error', message: '구현 준비도 대상 태스크에는 REQ 문서가 필요합니다.' });
   if (tests.length === 0) issues.push({ code: 'RDL-IMPL-021', severity: 'error', message: '구현 준비도 대상 태스크에는 TST 문서가 필요합니다.' });
-  for (const artifact of requirements.concat(tests)) for (const issue of validateImplementationDocument(artifact, { implementation: true })) issues.push(Object.assign({ artifactId: artifact.id }, issue));
+  for (const artifact of implementationArtifacts) for (const issue of validateImplementationDocument(artifact, { implementation: true })) issues.push(Object.assign({ artifactId: artifact.id }, issue));
   const requiredIds = unique(requirements.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
   const testedIds = new Set(tests.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
   for (const id of requiredIds) if (!testedIds.has(id)) issues.push({ code: 'RDL-IMPL-022', severity: 'error', target: id, message: `태스크의 REQ 기능 ID를 연결된 TST가 검증하지 않습니다: ${id}` });

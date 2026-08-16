@@ -35,15 +35,23 @@ rdl client register <client-id> --name <name> --type <device|agent|service> --ow
 rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
 rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
 rdl lease list --project <key> [--json]
-rdl run start <절차이름> --project <key> --client-id <id> [--goal <목표>] [--json]
+rdl run start <절차이름> --project <key> --client-id <id> [--goal <목표>] [--request-id <REQ-ID>] [--json]
 rdl run next --run <RUN-ID> --project <key> [--json]
-rdl run step --run <RUN-ID> --project <key> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--json]
-rdl run gate --run <RUN-ID> --project <key> [--step <id>] [--force --reason <사유>] [--json]
-rdl run halt|resume|complete --run <RUN-ID> --project <key> [--json]
-rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--json]
+rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+rdl run halt|resume|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
+rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+rdl run ownership resolve --run <RUN-ID> --project <key> --conflict <digest> --select <event-id> --client-id <id> --reason <사유> [--force] [--request-id <REQ-ID>] [--json]
+rdl run drive --run <RUN-ID> --project <key> --client-id <id> [--scheduled] [--request-id <REQ-ID>] [--json]
+rdl run operation resolve --run <RUN-ID> --project <key> --operation <operation-id> --conflict <digest> --select <event-id> --client-id <id> --reason <text> [--force] [--request-id <REQ-ID>] [--json]
+rdl run requests [--pending] [--json]
+rdl run request resume <REQ-ID> --client-id <id> [--json]
 rdl run list --project <key> [--json]
 rdl run log --run <RUN-ID> --project <key> [--json]
 rdl run procedures [--project <key>] [--json]
+rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
+rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
+rdl watch --project <key> [--remote] [--once] [--json]
 rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                  [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                  [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
@@ -54,8 +62,8 @@ rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
 rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
 rdl doc migrate [--project <key>] [--apply] [--json]
-rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
-rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
+rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--request-id <REQ-ID>] [--json]
+rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
 rdl conflict list [--project <key>] [--json]
 rdl conflict resolve --strategy <ours|theirs> [--project <key>] [--json]
 rdl conflict clear [--project <key>] [--json]
@@ -107,6 +115,15 @@ rdl --help
 | `rdl doc create` | 등록 멤버와 실제 관련 문서로 표준 문서 생성 | 프로젝트 브랜치 작업 트리 | 없음 |
 | `rdl sync` | save, fetch, fast-forward/3-way 병합, 검증, push | 프로젝트 브랜치 커밋·병합 | fetch, 기본 push |
 | `rdl sync watch` | 지정 주기로 Sync 반복 | `rdl sync`와 같음 | fetch, 기본 push |
+| `rdl watch` | 프로젝트 진단을 안정된 스냅샷 단위로 관찰 | 무시되는 로컬 캐시와 프로세스 락만 변경 | 기본 없음; `--remote`일 때 tip 관계 확인용 fetch만 수행 |
+| `rdl run drive` | 고정된 멱등 절차를 명시적 중단 경계까지 실행 | run·driver 이벤트와 로컬 런타임 상태 | lease 유지에 필요한 제한된 sync; human/sync gate에서 자동 중단 |
+| `rdl run operation resolve` | 충돌한 operation outcome 중 기록된 후보 하나를 명시적으로 선택 | `run.operation_resolved` 이벤트 | 없음 |
+
+`rdl watch`는 진단 관찰 명령이며 저장·병합·push를 반복하는 `rdl sync watch`와 별개입니다. `rdl watch --remote`의 `--remote`는 원격 이름을 받지 않는 boolean 플래그이고, 프로젝트·Workspace tip 관계만 관찰합니다. 스캔·원격 관찰 주기는 `harness.json`의 runtime settings를 사용합니다. `--once`에서도 문서 진단의 존재는 종료 상태를 바꾸지 않지만, 설정·락 오류 또는 안정된 스캔을 만들지 못한 경우에는 종료 코드 2를 반환합니다.
+
+`rdl run drive`는 `idempotent:true`로 pin된 절차만 실행합니다. 모든 실행 스텝은 `operation-id` 또는 `gate-recheck` 재시도 계약을 가져야 하고, 모든 gate는 닫힌 read-only `check` 인자 계약을 통과해야 합니다. 이 preflight가 실패하거나 client·ownership·scheduler 조건이 맞지 않으면 journal, lock, lease, event, child process를 만들기 전에 종료 코드 2로 거부합니다. `--scheduled`는 daemon을 시작하지 않으며 runtime settings의 scheduler client 일치 여부만 추가로 검사합니다. 사람 승인 또는 sync gate 앞에서는 성공 상태 `waiting_human`으로 멈추고 sync/push를 자동 실행하지 않습니다.
+
+Operation 결과가 서로 다른 digest로 충돌하면 drive는 후보를 임의로 선택하지 않습니다. 현재 owner는 `rdl run operation resolve`로 기존 candidate event를 선택하며, 다른 active project-member agent/service는 `--force`가 있어야 합니다. 이 명령은 이미 기록된 결과를 적용할 뿐 작업을 다시 실행하지 않습니다.
 | `rdl conflict` | pending 충돌 조회·전략 해결·기록 정리 | 해결 커밋 또는 pending | 없음 |
 | `rdl debug` | 명령 진단과 클라이언트 제공 토큰 사용량 기록·요약 | 로컬 JSONL 로그 | 없음 |
 | `rdl action` | CLI·LLM·혼합 실행 주체 권장, 실제 선택과 fallback 기록 | 로컬 JSONL 로그 | 없음 |
@@ -318,11 +335,11 @@ rdl conflict resolve --project memo --strategy ours
 rdl run procedures --project memo --json
 rdl run start document.authored --project memo --client-id laptop-a --goal "결제 REQ"
 rdl run next --run RUN-... --project memo --json
-rdl run step --run RUN-... --project memo --step create --artifact-id REQ-001
-rdl run gate --run RUN-... --project memo
-rdl run halt --run RUN-... --project memo
-rdl run resume --run RUN-... --project memo
-rdl run complete --run RUN-... --project memo
+rdl run step --run RUN-... --project memo --client-id laptop-a --step create --artifact-id REQ-001
+rdl run gate --run RUN-... --project memo --client-id laptop-a
+rdl run halt --run RUN-... --project memo --client-id laptop-a
+rdl run resume --run RUN-... --project memo --client-id laptop-a
+rdl run complete --run RUN-... --project memo --client-id laptop-a
 rdl run takeover --run RUN-... --project memo --client-id desk-b --force --reason "소유 머신 분실"
 rdl run list --project memo --json
 rdl run log --run RUN-... --project memo --json

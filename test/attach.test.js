@@ -38,7 +38,8 @@ try {
   git(temporary, ['init', '--bare', remote]);
   git(source, ['remote', 'add', 'origin', remote]);
   rdl(source, sourceHome, ['init', 'crm', '--name', '고객 관리', '--profile', 'service', '--enforcement', 'advisory']);
-  rdl(source, sourceHome, ['sync', '--project', 'crm']);
+  rdl(source, sourceHome, ['client', 'register', 'sync-agent', '--name', 'Sync Agent', '--type', 'agent', '--owner', 'MEMBER-001']);
+  rdl(source, sourceHome, ['sync', '--project', 'crm', '--client-id', 'sync-agent']);
   git(source, ['push', '-u', 'origin', 'main']);
 
   git(temporary, ['clone', remote, clone]);

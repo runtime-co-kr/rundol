@@ -5,6 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { canonicalJson, validateProcedure } = require('./run-ledger');
+const { getLens, pinInstruction, resolveInstructionPin } = require('./instruction-registry');
+
+function pinnedLensInstructions(lenses) {
+  return Object.fromEntries(lenses.map((lensId) => {
+    const lens = getLens(lensId);
+    return [lensId, pinInstruction(lens.instructionId)];
+  }));
+}
 
 // 내장 기본 절차. 코드가 정본이며 Workspace와 프로젝트의 procedures.json이
 // 이를 오버라이드한다. 검증 스텝(verify)은 어댑터 계층이 생기기 전까지
@@ -18,6 +26,29 @@ const BUILTIN = {
       { id: 'create', executor: 'cli', command: 'doc', args: ['create'] },
       { id: 'author', executor: 'client' },
       { id: 'mech-gate', gate: { command: 'check', args: ['{artifact}', '--strict'] }, onFail: { goto: 'author', maxAttempts: 3 } },
+      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'] },
+      { id: 'sync-gate', human: true }
+    ]
+  },
+  'document.verified': {
+    revision: 1,
+    idempotent: false,
+    steps: [
+      { id: 'plan', executor: 'cli', command: 'contract', args: ['next', '--project', '{project}', '--json'] },
+      { id: 'create', executor: 'cli', command: 'doc', args: ['create'] },
+      { id: 'author', executor: 'adapter', instruction: pinInstruction('author-v1') },
+      { id: 'mech-gate', gate: { command: 'check', args: ['{artifact}', '--strict'] }, onFail: { goto: 'author', maxAttempts: 3 } },
+      {
+        id: 'verify',
+        executor: 'adapter',
+        verify: {
+          lenses: ['satisfaction-v1', 'omission-v1', 'boundary-v1'],
+          instructions: pinnedLensInstructions(['satisfaction-v1', 'omission-v1', 'boundary-v1']),
+          revisionPin: { strategy: 'run-start-head' },
+          policy: { validators: 1, quorum: 1, maxRefuted: 0, maxAbstain: 0, requireAdapterDiversity: false }
+        },
+        onFail: { goto: 'author', maxAttempts: 3 }
+      },
       { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'] },
       { id: 'sync-gate', human: true }
     ]
@@ -47,19 +78,183 @@ function validateOverride(name, parent, child, source) {
   for (const step of parent.steps) {
     const overridden = childSteps.get(step.id);
     if (!overridden) throw new Error(`${source}: ${name}의 스텝을 제거할 수 없습니다: ${step.id}`);
+    const parentClass = stepClass(step);
+    const childClass = stepClass(overridden);
+    if (parentClass !== childClass) throw new Error(`${source}: ${name}의 스텝 분류를 변경할 수 없습니다: ${step.id} (${parentClass} -> ${childClass})`);
     if (step.gate) {
       if (!overridden.gate) throw new Error(`${source}: ${name}의 게이트를 제거할 수 없습니다: ${step.id}`);
       if (canonicalJson(overridden.gate) !== canonicalJson(step.gate)) throw new Error(`${source}: ${name}의 게이트 명령은 바꿀 수 없습니다: ${step.id}`);
-      if (step.onFail && overridden.onFail && overridden.onFail.maxAttempts > step.onFail.maxAttempts) {
-        throw new Error(`${source}: ${name}의 시도 상한은 늘릴 수 없습니다: ${step.id}`);
-      }
     }
+    validateOnFailOverride(name, step, overridden, source);
+    validateVerificationOverride(name, step, overridden, source);
+    validateRetrySafetyOverride(name, step, overridden, source);
     if (step.human && !overridden.human) throw new Error(`${source}: ${name}의 사람 게이트를 제거할 수 없습니다: ${step.id}`);
   }
   // 부모 스텝의 상대 순서는 유지되어야 한다. 사이에 새 스텝을 끼우는 것은 허용된다.
   const order = child.steps.map((step) => step.id).filter((id) => parentSteps.has(id));
   const expected = parent.steps.map((step) => step.id);
   if (canonicalJson(order) !== canonicalJson(expected)) throw new Error(`${source}: ${name}의 부모 스텝 순서를 바꿀 수 없습니다.`);
+}
+
+function stepClass(step) {
+  if (step.human === true) return 'human';
+  if (step.gate) return 'gate';
+  if (step.executor === 'adapter' || step.adapter) return 'adapter';
+  if (step.executor === 'cli') return 'cli';
+  return 'client';
+}
+
+function validateOnFailOverride(name, parent, child, source) {
+  if (!parent.onFail) return;
+  if (!child.onFail) throw new Error(`${source}: ${name}의 onFail을 제거할 수 없습니다: ${parent.id}`);
+  if (child.onFail.goto !== parent.onFail.goto) throw new Error(`${source}: ${name}의 onFail.goto를 변경할 수 없습니다: ${parent.id}`);
+  if (child.onFail.maxAttempts > parent.onFail.maxAttempts) throw new Error(`${source}: ${name}의 시도 상한은 늘릴 수 없습니다: ${parent.id}`);
+  for (const [key, value] of Object.entries(parent.onFail)) {
+    if (key === 'maxAttempts' || key === 'goto') continue;
+    if (canonicalJson(child.onFail[key]) !== canonicalJson(value)) {
+      throw new Error(`${source}: ${name}의 onFail.${key} 계약을 변경할 수 없습니다: ${parent.id}`);
+    }
+  }
+}
+
+function lensIds(step) {
+  const value = Array.isArray(step.lenses) ? step.lenses : (step.verify && Array.isArray(step.verify.lenses) ? step.verify.lenses : []);
+  return value.map(String);
+}
+
+function thresholdValue(step, key) {
+  if (Number.isInteger(step[key])) return step[key];
+  if (step.verify && Number.isInteger(step.verify[key])) return step.verify[key];
+  return null;
+}
+
+function validateVerificationOverride(name, parent, child, source) {
+  const childLenses = new Set(lensIds(child));
+  for (const lens of lensIds(parent)) {
+    if (!childLenses.has(lens)) throw new Error(`${source}: ${name}의 검증 lens를 제거할 수 없습니다: ${parent.id} (${lens})`);
+  }
+  for (const key of ['refutedThreshold', 'abstainThreshold', 'maxRefuted', 'maxAbstain']) {
+    const parentValue = thresholdValue(parent, key);
+    if (parentValue === null) continue;
+    const childValue = thresholdValue(child, key);
+    if (childValue === null || childValue > parentValue) {
+      throw new Error(`${source}: ${name}의 ${key} 상한을 완화할 수 없습니다: ${parent.id}`);
+    }
+  }
+}
+
+function operationPlaceholderCount(step) {
+  return (step.args || []).reduce((total, value) => total + (String(value).match(/\{operationId\}/gu) || []).length, 0);
+}
+
+function validateRetrySafetyOverride(name, parent, child, source) {
+  if (!parent.retrySafety) return;
+  if (!child.retrySafety) throw new Error(`${source}: ${name}의 retrySafety를 제거할 수 없습니다: ${parent.id}`);
+  if (child.retrySafety.mode !== parent.retrySafety.mode) throw new Error(`${source}: ${name}의 retrySafety.mode을 변경할 수 없습니다: ${parent.id}`);
+  if (parent.retrySafety.mode === 'gate-recheck' && canonicalJson(child.retrySafety) !== canonicalJson(parent.retrySafety)) {
+    throw new Error(`${source}: ${name}의 gate-recheck 계약을 변경할 수 없습니다: ${parent.id}`);
+  }
+  const parentPlaceholders = operationPlaceholderCount(parent);
+  const childPlaceholders = operationPlaceholderCount(child);
+  if (parentPlaceholders !== childPlaceholders) {
+    throw new Error(`${source}: ${name}의 operationId placeholder를 제거하거나 중복할 수 없습니다: ${parent.id}`);
+  }
+}
+
+function validateClosedDriveGate(step, origin) {
+  if (!step.gate || step.gate.command !== 'check' || !Array.isArray(step.gate.args)) throw new Error(`${origin}: ${step.id} drive gate must use check with an argv array`);
+  const seen = new Set();
+  let artifactCount = 0;
+  for (let index = 0; index < step.gate.args.length; index += 1) {
+    const value = String(step.gate.args[index]);
+    if (value === '--project') {
+      if (seen.has(value)) throw new Error(`${origin}: ${step.id} drive gate contains duplicate --project`);
+      seen.add(value);
+      const project = String(step.gate.args[++index] || '');
+      if (project !== '{project}') throw new Error(`${origin}: ${step.id} drive gate has an invalid --project contract`);
+    } else if (value === '--strict' || value === '--structure') {
+      if (seen.has(value)) throw new Error(`${origin}: ${step.id} drive gate contains duplicate ${value}`);
+      seen.add(value);
+    } else if (value === '{artifact}') {
+      artifactCount += 1;
+      if (artifactCount > 1) throw new Error(`${origin}: ${step.id} drive gate accepts at most one artifact ID`);
+    } else throw new Error(`${origin}: ${step.id} drive gate argument is outside the closed read-only allowlist: ${value}`);
+  }
+  if (artifactCount !== 1) throw new Error(`${origin}: ${step.id} drive gate must contain exactly one canonical artifact placeholder`);
+  return step;
+}
+
+function validateDriveSafety(procedure, source) {
+  const origin = source || procedure.name || 'procedure';
+  const steps = new Map(procedure.steps.map((step) => [step.id, step]));
+  for (const step of procedure.steps) {
+    if (step.retrySafety !== undefined) {
+      if (!step.retrySafety || typeof step.retrySafety !== 'object' || Array.isArray(step.retrySafety)) throw new Error(`${origin}: ${step.id}.retrySafety는 객체여야 합니다.`);
+      const keys = Object.keys(step.retrySafety).sort();
+      if (step.retrySafety.mode === 'operation-id') {
+        if (canonicalJson(keys) !== canonicalJson(['mode'])) throw new Error(`${origin}: ${step.id}.retrySafety operation-id에는 mode만 허용됩니다.`);
+        const placeholders = operationPlaceholderCount(step);
+        if (step.executor === 'cli' && placeholders !== 1) throw new Error(`${origin}: ${step.id} CLI operation-id 스텝은 {operationId} placeholder를 정확히 한 번 사용해야 합니다.`);
+        if (step.executor === 'adapter' && placeholders !== 0) throw new Error(`${origin}: ${step.id} adapter operation-id는 argv placeholder를 사용할 수 없습니다.`);
+      } else if (step.retrySafety.mode === 'gate-recheck') {
+        if (canonicalJson(keys) !== canonicalJson(['gateStep', 'mode']) || !/^[a-z][a-z0-9-]*$/u.test(step.retrySafety.gateStep || '')) {
+          throw new Error(`${origin}: ${step.id}.retrySafety gate-recheck에는 유효한 gateStep이 필요합니다.`);
+        }
+        const gate = steps.get(step.retrySafety.gateStep);
+        if (!gate || !gate.gate || gate.human === true || gate.executor === 'adapter' || gate.verify || gate.lenses) {
+          throw new Error(`${origin}: ${step.id}.retrySafety gateStep은 결정적 비인간 게이트여야 합니다.`);
+        }
+      } else throw new Error(`${origin}: ${step.id}.retrySafety.mode은 operation-id 또는 gate-recheck여야 합니다.`);
+    }
+  }
+  if (procedure.idempotent === true) {
+    for (const step of procedure.steps) {
+      const classes = [step.human === true, Boolean(step.gate), step.executor === 'cli', step.executor === 'adapter'].filter(Boolean).length;
+      if (classes !== 1) throw new Error(`${origin}: idempotent procedure step ${step.id} must have exactly one drive class`);
+      if (step.human === true) continue;
+      if (step.gate) { validateClosedDriveGate(step, origin); continue; }
+      if (!['cli', 'adapter'].includes(step.executor)) throw new Error(`${origin}: idempotent 절차의 ${step.id}은 drive 가능한 cli 또는 adapter 스텝이어야 합니다.`);
+      if (!step.retrySafety) throw new Error(`${origin}: idempotent 절차의 ${step.id}에는 retrySafety가 필요합니다.`);
+    }
+  }
+  return procedure;
+}
+
+function pinProcedureInstructions(procedure, source) {
+  const copy = JSON.parse(JSON.stringify(procedure));
+  for (const step of copy.steps) {
+    if (step.instruction !== undefined) {
+      const entry = resolveInstructionPin(step.instruction, { mode: 'author' });
+      step.instruction = pinInstruction(entry.id);
+    }
+    if (!step.verify || !Array.isArray(step.verify.lenses)) continue;
+    const instructions = step.verify.instructions || {};
+    const pinned = {};
+    for (const lensId of step.verify.lenses) {
+      const expected = getLens(lensId);
+      const entry = resolveInstructionPin(instructions[lensId] || expected.instructionId, { mode: 'verify', lensId });
+      pinned[lensId] = pinInstruction(entry.id);
+    }
+    const extras = Object.keys(instructions).filter((lensId) => !step.verify.lenses.includes(lensId));
+    if (extras.length) throw new Error(`${source}: ${step.id}.verify.instructions에 선언되지 않은 lens가 있습니다: ${extras.join(', ')}`);
+    step.verify.instructions = pinned;
+  }
+  return copy;
+}
+
+function pinProcedureVerificationRevision(procedure, reviewedRevision) {
+  if (!/^[a-f0-9]{40,64}$/u.test(reviewedRevision || '')) throw new Error('verification revision pin must be a lowercase Git revision');
+  const copy = JSON.parse(JSON.stringify(procedure));
+  for (const step of copy.steps) {
+    if (!step.verify && !Array.isArray(step.lenses)) continue;
+    const verify = step.verify || (step.verify = {});
+    if (verify.revisionPin !== undefined && (
+      !verify.revisionPin || verify.revisionPin.strategy !== 'run-start-head' ||
+      Object.keys(verify.revisionPin).some((key) => key !== 'strategy')
+    )) throw new Error(`${step.id}.verify.revisionPin must declare run-start-head`);
+    verify.revisionPin = { strategy: 'git-commit', reviewedRevision };
+  }
+  return copy;
 }
 
 // 유효 절차의 단일 소스: 내장 → Workspace → 프로젝트를 병합한 resolved 목록을
@@ -79,7 +274,8 @@ function loadProcedures(start, projectKey) {
   for (const layer of layers) {
     for (const [name, definition] of Object.entries(layer.procedures)) {
       if (!NAME.test(name)) throw new Error(`${layer.source}: 잘못된 절차 이름입니다: ${name}`);
-      const candidate = validateProcedure(Object.assign({ name }, definition));
+      const pinned = pinProcedureInstructions(Object.assign({ name }, definition), layer.source);
+      const candidate = validateDriveSafety(validateProcedure(pinned), layer.source);
       const parent = resolved.get(name);
       if (parent) validateOverride(name, parent.definition, candidate, layer.source);
       resolved.set(name, { definition: candidate, source: layer.source });
@@ -109,4 +305,4 @@ function substituteArgs(args, context) {
   }));
 }
 
-module.exports = { BUILTIN, loadProcedures, substituteArgs, validateOverride };
+module.exports = { BUILTIN, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision };

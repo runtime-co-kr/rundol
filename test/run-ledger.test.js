@@ -9,6 +9,7 @@ const { spawnSync } = require('child_process');
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'bin', 'rdl.js');
 const ledger = require(path.join(root, 'src', 'run-ledger.js'));
+const requestJournal = require(path.join(root, 'src', 'request-journal.js'));
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-run-ledger-'));
 
 function command(program, args, cwd) {
@@ -29,6 +30,128 @@ const procedure = {
 };
 
 try {
+  // Canonical v2 records stay flat, digest exactly 32 bytes, and localDetail never enters shared projection.
+  const digestA = 'a'.repeat(64);
+  const digestB = 'b'.repeat(64);
+  const digestC = 'c'.repeat(64);
+  const canonicalProcedure = {
+    name: procedure.name,
+    revision: 1,
+    schemaVersion: 1,
+    contentHash: digestA,
+    resolved: procedure
+  };
+  function canonicalEvent(overrides) {
+    return Object.assign({
+      schemaVersion: 2,
+      eventId: 'EVT-00000000000000000001',
+      type: 'run.started',
+      rootRequestId: 'REQ-00000000000000000001',
+      requestId: 'REQ-00000000000000000002',
+      clientId: 'laptop-a',
+      projectId: 'crm',
+      runId: 'RUN-00000000000000000001',
+      ownerToken: 'EVT-00000000000000000001',
+      goal: ' canonical\r\ngoal ',
+      procedure: canonicalProcedure,
+      settings: { schemaVersion: 1, contentHash: digestB, safeResolved: {} },
+      occurredAt: '2099-01-01T00:00:00.000Z',
+      localDetail: { machine: 'secret' }
+    }, overrides);
+  }
+  const envelope = ledger.createEventEnvelope(canonicalEvent());
+  assert.strictEqual(envelope.canonicalDigest.length, 64);
+  assert.strictEqual(envelope.shared.localDetail, undefined);
+  assert.deepStrictEqual(envelope.local.localDetail, { machine: 'secret' });
+  assert.strictEqual(envelope.shared.goal, 'canonical\ngoal');
+  assert(!Object.prototype.hasOwnProperty.call(envelope.shared, 'canonical'));
+  assert.throws(() => ledger.createEventEnvelope(Object.assign({}, envelope.local, { goal: 'tampered' })), /canonicalDigest mismatch/u);
+
+  const canonicalDirectory = path.join(temporary, 'canonical-run');
+  ledger.appendRunEvent(canonicalDirectory, envelope.local);
+  ledger.appendRunEvent(canonicalDirectory, Object.assign({}, envelope.shared, { occurredAt: '2000-01-01T00:00:00.000Z' }));
+  assert.strictEqual(ledger.readRunEvents(canonicalDirectory).length, 1);
+  const conflictingStarted = canonicalEvent({ goal: 'different', localDetail: undefined });
+  assert.throws(() => ledger.appendRunEvent(canonicalDirectory, conflictingStarted), /eventId corruption/u);
+  const projectionDirectory = path.join(temporary, 'projection-run');
+  ledger.appendRunEvent(projectionDirectory, envelope.shared);
+  ledger.appendRunEvent(projectionDirectory, envelope.local);
+  const projectedUnion = ledger.unionRunEvents([envelope.local], [envelope.shared]);
+  assert.strictEqual(projectedUnion.length, 1);
+  assert.deepStrictEqual(projectedUnion[0].localDetail, { machine: 'secret' });
+
+  // Request roots/children replay exact canonical UTF-8 bytes and reject a changed semantic child.
+  const journalRuntime = { pending: path.join(temporary, 'pending') };
+  const journalRootId = 'REQ-10000000000000000001';
+  const journalChildKey = 'event:run.started:RUN-00000000000000000001';
+  const journalRequestId = requestJournal.childRequestId(journalRootId, journalChildKey);
+  const journalEventId = requestJournal.eventIdForRequest(journalRequestId);
+  const journalRoot = requestJournal.prepareRoot(journalRuntime, { rootRequestId: journalRootId, commandDigest: digestC, clientId: 'laptop-a' });
+  const childBytes = Buffer.from(ledger.canonicalJson({ eventId: journalEventId, requestId: journalRequestId, rootRequestId: journalRootId, schemaVersion: 2 }), 'utf8');
+  const child = requestJournal.prepareChild(journalRoot, { childKey: journalChildKey, canonicalBytes: childBytes });
+  assert.strictEqual(requestJournal.decodeChild(child, journalRoot.journal.rootRequestId).equals(childBytes), true);
+  assert.strictEqual(requestJournal.prepareChild(journalRoot, { childKey: child.childKey, canonicalBytes: childBytes }).eventId, child.eventId);
+  assert.throws(() => requestJournal.prepareChild(journalRoot, { childKey: child.childKey, canonicalBytes: Buffer.from('{}') }), /child mismatch/u);
+  requestJournal.updateChild(journalRoot, child.childKey, 'canonical-committed');
+  requestJournal.updateChild(journalRoot, child.childKey, 'complete');
+  assert.strictEqual(requestJournal.loadJournal(journalRuntime, journalRoot.journal.rootRequestId).journal.phase, 'complete');
+  const secondChildKey = 'event:run.step:RUN-00000000000000000001';
+  const secondRequestId = requestJournal.childRequestId(journalRootId, secondChildKey);
+  const secondEventId = requestJournal.eventIdForRequest(secondRequestId);
+  const secondBytes = Buffer.from(ledger.canonicalJson({ eventId: secondEventId, requestId: secondRequestId, rootRequestId: journalRootId, schemaVersion: 2 }), 'utf8');
+  requestJournal.prepareChild(journalRoot, { childKey: secondChildKey, canonicalBytes: secondBytes });
+  const reopened = requestJournal.loadJournal(journalRuntime, journalRoot.journal.rootRequestId).journal;
+  assert.strictEqual(reopened.phase, 'pending', 'a newly prepared child must reopen a completed root for recovery');
+  assert.strictEqual(reopened.children[secondChildKey].phase, 'prepared');
+
+  // Causal owner tokens support A -> B -> A, fence stale writes, and ignore timestamps.
+  let sequence = 10;
+  function id(prefix) { sequence += 1; return `${prefix}-${String(sequence).padStart(20, '0')}`; }
+  function v2(type, clientId, ownerToken, fields) {
+    const eventId = id('EVT');
+    const event = Object.assign({ schemaVersion: 2, eventId, type, rootRequestId: id('REQ'), requestId: id('REQ'), clientId, projectId: 'crm', runId: 'RUN-00000000000000000002' }, fields);
+    if (ownerToken !== undefined) event.ownerToken = ownerToken;
+    return ledger.createEventEnvelope(event).shared;
+  }
+  const aStartId = id('EVT');
+  const aStart = ledger.createEventEnvelope(canonicalEvent({ eventId: aStartId, ownerToken: aStartId, rootRequestId: id('REQ'), requestId: id('REQ'), runId: 'RUN-00000000000000000002', goal: undefined, localDetail: undefined })).shared;
+  const aStep = v2('run.step', 'laptop-a', aStartId, { stepId: 'author', executor: 'adapter', exitCode: 0, artifactIds: [] });
+  const bTakeoverId = id('EVT');
+  const bTakeover = ledger.createEventEnvelope({ schemaVersion: 2, eventId: bTakeoverId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'desk-b', projectId: 'crm', runId: aStart.runId, ownerToken: bTakeoverId, previousClientId: 'laptop-a', previousOwnerToken: aStartId, previousOwnerHeadEventId: aStep.eventId, basis: 'forced', reason: 'machine unavailable' }).shared;
+  const staleA = v2('run.gate', 'laptop-a', aStartId, { stepId: 'mech-gate', command: 'check', args: ['--strict'], exitCode: 1, diagnostics: ['RDL-X-001'], attempt: 1 });
+  const bForced = v2('run.forced', 'desk-b', bTakeoverId, { stepId: 'mech-gate', reason: 'reviewed bypass' });
+  const aReturnId = id('EVT');
+  const aReturn = ledger.createEventEnvelope({ schemaVersion: 2, eventId: aReturnId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'laptop-a', projectId: 'crm', runId: aStart.runId, ownerToken: aReturnId, previousClientId: 'desk-b', previousOwnerToken: bTakeoverId, previousOwnerHeadEventId: bForced.eventId, basis: 'forced', reason: 'machine restored' }).shared;
+  const aSave = v2('run.step', 'laptop-a', aReturnId, { stepId: 'save', executor: 'cli', exitCode: 0, artifactIds: ['REQ-001'] });
+  const ownershipEvents = [aStart, aStep, staleA, bTakeover, bForced, aReturn, aSave];
+  const causal = ledger.foldSharedRun(ownershipEvents);
+  assert.strictEqual(causal.ownerToken, aReturnId);
+  assert.strictEqual(causal.cursor, null);
+  assert.deepStrictEqual(causal.attempts, {});
+  assert(causal.staleEventIds.includes(staleA.eventId));
+  const partitionReordered = [bTakeover, bForced, aStart, aStep, staleA, aReturn, aSave];
+  assert.deepStrictEqual(
+    { ownerToken: ledger.foldSharedRun(partitionReordered).ownerToken, cursor: ledger.foldSharedRun(partitionReordered).cursor, attempts: ledger.foldSharedRun(partitionReordered).attempts },
+    { ownerToken: causal.ownerToken, cursor: causal.cursor, attempts: causal.attempts }
+  );
+
+  // Concurrent takeover children fail closed until a complete reasoned resolution selects one decision tuple.
+  const conflictStartId = id('EVT');
+  const conflictStart = ledger.createEventEnvelope(canonicalEvent({ eventId: conflictStartId, ownerToken: conflictStartId, rootRequestId: id('REQ'), requestId: id('REQ'), runId: 'RUN-00000000000000000003', goal: undefined, localDetail: undefined })).shared;
+  const bDecisionId = id('EVT');
+  const bDecision = ledger.createEventEnvelope({ schemaVersion: 2, eventId: bDecisionId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'desk-b', projectId: 'crm', runId: conflictStart.runId, ownerToken: bDecisionId, previousClientId: 'laptop-a', previousOwnerToken: conflictStartId, previousOwnerHeadEventId: conflictStartId, basis: 'forced', reason: 'partition b' }).shared;
+  const cDecisionId = id('EVT');
+  const cDecision = ledger.createEventEnvelope({ schemaVersion: 2, eventId: cDecisionId, type: 'run.takeover', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'desk-c', projectId: 'crm', runId: conflictStart.runId, ownerToken: cDecisionId, previousClientId: 'laptop-a', previousOwnerToken: conflictStartId, previousOwnerHeadEventId: conflictStartId, basis: 'forced', reason: 'partition c' }).shared;
+  const conflicted = ledger.ownershipState([conflictStart, bDecision, cDecision]);
+  assert.strictEqual(conflicted.status, 'CONFLICT');
+  assert.strictEqual(conflicted.parentClient, 'laptop-a');
+  assert.strictEqual(conflicted.candidates.length, 2);
+  const resolutionId = id('EVT');
+  const resolution = ledger.createEventEnvelope({ schemaVersion: 2, eventId: resolutionId, type: 'run.ownership_resolved', rootRequestId: id('REQ'), requestId: id('REQ'), clientId: 'laptop-a', projectId: 'crm', runId: conflictStart.runId, conflictId: conflicted.conflictId, candidates: conflicted.candidates, selectedDecisionEventId: bDecisionId, selectedOwnerToken: bDecisionId, resolverMemberId: 'MEMBER-001', reason: 'select intact branch', forced: false }).shared;
+  const resolved = ledger.ownershipState([cDecision, resolution, conflictStart, bDecision]);
+  assert.strictEqual(resolved.status, 'ACTIVE');
+  assert.strictEqual(resolved.token, bDecisionId);
+
   // 절차 검증: goto는 앞선 스텝만, revision·스텝 형식 강제.
   assert.throws(() => ledger.validateProcedure({ name: 'x', revision: 1, steps: [{ id: 'a', onFail: { goto: 'b', maxAttempts: 1 } }, { id: 'b' }] }), /앞선 스텝만/u);
   assert.throws(() => ledger.validateProcedure(Object.assign({}, procedure, { revision: 0 })), /revision/u);

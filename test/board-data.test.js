@@ -4,7 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { entityRevision, listDocuments, syncStatus } = require('../src/board-data');
+const { canonicalRevision, entityRevision, documentRevision, projectRevision, listDocuments, syncStatus } = require('../src/board-data');
 const { queryTasks } = require('../src/board');
 const { workspaceLayout, selectProject } = require('../src/workspace');
 
@@ -13,7 +13,16 @@ const project = selectProject(workspaceLayout(root), 'tms', true);
 
 assert.strictEqual(entityRevision({ a: 1 }), entityRevision({ a: 1 }));
 assert.notStrictEqual(entityRevision({ a: 1 }), entityRevision({ a: 2 }));
-assert(listDocuments(project).some((document) => document.id === 'project:tms'));
+assert.strictEqual(canonicalRevision({ b: 2, a: 1 }), canonicalRevision({ a: 1, b: 2 }));
+assert.strictEqual(documentRevision({ metadata: { b: 2, a: 1 }, body: 'body' }), documentRevision({ a: 1, b: 2 }, 'body'));
+const listed = listDocuments(project);
+assert(listed.some((document) => document.id === 'project:tms'));
+for (const document of listed) {
+  const file = path.join(project.root, document.file);
+  const parsed = require('../src/frontmatter').parseFrontmatter(fs.readFileSync(file, 'utf8'));
+  assert.strictEqual(document.revision, documentRevision({ metadata: parsed.data, body: parsed.body }), `Board/watch revision mismatch: ${document.id}`);
+}
+assert.strictEqual(projectRevision(listed), projectRevision(listed.slice().reverse()));
 const sync = syncStatus(project);
 assert.strictEqual(sync.project, 'tms');
 assert(/^[a-f0-9]{40}$/u.test(sync.head));

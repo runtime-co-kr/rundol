@@ -1,0 +1,459 @@
+'use strict';
+
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { canonicalJson } = require('./event-store');
+const { runGit } = require('./git');
+const { workspaceLayout, selectProject } = require('./workspace');
+const { listDocuments } = require('./board-data');
+const { checkWorkspace } = require('./check');
+const { runtimeWorkspace } = require('./runtime');
+const { loadHarnessSettings } = require('./harness-settings');
+
+const DIGEST = /^[0-9a-f]{64}$/u;
+const WATCH_TYPES = {
+  'watch.scan.started': ['scanId', 'scanRevision', 'head', 'gitStatusDigest'],
+  'watch.diagnostic': ['scanId', 'scanRevision', 'targetId', 'targetRevision', 'code', 'severity', 'category', 'message', 'dedupKey'],
+  'watch.scan.completed': ['scanId', 'scanRevision', 'head', 'gitStatusDigest', 'activeDiagnosticKeys', 'summary'],
+  'watch.remote.relation': ['scope', 'ref', 'localTip', 'remoteTip', 'ahead', 'behind', 'relation', 'relationKey'],
+  'watch.error': ['phase', 'code', 'message', 'retryable']
+};
+const OPTIONAL_KEYS = { 'watch.diagnostic': new Set(['file', 'line']) };
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function digestJson(value) {
+  return sha256(Buffer.from(canonicalJson(value), 'utf8'));
+}
+
+function boundedMessage(value) {
+  const normalized = String(value || '').replace(/\r\n?/gu, '\n').replace(/[\0\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '').normalize('NFC').trim();
+  return (normalized || 'Watch operation failed.').slice(0, 1000);
+}
+
+function relative(root, file) {
+  return path.relative(root, file).replace(/\\/gu, '/');
+}
+
+function filesUnder(target) {
+  if (!target || !fs.existsSync(target)) return [];
+  const stat = fs.lstatSync(target);
+  if (stat.isSymbolicLink()) return [];
+  if (stat.isFile()) return [target];
+  if (!stat.isDirectory()) return [];
+  const files = [];
+  for (const entry of fs.readdirSync(target, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+    const child = path.join(target, entry.name);
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) files.push(...filesUnder(child));
+    else if (entry.isFile()) files.push(child);
+  }
+  return files;
+}
+
+function fileDigests(root, targets) {
+  const files = [];
+  for (const target of targets) for (const file of filesUnder(target)) files.push(file);
+  return Array.from(new Set(files.map((file) => path.resolve(file))))
+    .sort((left, right) => relative(root, left).localeCompare(relative(root, right)))
+    .map((file) => [relative(root, file), sha256(fs.readFileSync(file))]);
+}
+
+function defaultInputSnapshot(context) {
+  const { layout, project } = context;
+  const head = runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout;
+  const status = runGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: project.root }).stdout
+    .split(/\r?\n/u).filter(Boolean).sort();
+  const listedDocuments = listDocuments(project);
+  const documents = listedDocuments.map((document) => [document.id, document.revision]).sort((left, right) => left[0].localeCompare(right[0]));
+  const projectConfigs = [project.manifest, project.charter, path.join(project.root, 'harness.json'), path.join(project.root, 'procedures.json'), path.join(project.root, 'board.json')];
+  const workspaceRoot = path.join(layout.root, 'projects', 'workspace');
+  const workspaceConfigs = [layout.manifest && layout.manifest.file, path.join(workspaceRoot, 'workspace.yaml'), path.join(workspaceRoot, 'harness.json'), path.join(workspaceRoot, 'procedures.json'), path.join(workspaceRoot, 'board.json'), layout.projectsDirectory];
+  const eventsRoot = path.join(workspaceRoot, 'events');
+  const taskShardDigests = fileDigests(layout.root, [project.tasks]);
+  const projectConfigDigests = fileDigests(layout.root, projectConfigs);
+  const workspaceConfigDigests = fileDigests(layout.root, workspaceConfigs);
+  const registeredEventShardHeads = fileDigests(layout.root, filesUnder(eventsRoot).filter((file) => file.endsWith('.jsonl')));
+  const knownDocumentRevisions = new Map(listedDocuments.map((document) => [relative(layout.root, path.resolve(project.root, document.file)), document.revision]));
+  const documentSourceRevisions = filesUnder(project.root).filter((file) => file.endsWith('.md') && !relative(project.root, file).split('/').some((part) => ['.git', '.rundol', '.obsidian', 'views', 'templates'].includes(part)))
+    .map((file) => {
+      const name = relative(layout.root, file);
+      return [name, knownDocumentRevisions.get(name) || sha256(fs.readFileSync(file))];
+    });
+  const sourceMap = new Map([...documentSourceRevisions, ...taskShardDigests, ...projectConfigDigests, ...workspaceConfigDigests, ...registeredEventShardHeads]);
+  const diagnosticSourceRevisions = Array.from(sourceMap.entries()).sort((left, right) => left[0].localeCompare(right[0]));
+  return {
+    head,
+    gitStatusDigest: digestJson(status),
+    documents,
+    taskShardDigests,
+    projectConfigDigests,
+    workspaceConfigDigests,
+    registeredEventShardHeads,
+    diagnosticSourceRevisions
+  };
+}
+
+function validateInputSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('Watch inputSnapshot must be an object.');
+  const keys = Object.keys(snapshot).sort();
+  const expected = ['diagnosticSourceRevisions', 'documents', 'gitStatusDigest', 'head', 'projectConfigDigests', 'registeredEventShardHeads', 'taskShardDigests', 'workspaceConfigDigests'];
+  if (canonicalJson(keys) !== canonicalJson(expected) || !/^[0-9a-f]{40,64}$/u.test(snapshot.head || '') || !DIGEST.test(snapshot.gitStatusDigest || '')) throw new Error('Watch inputSnapshot boundary is invalid.');
+  for (const key of ['documents', 'taskShardDigests', 'projectConfigDigests', 'workspaceConfigDigests', 'registeredEventShardHeads', 'diagnosticSourceRevisions']) {
+    const values = snapshot[key];
+    if (!Array.isArray(values) || values.some((item) => !Array.isArray(item) || item.length !== 2 || typeof item[0] !== 'string' || !item[0] || !DIGEST.test(item[1] || ''))) throw new Error(`Watch inputSnapshot ${key} is invalid.`);
+    const sorted = values.slice().sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]));
+    if (canonicalJson(values) !== canonicalJson(sorted) || new Set(values.map((item) => item[0])).size !== values.length) throw new Error(`Watch inputSnapshot ${key} must be sorted and unique.`);
+  }
+  return snapshot;
+}
+
+function scanRevision(snapshot) {
+  return digestJson(validateInputSnapshot(snapshot));
+}
+
+function dedupKey(targetId, code, targetRevision) {
+  return sha256(Buffer.from(`${targetId}\0${code}\0${targetRevision}`, 'utf8'));
+}
+
+function relationKey(scope, ref, localTip, remoteTip, ahead, behind, relation) {
+  return sha256(Buffer.from(`${scope}\0${ref}\0${localTip}\0${remoteTip}\0${ahead}\0${behind}\0${relation}`, 'utf8'));
+}
+
+function relationName(ahead, behind) {
+  if (!Number.isSafeInteger(ahead) || ahead < 0 || !Number.isSafeInteger(behind) || behind < 0) throw new Error('Remote relation counts must be non-negative integers.');
+  if (ahead > 0 && behind > 0) return 'diverged';
+  if (ahead > 0) return 'ahead';
+  if (behind > 0) return 'behind';
+  return 'equal';
+}
+
+function remoteRelation(scope, ref, localTip, remoteTip, ahead, behind) {
+  if (!['project', 'workspace'].includes(scope) || !/^refs\/heads\/[A-Za-z0-9._/-]+$/u.test(ref || '') || !/^[0-9a-f]{40,64}$/u.test(localTip || '') || !/^[0-9a-f]{40,64}$/u.test(remoteTip || '')) throw new Error('Remote relation identity is invalid.');
+  const relation = relationName(ahead, behind);
+  return { scope, ref, localTip, remoteTip, ahead, behind, relation, relationKey: relationKey(scope, ref, localTip, remoteTip, ahead, behind, relation) };
+}
+
+function exactRecordKeys(record) {
+  const required = WATCH_TYPES[record.type];
+  if (!required) throw new Error(`Unknown watch record type: ${record.type}`);
+  const allowed = new Set(['schemaVersion', 'type', 'watchId', 'sequence', 'project', ...required, ...(OPTIONAL_KEYS[record.type] || [])]);
+  const keys = Object.keys(record);
+  if (keys.some((key) => !allowed.has(key)) || required.some((key) => !Object.prototype.hasOwnProperty.call(record, key))) throw new Error(`${record.type} has unknown or missing fields.`);
+}
+
+function validateWatchRecord(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('Watch record must be an object.');
+  exactRecordKeys(record);
+  if (record.schemaVersion !== 1 || !/^WATCH-[0-9A-F]{20}$/u.test(record.watchId || '') || !Number.isSafeInteger(record.sequence) || record.sequence < 1 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.project || '')) throw new Error('Watch common record fields are invalid.');
+  if (record.type.startsWith('watch.scan.')) {
+    if (!DIGEST.test(record.scanId || '') || record.scanId !== record.scanRevision || !DIGEST.test(record.scanRevision || '')) throw new Error('Watch scan identity is invalid.');
+  }
+  if (record.type === 'watch.scan.started' || record.type === 'watch.scan.completed') {
+    if (!/^[0-9a-f]{40,64}$/u.test(record.head || '') || !DIGEST.test(record.gitStatusDigest || '')) throw new Error('Watch scan boundary is invalid.');
+  }
+  if (record.type === 'watch.diagnostic') {
+    if (!record.targetId || !DIGEST.test(record.targetRevision || '') || !record.code || !['error', 'warning'].includes(record.severity) || !record.category || !record.message || !DIGEST.test(record.dedupKey || '')) throw new Error('Watch diagnostic is invalid.');
+    if (record.dedupKey !== dedupKey(record.targetId, record.code, record.targetRevision)) throw new Error('Watch diagnostic dedupKey mismatch.');
+    if (record.line !== undefined && (!Number.isSafeInteger(record.line) || record.line < 1)) throw new Error('Watch diagnostic line is invalid.');
+  }
+  if (record.type === 'watch.scan.completed') {
+    if (!Array.isArray(record.activeDiagnosticKeys) || record.activeDiagnosticKeys.some((key) => !DIGEST.test(key)) || canonicalJson(record.activeDiagnosticKeys) !== canonicalJson(Array.from(new Set(record.activeDiagnosticKeys)).sort())) throw new Error('Watch activeDiagnosticKeys are invalid.');
+    const summaryKeys = record.summary && Object.keys(record.summary).sort();
+    if (canonicalJson(summaryKeys) !== canonicalJson(['errors', 'total', 'warnings']) || Object.values(record.summary).some((value) => !Number.isSafeInteger(value) || value < 0) || record.summary.total !== record.summary.errors + record.summary.warnings) throw new Error('Watch summary is invalid.');
+  }
+  if (record.type === 'watch.remote.relation') {
+    const expected = remoteRelation(record.scope, record.ref, record.localTip, record.remoteTip, record.ahead, record.behind);
+    if (canonicalJson(expected) !== canonicalJson({ scope: record.scope, ref: record.ref, localTip: record.localTip, remoteTip: record.remoteTip, ahead: record.ahead, behind: record.behind, relation: record.relation, relationKey: record.relationKey })) throw new Error('Watch remote relation is invalid.');
+  }
+  if (record.type === 'watch.error' && (!record.phase || !record.code || !record.message || typeof record.retryable !== 'boolean')) throw new Error('Watch error is invalid.');
+  return record;
+}
+
+function emptyCache(project) {
+  return { schemaVersion: 1, project, lastCompletedScanRevision: null, activeDiagnostics: {}, remoteRelationKeys: { project: null, workspace: null }, sequenceBase: 0 };
+}
+
+function cacheFile(project) {
+  return path.join(project.root, '.rundol', 'state', 'watch', 'cache.json');
+}
+
+function loadCache(file, project) {
+  if (!fs.existsSync(file)) return emptyCache(project);
+  try {
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const keys = Object.keys(value).sort();
+    if (canonicalJson(keys) !== canonicalJson(['activeDiagnostics', 'lastCompletedScanRevision', 'project', 'remoteRelationKeys', 'schemaVersion', 'sequenceBase']) || value.schemaVersion !== 1 || value.project !== project || !Number.isSafeInteger(value.sequenceBase) || value.sequenceBase < 0) throw new Error('invalid cache');
+    if (value.lastCompletedScanRevision !== null && !DIGEST.test(value.lastCompletedScanRevision)) throw new Error('invalid cache');
+    if (!value.activeDiagnostics || typeof value.activeDiagnostics !== 'object' || Array.isArray(value.activeDiagnostics)) throw new Error('invalid cache');
+    for (const [key, item] of Object.entries(value.activeDiagnostics)) {
+      if (!DIGEST.test(key) || !item || canonicalJson(Object.keys(item).sort()) !== canonicalJson(['code', 'targetId', 'targetRevision']) || !DIGEST.test(item.targetRevision || '') || dedupKey(item.targetId, item.code, item.targetRevision) !== key) throw new Error('invalid cache');
+    }
+    if (!value.remoteRelationKeys || canonicalJson(Object.keys(value.remoteRelationKeys).sort()) !== canonicalJson(['project', 'workspace']) || Object.values(value.remoteRelationKeys).some((item) => item !== null && !DIGEST.test(item))) throw new Error('invalid cache');
+    return value;
+  } catch (_) {
+    return emptyCache(project);
+  }
+}
+
+function atomicCache(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = path.join(path.dirname(file), `.cache-${process.pid}-${crypto.randomBytes(8).toString('hex')}.tmp`);
+  const descriptor = fs.openSync(temporary, 'wx', 0o600);
+  try {
+    fs.writeFileSync(descriptor, `${canonicalJson(value)}\n`, 'utf8');
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  fs.renameSync(temporary, file);
+}
+
+function responsibleRevision(diagnostic, inventory, revision) {
+  const byId = new Map(inventory.documents.map((item) => [item[0], item[1]]));
+  const candidateId = diagnostic.artifactId || diagnostic.target;
+  if (candidateId && byId.has(candidateId)) return { targetId: candidateId, targetRevision: byId.get(candidateId) };
+  const diagnosticFile = diagnostic.file && String(diagnostic.file).replace(/\\/gu, '/').replace(/^\.\//u, '');
+  const source = diagnosticFile && inventory.diagnosticSourceRevisions.find((item) => item[0] === diagnosticFile || item[0].endsWith(`/${diagnosticFile}`));
+  if (source) return { targetId: candidateId || `source:${source[0]}`, targetRevision: source[1] };
+  return { targetId: candidateId || `project:${inventory.project}`, targetRevision: revision };
+}
+
+function diagnosticsForScan(result, snapshot, project, revision) {
+  const inventory = { ...snapshot, project: project.key };
+  const projectTargetRevision = digestJson({ documents: snapshot.documents, diagnosticSourceRevisions: snapshot.diagnosticSourceRevisions });
+  return (result.diagnostics || []).filter((diagnostic) => !diagnostic.project || diagnostic.project === project.key).map((diagnostic) => {
+    const responsible = responsibleRevision(diagnostic, inventory, projectTargetRevision || revision);
+    const record = {
+      targetId: String(responsible.targetId),
+      targetRevision: responsible.targetRevision,
+      code: String(diagnostic.code || 'RDL-WATCH-UNKNOWN'),
+      severity: diagnostic.severity === 'warning' ? 'warning' : 'error',
+      category: String(diagnostic.category || 'unknown'),
+      ...(diagnostic.file ? { file: String(diagnostic.file).replace(/\\/gu, '/') } : {}),
+      ...(Number.isSafeInteger(diagnostic.line) && diagnostic.line > 0 ? { line: diagnostic.line } : {}),
+      message: boundedMessage(diagnostic.message)
+    };
+    record.dedupKey = dedupKey(record.targetId, record.code, record.targetRevision);
+    return record;
+  }).sort((left, right) => left.dedupKey.localeCompare(right.dedupKey));
+}
+
+function writeNdjsonRecords(records, stream) {
+  if (!records.length) return;
+  const output = stream || process.stdout;
+  const bytes = `${records.map((record) => canonicalJson(record)).join('\n')}\n`;
+  return new Promise((resolve, reject) => {
+    let callbackDone = false;
+    let drainDone = true;
+    let settled = false;
+    const finish = () => {
+      if (!settled && callbackDone && drainDone) { settled = true; output.removeListener('error', fail); resolve(); }
+    };
+    const fail = (error) => { if (!settled) { settled = true; output.removeListener('drain', drained); reject(error); } };
+    const drained = () => { drainDone = true; finish(); };
+    output.once('error', fail);
+    const accepted = output.write(bytes, (error) => {
+      if (error) { fail(error); return; }
+      callbackDone = true;
+      finish();
+    });
+    if (!accepted) {
+      drainDone = false;
+      output.once('drain', drained);
+    }
+  });
+}
+
+function defaultWriteRecords(records) {
+  return writeNdjsonRecords(records, process.stdout);
+}
+
+function observeRemoteScope(scope, git) {
+  const runner = git || runGit;
+  const remote = scope.remote || 'origin';
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(remote)) throw new Error('Remote name is invalid.');
+  if (!/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]*$/u.test(scope.ref || '') || scope.ref.includes('..') || scope.ref.includes('//') || /[/.]$/u.test(scope.ref)) throw new Error('Remote ref is invalid.');
+  const tracking = `refs/remotes/${remote}/rundol-watch-${scope.scope}-${sha256(Buffer.from(scope.ref, 'utf8')).slice(0, 12)}`;
+  const fetch = runner(['fetch', '--no-tags', '--no-write-fetch-head', remote, `+${scope.ref}:${tracking}`], { cwd: scope.root, allowFailure: true });
+  if (fetch.status !== 0) throw new Error(`Remote ref is unavailable: ${scope.ref}`);
+  const localTip = runner(['rev-parse', scope.localRef || 'HEAD'], { cwd: scope.root }).stdout;
+  const remoteTip = runner(['rev-parse', tracking], { cwd: scope.root }).stdout;
+  const counts = runner(['rev-list', '--left-right', '--count', `${localTip}...${remoteTip}`], { cwd: scope.root }).stdout.split(/\s+/u).map(Number);
+  return remoteRelation(scope.scope, scope.ref, localTip, remoteTip, counts[0], counts[1]);
+}
+
+function defaultRemoteScopes(layout, project) {
+  const workspaceRoot = path.join(layout.root, 'projects', 'workspace');
+  return [
+    { scope: 'project', root: project.root, remote: 'origin', ref: project.ref || `refs/heads/rundol/${project.key}`, localRef: 'HEAD' },
+    { scope: 'workspace', root: fs.existsSync(workspaceRoot) ? workspaceRoot : layout.root, remote: 'origin', ref: 'refs/heads/rundol/workspace', localRef: 'HEAD' }
+  ];
+}
+
+function createWatchSession(start, options, dependencies) {
+  const settings = options || {};
+  const deps = dependencies || {};
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, settings.project, true);
+  const file = cacheFile(project);
+  let cache = loadCache(file, project.key);
+  const state = { watchId: settings.watchId || `WATCH-${crypto.randomBytes(10).toString('hex').toUpperCase()}`, sequence: cache.sequenceBase };
+  const writeRecords = deps.writeRecords || settings.write || defaultWriteRecords;
+  const captureSnapshot = deps.inputSnapshot || defaultInputSnapshot;
+  const checker = deps.checkWorkspace || checkWorkspace;
+
+  function recordsWithSequence(records) {
+    let next = state.sequence;
+    const sequenced = records.map((record) => validateWatchRecord({ schemaVersion: 1, ...record, watchId: state.watchId, sequence: ++next, project: project.key }));
+    return { records: sequenced, sequence: next };
+  }
+
+  async function flush(records) {
+    const sequenced = recordsWithSequence(records);
+    await writeRecords(sequenced.records);
+    state.sequence = sequenced.sequence;
+    return sequenced.records;
+  }
+
+  async function scanOnce() {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const before = validateInputSnapshot(captureSnapshot({ layout, project }));
+      const revision = scanRevision(before);
+      const result = await checker(layout.root, { project: project.key });
+      const after = validateInputSnapshot(captureSnapshot({ layout, project }));
+      if (canonicalJson(before) !== canonicalJson(after)) continue;
+      const diagnostics = diagnosticsForScan(result, before, project, revision);
+      const active = {};
+      for (const diagnostic of diagnostics) active[diagnostic.dedupKey] = { targetId: diagnostic.targetId, targetRevision: diagnostic.targetRevision, code: diagnostic.code };
+      const emitted = diagnostics.filter((diagnostic) => !Object.prototype.hasOwnProperty.call(cache.activeDiagnostics, diagnostic.dedupKey));
+      const summary = {
+        errors: diagnostics.filter((item) => item.severity === 'error').length,
+        warnings: diagnostics.filter((item) => item.severity === 'warning').length,
+        total: diagnostics.length
+      };
+      const records = [
+        { type: 'watch.scan.started', scanId: revision, scanRevision: revision, head: before.head, gitStatusDigest: before.gitStatusDigest },
+        ...emitted.map((diagnostic) => ({ type: 'watch.diagnostic', scanId: revision, scanRevision: revision, ...diagnostic })),
+        { type: 'watch.scan.completed', scanId: revision, scanRevision: revision, head: before.head, gitStatusDigest: before.gitStatusDigest, activeDiagnosticKeys: Object.keys(active).sort(), summary }
+      ];
+      const output = await flush(records);
+      cache = { ...cache, lastCompletedScanRevision: revision, activeDiagnostics: active, sequenceBase: state.sequence };
+      atomicCache(file, cache);
+      return { exitCode: 0, status: 'completed', attempt, scanRevision: revision, records: output, summary };
+    }
+    const output = await flush([{ type: 'watch.error', phase: 'scan', code: 'RDL-WATCH-UNSTABLE', message: 'Input changed during three consecutive scan attempts.', retryable: true }]);
+    return { exitCode: 2, status: 'unstable', records: output };
+  }
+
+  async function observeRemote() {
+    if (!settings.remote) return { records: [], skipped: true };
+    const scopes = deps.remoteScopes || defaultRemoteScopes(layout, project);
+    const records = [];
+    for (const scope of scopes) {
+      try {
+        const relation = await (deps.observeRemoteScope || observeRemoteScope)(scope, deps.runGit);
+        if (cache.remoteRelationKeys[scope.scope] === relation.relationKey) continue;
+        const output = await flush([{ type: 'watch.remote.relation', ...relation }]);
+        records.push(...output);
+        cache = { ...cache, remoteRelationKeys: { ...cache.remoteRelationKeys, [scope.scope]: relation.relationKey }, sequenceBase: state.sequence };
+        atomicCache(file, cache);
+      } catch (error) {
+        const output = await flush([{ type: 'watch.error', phase: `remote:${scope.scope}`, code: 'RDL-WATCH-REMOTE-REF', message: boundedMessage(error.message), retryable: true }]);
+        records.push(...output);
+      }
+    }
+    return { records, skipped: false };
+  }
+
+  return { layout, project, cacheFile: file, state, scanOnce, observeRemote, getCache: () => cache };
+}
+
+function acquireWatchLock(layout, project, deps) {
+  if (deps && deps.acquireLock) return deps.acquireLock(layout, project);
+  const runtime = require('./runtime');
+  if (typeof runtime.acquireProcessLock !== 'function') throw new Error('Watch process lock support is unavailable.');
+  return runtime.acquireProcessLock(runtimeWorkspace(layout.root), `watch-${project.key}`);
+}
+
+function releaseLock(lock) {
+  if (typeof lock === 'function') lock();
+  else if (lock && typeof lock.release === 'function') lock.release();
+}
+
+async function runContinuous(session, settings, deps) {
+  const harness = loadHarnessSettings(session.layout.root, { project: session.project.key });
+  const interval = harness.runtimeResolved.watch.scanIntervalSeconds * 1000;
+  const timers = { set: deps.setTimeout || setTimeout, clear: deps.clearTimeout || clearTimeout };
+  const controller = settings.signal ? null : new AbortController();
+  const signal = settings.signal || controller.signal;
+  const interrupt = () => controller && controller.abort();
+  if (controller) {
+    process.once('SIGINT', interrupt);
+    process.once('SIGTERM', interrupt);
+  }
+  let wake = null;
+  const watcherFactory = deps.watchFactory || ((root, callback) => fs.watch(root, callback));
+  let watcher;
+  try {
+    watcher = watcherFactory(session.project.root, () => { if (wake) wake(); });
+    while (!signal.aborted) {
+      await session.scanOnce();
+      await session.observeRemote();
+      if (signal.aborted) break;
+      await new Promise((resolve) => {
+        let timer = timers.set(() => { wake = null; resolve(); }, interval);
+        wake = () => {
+          timers.clear(timer);
+          timer = timers.set(() => { wake = null; resolve(); }, 50);
+        };
+        signal.addEventListener('abort', () => { timers.clear(timer); wake = null; resolve(); }, { once: true });
+      });
+    }
+    return { exitCode: 0, status: 'stopped' };
+  } finally {
+    if (watcher && typeof watcher.close === 'function') watcher.close();
+    if (controller) {
+      process.removeListener('SIGINT', interrupt);
+      process.removeListener('SIGTERM', interrupt);
+    }
+  }
+}
+
+async function runWatch(start, options, dependencies) {
+  const settings = options || {};
+  const deps = dependencies || {};
+  const session = createWatchSession(start, settings, deps);
+  const lock = acquireWatchLock(session.layout, session.project, deps);
+  try {
+    if (settings.once) {
+      const scan = await session.scanOnce();
+      const remote = settings.remote ? await session.observeRemote() : { records: [], skipped: true };
+      return { exitCode: scan.exitCode, status: scan.status, scanRevision: scan.scanRevision, summary: scan.summary, remoteRecords: remote.records.length };
+    }
+    return await runContinuous(session, settings, deps);
+  } finally {
+    releaseLock(lock);
+  }
+}
+
+module.exports = {
+  sha256,
+  defaultInputSnapshot,
+  validateInputSnapshot,
+  scanRevision,
+  dedupKey,
+  relationKey,
+  relationName,
+  remoteRelation,
+  validateWatchRecord,
+  writeNdjsonRecords,
+  emptyCache,
+  loadCache,
+  observeRemoteScope,
+  createWatchSession,
+  runWatch
+};

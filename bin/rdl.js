@@ -39,15 +39,23 @@ Usage:
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
   rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
   rdl lease list --project <key> [--json]
-  rdl run start <절차이름> --project <key> --client-id <id> [--goal <목표>] [--json]
+  rdl run start <절차이름> --project <key> --client-id <id> [--goal <목표>] [--request-id <REQ-ID>] [--json]
   rdl run next --run <RUN-ID> --project <key> [--json]
-  rdl run step --run <RUN-ID> --project <key> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--json]
-  rdl run gate --run <RUN-ID> --project <key> [--step <id>] [--force --reason <사유>] [--json]
-  rdl run halt|resume|complete --run <RUN-ID> --project <key> [--json]
-  rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--json]
+  rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run halt|resume|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
+  rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run ownership resolve --run <RUN-ID> --project <key> --conflict <digest> --select <event-id> --client-id <id> --reason <사유> [--force] [--request-id <REQ-ID>] [--json]
+  rdl run drive --run <RUN-ID> --project <key> --client-id <id> [--scheduled] [--request-id <REQ-ID>] [--json]
+  rdl run operation resolve --run <RUN-ID> --project <key> --operation <operation-id> --conflict <digest> --select <event-id> --client-id <id> --reason <text> [--force] [--request-id <REQ-ID>] [--json]
+  rdl run requests [--pending] [--json]
+  rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
+  rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
+  rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
+  rdl watch --project <key> [--remote] [--once] [--json]
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                    [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
@@ -58,8 +66,8 @@ Usage:
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
-  rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--json]
-  rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--json]
+  rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--request-id <REQ-ID>] [--json]
+  rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
   rdl conflict list [--project <key>] [--json]
   rdl conflict resolve --strategy <ours|theirs> [--project <key>] [--json]
   rdl conflict clear [--project <key>] [--json]
@@ -118,8 +126,29 @@ function parseBoardArgs(argv) {
   return options;
 }
 
+function parseWatchArgs(argv) {
+  const options = { root: process.cwd(), project: null, remote: false, once: false, json: false };
+  const seen = new Set();
+  for (let i = 0; i < argv.length; i += 1) {
+    const value = argv[i];
+    if (!['--project', '--remote', '--once', '--json'].includes(value)) throw new Error(`rdl watch does not support this argument: ${value}`);
+    if (seen.has(value)) throw new Error(`rdl watch option may be specified only once: ${value}`);
+    seen.add(value);
+    if (value === '--remote') options.remote = true;
+    else if (value === '--once') options.once = true;
+    else if (value === '--json') options.json = true;
+    else {
+      i += 1;
+      if (!argv[i] || argv[i].startsWith('-')) throw new Error('--project <key> is required');
+      options.project = argv[i];
+    }
+  }
+  if (!options.project) throw new Error('rdl watch requires --project <key>');
+  return options;
+}
+
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -130,11 +159,13 @@ function parseOperationArgs(argv) {
     else if (value === '--grouped') options.grouped = true;
     else if (value === '--apply') options.apply = true;
     else if (value === '--once') options.once = true;
+    else if (value === '--scheduled') options.scheduled = true;
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
     else if (value === '--unreported') options.unreported = true;
+    else if (value === '--pending') options.pending = true;
     else if (value === '--write') options.write = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -162,6 +193,7 @@ function parseOperationArgs(argv) {
       else if (value === '--link') options.links.push(argv[i]);
       else if (value === '--acceptance') options.acceptance.push(argv[i]);
       else if (value === '--related') options.related.push(argv[i]);
+      else if (value === '--lens') options.lenses.push(argv[i]);
       else if (value === '--trait') options.traits.push(argv[i]);
       else if (['--required', '--recommended', '--on-demand', '--disabled'].includes(value)) {
         const state = value === '--on-demand' ? 'onDemand' : value.slice(2);
@@ -530,6 +562,19 @@ async function main() {
     printOperation(saveState(options.root, options), options.json);
     return 0;
   }
+  if (command === 'watch') {
+    const options = parseWatchArgs(argv);
+    const write = (records) => {
+      for (const record of Array.isArray(records) ? records : [records]) {
+        const line = typeof record === 'string' ? record.replace(/\r?\n$/u, '') : JSON.stringify(record);
+        process.stdout.write(`${line}\n`);
+      }
+    };
+    const result = await require('../src/watch').runWatch(options.root, {
+      project: options.project, remote: options.remote, once: options.once, json: options.json, write
+    });
+    return result && Number.isInteger(result.exitCode) ? result.exitCode : 0;
+  }
   if (command === 'sync') {
     const subcommand = argv[0] === 'watch' ? argv.shift() : null;
     const options = parseOperationArgs(argv);
@@ -632,6 +677,52 @@ async function main() {
     }
     return 0;
   }
+  if (command === 'adapter') {
+    const subcommand = argv.shift();
+    if (subcommand !== 'run') throw new Error('지원하는 adapter 하위 명령은 run입니다.');
+    const options = parseOperationArgs(argv);
+    if (options.positional.length !== 1) throw new Error('rdl adapter run <name> 형식이 필요합니다.');
+    if (!options.project || !options.run || !options.step || !options.mode || !options.clientId) {
+      throw new Error('rdl adapter run에는 --project, --run, --step, --mode, --client-id가 필요합니다.');
+    }
+    if (!['author', 'verify'].includes(options.mode)) throw new Error('--mode는 author 또는 verify여야 합니다.');
+    if (options.requestId) throw new Error('rdl adapter run은 canonical event를 기록하지 않으므로 --request-id를 사용하지 않습니다.');
+    const result = await require('../src/adapter').runAdapterCommand(options.root, Object.assign({}, options, { adapter: options.positional[0] }));
+    printOperation(result, options.json);
+    return result.exitCode === 0 ? 0 : (result.exitCode === 1 ? 1 : 2);
+  }
+  if (command === 'verify') {
+    const options = parseOperationArgs(argv);
+    if (options.positional.length !== 1) throw new Error('rdl verify <ARTIFACT-ID> 형식이 필요합니다.');
+    if (!options.project || !options.clientId) throw new Error('rdl verify에는 --project와 --client-id가 필요합니다.');
+    const rootRequestId = options.requestId || require('../src/run-ledger').newRequestId();
+    let result;
+    try {
+      result = await require('../src/verify').verifyArtifact(options.root, {
+        project: options.project,
+        targetId: options.positional[0],
+        clientId: options.clientId,
+        adapter: options.adapter,
+        lenses: options.lenses.length ? options.lenses : undefined,
+        runId: options.run,
+        rootRequestId
+      });
+    } catch (error) {
+      if (!options.run || error.code !== 'adapter-failed') throw error;
+      result = {
+        exitCode: 2,
+        status: /timeout/u.test(String(error.message || '')) ? 'adapter-timeout' : 'invalid-output',
+        targetId: options.positional[0],
+        rootRequestId,
+        errorCode: error.code
+      };
+    }
+    const integrated = options.run
+      ? require('../src/run').recordVerificationResult(options.root, options, result)
+      : result;
+    printOperation(integrated, options.json);
+    return result.exitCode === 0 ? 0 : (result.exitCode === 1 ? 1 : 2);
+  }
   if (command === 'run') {
     const subcommand = argv.shift();
     const options = parseOperationArgs(argv);
@@ -643,18 +734,55 @@ async function main() {
     else if (subcommand === 'gate') {
       const result = run.runGate(options.root, requireRun());
       printOperation(result, options.json);
-      return result.exitCode === 0 ? 0 : 1;
+      return result.exitCode === 0 ? 0 : (result.exitCode === 1 ? 1 : 2);
     } else if (subcommand === 'halt') printOperation(run.haltRun(options.root, requireRun()), options.json);
     else if (subcommand === 'resume') printOperation(run.resumeRun(options.root, requireRun()), options.json);
     else if (subcommand === 'complete') printOperation(run.completeRun(options.root, requireRun()), options.json);
     else if (subcommand === 'takeover') {
       requireRun();
-      const { takeoverRun } = require('../src/run-ledger');
-      printOperation(takeoverRun(options.root, { project: options.project, runId: options.run, clientId: options.clientId, force: options.force, reason: options.reason }), options.json);
+      printOperation(run.takeoverRunCommand(options.root, options), options.json);
+    } else if (subcommand === 'ownership') {
+      requireRun();
+      if (options.positional.length !== 1 || options.positional[0] !== 'resolve') throw new Error('rdl run ownership은 resolve 하위 명령이 필요합니다.');
+      printOperation(run.resolveOwnershipCommand(options.root, options), options.json);
+    } else if (subcommand === 'drive') {
+      requireRun();
+      if (options.positional.length) throw new Error('rdl run drive does not accept positional arguments');
+      if (!options.project || !options.clientId) throw new Error('rdl run drive requires --run, --project, and --client-id');
+      let result;
+      try {
+        result = await run.runDrive(options.root, options);
+      } catch (error) {
+        result = { exitCode: 2, status: 'rejected', canonicalCommitted: false, reason: error.message };
+      }
+      if (result.exitCode === 2 && result.canonicalCommitted === undefined) result.canonicalCommitted = false;
+      printOperation(result, options.json);
+      return result.exitCode === 0 ? 0 : (result.exitCode === 1 ? 1 : 2);
+    } else if (subcommand === 'operation') {
+      requireRun();
+      if (options.positional.length !== 1 || options.positional[0] !== 'resolve') throw new Error('rdl run operation requires the resolve subcommand');
+      if (!options.project || !options.operation || !options.conflict || !options.select || !options.clientId || !options.reason) {
+        throw new Error('rdl run operation resolve requires --run, --project, --operation, --conflict, --select, --client-id, and --reason');
+      }
+      if (options.scheduled) throw new Error('--scheduled is valid only for rdl run drive');
+      let result;
+      try {
+        result = await run.resolveOperation(options.root, options);
+      } catch (error) {
+        result = { exitCode: 2, status: 'rejected', canonicalCommitted: false, reason: error.message };
+      }
+      printOperation(result, options.json);
+      return result.exitCode === 0 ? 0 : (result.exitCode === 1 ? 1 : 2);
+    } else if (subcommand === 'requests') {
+      if (options.positional.length) throw new Error('rdl run requests는 위치 인수를 사용하지 않습니다.');
+      printOperation(run.listRunRequests(options.root, options), options.json);
+    } else if (subcommand === 'request') {
+      if (options.positional.length !== 2 || options.positional[0] !== 'resume') throw new Error('rdl run request resume <REQ-ID> 형식이 필요합니다.');
+      printOperation(await run.resumeRunRequest(options.root, options), options.json);
     } else if (subcommand === 'list') printOperation(run.listRunsCommand(options.root, options), options.json);
     else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
-    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, halt, resume, complete, takeover, list, log, procedures입니다.');
+    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, log, procedures입니다.');
     return 0;
   }
   if (command === 'task') {

@@ -2,7 +2,8 @@
 
 const assert = require('assert');
 const {
-  validateImplementationDocument, validateImplementationTrace, implementationTrace, isIndexArtifact, REQUIRED_FIELDS_BY_TYPE
+  validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness,
+  implementationTrace, isIndexArtifact, REQUIRED_FIELDS_BY_TYPE
 } = require('../src/implementation-contract');
 
 const fields = ['입력', '출력', '업무 규칙', '상태와 전이', '권한과 승인', '정상·오류·취소', '감사 기록', '수용 기준'];
@@ -112,6 +113,24 @@ function testComputedTraceWithoutIndex() {
   assert(validateImplementationTrace([req], { implementation: true }).issues.some((item) => item.code === 'RDL-IMPL-012' && item.severity === 'error'));
 }
 
+function completeImplementationArtifact(type, artifactId, functionId) {
+  const required = REQUIRED_FIELDS_BY_TYPE[type];
+  const body = `\n### ${functionId}\n\n${required.map((field) => `#### ${field}\n\n- ${functionId} has a complete ${field} contract`).join('\n\n')}\n`;
+  return { id: artifactId, type, file: `${artifactId}.md`, source: frontmatter(artifactId, type, [functionId]) + body };
+}
+
+function testTaskReadinessChecksEveryLinkedImplementationType() {
+  const req = completeImplementationArtifact('REQ', 'REQ-001', 'PAY-01');
+  const tst = completeImplementationArtifact('TST', 'TST-001', 'PAY-01');
+  const brokenApi = {
+    id: 'API-001', type: 'API', file: 'API-001.md',
+    source: frontmatter('API-001', 'API', ['PAY-01']) + `\n### PAY-01\n\n#### ${REQUIRED_FIELDS_BY_TYPE.API[0]}\n\n- complete\n`
+  };
+  const issues = validateTaskImplementationReadiness([req, brokenApi, tst]);
+  assert(issues.some((item) => item.artifactId === 'API-001' && item.code === 'RDL-IMPL-006' && item.severity === 'error'));
+  assert.deepStrictEqual(validateTaskImplementationReadiness([req, tst]), []);
+}
+
 function testIndexArtifactNames() {
   assert.strictEqual(isIndexArtifact('인덱스'), true);
   assert.strictEqual(isIndexArtifact('기능 추적표'), true);
@@ -127,5 +146,6 @@ testGroupedSpecificationRejected();
 testUnresolvedRuleRejectedAtReadiness();
 testEveryImplementationTypeRequiresStandaloneFields();
 testComputedTraceWithoutIndex();
+testTaskReadinessChecksEveryLinkedImplementationType();
 testIndexArtifactNames();
 process.stdout.write('implementation contract tests passed\n');

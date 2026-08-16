@@ -117,7 +117,7 @@ function saveSettings(start) {
   return { branch: settings.branch, changed: true, commit: runGit(['rev-parse', 'HEAD'], { cwd: settings.worktree }).stdout };
 }
 
-function syncSettings(start, options) {
+function prepareSettings(start, options) {
   const settings = config(start);
   if (!settings) return null;
   const remote = (options && options.remote) || 'origin';
@@ -141,8 +141,47 @@ function syncSettings(start, options) {
     }
   } else if (!missingRef(fetch)) throw new Error(`${settings.domain} fetch 실패: ${fetch.stderr}`);
   else action = 'publish-new';
-  if (!options || options.push !== false) runGit(['push', remote, `${settings.ref}:${settings.ref}`], { cwd: settings.root });
-  return { branch: settings.branch, action, saved: saved.changed, pushed: !options || options.push !== false, commit: runGit(['rev-parse', 'HEAD'], { cwd: settings.worktree }).stdout };
+  return { branch: settings.branch, action, saved: saved.changed, pushed: false, prepared: true, remote, commit: runGit(['rev-parse', 'HEAD'], { cwd: settings.worktree }).stdout };
+}
+
+function retryPolicy(options) {
+  const supplied = options && options.retryPolicy;
+  return supplied || { retryBackoffSeconds: [1, 2, 4], maxAttempts: 3 };
+}
+
+function waitForRetry(seconds, options) {
+  if (options && typeof options.sleep === 'function') return options.sleep(seconds);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+}
+
+function rejectedPush(result) {
+  return /non-fast-forward|fetch first|rejected/u.test(`${result.stderr}\n${result.stdout}`);
+}
+
+function finalizeSettings(start, options) {
+  const settings = config(start);
+  if (!settings) return null;
+  const remote = (options && options.remote) || 'origin';
+  const saved = saveSettings(start);
+  if (options && options.push === false) return { branch: settings.branch, action: 'local-only', saved: saved.changed, pushed: false, prepared: false, remote, commit: saved.commit };
+  const policy = retryPolicy(options);
+  let last = null;
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    last = runGit(['push', remote, `${settings.ref}:${settings.ref}`], { cwd: settings.root, allowFailure: true });
+    if (last.status === 0) return { branch: settings.branch, action: attempt === 1 ? 'pushed' : 'retried', saved: saved.changed, pushed: true, prepared: false, remote, attempts: attempt, commit: runGit(['rev-parse', 'HEAD'], { cwd: settings.worktree }).stdout };
+    if (!rejectedPush(last) || attempt === policy.maxAttempts) break;
+    prepareSettings(start, Object.assign({}, options, { push: false }));
+    waitForRetry(policy.retryBackoffSeconds[attempt - 1], options);
+  }
+  throw new Error(`${settings.domain} push 실패${rejectedPush(last) ? ' (retry exhausted)' : ''}: ${(last.stderr || last.stdout).trim()}`);
+}
+
+function syncSettings(start, options) {
+  const prepared = prepareSettings(start, options);
+  if (!prepared) return null;
+  if (options && options.push === false) return prepared;
+  const finalized = finalizeSettings(start, options);
+  return Object.assign({}, prepared, finalized, { saved: prepared.saved || finalized.saved });
 }
 
 function migrateSettings(start) {
@@ -209,4 +248,4 @@ function migrateSettings(start) {
   }
 }
 
-module.exports = { config, initSettings, saveSettings, syncSettings, migrateSettings };
+module.exports = { config, initSettings, saveSettings, prepareSettings, finalizeSettings, syncSettings, migrateSettings };

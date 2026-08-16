@@ -32,12 +32,24 @@ require('./docs.test');
 require('./action.test');
 require('./run-ledger.test');
 require('./run-cli.test');
+require('./harness-settings.test');
+require('./sync-finalization.test');
+require('./verify.test');
+require('./watch-cli.test');
+require('./watch-runtime.test');
+require('./drive-cli.test');
+require('./driver-lease.test');
+require('./p15-compat.test');
 require('./packages.test');
 require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
 
-Promise.all([require('./board.test'), require('./board-workspace.test'), require('./event-store.test')]).catch((error) => {
+require('./watch.test').then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
+  require('./board.test'),
+  require('./board-workspace.test'),
+  require('./event-store.test')
+])).catch((error) => {
   process.stderr.write(`${error.stack || error.message}\n`);
   process.exitCode = 1;
 });
