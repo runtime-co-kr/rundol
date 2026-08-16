@@ -635,8 +635,12 @@ function driverEventIdentity(rootRequestId, childKey) {
   return { rootRequestId, requestId, eventId: requestJournal.eventIdForRequest(requestId) };
 }
 
-function driverLeaseId(operationId) {
-  return `LEASE-${crypto.createHash('sha256').update(`drive-lease\0${operationId}`).digest('hex').slice(0, 20).toUpperCase()}`;
+// leaseId는 (operationId, clientId, ownerToken, rootRequestId)의 함수다 — 파티션의
+// 두 실행자도, 크래시 후 새 root로 재기동한 같은 실행자도 각자 별도의 유효 사슬을
+// 갖는다(규범: 여러 유효 사슬은 전부 노출). operationId 하나로 파생하면 그 모든
+// 경우가 한 사슬에 충돌해 사슬 전체가 invalid로 오염된다.
+function driverLeaseId(operationId, clientId, ownerToken, rootRequestId) {
+  return `LEASE-${crypto.createHash('sha256').update(`drive-lease\0${operationId}\0${clientId}\0${ownerToken}\0${rootRequestId}`).digest('hex').slice(0, 20).toUpperCase()}`;
 }
 
 function driveChildKey(category, operationId, mutationKind, predecessorEventId) {
@@ -690,7 +694,7 @@ function acquireDefaultDriverLease(start, options, context, step, operationId, c
   const settings = defaultLeaseSettings(start, context, dependencies);
   const childKey = driveChildKey('driver', operationId, 'acquire');
   const identity = driverEventIdentity(options.requestId, childKey);
-  const leaseId = driverLeaseId(operationId);
+  const leaseId = driverLeaseId(operationId, options.clientId, context.ownership.ownerToken, options.requestId);
   const expiresAt = driverExpiry(dependencies.now, settings.ttlSeconds);
   const store = defaultDriverStore(context, dependencies);
   const recorded = store.api.acquireDriverLease(store.eventsRoot, {
@@ -827,6 +831,22 @@ async function tickRun(start, options, dependencies) {
     await record({ type: 'run.halted', reason: 'lease-lost', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'lease-lost'));
     return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId };
   }
+  // acquire 후 read-back: 기록만 하고 다시 읽지 않는 lease는 소프트 조정조차 아니다.
+  // 자기 사슬이 invalid면 진행하지 않고, 파티션의 다른 유효 사슬은 상호 배제 약속이
+  // 아니라 가시성으로 결과에 노출한다 — 실행 안전은 operationId 멱등성이 보증한다.
+  let leaseContention = [];
+  const readBackStore = usesDefaultLease && lease && lease.leaseId ? defaultDriverStore(context, deps) : null;
+  if (readBackStore && typeof readBackStore.api.readDriverEvents === 'function' && typeof readBackStore.api.foldDriverLeases === 'function') {
+    const store = readBackStore;
+    const nowValue = deps.now === undefined ? Date.now() : (typeof deps.now === 'function' ? deps.now() : deps.now);
+    const leaseFold = store.api.foldDriverLeases(store.api.readDriverEvents(store.eventsRoot, context.project.key, context.fold.runId), { now: nowValue });
+    const mine = leaseFold.leases.find((entry) => entry.leaseId === lease.leaseId);
+    if (!mine || mine.status === 'invalid') {
+      await record({ type: 'run.halted', reason: 'lease-lost', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'lease-lost'));
+      return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId };
+    }
+    leaseContention = (leaseFold.activeLeases || []).filter((entry) => entry.leaseId !== lease.leaseId).map((entry) => ({ leaseId: entry.leaseId, clientId: entry.clientId }));
+  }
   let leaseReleased = false;
   const releaseLease = async (reason) => {
     if (!lease || leaseReleased) return;
@@ -898,7 +918,7 @@ async function tickRun(start, options, dependencies) {
     const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt, outcomeKind: kind, exitCode: result.exitCode, sortedArtifactIds: artifactIds, sortedDiagnosticCodes: diagnosticCodes, boundedResultDecision });
     await record({ type: 'run.step', stepId: step.id, executor: step.executor, exitCode: result.exitCode, artifactIds, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
     releaseReason = result.exitCode === 0 ? 'completed' : 'halted';
-    return { exitCode: result.exitCode === 0 ? 0 : 1, status: result.exitCode === 0 ? 'continue' : 'halted', reason: result.exitCode === 0 ? undefined : 'step-failed', operationId };
+    return { exitCode: result.exitCode === 0 ? 0 : 1, status: result.exitCode === 0 ? 'continue' : 'halted', reason: result.exitCode === 0 ? undefined : 'step-failed', operationId, ...(leaseContention.length ? { leaseContention } : {}) };
   } finally {
     await releaseLease(releaseReason);
   }
