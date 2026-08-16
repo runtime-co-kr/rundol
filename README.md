@@ -70,7 +70,7 @@ rdl board --project memo
 rdl attach memo
 ```
 
-문서 프로필은 `project.md`의 schemaVersion 2 계약으로 저장된다. policy 외에 `enforcement`, 유형별 작성 선행조건(`rules.after`), 비활성 문서의 흡수 대상과 필수 섹션(`omissions`)을 포함한다. `rdl contract show|next|check`는 CLI·스킬·Board가 공유하는 평가 결과를 제공하고, `rdl contract plan|set`은 영향 검토와 revision 기반 변경을 수행한다. 새 문서는 `docs/prd`, `docs/requirements`, `docs/architecture` 같은 정규 경로에 생성되며, 기존 루트 문서는 `rdl doc migrate` 계획을 검토한 뒤 적용한다.
+문서 프로필은 `project.md`의 schemaVersion 2 계약으로 저장된다. 계약이 갖는 것은 유형별 `policy`와 `enforcement`, `revision`뿐이다. 프로필 프리셋과 유형별 하부 요소는 표시 설정과 같은 `board.json` 상속(내장 기본값 → Workspace → 프로젝트)이 정하므로 프로젝트마다 들고 다니지 않는다. `rdl contract show|next|check`는 CLI·스킬·Board가 공유하는 평가 결과를 제공하고, `rdl contract plan|set`은 영향 검토와 revision 기반 변경을 수행한다. 새 문서는 `docs/prd`, `docs/requirements`, `docs/architecture` 같은 정규 경로에 생성되며, 기존 루트 문서는 `rdl doc migrate` 계획을 검토한 뒤 적용한다.
 
 같은 저장소에 프로젝트를 더 추가할 수 있다.
 
