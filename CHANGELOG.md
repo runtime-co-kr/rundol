@@ -2,43 +2,32 @@
 
 이 문서는 사용자에게 영향을 주는 Rundol 변경을 기록한다. 버전 분류와 tag 규칙은 [버전과 릴리스 정책](docs/RELEASES.md)을 따른다.
 
-## [Unreleased]
-
-### Added
-
-- 혼합 버전 호환이 실측으로 게이트된다. 매 스위트의 빠른 경로(p15-compat)가 신형 run v2·driver lease 공유 샤드를 0.28.1 check/sync에 통과시켜 오진 0을 고정하고, `release:check`의 `test:install` 단계는 0.28.1 기준 커밋을 실제 `npm pack` tarball로 설치해 배포 산출물 그대로가 신형 데이터(run v2 수명주기·takeover·driver lease·verdict)를 오진 없이 지나가는지 확인한다. CI checkout은 기준 커밋 접근을 위해 전체 이력을 받는다.
-
-### Fixed
-
-- strict 검증이 런이 아니라 이벤트의 스키마를 따른다 — legacy 런에 유입된 v2 이벤트도 커서·종류 검증을 받는다. legacy 전용 런도 소유권·dedup·진단이 같은 단일 fold 경로를 지난다.
-- 유효하지 않은 takeover 시도만 있는 런은 ACTIVE로 조용히 남는 대신 CONFLICT로 fail-closed한다(유효 takeover 도착 시 자연 해소). 토큰 없는 v2 `run.halted`는 쓰기가 거부하고 유입분은 `RDL-RUN-024`로 진단한다. 충돌 상태에서도 커서·완료 진행은 보존된다.
-- force 소유권 해소의 도달 불능 가드를 교정했다 — 부모 epoch 소유 멤버는 자기 소유의 다른 클라이언트로 자기 충돌을 승인할 수 없다.
-- run 결박 verdict fold에 ownerToken이 없으면 명시적 오류이고, verdict eventId 충돌은 `RDL-VERDICT-004` 진단이다.
-
-- 외래 sync 전이의 효력을 epoch과 커밋에 결박했다. 구 epoch 커밋의 늦은 `run.synced`가 신 epoch의 완료와 결합해 런을 synced로 만들지 못한다(`RDL-RUN-026`). sync 전이의 신원 인가는 검사 계층이 맡는다 — clientId가 활성 agent/service가 아니면 `RDL-RUN-005`.
-- 같은 요청 ID에 다른 payload나 commandDigest가 오면 저널 재생이 과거 결과를 돌려주는 대신 거부한다.
-- legacy takeover의 fence 불가를 `RDL-RUN-027` 경고로 표면화한다.
-- 커널 결정성·소유권·재생의 핵심 시나리오가 정식 회귀 테스트로 편입됐다.
-- adapter 테스트 teardown이 Windows에서 간헐적으로 스위트를 실패시키던 것을 고쳤다(OS 임시 디렉터리 이동·읽기전용 해제·비치명 정리).
-
-## [0.29.1] - 2026-08-17
-
-### Fixed
-
-- **fold가 이벤트 집합의 함수가 됐다.** 같은 이벤트 집합이 열거 순서에 따라 여덟 가지 fold 결과를 내던 것을 고쳤다: 순서의 정본을 병합 배열에서 각 작성자 샤드의 append 순서로 옮기고, epoch 소속을 `(ownerToken, 소유자 clientId)` 결박으로 정하며, takeover cutoff를 이전 소유자 자기 시퀀스의 위치로 해석한다. 작성자 부분열을 보존하는 교차 3,000종에서 fold 결과는 하나다.
-- 타 클라이언트의 소유자 토큰 재사용이 무진단 수용되던 것을 `RDL-RUN-023`으로 진단하고 stale 처리한다. epoch에 들어오는 외래 이벤트는 sync 실행자의 `run.synced`·sync 사유 `run.halted`와 인가된 비소유자 `run.operation_resolved`뿐이며, 외래 전이는 위치가 아니라 우선순위로 적용되어 사전순 병합에서 `run.synced`가 소실되지 않는다. sync 전이 작성자도 공유를 먼저 reconcile한 union에서 소유권을 도출한다.
-- 크래시 재시도가 준비된 canonical 바이트를 그대로 재사용한다 — attempt 재계산으로 digest가 갈려 멱등성이 깨지던 것을 driver-lease의 decode-재사용 패턴으로 통일했다.
-- 읽기 경로의 dedup을 런 단위로 격리했다. 다른 런 샤드의 손상이 이 런의 읽기를 오염시키지 못하고, 같은 런의 충돌은 예외가 아니라 `RDL-RUN-017/018` 진단으로 fold에 흐른다. digest 정의는 정규화 하나로 남아, 원시 digest로 쓰인 v2 레코드가 legacy로 낙인되지 않는다.
-
 ## [0.29.0] - 2026-08-17
 
 ### Added
 
 - **하네스 커널 확장 — 단일 델타.** Run 원장이 schema v2 canonical envelope와 causal owner token으로 강화됐다(takeover conflict/resolution, off-cursor fencing, shared-first idempotent append, request journal 복구, pinned harness settings, same-sync `run.synced` 전파). 불변 instruction/lens registry와 격리된 one-shot adapter 실행 커널, `rdl verify`, client-sharded verdict 원장, deterministic quorum fold, verification request 재개가 추가됐다. `rdl watch`가 안정된 입력 snapshot 기준으로 진단 NDJSON과 선택적 원격 tip 관찰을 제공하고, `rdl run drive`가 멱등 절차를 정본 커서부터 사람·sync 경계까지 실행한다(operation ID, retry-safety preflight, driver lease, 충돌 감지·명시적 resolution, 프로세스 트리 취소).
+- 혼합 버전 호환이 실측으로 게이트된다. 매 스위트의 빠른 경로(p15-compat)가 신형 run v2·driver lease 공유 샤드를 0.28.1 check/sync에 통과시켜 오진 0을 고정하고, `release:check`의 `test:install` 단계는 0.28.1 기준 커밋을 실제 `npm pack` tarball로 설치해 배포 산출물 그대로가 신형 데이터(run v2 수명주기·takeover·driver lease·verdict)를 오진 없이 지나가는지 확인한다. CI checkout은 기준 커밋 접근을 위해 전체 이력을 받는다.
 
 ### Changed
 
-- **릴리스 기재 정직화.** 이 델타는 `0.28.1` 위의 단일 개발 델타다. 개발 중 `[0.29.0]`~`[0.32.0]` 네 항목으로 나뉘어 기재됐으나 어느 것도 독립 릴리스로 존재하지 않았으므로(태그·개별 커밋 부재), [릴리스 정책](docs/RELEASES.md)에 따라 하나의 항목으로 통합하고 버전을 0.29.0으로 되돌린다. 교차 검증에서 확정된 fold 순서 의존성 등 커널 결함의 수정은 이후 0.29.x 패치 항목에 기록된다.
+- **릴리스 기재 정직화.** 이 릴리스는 `0.28.1` 위의 단일 델타다. 개발 중 `[0.29.0]`~`[0.32.0]` 네 항목으로 나뉘어 기재됐으나 어느 것도 독립 릴리스로 존재하지 않았으므로(태그·배포 부재), [릴리스 정책](docs/RELEASES.md)에 따라 하나의 항목으로 통합하고 버전을 0.29.0으로 되돌린다. 교차 검증(재프로브 15건)과 후속 리뷰에서 확정된 커널 결함의 수정도 배포 전 같은 델타 안에서 이뤄졌으므로 아래 Fixed에 함께 기록한다.
+
+### Fixed
+
+- **fold가 이벤트 집합의 함수가 됐다.** 같은 이벤트 집합이 열거 순서에 따라 여덟 가지 fold 결과를 내던 것을 고쳤다: 순서의 정본을 병합 배열에서 각 작성자 샤드의 append 순서로 옮기고, epoch 소속을 `(ownerToken, 소유자 clientId)` 결박으로 정하며, takeover cutoff를 이전 소유자 자기 시퀀스의 위치로 해석한다. 작성자 부분열을 보존하는 교차 3,000종에서 fold 결과는 하나다.
+- 타 클라이언트의 소유자 토큰 재사용이 무진단 수용되던 것을 `RDL-RUN-023`으로 진단하고 stale 처리한다. epoch에 들어오는 외래 이벤트는 sync 실행자의 `run.synced`·sync 사유 `run.halted`와 인가된 비소유자 `run.operation_resolved`뿐이며, 외래 전이는 위치가 아니라 우선순위로 적용되어 사전순 병합에서 `run.synced`가 소실되지 않는다. sync 전이 작성자도 공유를 먼저 reconcile한 union에서 소유권을 도출한다.
+- 외래 sync 전이의 효력을 epoch과 커밋에 결박했다. 구 epoch 커밋의 늦은 `run.synced`가 신 epoch의 완료와 결합해 런을 synced로 만들지 못한다(`RDL-RUN-026`). sync 전이의 신원 인가는 검사 계층이 맡는다 — clientId가 활성 agent/service가 아니면 `RDL-RUN-005`.
+- strict 검증이 런이 아니라 이벤트의 스키마를 따른다 — legacy 런에 유입된 v2 이벤트도 커서·종류 검증을 받는다. legacy 전용 런도 소유권·dedup·진단이 같은 단일 fold 경로를 지난다.
+- 유효하지 않은 takeover 시도만 있는 런은 ACTIVE로 조용히 남는 대신 CONFLICT로 fail-closed한다(유효 takeover 도착 시 자연 해소). 토큰 없는 v2 `run.halted`는 쓰기가 거부하고 유입분은 `RDL-RUN-024`로 진단한다. 충돌 상태에서도 커서·완료 진행은 보존된다.
+- 크래시 재시도가 준비된 canonical 바이트를 그대로 재사용한다 — attempt 재계산으로 digest가 갈려 멱등성이 깨지던 것을 driver-lease의 decode-재사용 패턴으로 통일했다. 같은 요청 ID에 다른 payload나 commandDigest가 오면 저널 재생이 과거 결과를 돌려주는 대신 거부한다.
+- 읽기 경로의 dedup을 런 단위로 격리했다. 다른 런 샤드의 손상이 이 런의 읽기를 오염시키지 못하고, 같은 런의 충돌은 예외가 아니라 `RDL-RUN-017/018` 진단으로 fold에 흐른다. digest 정의는 정규화 하나로 남아, 원시 digest로 쓰인 v2 레코드가 legacy로 낙인되지 않는다.
+- driver lease가 실행 판단에 연결됐다. leaseId가 `(operationId, clientId, ownerToken, rootRequestId)`의 함수가 되어 파티션의 두 실행자와 크래시 후 재기동이 서로 다른 유효 사슬로 노출되고, acquire 직후 read-back이 자기 사슬 invalid를 lease-lost 정지로 전이시킨다. 파티션의 다른 유효 사슬은 `leaseContention`으로 tick 결과에 노출된다 — 상호 배제 약속이 아니라 가시성이며, 실행 안전은 operationId 멱등성이 보증한다.
+- force 소유권 해소의 도달 불능 가드를 교정했다 — 부모 epoch 소유 멤버는 자기 소유의 다른 클라이언트로 자기 충돌을 승인할 수 없다.
+- run 결박 verdict fold에 ownerToken이 없으면 명시적 오류이고, verdict eventId 충돌은 `RDL-VERDICT-004` 진단이다.
+- legacy takeover의 fence 불가를 `RDL-RUN-027` 경고로 표면화한다.
+- 커널 결정성·소유권·재생의 핵심 시나리오가 정식 회귀 테스트로 편입됐다.
+- adapter 테스트 teardown이 Windows에서 간헐적으로 스위트를 실패시키던 것을 고쳤다(OS 임시 디렉터리 이동·읽기전용 해제·비치명 정리).
 
 ## [0.28.1] - 2026-08-16
 
