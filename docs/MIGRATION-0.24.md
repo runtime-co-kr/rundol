@@ -6,9 +6,9 @@
 
 | 항목 | 0.23.0까지 | 0.24.0 |
 |---|---|---|
-| `documentProfile.rules.<TYPE>.after` | 프로젝트가 저장 | **저장하지 않음** (내장 상수에서 계산) |
-| `documentProfile.omissions.<TYPE>.absorbedBy`·`sections` | 프로젝트가 저장 | **저장하지 않음** (흡수 규칙 폐지) |
-| `documentProfile.omissions.<TYPE>.notApplicable`·`reason` | 프로젝트가 저장 | **그대로 보존** |
+| `documentProfile.rules.<TYPE>.after` | 읽고 씀 | 읽지 않음. **파일에는 그대로 남고** `rdl contract migrate`로 정리 |
+| `documentProfile.omissions.<TYPE>.absorbedBy`·`sections` | 읽고 씀 | 읽지 않음. **파일에는 그대로 남고** `rdl contract migrate`가 프리셋 하부 요소로 옮김 |
+| `documentProfile.omissions.<TYPE>.notApplicable`·`reason` | 읽고 씀 | **그대로 보존** |
 | 유형별 하부 요소 | 흡수 설정 안에만 존재 | `board.json` 프리셋이 소유, 모든 유형에 적용 |
 | 프로필 목록 | 내장 5종 고정 | 내장 5종 + `board.json`이 정의한 팀 프리셋 |
 | 진단 `RDL-PROFILE-006`·`007`·`010`·`011` | 있음 | **제거** |
@@ -39,11 +39,36 @@ rdl check --strict --project <key>
 
 `0.23.0`에서 유효했던 계약은 그대로 유효하다. 예전 `rules`·`omissions` 블록이 남아 있어도 읽기는 통과한다.
 
-## 3. 정리 시점
+## 3. 남은 값 정리
 
-다음번 `rdl contract set` 또는 Board의 계약 저장에서 `documentProfile` 블록 전체가 다시 렌더되며 `rules`와 흡수 규칙이 사라진다. 별도 명령은 필요 없다.
+예전 계약 화면은 흡수 구성요소를 직접 입력받고 작성 순서를 켜고 끌 수 있었다. 그래서 그 블록에는 기계가 만든 기본값과 사람이 적은 값이 섞여 있다. 지금 코드가 읽지 않는다고 지우지는 않는다. 읽지 않는 것과 지워도 되는 것은 다르다.
+
+남아 있으면 `rdl check`가 알린다.
+
+- `RDL-PROFILE-012` — 흡수 구성요소가 남아 있다. 옮길 자리가 있다.
+- `RDL-PROFILE-013` — 기본값과 다른 작성 순서가 남아 있다. 옮길 자리가 없다.
+
+옮기려면 계획을 먼저 본다.
+
+```powershell
+rdl contract migrate --project <key> --json
+```
+
+`movable`은 프리셋 하부 요소로 옮길 수 있는 값, `keptAsRecord`는 그대로 남길 「해당 없음」 기록, `noNewHome`은 갈 곳이 없어 지우게 될 작성 순서다. 확인한 뒤 적용한다.
+
+```powershell
+rdl contract migrate --project <key> --write
+```
 
 `notApplicable`과 그 사유는 이때도 남는다. 기계가 만든 기본값이 아니라 사람이 기록한 판단이기 때문이다.
+
+### `0.24.0`을 이미 쓴 경우
+
+`0.24.0`은 이 값들을 계약 저장 때 조용히 지웠다. 그 버전으로 `rdl contract set`이나 Board 계약 저장을 한 번이라도 실행했다면 흡수 구성요소와 작성 순서가 이미 사라졌고 `migrate`로는 복구되지 않는다. Git 이력에서 되살린 뒤 `0.24.1` 이상에서 `migrate`를 실행한다.
+
+```powershell
+git -C projects/<key> log -p --  project.md
+```
 
 ## 4. 팀 프리셋 (선택)
 
