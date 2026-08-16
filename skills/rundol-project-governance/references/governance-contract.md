@@ -33,14 +33,18 @@ The responsibility matrix identifies Responsible, Accountable, Consulted, and In
 
 `project.md` owns a schemaVersion 2 `documentProfile`. It is the single source of truth for AI clients, the CLI, and the Board.
 
-- `policy` classifies every regular type exactly once as `required`, `recommended`, `onDemand`, or `disabled`.
-- `rules.<TYPE>.after` lists document types that are useful AI authoring context. Missing recommendations never block document creation, save, or sync.
-- `omissions.<TYPE>` records either `absorbedBy` plus required `sections`, or `notApplicable: true` plus a reason.
-- Omission is evaluated per type: one `absorbedBy` document holding every section satisfies the whole type. The evaluation also reports, per document, which of them hold all the sections, which hold only some, and which hold none. `RDL-PROFILE-010` warns on the "only some" case — a document that began covering the subject and left the rest out. The "none" case is never diagnosed, because whether that document needed the sections is not mechanically decidable.
-- `enforcement: advisory` reports findings without blocking persistence. `checkpoint` blocks `rdl save` and `rdl sync` while non-recommended violations remain.
+- `policy` classifies every regular type exactly once as `required`, `recommended`, `onDemand`, or `disabled`. The four differ: `required` is a violation when missing, `recommended` warns, `onDemand` is never diagnosed either way, and `disabled` blocks `rdl doc create` and makes an existing document of that type a violation.
+- `enforcement: advisory` reports findings without blocking persistence. `checkpoint` blocks `rdl save` and `rdl sync` while non-recommended violations remain. Under `advisory` a missing `required` document and a missing `recommended` one both surface as warnings.
+- The profile stores nothing else. Authoring order and per-type sections are shipped defaults resolved at read time, not project state, so there is nothing to preserve across a contract save.
 - Contract changes are explicit and revisioned. Inspect impact before saving and never delete existing documents as a side effect.
 
-The mandatory AI sequence is `rdl contract show`, `rdl contract next`, author or absorb content, `rdl contract check`, and finally `rdl check --strict`.
+The mandatory AI sequence is `rdl contract show`, `rdl contract next`, author the documents, `rdl contract check`, and finally `rdl check --strict`.
+
+## Document sections
+
+Each type has a list of sections its documents are expected to fill. `rdl contract show --json` reports them per profile under `catalog.profileChoices[].sections`, and `rdl doc create` scaffolds from the same list. The shipped defaults were derived from real projects rather than invented, so they describe what these documents actually contain.
+
+A team may set `profiles.<name>.sections.<TYPE>` in `board.json` to extend or replace the list for one type; every type it does not set keeps the shipped default. Sections are authoring structure, not a gate. Nothing checks them mechanically, because a heading with nothing under it would pass such a check while a well-written document without that exact heading would fail it.
 
 ## Atomic implementation contract
 
@@ -108,7 +112,7 @@ In a Rundol-governed project, a generic `DESIGN.md` is not a canonical artifact.
 - important decisions, alternatives, rationale, and consequences → `ADR`
 - implementation and verification work → Rundol tasks linked to `REQ` and `TST`
 
-When a target type is disabled, use its `omissions.<TYPE>.absorbedBy` document and required sections. Existing `DESIGN.md` files are migration inputs: preserve them, create a follow-up task, and move their content only after review.
+When a target type is disabled, the project has decided not to produce it. Raise the gap with the owner instead of moving the content into an unrelated type — a decision recorded in a requirements document is still not an `ADR`. Existing `DESIGN.md` files are migration inputs: preserve them, create a follow-up task, and move their content only after review.
 
 ## Non-skippable derived concerns
 

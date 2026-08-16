@@ -27,7 +27,7 @@ assert(!app.includes('data-contract-target'), '흡수 대상 선택은 남으면
 assert(app.includes('data-contract-components'), 'Contract editor must expose the per-type sections');
 assert(app.includes('data-contract-sections'), '하부 요소는 만드는 유형에 붙어야 합니다');
 assert(!app.includes('data-contract-after'), 'Contract editor must not expose a hard prerequisite graph');
-assert(app.includes('AI 추천 문맥'), 'Contract editor must present non-blocking AI context guidance');
+assert(!app.includes('AI 추천 문맥'), 'AI 추천 문맥은 설정 화면에서 빠져야 합니다');
 assert(app.includes('data-contract-section'), 'Contract editor must expose required component values');
 assert(app.includes('data-component-input'), 'Contract editor must allow free-form required components');
 assert(app.includes('data-component-suggestion'), 'Contract editor must suggest template-derived components');

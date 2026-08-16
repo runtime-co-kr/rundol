@@ -895,7 +895,7 @@ el('settings-member').addEventListener('change', (event) => { el('current-member
 el('reset-view-options').addEventListener('click', () => { resetViewOptions(); populateControls(); setView(state.view, state.selected); message('이 프로젝트의 표시 설정을 초기값으로 되돌렸습니다.'); });
 function ensureContractSettings() {
   if (el('contract-settings')) return;
-  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><div class="page-actions"><button id="save-preset" hidden>프리셋으로 저장</button><button id="save-contract" class="primary">계약 저장</button></div></header><div class="form-grid"><label>프로필<select id="contract-profile"></select><small id="contract-profile-hint" class="control-hint"></small></label><label>강제 수준<select id="contract-enforcement"></select><small id="contract-enforcement-hint" class="control-hint"></small></label></div><p id="implementation-contract-summary" class="control-hint"></p><p class="control-hint">AI 추천 문맥은 작성 품질을 돕는 참고 문서이며 생성·저장을 차단하지 않습니다.</p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
+  el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><div class="page-actions"><button id="save-preset" hidden>프리셋으로 저장</button><button id="save-contract" class="primary">계약 저장</button></div></header><div class="form-grid"><label>프로필<select id="contract-profile"></select><small id="contract-profile-hint" class="control-hint"></small></label><label>강제 수준<select id="contract-enforcement"></select><small id="contract-enforcement-hint" class="control-hint"></small></label></div><p id="implementation-contract-summary" class="control-hint"></p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
 function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
 function setSuggestionState(row, value, selected) {
@@ -1022,11 +1022,12 @@ const enforcementNote = {
   advisory: '위반을 보고만 하고 저장·동기화를 막지 않습니다.',
   checkpoint: '위반이 남아 있으면 rdl save와 rdl sync가 차단됩니다.'
 };
+// 표시 규칙에 설명이 없을 때만 쓰는 최후 문구. 평소에는 presentationHint가 이긴다.
 const policyNote = {
   required: '없으면 위반입니다.',
   recommended: '없으면 경고이며 checkpoint에서도 차단하지 않습니다.',
-  onDemand: '필요할 때만 만듭니다.',
-  disabled: '만들면 위반이며 흡수 규칙이 대신 담습니다.'
+  onDemand: '있어도 없어도 알리지 않습니다.',
+  disabled: '만들면 위반이며 생성이 차단됩니다.'
 };
 function complianceList(items, empty) {
   return items.length ? `<div class="compliance-list">${items.join('')}</div>` : `<p class="empty-state">${escapeHtml(empty)}</p>`;
@@ -1049,18 +1050,6 @@ function renderContractCompliance() {
   const incomplete = (trace.entries || []).filter((entry) => !entry.ready)
     .map((entry) => `<div class="compliance-item warning"><strong>${escapeHtml(entry.functionId)}</strong><span>미준비: ${escapeHtml((entry.missing || []).join(', ') || '연결 문서 부족')}</span></div>`);
 
-  // 흡수 판정은 유형 단위라 대상 문서 하나만 섹션을 가져도 satisfied가 된다. 그 하나 뒤에
-  // 가려진 현황을 evaluator가 계산해 주므로 화면에서 다시 세지 않고 그대로 쓴다.
-  // 일부만 가진 문서는 미완성이라 단정할 수 있어 눈에 띄게, 전혀 없는 문서는 판정 불가라 조용히.
-  const absorbed = (evaluation.absorbed || []).filter((item) => item.disposition === 'absorbed').map((item) => {
-    const complete = (item.complete || []).length;
-    const partial = item.partial || [];
-    const absent = (item.absent || []).length;
-    const total = complete + partial.length + absent;
-    const tone = partial.length ? 'warning' : item.satisfied ? 'ok' : 'error';
-    return `<div class="compliance-item ${tone}"><strong>${escapeHtml(item.type)} → ${escapeHtml(item.absorbedBy)}</strong><span>${escapeHtml((item.sections || []).join(' · '))}</span><small>${escapeHtml(item.absorbedBy)} ${total}건 중 모두 보유 ${complete} · 일부만 ${partial.length} · 없음 ${absent}${partial.length ? ` — 일부만 가진 문서: ${escapeHtml(partial.join(', '))}` : ''}</small></div>`;
-  });
-
   const diagrams = contract.catalog && contract.catalog.diagrams
     ? `<div class="property"><dt>다이어그램</dt><dd>${escapeHtml(contract.catalog.diagrams.version)} · ${escapeHtml(contract.catalog.diagrams.types.join(', '))}<small>${escapeHtml(contract.catalog.diagrams.authority || '')}</small></dd></div>` : '';
 
@@ -1073,8 +1062,7 @@ function renderContractCompliance() {
     <section class="compliance-group"><h3>정책 상태별 의미</h3><dl>${policyRows}</dl></section>
     <section class="compliance-group"><h3>계약 위반 ${violations.length}</h3>${complianceList(violations, '위반이 없습니다.')}</section>
     <section class="compliance-group"><h3>검사 결과 — 오류 ${diagnostics.summary.errors} · 경고 ${diagnostics.summary.warnings}</h3>${complianceList(findings, 'rdl check --strict가 오류와 경고 없이 통과합니다.')}</section>
-    <section class="compliance-group"><h3>기능 추적성 — 준비 ${trace.summary.ready}/${trace.summary.functions}</h3>${complianceList(incomplete, '선언된 기능이 모두 REQ와 TST 계약을 갖췄습니다.')}</section>
-    <section class="compliance-group"><h3>흡수 규칙</h3>${complianceList(absorbed, '비활성 유형이 없습니다.')}</section>`;
+    <section class="compliance-group"><h3>기능 추적성 — 준비 ${trace.summary.ready}/${trace.summary.functions}</h3>${complianceList(incomplete, '선언된 기능이 모두 REQ와 TST 계약을 갖췄습니다.')}</section>`;
 }
 function renderSettings() {
   // 등록과 삭제는 CLI가 담당한다. 여기서는 활성 상태만 바꾼다 — 에이전트가 늘면 자주 쓰는 동작이다.

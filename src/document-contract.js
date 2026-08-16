@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const {
-  REGULAR_TYPES, POLICY_STATES, PROFILE_NAMES, ENFORCEMENTS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS, DEFAULT_RULES, normalizeProfile, migrateProfile,
+  REGULAR_TYPES, POLICY_STATES, PROFILE_NAMES, ENFORCEMENTS, DOCUMENT_SECTION_CATALOG, DEFAULT_RULES, normalizeProfile, migrateProfile,
   parseDocumentProfile, validateDocumentProfile, applyToProject, profileImpact
 } = require('./document-profile');
 const { BOUNDARY_VERSION, TYPE_GUIDANCE, SPLIT_SIGNALS } = require('./document-boundary');
@@ -45,8 +45,7 @@ function documentContractCatalog() {
       conventions: DIAGRAM_CONVENTIONS,
       authority: '다이어그램은 표에서 파생한 보조 뷰이며 표와 어긋나면 표를 따릅니다.'
     },
-    sections,
-    defaultOmissions: DEFAULT_OMISSIONS
+    sections
   }));
 }
 
@@ -73,14 +72,6 @@ function projectArtifacts(project) {
     }
   }
   return artifacts.sort((left, right) => left.id.localeCompare(right.id));
-}
-
-function hasSection(source, section) {
-  const wanted = String(section).trim().toLocaleLowerCase('ko-KR');
-  return String(source || '').split(/\r?\n/u).some((line) => {
-    const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/u.exec(line);
-    return heading && heading[1].trim().toLocaleLowerCase('ko-KR') === wanted;
-  });
 }
 
 function policyState(profile, type) {
@@ -153,9 +144,6 @@ function assertDocumentCreationAllowed(start, projectKey, type) {
   return contract;
 }
 
-// 흡수 처분은 유형마다 따로 세운 결정이다. 보내온 값이 그 결정을 담고 있지 않으면
-// 지금 것을 그대로 둔다. 통째로 갈아끼우면, 계약 화면이 표현하지 못하는 처분(해당 없음과
-// 그 사유)이 저장 한 번에 카탈로그 기본값으로 바뀌어 사라진다.
 function planDocumentContract(start, projectKey, input) {
   const current = loadDocumentContract(start, projectKey);
   const before = current.profile;
@@ -195,6 +183,6 @@ function updateDocumentContract(start, projectKey, input) {
 }
 
 module.exports = {
-  projectArtifacts, hasSection, evaluateDocumentContract, loadDocumentContract,
+  projectArtifacts, evaluateDocumentContract, loadDocumentContract,
   documentContractCatalog, assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract
 };

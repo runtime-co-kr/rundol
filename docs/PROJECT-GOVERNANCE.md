@@ -25,4 +25,4 @@ Rundol에서 경량화는 코드와 배포 구조의 복잡도를 줄이는 뜻�
 
 문서 유형과 메타데이터 형식은 [문서 표준](DOCUMENT-STANDARD.md), 브랜치별 소유 범위는 [브랜치 생성과 동기화 규칙](WORKSPACE-BRANCH.md)을 따른다.
 
-프로젝트 성격에 따른 문서 정책은 `project.md`의 versioned `documentProfile`이 소유한다. schemaVersion 2는 문서 활성 상태, 비차단 AI 추천 문맥, 생략 내용의 흡수 대상과 자유롭게 편집 가능한 필수 구성요소, `advisory|checkpoint` 강제 수준을 함께 관리한다. guided 인터뷰, CLI, 스킬과 Board는 같은 evaluator를 사용하며, reconfigure는 기존 문서를 보존하고 revision/history를 전진시킨다.
+프로젝트 성격에 따른 문서 정책은 `project.md`의 versioned `documentProfile`이 소유한다. schemaVersion 2가 정본으로 저장하는 것은 유형별 정책 상태와 `advisory|checkpoint` 강제 수준뿐이다. 프로필 프리셋과 유형별 하부 요소는 `board.json` 상속(내장 기본값 → Workspace → 프로젝트)이 정하므로 프로젝트가 들고 다니지 않는다. guided 인터뷰, CLI, 스킬과 Board는 같은 evaluator를 사용하며, reconfigure는 기존 문서를 보존하고 revision/history를 전진시킨다.

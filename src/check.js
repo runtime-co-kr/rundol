@@ -500,7 +500,7 @@ function checkLegacyWorkspace(start, options, scope) {
       severity: 'warning',
       file: doc.relativeFile,
       artifactId,
-      message: 'DESIGN.md는 Rundol 정본이 아닙니다. 내용을 REQ, SCR, ARC, ADR 또는 연결된 태스크로 이전하고, 비활성 유형은 documentProfile omission 규칙을 따르세요.'
+      message: 'DESIGN.md는 Rundol 정본이 아닙니다. 내용을 REQ, SCR, ARC, ADR 또는 연결된 태스크로 이전하세요. 필요한 유형이 사용 안 함이면 계약에서 상태를 먼저 바꾸세요.'
     });
     for (const match of doc.body.matchAll(/\[\[([^\]]+)\]\]/g)) {
       const raw = `[[${match[1]}]]`;

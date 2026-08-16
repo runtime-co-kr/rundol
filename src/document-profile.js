@@ -45,19 +45,6 @@ const DEFAULT_SECTIONS = {
   RUN: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구', '정기 작업'],
   GLS: ['용어', '식별자와 코드']
 };
-const DEFAULT_OMISSIONS = {
-  PRD: { absorbedBy: 'REQ', sections: ['문제와 배경', '사용자', '목표와 성공 지표', '범위'] },
-  REQ: { absorbedBy: 'PRD', sections: ['요구사항', '상태와 예외', '수용 기준', '비기능 요구'] },
-  ARC: { absorbedBy: 'REQ', sections: ['컨텍스트와 경계', '컴포넌트', '실행과 배포', '품질 속성'] },
-  SCR: { absorbedBy: 'REQ', sections: ['사용자 흐름', '전이', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것'] },
-  MOD: { absorbedBy: 'REQ', sections: ['엔티티', '관계', '불변식', '보존과 개인정보', '마이그레이션'] },
-  API: { absorbedBy: 'REQ', sections: ['엔드포인트', '오류 계약', '호환성과 버전'] },
-  ADR: { absorbedBy: 'ARC', sections: ['맥락', '선택지', '결정', '결과'] },
-  TST: { absorbedBy: 'REQ', sections: ['목적과 범위', '시나리오', '통과 기준'] },
-  RUN: { absorbedBy: 'ARC', sections: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구'] },
-  GLS: { absorbedBy: 'PRD', sections: ['용어', '식별자와 코드'] }
-};
-
 function parseList(value) {
   if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
   if (typeof value !== 'string') return [];
@@ -355,7 +342,7 @@ function missingActions(profile, presentTypes) {
 }
 
 module.exports = {
-  REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_SECTIONS, DOCUMENT_SECTION_CATALOG, DEFAULT_OMISSIONS,
+  REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_SECTIONS, DOCUMENT_SECTION_CATALOG,
   normalizeProfile, assertProfileInput, parseDocumentProfile, validateDocumentProfile, renderDocumentProfile,
   migrateProfile, applyToProject, reconfigureProject, profileImpact, missingActions
 };

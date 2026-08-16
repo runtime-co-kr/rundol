@@ -20,7 +20,11 @@
 
 구체적인 필수 구조는 [프로젝트 거버넌스 계약](PROJECT-GOVERNANCE.md)을 따른다. 소규모 프로젝트도 항목을 삭제하지 않으며, 미정인 정보는 확인 책임과 후속 태스크를 남긴다.
 
-`documentProfile` schemaVersion 2는 profile, traits, policy, revision, history에 더해 `enforcement`, 유형별 AI 추천 문맥 `rules.after`, 비활성 유형별 `omissions`를 정본으로 저장한다. 추천 문맥은 AI가 참고하면 좋은 자료이며 누락되어도 문서 생성·저장·동기화를 막지 않는다. `omissions`는 흡수 대상과 필수 구성요소 또는 적용 제외 사유를 명시한다. 필수 구성요소는 해당 문서 템플릿의 섹션을 추천값으로 제공하되 프로젝트가 자유롭게 추가·삭제할 수 있다. 재설정은 기존 문서를 이동하거나 삭제하지 않고 revision/history만 전진시키며, `rdl contract show|next|check`와 Board는 같은 evaluator 결과를 표시한다.
+`documentProfile` schemaVersion 2는 profile, traits, policy, revision, history와 `enforcement`를 정본으로 저장한다. 정책 상태 넷은 서로 다르다 — `required`는 없으면 위반, `recommended`는 없으면 경고, `onDemand`는 있든 없든 알리지 않으며, `disabled`는 그 유형을 만들지 않는다는 뜻이라 `rdl doc create`가 거부하고 이미 있으면 위반이다.
+
+유형별 하부 요소는 프로필 프리셋이 갖는다. `rdl contract show --json`의 `catalog.profileChoices[].sections`가 그 목록이고 `rdl doc create`가 같은 목록으로 뼈대를 만든다. 기본값은 실제 프로젝트 문서에서 뽑았으며, `board.json`의 `profiles.<name>.sections.<TYPE>`으로 유형 단위 교체가 가능하고 지정하지 않은 유형은 기본값을 그대로 쓴다. 하부 요소는 작성 구조이지 검사 대상이 아니다 — 내용 없는 제목만으로 통과하는 검사는 무엇도 보증하지 못하기 때문이다.
+
+재설정은 기존 문서를 이동하거나 삭제하지 않고 revision/history만 전진시키며, `rdl contract show|next|check`와 Board는 같은 evaluator 결과를 표시한다.
 
 ## 문서 유형
 
