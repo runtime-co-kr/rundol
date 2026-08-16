@@ -558,7 +558,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "cancelled",
       "priority": "high",
       "links": [
         "REQ-012",
@@ -581,11 +581,15 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:59:09.900Z",
-      "updatedAt": "2026-08-16T01:35:55.820Z",
-      "statusChangedAt": "2026-08-15T04:05:32.462Z",
+      "updatedAt": "2026-08-16T23:43:02.980Z",
+      "statusChangedAt": "2026-08-16T23:43:02.980Z",
       "externalRefs": [],
       "project": "rundol",
-      "cancellation": null
+      "cancellation": {
+        "reason": "동일 제목·범위의 TASK-00MSS4EI5 태스크가 수용 기준까지 완료(AC 3/3)해 이 태스크의 작업이 이미 수행됨 — 생성 중복 잔재 정리",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-16T23:43:02.765Z"
+      }
     },
     "TASK-00MSS4EI5AC88C26EF54284EFB": {
       "title": "문서 책임 범위와 추적 단위 하네스 구현",
