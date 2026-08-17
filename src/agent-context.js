@@ -157,7 +157,9 @@ function nextActions(context) {
 function agentContext(start, options) {
   const settings = options || {};
   const layout = workspaceLayout(start);
-  const listed = listTasks(start, { project: settings.project });
+  // 유효한 인덱스가 있으면 그것으로, 없으면 정본을 직접 읽는다. 답은 같고
+  // 속도만 다르다 — 어느 경로였는지는 결과의 source에 남는다.
+  const listed = require('./query-index').queryTasks(start, { project: settings.project });
   const open = listed.tasks.filter((task) => OPEN_STATES.has(task.status));
   const context = {
     root: layout.root,

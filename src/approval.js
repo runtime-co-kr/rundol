@@ -277,11 +277,21 @@ function documentHistory(start, input) {
     const [commit, author, at, subject] = line.split('');
     return { commit, author, at, subject };
   });
+  // git은 무엇이 언제, 원장은 왜와 누구 책임을 안다. 이력의 값은 둘을 붙이는 데
+  // 있고, 특히 어느 쪽도 답하지 않는 변경 — 태스크도 승인도 없이 바뀐 정본 —을
+  // 드러내는 데 있다.
+  const linked = require('./query-index').queryTasks(start, { project: context.project.key }).tasks
+    .filter((task) => (task.links || []).includes(document.id))
+    .map((task) => ({ id: task.id, title: task.title, status: task.status }));
+  const state = trustState(document, history);
+  const unexplained = state.status !== 'approved' && linked.length === 0 && commits.length > 0;
   return {
     project: context.project.key,
-    document: Object.assign({ id: document.id, title: document.title, file: document.file, revision: document.revision }, trustState(document, history)),
+    document: Object.assign({ id: document.id, title: document.title, file: document.file, revision: document.revision }, state),
     approvals: history,
-    commits
+    tasks: linked,
+    commits,
+    ...(unexplained ? { warning: '이 문서의 현재 리비전은 승인도 연결된 태스크도 없습니다. 왜 바뀌었는지 답할 기록이 없습니다.' } : {})
   };
 }
 

@@ -90,6 +90,7 @@ Usage:
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
                   --client-id <id> [--reason <사유>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
+  rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
   rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
   rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--request-id <REQ-ID>] [--json]
   rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
@@ -176,7 +177,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, cold: false, orphans: false, unexplained: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -199,6 +200,9 @@ function parseOperationArgs(argv) {
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
     else if (value === '--since-approval') options.sinceApproval = true;
+    else if (value === '--cold') options.cold = true;
+    else if (value === '--orphans') options.orphans = true;
+    else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
@@ -956,7 +960,10 @@ async function main() {
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
-      const listed = require('../src/agent-context').listTasks(options.root, { project: options.project, status: options.status, open: options.open });
+      // 유효한 인덱스가 있으면 그것으로, 없으면 정본을 직접 읽는다. 어느
+      // 경로였는지는 결과의 source에 남는다. --cold로 인덱스를 건너뛸 수 있어
+      // 두 경로의 답을 대조할 수 있다.
+      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open, cold: options.cold });
       printOperation(listed, options.json);
       return 0;
     }
@@ -1050,6 +1057,16 @@ async function main() {
       const identityOptions = parseOperationArgs(argv);
       if (identityOptions.positional.length) throw new Error('rdl doc identity는 위치 인수를 사용하지 않습니다.');
       printOperation(require('../src/document-identity').migrateDocumentUids(identityOptions.root, { project: identityOptions.project, apply: identityOptions.apply }), identityOptions.json);
+      return 0;
+    }
+    // 분석은 읽을 것을 줄여 주는 것이지 읽기를 대신하는 것이 아니다 — 여기 있는
+    // 것은 전부 기계가 판정할 수 있는 구조적 사실이다.
+    if (subcommand === 'analyze') {
+      const analyzeOptions = parseOperationArgs(argv);
+      if (analyzeOptions.positional.length) throw new Error('rdl doc analyze에는 위치 인수를 사용할 수 없습니다.');
+      printOperation(require('../src/document-analysis').analyzeDocuments(analyzeOptions.root, {
+        project: analyzeOptions.project, orphans: analyzeOptions.orphans, unexplained: analyzeOptions.unexplained
+      }), analyzeOptions.json);
       return 0;
     }
     if (['status', 'approve', 'history', 'diff'].includes(subcommand)) {

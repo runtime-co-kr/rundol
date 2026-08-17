@@ -104,6 +104,17 @@ try {
   for (const document of rebuilt.documents) assert(document.uid, `문서에 식별자가 없습니다: ${document.id}`);
   assert.strictEqual(Object.keys(rebuilt.documentUidByDisplayId).length, rebuilt.documents.length);
 
+  // 인덱스는 실제 조회 명령에 배선되어야 한다. 만들어 놓고 쓰지 않으면 아무것도
+  // 가속하지 않는 죽은 코드다.
+  buildIndex(temporary);
+  const viaCli = rdl(['task', 'list', '--project', 'crm']);
+  assert.strictEqual(viaCli.source, 'index', 'rdl task list가 유효한 인덱스를 써야 합니다.');
+  const viaColdCli = rdl(['task', 'list', '--project', 'crm', '--cold']);
+  assert.strictEqual(viaColdCli.source, 'cold');
+  assert.deepStrictEqual(viaCli.tasks, viaColdCli.tasks, 'CLI의 두 경로가 같은 답을 내야 합니다.');
+  const contextCli = rdl(['context', '--project', 'crm']);
+  assert.strictEqual(contextCli.tasks.counts.todo, viaColdCli.counts.todo, 'context도 같은 집계를 써야 합니다.');
+
   // CLI 표면.
   const status = rdl(['index', 'status']);
   assert.strictEqual(status.status, 'valid');
