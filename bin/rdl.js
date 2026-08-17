@@ -60,8 +60,10 @@ Usage:
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                    [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
-  rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
+  rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
+                 [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
+  rdl workset list [--project <key>] [--branch <name>] [--json]
   rdl task list [--project <key>] [--status <state>] [--open] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
@@ -167,7 +169,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -189,7 +191,7 @@ function parseOperationArgs(argv) {
     else if (value === '--defaults') options.defaults = true;
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -220,6 +222,7 @@ function parseOperationArgs(argv) {
       else if (value === '--lens') options.lenses.push(argv[i]);
       else if (value === '--option') options.decisionOptions.push(argv[i]);
       else if (value === '--evidence') options.evidence.push(argv[i]);
+      else if (value === '--external-ref') options.externalRefs.push(argv[i]);
       else if (value === '--trait') options.traits.push(argv[i]);
       else if (['--required', '--recommended', '--on-demand', '--disabled'].includes(value)) {
         const state = value === '--on-demand' ? 'onDemand' : value.slice(2);
@@ -385,6 +388,14 @@ async function main() {
       selectedOption: options.select, answeredBy: options.member, reason: options.reason, rootRequestId: options.requestId
     });
     printOperation(answered, options.json);
+    return 0;
+  }
+  if (command === 'workset') {
+    const subcommand = argv.shift();
+    if (subcommand !== 'list') throw new Error('지원하는 작업 묶음 하위 명령은 list입니다.');
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl workset list에는 위치 인수를 사용할 수 없습니다.');
+    printOperation(require('../src/workset').listWorksets(options.root, { project: options.project, branch: options.branch }), options.json);
     return 0;
   }
   if (command === 'delegation') {
@@ -971,13 +982,34 @@ async function main() {
     const changes = {};
     if (options.status !== undefined) changes.status = options.status;
     if (options.owner !== undefined) changes.owner = options.owner;
+    // 브랜치·병합 요청 참조는 태스크의 새 필드가 아니라 externalRefs 항목이다.
+    // 같은 브랜치를 공유하는 태스크들이 곧 작업 묶음이므로, 참조를 붙이는 것이
+    // 묶음을 만드는 일이고 review 전이(RDL-TASK-020)가 도달 가능해진다.
+    if (options.externalRefs.length) {
+      const { normalizeExternalRef, assertBranchName } = require('../src/workset');
+      const { readTaskStore } = require('../src/tasks');
+      const { stateConfig } = require('../src/state');
+      const config = stateConfig(options.root, options.project);
+      const current = readTaskStore(path.join(config.worktree, config.taskRelative)).tasks[options.positional[0]];
+      if (!current) throw new Error(`태스크를 찾지 못했습니다: ${options.positional[0]}`);
+      const existing = (current.externalRefs || []).map(normalizeExternalRef);
+      const added = options.externalRefs.map((entry) => {
+        const separator = String(entry).indexOf('=');
+        if (separator < 1) throw new Error(`--external-ref는 <종류>=<값> 형식이어야 합니다: ${entry}`);
+        const reference = normalizeExternalRef(entry);
+        if (reference.kind === 'branch') assertBranchName(reference.value);
+        return reference;
+      });
+      const merged = existing.filter((reference) => !added.some((entry) => entry.kind === reference.kind)).concat(added);
+      changes.externalRefs = merged;
+    }
     // 반려는 결정이므로 사유를 함께 받는다. 결정자를 생략하면 taskSet이 태스크 owner로 채운다.
     if (options.status === 'cancelled') {
       if (!options.reason) throw new Error('반려하려면 --reason이 필요합니다.');
       changes.cancellation = { reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }
     else if (options.reason) throw new Error('--reason은 --status cancelled에만 사용합니다.');
-    if (Object.keys(changes).length === 0) throw new Error('--status 또는 --owner 중 하나가 필요합니다.');
+    if (Object.keys(changes).length === 0) throw new Error('--status, --owner 또는 --external-ref 중 하나가 필요합니다.');
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);
     if (DEBUG_CONTEXT) recordAction(options.root, { action: 'task.update', actualExecutor: 'cli', taskId: options.positional[0] });
