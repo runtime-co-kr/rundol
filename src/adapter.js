@@ -293,7 +293,18 @@ function capture(stream) {
 function terminateTree(child) {
   if (!child || !child.pid) return Promise.resolve();
   if (process.platform === 'win32') {
-    spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, shell: false, stdio: 'ignore' });
+    // taskkill /T는 부모-자식 관계를 스냅숏으로 훑는다. 중간 프로세스가 먼저
+    // 끝나면 손자는 고아가 되어 그 스냅숏에서 빠지고, 그러면 취소했는데도
+    // 자손이 살아남는다.
+    //
+    // 여기서 그 경우를 추측으로 메우지 않는다. 대신 실패를 조용히 넘기지
+    // 않는다 — 트리 종료가 실패한 것은 실제 운영 사건이고, 아무 말도 남기지
+    // 않으면 나중에 "왜 살아남았는가"에 답할 근거가 없다.
+    const killed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, shell: false, encoding: 'utf8' });
+    if (killed.status !== 0) {
+      const reason = String(killed.stderr || killed.stdout || '').trim() || `exit ${killed.status}`;
+      process.stderr.write(`rundol: 프로세스 트리 종료가 실패했습니다 (pid ${child.pid}): ${reason}\n`);
+    }
     return Promise.resolve();
   }
   try { process.kill(-child.pid, 'SIGTERM'); } catch (_) { try { child.kill('SIGTERM'); } catch (_) {} }
