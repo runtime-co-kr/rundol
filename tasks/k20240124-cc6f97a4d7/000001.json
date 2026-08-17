@@ -1011,6 +1011,46 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSWH0GUHB587903EF465B6F9": {
+      "title": "[기능] 피처 브랜치·PR 워크플로 배선",
+      "summary": "review 상태와 externalRefs PR 요구(RDL-TASK-020)는 계약에 이미 있으나 CLI가 externalRefs를 설정할 수 없어 review 전이가 도달 불능이다. task set에 externalRef 설정을 열고, 브랜치는 필드 신설 대신 task/<TASK-ID> 규약으로 양방향 계산하며, 스킬이 브랜치 생성→PR→review→병합→done 순서를 안내한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-037",
+        "REQ-038",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl task set이 externalRef를 설정·제거할 수 있어 review 전이가 CLI로 도달 가능하다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "태스크와 브랜치가 명명 규약으로 양방향 계산되고 별도 저장 필드를 두지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "스킬이 피처 브랜치 생성부터 PR·review 전이·병합 후 done까지의 순서를 안내한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "태스크 상태가 rundol 브랜치에 있어 PR에 포함되지 않는다는 점과 done은 병합 후라는 순서가 문서화된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T00:03:28.453Z",
+      "updatedAt": "2026-08-17T00:03:28.453Z",
+      "statusChangedAt": "2026-08-17T00:03:28.453Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
