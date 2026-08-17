@@ -1018,7 +1018,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "cancelled",
       "priority": "high",
       "links": [
         "REQ-037",
@@ -1046,11 +1046,16 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:03:28.453Z",
-      "updatedAt": "2026-08-17T00:03:28.453Z",
-      "statusChangedAt": "2026-08-17T00:03:28.453Z",
+      "updatedAt": "2026-08-17T00:06:17.897Z",
+      "statusChangedAt": "2026-08-17T00:06:17.897Z",
       "externalRefs": [],
       "project": "rundol",
-      "implementationReadiness": "atomic-v1"
+      "implementationReadiness": "atomic-v1",
+      "cancellation": {
+        "reason": "요구사항 명확화: 1태스크=1브랜치 규약 전제가 실제 개발 상황(여러 기능을 한 브랜치에 묶는 N:1)과 맞지 않아 재정의한다",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-17T00:06:17.188Z"
+      }
     }
   }
 }
