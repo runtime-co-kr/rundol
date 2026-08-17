@@ -132,6 +132,9 @@ function foldApprovals(events) {
       const expected = approvalEnvelope(event).canonicalDigest;
       if (raw.canonicalDigest !== undefined && raw.canonicalDigest !== expected) throw new Error('canonicalDigest 불일치');
       event.canonicalDigest = expected;
+      // 기록 시각은 canonical 밖이지만 이력 순서에는 필요하다. 정규화가 벗겨낸
+      // 값을 여기서 되붙인다 — 상태 판정이 아니라 표시 순서에만 쓴다.
+      if (raw.occurredAt !== undefined) event.occurredAt = raw.occurredAt;
     } catch (error) {
       diagnostics.push({ code: 'RDL-APPROVE-014', severity: 'error', eventId: raw && raw.eventId || null, message: error.message });
       continue;
@@ -149,7 +152,11 @@ function foldApprovals(events) {
   }
   const approvals = new Map();
   for (const [targetId, events] of byTarget) {
-    approvals.set(targetId, events.slice().sort((left, right) => left.eventId.localeCompare(right.eventId)).map((event) => ({
+    // 정렬 기준은 기록된 시각이고, 같은 시각이면 eventId로 결정성을 얻는다.
+    // eventId만으로 정렬하면 해시 순서가 시간 순서를 가장해 "마지막 승인"이
+    // 실제 마지막이 아니게 된다. occurredAt이 없는 기록은 뒤로 보낸다.
+    approvals.set(targetId, events.slice().sort((left, right) => String(left.occurredAt || '').localeCompare(String(right.occurredAt || ''))
+      || left.eventId.localeCompare(right.eventId)).map((event) => ({
       targetId,
       reviewedRevision: event.reviewedRevision,
       approvedBy: event.approvedBy,
@@ -168,6 +175,9 @@ function trustState(document, history) {
   const entries = history || [];
   if (!entries.length) return { status: 'unapproved', approvedRevision: null, approvedBy: null, approvals: 0 };
   const matched = entries.filter((entry) => entry.reviewedRevision === document.revision);
+  // "마지막 승인"은 eventId 사전순의 끝이 아니다 — 그건 시간 순서가 아니라 해시
+  // 순서다. 승인은 문서가 커밋된 순서를 따르므로, 낡음 상태에서 무엇으로
+  // 되돌아갈지는 이력의 실제 순서(기록 순)로 판정한다.
   const last = entries[entries.length - 1];
   return matched.length
     ? { status: 'approved', approvedRevision: document.revision, approvedBy: matched[matched.length - 1].approvedBy, approvals: entries.length }

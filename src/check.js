@@ -570,6 +570,9 @@ function checkProjectCharter(diagnostics, root, project) {
   if (aliases[0] !== expectedId) diagnostic(diagnostics, { code: 'RDL-PROJECT-005', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md aliases의 첫 값은 프로젝트 ID여야 합니다.' });
 }
 
+// 파일 단위 검사가 이미 보고하는 코드. fold가 같은 것을 다시 세지 않게 한다.
+const SHARD_LEVEL_LEDGER_CODES = new Set(['RDL-DEC-014', 'RDL-DLG-014', 'RDL-APPROVE-014']);
+
 // 새 원장의 교차 이벤트 진단(상충하는 답변, 취소 대상 불일치, 모호한 위임 등)은
 // 파일 단위 검사로는 보이지 않는다 — fold를 거쳐야 나온다. 검사 결과에 합치지
 // 않으면 그 진단은 그것을 부르는 명령을 아는 사람에게만 보인다.
@@ -592,6 +595,10 @@ function checkLedgerFolds(diagnostics, layout, projectKey) {
         continue;
       }
       for (const item of result.diagnostics || []) {
+        // 파일 단위 검사가 이미 스키마·봉투 손상을 같은 코드로 보고한다. fold에서
+        // 다시 세면 이벤트 하나가 두 건으로 집계되어 "몇 건이 잘못됐는가"를
+        // 오독하게 만든다. fold는 교차 이벤트 진단만 더한다.
+        if (SHARD_LEVEL_LEDGER_CODES.has(item.code)) continue;
         diagnostic(diagnostics, { code: item.code, category: 'workspace', severity: item.severity, project: project.key, target: item.eventId || null, message: item.message });
       }
     }

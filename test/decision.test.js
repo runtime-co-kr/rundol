@@ -147,6 +147,21 @@ try {
   assert.strictEqual(resolvedConflict.open.length, 0, '대체 답변으로 상충이 해소되어야 합니다.');
   assert.strictEqual(resolvedConflict.decisions[0].selectedOption, 'minor');
 
+  // 해소 경로가 새 공격면이 되면 안 된다 — 대체는 같은 결정의 기존 답변만
+  // 가리키고, 자기 자신·다중 대체·순환은 전부 닫힌다.
+  const selfSuper = answerEvent({ eventId: 'EVT-AAAAAAAAAAAAAAAAAAAA', requestId: 'REQ-AAAAAAAAAAAAAAAAAAAA', supersedes: 'EVT-AAAAAAAAAAAAAAAAAAAA' });
+  assert(foldDecisions([requestEvent(), selfSuper], { members: ['MEMBER-001'] }).diagnostics.some((item) => item.code === 'RDL-DEC-022'));
+  const ghostSuper = answerEvent({ eventId: 'EVT-BBBBBBBBBBBBBBBBBBBB', requestId: 'REQ-BBBBBBBBBBBBBBBBBBBB', supersedes: 'EVT-CCCCCCCCCCCCCCCCCCCC' });
+  assert(foldDecisions([requestEvent(), ghostSuper], { members: ['MEMBER-001'] }).diagnostics.some((item) => item.code === 'RDL-DEC-023'));
+  const forkA = answerEvent({ eventId: 'EVT-DDDDDDDDDDDDDDDDDDDD', requestId: 'REQ-DDDDDDDDDDDDDDDDDDDD', supersedes: answerEvent().eventId, selectedOption: 'patch' });
+  const forkB = answerEvent({ eventId: 'EVT-EEEEEEEEEEEEEEEEEEEE', requestId: 'REQ-EEEEEEEEEEEEEEEEEEEE', supersedes: answerEvent().eventId, selectedOption: 'minor' });
+  assert(foldDecisions([requestEvent(), answerEvent(), forkA, forkB], { members: ['MEMBER-001'] }).diagnostics.some((item) => item.code === 'RDL-DEC-024'));
+  const cycleA = answerEvent({ eventId: 'EVT-FFFFFFFFFFFFFFFFFFF1', requestId: 'REQ-FFFFFFFFFFFFFFFFFFF1', supersedes: 'EVT-FFFFFFFFFFFFFFFFFFF2' });
+  const cycleB = answerEvent({ eventId: 'EVT-FFFFFFFFFFFFFFFFFFF2', requestId: 'REQ-FFFFFFFFFFFFFFFFFFF2', supersedes: 'EVT-FFFFFFFFFFFFFFFFFFF1', selectedOption: 'patch' });
+  const cycled = foldDecisions([requestEvent(), cycleA, cycleB], { members: ['MEMBER-001'] });
+  assert(cycled.diagnostics.some((item) => item.code === 'RDL-DEC-025'));
+  assert.strictEqual(cycled.open.length, 1, '순환하는 대체 사슬은 결정을 해소하지 못합니다.');
+
   // fold는 열거 순서의 함수가 아니다.
   const forward = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'] });
   const reversed = foldDecisions([answerEvent(), requestEvent()], { members: ['MEMBER-001'] });

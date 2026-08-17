@@ -831,28 +831,40 @@ async function tickRun(start, options, dependencies) {
     try {
       // 검증은 자기 저널 root를 쓴다. drive의 root를 그대로 넘기면 같은 root에
       // 서로 다른 command digest(run.drive vs verify)가 요구되어 재생 대조가
-      // 충돌한다. root를 operationId에서 파생시켜 재시도 멱등성은 지키면서
-      // 저널을 분리한다.
+      // 충돌한다.
+      //
+      // root는 operationId만으로 부족하다. verify의 command digest는 clientId를
+      // 포함하므로, A가 저널을 준비한 뒤 B가 인수하면 같은 root에 다른 digest가
+      // 들어가 다시 충돌한다. epoch(ownerToken)와 실행자(clientId)까지 결박해야
+      // 소유자가 바뀌면 root도 바뀐다. 부수 효과로 A→B→A에서 A의 두 번째 epoch는
+      // 새 ownerToken이라 이전 epoch의 verdict가 재사용되지 않는다 — 검증은
+      // 자기 epoch의 판정만 쓴다.
       outcome = await verifier({
         project: context.project.key, targetId, clientId: options.clientId, runId: context.fold.runId,
-        rootRequestId: `REQ-${ledger.sha256(`rundol.drive-verify.v1\0${operationId}`).slice(0, 20).toUpperCase()}`,
+        rootRequestId: `REQ-${ledger.sha256(`rundol.drive-verify.v1\0${operationId}\0${context.ownership.ownerToken}\0${options.clientId}`).slice(0, 20).toUpperCase()}`,
         lenses: undefined, adapter: undefined
       });
     } catch (error) {
       return { exitCode: 2, status: 'error', code: 'verification-environment', reason: error.message, operationId };
     }
     const status = outcome && outcome.fold && outcome.fold.status || outcome && outcome.status || 'human_required';
+    // 정족수 미달은 검증 실패가 아니라 사람 대기다. 그런데 이것을 먼저
+    // run.gate(exit 1)로 남기면 실패 attempt가 늘고 onFail 되돌림 의미가 붙어,
+    // 원장에서 "사람을 기다리는 중"과 "검증에 실패함"을 구분할 수 없게 된다.
+    // 사람 대기는 게이트 판정을 남기지 않고 곧장 정지한다.
+    if (status === 'human_required') {
+      await record({ type: 'run.halted', reason: 'verification-required', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'verification-required'));
+      return { exitCode: 1, status: 'halted', reason: 'verification-required', operationId, verdict: status };
+    }
     const exitCode = status === 'passed' ? 0 : 1;
     const diagnostics = [`verdict:${status}`];
     const kind = exitCode === 0 ? 'gate-passed' : 'gate-failed';
     const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt: attempt, outcomeKind: kind, exitCode, sortedArtifactIds: [], sortedDiagnosticCodes: diagnostics, boundedResultDecision: { diagnostics } });
     await record({ type: 'run.gate', stepId: step.id, command: 'verify', args: [targetId], exitCode, diagnostics, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
     if (exitCode === 0) return { exitCode: 0, status: 'continue', operationId, verdict: status };
-    // 정족수 미달은 더 돌린다고 달라지지 않는다 — 검증자를 늘리거나 사람이
-    // 판단해야 한다. 반박은 절차가 정한 onFail 경로로 되돌아간다.
-    const reason = status === 'human_required' ? 'verification-required' : 'gate-failed';
-    await record({ type: 'run.halted', reason, atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, reason));
-    return { exitCode: 1, status: 'halted', reason, operationId, verdict: status };
+    // 반박은 절차가 정한 onFail 경로로 되돌아간다.
+    await record({ type: 'run.halted', reason: 'gate-failed', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'gate-failed'));
+    return { exitCode: 1, status: 'halted', reason: 'gate-failed', operationId, verdict: status };
   }
   const logicalAttempt = ledger.logicalAttemptForStep(context.events, step.id);
   const operationId = ledger.operationIdFor({ runId: context.fold.runId, procedureContentHash: context.fold.procedure.contentHash, stepId: step.id, logicalAttempt });

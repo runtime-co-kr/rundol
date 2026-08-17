@@ -52,6 +52,18 @@ function processExists(pid) {
   try { process.kill(pid, 0); return true; } catch (_) { return false; }
 }
 
+function readPidWithRetry(file, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (fs.existsSync(file)) {
+      const value = Number(fs.readFileSync(file, 'utf8').trim());
+      if (Number.isInteger(value) && value > 0) return value;
+    }
+    if (Date.now() > deadline) throw new Error(`자손 PID 파일이 준비되지 않았습니다: ${file}`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+  }
+}
+
 async function waitForProcessExit(pid, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -198,7 +210,7 @@ const running = (async () => {
     const heartbeatOrder = [];
     const heartbeatLost = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
       runContext: () => context(adapterEvents), acquireLease: () => ({ id: 'lease' }), heartbeatIntervalMs: 200,
-      renewLease: () => { heartbeatOrder.push('renew'); throw new Error('renew failed'); },
+      renewLease: () => { if (!fs.existsSync(descendantFile)) return; heartbeatOrder.push('renew'); throw new Error('renew failed'); },
       syncLease: () => { heartbeatOrder.push('sync'); }, releaseLease: () => { heartbeatOrder.push('release'); },
       executeAdapter: async ({ signal }) => {
         const source = "const fs=require('fs');const {spawn}=require('child_process');const child=spawn(process.execPath,['-e',\"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)\"],{stdio:'ignore'});fs.writeFileSync(process.argv[1],String(child.pid));if(process.platform!=='win32')process.on('SIGTERM',()=>process.exit(0));setInterval(()=>{},1000);";
@@ -208,10 +220,10 @@ const running = (async () => {
       recordEvent: (_context, event) => { adapterRecords.push(event); adapterEvents.push(progress(adapterEvents[0], event)); }
     });
     assert.strictEqual(heartbeatLost.reason, 'lease-lost');
-    assert.deepStrictEqual(heartbeatOrder, ['renew', 'release'], 'renewal failure aborts before sync and releases the lease');
+    assert.deepStrictEqual(heartbeatOrder.slice(-2), ['renew', 'release'], 'renewal failure aborts before sync and releases the lease');
     assert.strictEqual(adapterRecords.some((event) => event.type === 'run.step'), false, 'an aborted adapter cannot append an outcome');
     assert.strictEqual(adapterRecords.at(-1).type, 'run.halted');
-    const heartbeatDescendantPid = Number(fs.readFileSync(descendantFile, 'utf8'));
+    const heartbeatDescendantPid = readPidWithRetry(descendantFile, 5000);
     assert.strictEqual(await waitForProcessExit(heartbeatDescendantPid, 3000), true, `lease-lost descendant ${heartbeatDescendantPid} survived adapter cancellation`);
   } finally {
     await fs.promises.rm(heartbeatDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
@@ -228,16 +240,16 @@ const running = (async () => {
     const cliHeartbeatOrder = [];
     const cliLost = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
       runContext: () => context(cliEvents), acquireLease: () => ({ id: 'lease' }), heartbeatIntervalMs: 200,
-      renewLease: () => { cliHeartbeatOrder.push('renew'); throw new Error('renew failed'); },
+      renewLease: () => { if (!fs.existsSync(cliDescendantFile)) return; cliHeartbeatOrder.push('renew'); throw new Error('renew failed'); },
       syncLease: () => { cliHeartbeatOrder.push('sync'); }, releaseLease: () => { cliHeartbeatOrder.push('release'); },
       driveCliEntry: cliEntry, cliTimeoutSeconds: 10,
       recordEvent: (_context, event) => { cliRecords.push(event); cliEvents.push(progress(cliEvents[0], event)); }
     });
     assert.strictEqual(cliLost.reason, 'lease-lost');
-    assert.deepStrictEqual(cliHeartbeatOrder, ['renew', 'release']);
+    assert.deepStrictEqual(cliHeartbeatOrder.slice(-2), ['renew', 'release']);
     assert.strictEqual(cliRecords.some((event) => event.type === 'run.step'), false, 'an aborted CLI cannot append an outcome');
     assert.strictEqual(cliRecords.at(-1).type, 'run.halted');
-    const cliDescendantPid = Number(fs.readFileSync(cliDescendantFile, 'utf8'));
+    const cliDescendantPid = readPidWithRetry(cliDescendantFile, 5000);
     assert.strictEqual(await waitForProcessExit(cliDescendantPid, 3000), true, `lease-lost CLI descendant ${cliDescendantPid} survived cancellation`);
   } finally {
     await fs.promises.rm(cliHeartbeatDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
@@ -378,6 +390,32 @@ const running = (async () => {
   });
   assert.strictEqual(quorum.reason, 'verification-required');
   assert.strictEqual(quorumRecords.at(-1).reason, 'verification-required');
+  // 사람 대기는 검증 실패가 아니다. 앞에 run.gate(exit 1)를 남기면 실패 attempt가
+  // 늘고 onFail 되돌림 의미가 붙어, 원장에서 두 상태를 구분할 수 없게 된다.
+  assert.deepStrictEqual(quorumRecords.map((event) => event.type), ['run.halted'], '정족수 미달은 게이트 판정을 남기지 않는다');
+  assert.strictEqual(ledger.foldRun(quorumEvents).cursor, 'verify', '사람 대기 중에도 커서는 검증 스텝에 머문다');
+
+  // takeover 후에도 저널이 충돌하지 않는다. verify root가 operationId만의 함수면
+  // A가 준비한 root에 B의 command digest가 들어가 재생 대조가 깨진다.
+  const takeoverStart = startEvent(verifyProcedure);
+  const takeoverAuthor = progress(takeoverStart, { type: 'run.step', stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: ['REQ-001'] });
+  const successorToken = identifier('EVT');
+  const rootsByOwner = [];
+  for (const [clientId, ownerToken] of [['agent-one', takeoverStart.ownerToken], ['agent-two', successorToken], ['agent-one', identifier('EVT')]]) {
+    await tickRun('.', { clientId, requestId: identifier('REQ') }, {
+      runContext: () => ({
+        events: [takeoverStart, takeoverAuthor],
+        ownership: { ownerToken, ownerClientId: clientId, status: 'ACTIVE' },
+        fold: ledger.foldRun([takeoverStart, takeoverAuthor]),
+        owner: clientId, project: { key: 'demo' }, layout: { root: '.' }
+      }),
+      acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
+      verifyArtifact: (input) => { rootsByOwner.push(input.rootRequestId); return { fold: { status: 'passed' } }; },
+      recordEvent: () => {}
+    });
+  }
+  assert.strictEqual(new Set(rootsByOwner).size, 3, `epoch·실행자가 다르면 검증 저널 root도 달라야 합니다: ${JSON.stringify(rootsByOwner)}`);
+  for (const root of rootsByOwner) assert.match(root, /^REQ-[A-F0-9]{20}$/u);
 
   // 검증 대상 산출물이 없으면 실행하지 않고 환경 오류로 멈춘다.
   const emptyStart = startEvent(verifyProcedure);

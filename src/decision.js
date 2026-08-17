@@ -266,8 +266,43 @@ function foldDecisions(events, options) {
     // 다만 탈출구가 있어야 한다. 해소 수단 없이 닫기만 하면 그 결정은 영구
     // 교착이 되고, 그건 0.29의 무효 takeover에서 이미 겪은 실수다. 나중에
     // 도착한 해소 답변(supersedes)이 이전 답을 대체한다.
-    const superseded = new Set(answers.map((entry) => entry.supersedes).filter(Boolean));
-    const live = answers.filter((entry) => !superseded.has(entry.eventId));
+    // 대체는 같은 결정 안의 기존 답변만 가리킬 수 있고, 하나의 답변을 여럿이
+    // 대체할 수 없으며, 자기 자신이나 순환을 이룰 수 없다. 이 제약이 없으면
+    // 대체 관계로 임의의 답을 살리거나 죽일 수 있어 해소 경로가 새 공격면이 된다.
+    const byEvent = new Map(answers.map((entry) => [entry.eventId, entry]));
+    const supersededBy = new Map();
+    for (const entry of answers) {
+      if (!entry.supersedes) continue;
+      if (entry.supersedes === entry.eventId) {
+        diagnostics.push({ code: 'RDL-DEC-022', severity: 'error', eventId: entry.eventId, message: '답변이 자기 자신을 대체할 수 없습니다.' });
+        continue;
+      }
+      if (!byEvent.has(entry.supersedes)) {
+        diagnostics.push({ code: 'RDL-DEC-023', severity: 'error', eventId: entry.eventId, message: `대체 대상이 이 결정의 답변이 아닙니다: ${entry.supersedes}` });
+        continue;
+      }
+      if (supersededBy.has(entry.supersedes)) {
+        diagnostics.push({ code: 'RDL-DEC-024', severity: 'error', eventId: entry.eventId, message: `한 답변을 둘 이상이 대체합니다: ${entry.supersedes}` });
+        continue;
+      }
+      supersededBy.set(entry.supersedes, entry.eventId);
+    }
+    // 순환 탐지: 대체 사슬을 따라가다 자기에게 돌아오면 그 사슬 전체를 무효로 둔다.
+    const cyclic = new Set();
+    for (const startEventId of supersededBy.keys()) {
+      const seen = new Set();
+      let cursor = startEventId;
+      while (cursor && !seen.has(cursor)) {
+        seen.add(cursor);
+        cursor = supersededBy.get(cursor);
+        if (cursor && seen.has(cursor)) {
+          for (const member of seen) cyclic.add(member);
+          diagnostics.push({ code: 'RDL-DEC-025', severity: 'error', eventId: cursor, message: '대체 관계에 순환이 있습니다.' });
+        }
+      }
+    }
+    const superseded = new Set(Array.from(supersededBy.keys()).filter((eventId) => !cyclic.has(eventId)));
+    const live = answers.filter((entry) => !superseded.has(entry.eventId) && !cyclic.has(entry.eventId));
     const selections = new Set(live.map((entry) => entry.selectedOption));
     if (selections.size > 1) {
       diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')}). 해소하려면 대체할 답변의 eventId를 supersedes로 지정하세요.` });
