@@ -127,7 +127,7 @@ function normalizeDecisionEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('결정 이벤트는 객체여야 합니다.');
   if (!['decision.requested', 'decision.answered'].includes(input.type)) throw new Error(`알 수 없는 결정 이벤트 종류입니다: ${input.type || '(없음)'}`);
   const requested = input.type === 'decision.requested';
-  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence'] : ['selectedOption', 'answeredBy', 'reason'], ['canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes'], ['canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`${input.type}에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS) if (input[field] === undefined) throw new Error(`${input.type}.${field}이(가) 필요합니다.`);
@@ -151,6 +151,12 @@ function normalizeDecisionEvent(input) {
     normalized.selectedOption = input.selectedOption;
     normalized.answeredBy = input.answeredBy;
     normalized.reason = normalizeText(input.reason, '사유', 1000);
+    // 상충을 해소하는 답변은 자기가 대체하는 답변을 가리킨다. 그래야 fail-closed가
+    // 교착이 아니라 상태가 된다.
+    if (input.supersedes !== undefined) {
+      if (!EVENT_ID.test(input.supersedes || '')) throw new Error('대체 대상 답변이 유효하지 않습니다.');
+      normalized.supersedes = input.supersedes;
+    }
   }
   return normalized;
 }
@@ -190,6 +196,8 @@ function readDecisionEvents(eventsRoot, projectId) {
 function foldDecisions(events, options) {
   const settings = options || {};
   const members = settings.members ? new Set(settings.members) : null;
+  // clientId → 소유 멤버. 있으면 읽는 쪽에서도 명의를 검증한다.
+  const clientOwners = settings.clientOwners ? new Map(settings.clientOwners) : null;
   const diagnostics = [];
   const byEventId = new Map();
   for (const raw of events || []) {
@@ -228,27 +236,52 @@ function foldDecisions(events, options) {
         diagnostics.push({ code: 'RDL-DEC-017', severity: 'error', eventId: answer.eventId, message: `선택지에 없는 값입니다: ${answer.selectedOption}` });
         return false;
       }
-      // 권한 검증은 레지스트리를 가진 호출자가 멤버 목록을 넘겼을 때만 수행한다.
+      // 권한 검증은 레지스트리를 가진 호출자가 목록을 넘겼을 때만 수행한다.
       // 순수 fold는 레지스트리를 볼 수 없고, 형태만으로 권한을 판정하지 않는다.
       if (members && !members.has(answer.answeredBy)) {
         diagnostics.push({ code: 'RDL-DEC-002', severity: 'error', eventId: answer.eventId, message: `등록된 멤버가 아닌 답변자입니다: ${answer.answeredBy}` });
         return false;
+      }
+      // 쓰기 경로의 결박만으로는 부족하다. 직접 append나 Git 병합으로 들어온
+      // 이벤트는 그 경로를 지나지 않으므로, 읽는 쪽에서도 "이 Client가 이 멤버
+      // 이름으로 행위할 수 있었는가"를 확인해야 한다. 확인할 수 없는 답변은
+      // 상태를 바꾸지 못한다 — run 원장의 sync 전이 인가(RDL-RUN-005)와 같은 경계다.
+      if (clientOwners) {
+        const owner = clientOwners.get(answer.clientId);
+        if (owner === undefined) {
+          diagnostics.push({ code: 'RDL-DEC-020', severity: 'error', eventId: answer.eventId, message: `등록되지 않은 Client의 답변입니다: ${answer.clientId}` });
+          return false;
+        }
+        if (owner !== answer.answeredBy) {
+          diagnostics.push({ code: 'RDL-DEC-021', severity: 'error', eventId: answer.eventId, message: `Client 소유자가 아닌 멤버 명의의 답변입니다: ${answer.clientId}(${owner}) → ${answer.answeredBy}` });
+          return false;
+        }
       }
       return true;
     });
     // 서로 다른 선택이 동시에 도착하면 하나를 고르는 것은 결정이 아니라 은폐다.
     // 권한 결정에서 순서 결정성만으로는 부족하다 — 상충하는 답은 해소될 때까지
     // 열린 상태로 두고 진단으로 드러낸다(fail-closed).
-    const selections = new Set(answers.map((entry) => entry.selectedOption));
+    //
+    // 다만 탈출구가 있어야 한다. 해소 수단 없이 닫기만 하면 그 결정은 영구
+    // 교착이 되고, 그건 0.29의 무효 takeover에서 이미 겪은 실수다. 나중에
+    // 도착한 해소 답변(supersedes)이 이전 답을 대체한다.
+    const superseded = new Set(answers.map((entry) => entry.supersedes).filter(Boolean));
+    const live = answers.filter((entry) => !superseded.has(entry.eventId));
+    const selections = new Set(live.map((entry) => entry.selectedOption));
     if (selections.size > 1) {
-      diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')})` });
+      diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')}). 해소하려면 대체할 답변의 eventId를 supersedes로 지정하세요.` });
     }
-    // 같은 결정 키에 서로 다른 질문이 들어오면 무엇에 답하는지가 갈린다.
-    const questions = new Set(group.requests.map((entry) => entry.question));
-    if (questions.size > 1) {
-      diagnostics.push({ code: 'RDL-DEC-019', severity: 'error', message: `같은 결정 키에 서로 다른 질문이 있습니다: ${decisionIdFor(key)}` });
+    // 같은 결정 키에 서로 다른 요청이 들어오면 무엇에 답하는지가 갈린다. 질문
+    // 문장만이 아니라 선택지·권고·영향까지 봐야 한다 — 선택지가 다르면 같은
+    // 문장이라도 다른 결정이다.
+    const projections = new Set(group.requests.map((entry) => eventStore.canonicalJson({
+      question: entry.question, options: entry.options, recommendation: entry.recommendation, impact: entry.impact, evidence: entry.evidence
+    })));
+    if (projections.size > 1) {
+      diagnostics.push({ code: 'RDL-DEC-019', severity: 'error', message: `같은 결정 키에 서로 다른 요청이 있습니다: ${decisionIdFor(key)}` });
     }
-    const answer = selections.size > 1 || questions.size > 1 ? null : (answers[0] || null);
+    const answer = selections.size > 1 || projections.size > 1 ? null : (live[0] || null);
     decisions.push({
       decisionId: request.decisionId,
       decisionKey: key,
@@ -298,6 +331,17 @@ function projectMembers(root, projectKey) {
   return readCollaboration(root, projectKey).members.map((member) => member.id);
 }
 
+// 등록된 Client의 소유 멤버. fold가 "이 Client가 이 멤버 이름으로 행위할 수
+// 있었는가"를 확인하는 재료다 — 쓰기 경로를 지나지 않고 들어온 이벤트도 걸린다.
+function clientOwnerMap(start) {
+  const { listClients } = require('./collaboration-store');
+  return (listClients(start).clients || []).filter((client) => client.status === 'active').map((client) => [client.id, client.owner]);
+}
+
+function foldContext(start, context) {
+  return { members: projectMembers(context.layout.root, context.project.key), clientOwners: clientOwnerMap(start) };
+}
+
 function assertActiveClient(start, clientId) {
   const { getClient } = require('./collaboration-store');
   const client = getClient(start, clientId);
@@ -305,13 +349,31 @@ function assertActiveClient(start, clientId) {
   return client;
 }
 
-// 행위자 결박. 멤버가 등록돼 있다는 것만 확인하면 어떤 활성 Client든 아무 멤버의
-// 이름으로 결정하고 위임하고 승인할 수 있다 — 책임 귀속이 무너지고, 승인 기록은
-// "누가 책임지는가"를 답하지 못한다. Client는 자기 owner의 이름으로만 행위한다.
-// (소유권 해소가 이미 쓰던 결박이다: client.owner가 프로젝트 멤버여야 한다.)
-function assertActingMember(client, memberId, members, action) {
+// 행위자와 권한 부여자는 다른 것이다. 하나로 뭉개면 두 가지가 동시에 깨진다:
+// 사칭을 막으려고 "Client는 자기 owner 이름으로만"이라고 하면 위임받은 Client가
+// 부여자 명의로 행위할 길이 사라지고, 반대로 부여자 명의를 허용하면 사칭이
+// 열린다. 그래서 둘을 따로 둔다 —
+//   행위자(actor) = 실행한 Client의 owner. 언제나 그 Client의 소유자다.
+//   권한(authority) = 책임지는 멤버. 직접 행위면 행위자와 같고, 위임이면 부여자다.
+function actingMember(client, members) {
+  if (!members.includes(client.owner)) throw new Error(`Client 소유자가 project.md에 등록된 멤버가 아닙니다: ${client.owner || '(없음)'}`);
+  return client.owner;
+}
+
+function assertAuthority(client, memberId, members, action, delegation) {
   if (!members.includes(memberId)) throw new Error(`project.md에 등록된 멤버만 ${action}할 수 있습니다: ${memberId || '(없음)'}`);
-  if (client.owner !== memberId) throw new Error(`Client는 자기 소유 멤버의 이름으로만 ${action}할 수 있습니다: ${client.id}의 소유자는 ${client.owner}입니다.`);
+  const actor = actingMember(client, members);
+  if (memberId === actor) return { actor, delegated: false };
+  // 자기 소유가 아닌 멤버 명의로 행위하려면 그 멤버가 이 Client에 위임했어야 한다.
+  if (!delegation) throw new Error(`Client는 자기 소유 멤버의 이름으로만 ${action}할 수 있습니다: ${client.id}의 소유자는 ${actor}입니다. 다른 멤버 명의로 행위하려면 그 멤버의 위임이 필요합니다.`);
+  if (delegation.grantedBy !== memberId) throw new Error(`위임 부여자와 ${action} 명의가 다릅니다: ${delegation.grantedBy} != ${memberId}`);
+  if (delegation.delegateClientId !== client.id) throw new Error(`이 Client에 부여된 위임이 아닙니다: ${delegation.delegateClientId} != ${client.id}`);
+  return { actor, delegated: true };
+}
+
+// 기존 호출 형태 유지 — 위임 없는 경로의 결박이다.
+function assertActingMember(client, memberId, members, action) {
+  return assertAuthority(client, memberId, members, action, null);
 }
 
 function decisionIdentity(rootRequestId, childKey) {
@@ -327,7 +389,7 @@ function newRootRequestId() {
 function listDecisions(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
-  const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members: projectMembers(context.layout.root, context.project.key) });
+  const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), foldContext(start, context));
   const decisions = settings.open ? folded.open : folded.decisions;
   return { project: context.project.key, open: folded.open.length, total: folded.decisions.length, decisions, diagnostics: folded.diagnostics };
 }
@@ -341,7 +403,7 @@ function requestDecision(start, input) {
   assertActiveClient(start, clientId);
   const key = decisionKey({ kind: settings.kind, project: context.project.key, subject: settings.subject });
   const decisionId = decisionIdFor(key);
-  const existing = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members: projectMembers(context.layout.root, context.project.key) })
+  const existing = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), foldContext(start, context))
     .decisions.find((decision) => decision.decisionKey === key);
   if (existing) return { project: context.project.key, decision: existing, created: false };
   const rootRequestId = settings.rootRequestId || newRootRequestId();
@@ -365,7 +427,7 @@ function requestDecision(start, input) {
       reason: `위임 ${delegation.delegationId}에 의한 자동 승인 (만료 ${delegation.expiresAt}): ${delegation.reason}`
     }, { lockDirectory: context.lockDirectory });
   }
-  const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members: projectMembers(context.layout.root, context.project.key) });
+  const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), foldContext(start, context));
   const result = { project: context.project.key, decision: folded.decisions.find((item) => item.decisionKey === key), created: true, file: stored.file };
   return delegation ? Object.assign(result, { delegated: true, delegationId: delegation.delegationId }) : result;
 }
@@ -396,7 +458,7 @@ function answerDecision(start, input) {
 }
 
 module.exports = {
-  FAMILIES, KINDS, DECISION_ID, assertActingMember,
+  FAMILIES, KINDS, DECISION_ID, assertActingMember, assertAuthority, actingMember,
   sha256, kindDefinition, decisionKey, decisionIdFor,
   normalizeDecisionEvent, decisionEnvelope, appendDecisionEvent, readDecisionEvents, foldDecisions,
   listDecisions, requestDecision, answerDecision

@@ -126,6 +126,27 @@ try {
   assert.strictEqual(forked.open.length, 1);
   assert(forked.diagnostics.some((item) => item.code === 'RDL-DEC-019'));
 
+  // 쓰기 경로의 결박만으로는 부족하다. 직접 append나 Git 병합으로 들어온 답변은
+  // 그 경로를 지나지 않으므로, 읽는 쪽에서도 명의를 확인해야 한다.
+  const owners = [['agent-a', 'MEMBER-001'], ['desk-b', 'MEMBER-001']];
+  const smuggled = foldDecisions([requestEvent(), answerEvent({ answeredBy: 'MEMBER-002' })], { members: ['MEMBER-001', 'MEMBER-002'], clientOwners: owners });
+  assert.strictEqual(smuggled.open.length, 1, '병합으로 들어온 사칭 답변이 결정을 해소하면 안 됩니다.');
+  assert(smuggled.diagnostics.some((item) => item.code === 'RDL-DEC-021'));
+  const unknownClient = foldDecisions([requestEvent(), answerEvent({ clientId: 'ghost' })], { members: ['MEMBER-001'], clientOwners: owners });
+  assert.strictEqual(unknownClient.open.length, 1);
+  assert(unknownClient.diagnostics.some((item) => item.code === 'RDL-DEC-020'));
+  // 명의가 맞으면 정상 해소된다 — 오탐이 아니어야 한다.
+  assert.strictEqual(foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'], clientOwners: owners }).open.length, 0);
+
+  // 상충은 닫되 탈출구가 있어야 한다. 해소 수단 없이 닫기만 하면 영구 교착이다.
+  const rival = answerEvent({ eventId: 'EVT-55555555555555555555', requestId: 'REQ-55555555555555555555', selectedOption: 'patch' });
+  const deadlocked = foldDecisions([requestEvent(), answerEvent(), rival], { members: ['MEMBER-001'] });
+  assert.strictEqual(deadlocked.open.length, 1);
+  const resolution = answerEvent({ eventId: 'EVT-99999999999999999999', requestId: 'REQ-99999999999999999999', selectedOption: 'minor', supersedes: rival.eventId, reason: '상충 해소: 명령 추가가 있어 마이너' });
+  const resolvedConflict = foldDecisions([requestEvent(), answerEvent(), rival, resolution], { members: ['MEMBER-001'] });
+  assert.strictEqual(resolvedConflict.open.length, 0, '대체 답변으로 상충이 해소되어야 합니다.');
+  assert.strictEqual(resolvedConflict.decisions[0].selectedOption, 'minor');
+
   // fold는 열거 순서의 함수가 아니다.
   const forward = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'] });
   const reversed = foldDecisions([answerEvent(), requestEvent()], { members: ['MEMBER-001'] });

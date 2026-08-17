@@ -78,6 +78,11 @@ function normalizeDelegationEvent(input) {
     normalized.grantedAt = input.grantedAt;
     normalized.expiresAt = assertExpiry(input.expiresAt, Date.parse(input.grantedAt));
     normalized.reason = normalizeText(input.reason, '사유', 1000);
+    // 식별자는 내용에서 파생된다. 재대조하지 않으면 임의의 식별자를 선언한
+    // 이벤트가 유효한 위임으로 채택되고, 취소는 그 식별자를 가리키므로
+    // 실제로 꺼야 할 권한을 끄지 못한다.
+    const derived = delegationIdFor({ kind: input.kind, projectId: input.projectId, delegateClientId: input.delegateClientId, grantedBy: input.grantedBy, expiresAt: normalized.expiresAt });
+    if (derived !== input.delegationId) throw new Error(`위임 식별자가 내용에서 파생되지 않았습니다: ${input.delegationId} != ${derived}`);
   } else {
     if (!EVENT_ID.test(input.previousDelegationEventId || '')) throw new Error('취소 대상 위임 이벤트가 유효하지 않습니다.');
     if (!MEMBER_ID.test(input.revokedBy || '')) throw new Error('취소자는 MEMBER-ID여야 합니다.');

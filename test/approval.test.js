@@ -37,6 +37,7 @@ function approvalEvent(overrides) {
     targetId: 'REQ-001',
     reviewedRevision: REVISION_A,
     approvedBy: 'MEMBER-001',
+    actorMemberId: 'MEMBER-001',
     basis: [{ kind: 'read' }]
   }, overrides || {});
 }
@@ -50,6 +51,10 @@ try {
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ basis: [{ kind: '지어낸근거' }] })), /지원하지 않는 승인 근거/u);
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ approvedBy: 'agent-a' })), /MEMBER-ID/u);
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ transcript: '금지' })), /알 수 없는 필드/u);
+  // 행위자와 승인자가 다르면 위임이 그 차이를 정당화해야 한다. 위임 없이 다른
+  // 멤버 명의로 남은 기록은 형태만으로도 거부된다 — 병합으로 흘러들어와도.
+  assert.throws(() => normalizeApprovalEvent(approvalEvent({ approvedBy: 'MEMBER-002' })), /근거가 된 위임이 필요/u);
+  assert.strictEqual(normalizeApprovalEvent(approvalEvent({ approvedBy: 'MEMBER-002', delegationId: 'DLG-AAAAAAAAAAAAAAAAAAAA', basis: [{ kind: 'delegated' }] })).actorMemberId, 'MEMBER-001');
   assert.deepStrictEqual(normalizeApprovalEvent(approvalEvent({ basis: [{ kind: 'verdict', detail: 'VAL-001' }] })).basis, [{ kind: 'verdict', detail: 'VAL-001' }]);
 
   // 신뢰 상태는 셋 다 파생이다 — 승인 리비전과 현재 리비전의 비교뿐이다.

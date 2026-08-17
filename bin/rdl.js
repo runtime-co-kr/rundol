@@ -198,7 +198,7 @@ function parseOperationArgs(argv) {
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
     else if (value === '--since-approval') options.sinceApproval = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -393,7 +393,7 @@ async function main() {
     if (options.positional.length !== 1) throw new Error('rdl decision answer에는 DEC-ID 하나가 필요합니다.');
     const answered = decision.answerDecision(options.root, {
       project: options.project, clientId: options.clientId, decisionId: options.positional[0],
-      selectedOption: options.select, answeredBy: options.member, reason: options.reason, rootRequestId: options.requestId
+      selectedOption: options.select, answeredBy: options.member, reason: options.reason, supersedes: options.supersedes, rootRequestId: options.requestId
     });
     printOperation(answered, options.json);
     return 0;
@@ -1061,7 +1061,7 @@ async function main() {
       });
       printOperation(approval.approveDocument(options.root, {
         project: options.project, clientId: options.clientId, targetId: options.positional[0],
-        approvedBy: options.member, basis, reason: options.reason, rootRequestId: options.requestId
+        approvedBy: options.member, basis, reason: options.reason, delegationId: options.delegation, rootRequestId: options.requestId
       }), options.json);
       return 0;
     }

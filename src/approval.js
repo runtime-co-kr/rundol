@@ -66,18 +66,25 @@ function normalizeBasis(value) {
 function normalizeApprovalEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('승인 이벤트는 객체여야 합니다.');
   if (input.type !== 'approval.granted') throw new Error(`알 수 없는 승인 이벤트 종류입니다: ${input.type || '(없음)'}`);
-  const allowed = BASE_FIELDS.concat(['approvedBy', 'basis', 'reason', 'delegationId', 'canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis', 'reason', 'delegationId', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`승인 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
-  for (const field of BASE_FIELDS.concat(['approvedBy', 'basis'])) if (input[field] === undefined) throw new Error(`approval.granted.${field}이(가) 필요합니다.`);
+  for (const field of BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis'])) if (input[field] === undefined) throw new Error(`approval.granted.${field}이(가) 필요합니다.`);
   if (input.schemaVersion !== 1 || !EVENT_ID.test(input.eventId || '') || !REQUEST_ID.test(input.rootRequestId || '') || !REQUEST_ID.test(input.requestId || '')
     || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !ARTIFACT_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
     throw new Error('승인 이벤트의 신원이 유효하지 않습니다.');
   }
   if (!MEMBER_ID.test(input.approvedBy || '')) throw new Error('승인자는 MEMBER-ID여야 합니다.');
+  if (!MEMBER_ID.test(input.actorMemberId || '')) throw new Error('행위자는 MEMBER-ID여야 합니다.');
+  // 행위자와 승인자가 다르면 위임이 그 차이를 정당화해야 한다. 위임 없이 다른
+  // 멤버 명의로 남은 기록은 형태만으로도 거부한다 — 병합으로 흘러들어와도.
+  if (input.approvedBy !== input.actorMemberId && input.delegationId === undefined) {
+    throw new Error('행위자와 승인자가 다르면 근거가 된 위임이 필요합니다.');
+  }
   const normalized = {};
   for (const field of BASE_FIELDS) normalized[field] = input[field];
   normalized.approvedBy = input.approvedBy;
+  normalized.actorMemberId = input.actorMemberId;
   normalized.basis = normalizeBasis(input.basis);
   const reason = normalizeText(input.reason, '사유', 1000);
   if (reason) normalized.reason = reason;
@@ -213,19 +220,21 @@ function approveDocument(start, input) {
   const client = getClient(start, clientId);
   if (client.status !== 'active') throw new Error(`비활성 Client는 승인할 수 없습니다: ${clientId}`);
   const members = readCollaboration(context.layout.root, context.project.key).members.map((member) => member.id);
-  require('./decision').assertActingMember(client, settings.approvedBy, members, '승인');
   // delegated 근거는 실제 위임과 결박한다. 결박하지 않으면 "위임받아 승인했다"는
   // 주장만으로 책임이 옮겨가고, 위임의 만료·취소가 승인에 아무 영향을 주지 못한다.
-  if ((settings.basis || []).some((item) => item && item.kind === 'delegated')) {
-    if (!settings.delegationId) throw new Error('delegated 근거에는 근거가 된 위임(--delegation)이 필요합니다.');
-    const delegation = require('./delegation').activeDelegationFor(start, { project: context.project.key, kind: 'doc-replace', clientId, now: settings.now });
+  const delegated = (settings.basis || []).some((item) => item && item.kind === 'delegated');
+  if (delegated && !settings.delegationId) throw new Error('delegated 근거에는 근거가 된 위임(--delegation)이 필요합니다.');
+  if (!delegated && settings.delegationId) throw new Error('위임을 근거로 쓰려면 --basis delegated가 필요합니다.');
+  let delegation = null;
+  if (delegated) {
+    delegation = require('./delegation').activeDelegationFor(start, { project: context.project.key, kind: 'doc-approve', clientId, now: settings.now });
     if (!delegation || delegation.delegationId !== settings.delegationId) {
       throw new Error(`유효한 위임이 아닙니다: ${settings.delegationId} (만료·취소되었거나 이 Client의 위임이 아닙니다)`);
     }
-    if (delegation.grantedBy !== settings.approvedBy) throw new Error('위임에 의한 승인의 결정자는 위임 부여자여야 합니다.');
-  } else if (settings.delegationId) {
-    throw new Error('위임을 근거로 쓰려면 --basis delegated가 필요합니다.');
   }
+  // 행위자는 이 Client의 소유자이고, 책임은 approvedBy가 진다. 위임이면 둘이
+  // 다를 수 있고, 그때 위임이 그 차이를 정당화한다.
+  const authority = require('./decision').assertAuthority(client, settings.approvedBy, members, '승인', delegation);
   const document = findDocument(context.project, settings.targetId);
   const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
   const state = trustState(document, folded.approvals.get(document.id));
@@ -238,7 +247,7 @@ function approveDocument(start, input) {
     schemaVersion: 1, eventId: requestJournal.eventIdForRequest(requestId), type: 'approval.granted',
     rootRequestId, requestId, clientId, projectId: context.project.key,
     targetId: document.id, reviewedRevision: document.revision,
-    approvedBy: settings.approvedBy, basis: settings.basis, reason: settings.reason,
+    approvedBy: settings.approvedBy, actorMemberId: authority.actor, basis: settings.basis, reason: settings.reason,
     ...(settings.delegationId ? { delegationId: settings.delegationId } : {})
   }, { lockDirectory: context.lockDirectory });
   const after = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
