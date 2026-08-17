@@ -8,7 +8,8 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 
 <!-- rdl-help:start -->
 ```text
-  rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name>] [--new] [--guided] [--profile <name>] [--trait <name>] [--root <path>] [--json]
+  rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name>] [--new] [--guided]
+           [--profile <name>] [--defaults] [--questions] [--primary-branch <name>] [--trait <name>] [--root <path>] [--json]
   rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]

@@ -28,7 +28,7 @@ try {
   fs.writeFileSync(path.join(temporary, 'README.md'), '# Watch CLI fixture\n', 'utf8');
   command('git', ['add', 'README.md'], temporary);
   command('git', ['commit', '-m', 'initial'], temporary);
-  command(process.execPath, [cli, 'init', 'memo', '--name', 'Memo', '--json'], temporary);
+  command(process.execPath, [cli, 'init', 'memo', '--name', 'Memo', '--defaults', '--json'], temporary);
 
   const once = command(process.execPath, [cli, 'watch', '--project', 'memo', '--once', '--json'], temporary);
   const records = once.stdout.split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));

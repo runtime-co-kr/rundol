@@ -12,7 +12,8 @@ function usage() {
   return `rdl ${VERSION}
 
 Usage:
-  rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name>] [--new] [--guided] [--profile <name>] [--trait <name>] [--root <path>] [--json]
+  rdl init [project-key] [--name <project-name>] [--project <key>] [--remote <name>] [--new] [--guided]
+           [--profile <name>] [--defaults] [--questions] [--primary-branch <name>] [--trait <name>] [--root <path>] [--json]
   rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
@@ -103,6 +104,8 @@ Options:
   --links        Print only reference-integrity diagnostics.
   --tasks        Print only task diagnostics.
   --open         열린 태스크(todo, doing, waiting, review)만 나열합니다.
+  --defaults     결정하지 않고 권고 기본값을 수용한다고 명시적으로 선언합니다.
+  --questions    결정해야 할 항목을 질문 목록으로 돌려주고 아무것도 만들지 않습니다.
   --acceptance   태스크 완료조건. 여러 번 지정할 수 있습니다.
   --reviewer     project.md에 등록된 검토 멤버. 여러 번 지정할 수 있습니다.
   --stakeholder  project.md에 등록된 이해관계자. 여러 번 지정할 수 있습니다.
@@ -159,7 +162,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -178,7 +181,9 @@ function parseOperationArgs(argv) {
     else if (value === '--write') options.write = true;
     else if (value === '--open') options.open = true;
     else if (value === '--irreversible') options.irreversible = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence'].includes(value)) {
+    else if (value === '--defaults') options.defaults = true;
+    else if (value === '--questions') options.questions = true;
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -403,6 +408,7 @@ async function main() {
   const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('../src/document-contract');
   const { migrateProject } = require('../src/document-migration');
   const { guidedProjectInput, selectProject: selectGuidedProject } = require('../src/guided');
+  const { setupQuestions, resolveProfileDecision, remoteFacts, assertRemoteDecided } = require('../src/setup');
   const { readConflict, resolveConflict, clearConflict } = require('../src/conflict');
   const { recordTokens, debugSummary } = require('../src/debug');
   const { resolveAction, recordAction } = require('../src/action');
@@ -415,6 +421,12 @@ async function main() {
     const options = parseOperationArgs(argv);
     if (options.positional.length > 1) throw new Error('rdl init에는 프로젝트 키를 하나만 지정할 수 있습니다.');
     if (options.guided && options.json) throw new Error('--guided와 --json은 함께 사용할 수 없습니다. 자동화에서는 --profile을 지정하세요.');
+    // 대화형이 아닌 곳에서도 사람에게 물을 수 있어야 한다. 인터뷰를 흉내 내는
+    // 대신 결정해야 할 것을 그대로 넘기고 답을 플래그로 받는다.
+    if (options.questions) {
+      printOperation(setupQuestions(options.root, { remote: options.remote }), options.json);
+      return 0;
+    }
     let selectedProject = options.project || options.positional[0] || null;
     const discovery = discoverWorkspace(options.root, { remote: options.remote, project: selectedProject });
     if (discovery.action === 'conflict') throw new Error(discovery.error || 'Rundol Workspace 상태가 충돌합니다.');
@@ -450,6 +462,9 @@ async function main() {
       printOperation(attached, options.json);
       return 0;
     }
+    // 대화형 터미널에서는 인터뷰가 기본이다. 설정을 그냥 넘어가는 것이 기본이면
+    // 아무도 결정하지 않은 프로젝트가 만들어진다 — 생략이 예외여야 한다.
+    if (!options.guided && !options.profile && !options.defaults && !options.json && process.stdin.isTTY && process.stdout.isTTY) options.guided = true;
     if (options.guided) {
       const guided = await guidedProjectInput({ key: options.positional[0], name: options.name, profile: options.profile, traits: options.traits });
       options.positional = [guided.key];
@@ -459,15 +474,19 @@ async function main() {
     }
     if (!options.new && options.positional.length === 0) throw new Error('새 Workspace 생성에는 --new 또는 위치 프로젝트 키가 필요합니다.');
     if ((options.traits.length || options.policySpecified) && !options.profile) throw new Error('--trait 또는 policy override를 사용하려면 --profile이 필요합니다.');
-    if (options.profile && !PROFILE_NAMES.includes(options.profile)) throw new Error(`지원하지 않는 문서 프로필입니다: ${options.profile}`);
     if (options.positional.length !== 1) throw new Error('rdl init에는 프로젝트 키 하나가 필요합니다.');
+    // 문서 목표는 판단이고 기본 브랜치는 정보다. 판단은 선언하거나 기본값을
+    // 명시적으로 수용해야 하고, 정보는 읽어서 기록하되 읽을 수 없으면 멈춘다 —
+    // 아무도 결정하지 않은 값이 프로젝트의 기본이 되는 경로를 남기지 않는다.
+    const decidedProfile = resolveProfileDecision({ profile: options.profile, defaults: options.defaults });
+    const remoteDecision = assertRemoteDecided(remoteFacts(options.root, options.remote), options.primaryBranch);
     const initialized = initializeWorkspace(options.root, options.positional[0], options.name);
-    const selectedProfile = options.profile || 'service';
+    const selectedProfile = decidedProfile.profile;
     const configuredProfile = applyToProject(path.join(initialized.projectRoot, 'project.md'), { schemaVersion: 2, name: selectedProfile, enforcement: options.enforcement || 'checkpoint', traits: options.traits, policy: options.policySpecified ? options.policy : undefined }).profile;
     const git = initState(initialized.root, { project: initialized.project });
     initObsidian(initialized.root, { project: initialized.project, force: false });
     const contract = loadDocumentContract(initialized.root, initialized.project);
-    printOperation(Object.assign({ action: 'created', profile: selectedProfile, traits: configuredProfile.traits, missing: missingActions(configuredProfile, []), contract }, initialized, { branch: git.branch, worktree: git.worktree, boundary: git.boundary }), options.json);
+    printOperation(Object.assign({ action: 'created', profile: selectedProfile, profileSource: decidedProfile.source, remote: remoteDecision, traits: configuredProfile.traits, missing: missingActions(configuredProfile, []), contract }, initialized, { branch: git.branch, worktree: git.worktree, boundary: git.boundary }), options.json);
     return 0;
   }
   if (command === 'attach' || command === 'detach') {

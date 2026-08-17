@@ -31,7 +31,7 @@ try {
   fs.writeFileSync(path.join(temporary, 'README.md'), '# Drive CLI fixture\n', 'utf8');
   command('git', ['add', 'README.md'], temporary);
   command('git', ['commit', '-m', 'initial'], temporary);
-  json(['init', 'crm', '--name', 'CRM']);
+  json(['init', 'crm', '--name', 'CRM', '--defaults']);
   json(['client', 'register', 'device-a', '--name', 'Device', '--type', 'device', '--owner', 'MEMBER-001']);
   json(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
   json(['client', 'register', 'agent-b', '--name', 'Agent B', '--type', 'agent', '--owner', 'MEMBER-001']);

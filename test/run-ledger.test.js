@@ -307,7 +307,7 @@ try {
   fs.writeFileSync(path.join(temporary, 'README.md'), '# Test\n');
   command('git', ['add', 'README.md'], temporary);
   command('git', ['commit', '-m', 'initial'], temporary);
-  JSON.parse(command(process.execPath, [cli, 'init', 'crm', '--name', '고객 관리', '--root', temporary, '--json'], root));
+  JSON.parse(command(process.execPath, [cli, 'init', 'crm', '--name', '고객 관리', '--defaults', '--root', temporary, '--json'], root));
   JSON.parse(command(process.execPath, [cli, 'client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'device', '--owner', 'MEMBER-001', '--root', temporary, '--json'], root));
   JSON.parse(command(process.execPath, [cli, 'client', 'register', 'desk-b', '--name', '데스크톱', '--type', 'device', '--owner', 'MEMBER-001', '--root', temporary, '--json'], root));
 

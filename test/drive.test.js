@@ -343,7 +343,7 @@ const running = (async () => {
     command('git', ['add', 'README.md'], ledgerWorkspace);
     command('git', ['commit', '-m', 'initial'], ledgerWorkspace);
     const rdl = (args) => JSON.parse(command(process.execPath, [cli].concat(args, ['--root', ledgerWorkspace, '--json']), repository));
-    rdl(['init', 'crm', '--name', 'CRM']);
+    rdl(['init', 'crm', '--name', 'CRM', '--defaults']);
     rdl(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
     const projectRoot = path.join(ledgerWorkspace, 'projects', 'crm');
     fs.writeFileSync(path.join(projectRoot, 'procedures.json'), `${JSON.stringify({ schemaVersion: 1, procedures: {

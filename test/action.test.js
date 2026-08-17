@@ -32,7 +32,7 @@ try {
   assert.strictEqual(command('git', ['add', 'README.md'], temporary).status, 0);
   assert.strictEqual(command('git', ['commit', '-m', 'initial'], temporary).status, 0);
 
-  const initialized = successful(temporary, ['init', 'memo', '--name', '메모 앱'], { debug: true });
+  const initialized = successful(temporary, ['init', 'memo', '--name', '메모 앱', '--defaults'], { debug: true });
   const prd = successful(temporary, ['doc', 'create', 'PRD', '메모 제품 요구사항', '--owner', 'MEMBER-001', '--scope', '메모 제품의 사용자 문제와 성공 기준', '--exclude', '개별 메모 작성 동작'], { debug: true });
   const prdSource = fs.readFileSync(prd.file, 'utf8');
   assert(prdSource.includes('title: 메모 제품 요구사항'));

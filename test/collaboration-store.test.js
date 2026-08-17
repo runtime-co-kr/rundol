@@ -25,7 +25,7 @@ try {
   fs.writeFileSync(path.join(temporary, 'README.md'), '# Test\n');
   command('git', ['add', 'README.md'], temporary);
   command('git', ['commit', '-m', 'initial'], temporary);
-  rdl(['init', 'crm', '--name', '고객 관리']);
+  rdl(['init', 'crm', '--name', '고객 관리', '--defaults']);
 
   const registered = rdl(['client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'device', '--owner', 'MEMBER-001']);
   assert.strictEqual(registered.id, 'laptop-a');

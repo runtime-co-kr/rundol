@@ -41,7 +41,7 @@ async function testWorkspaceBoard() {
     fs.writeFileSync(path.join(temporary, 'README.md'), '# Test\n');
     command('git', ['add', 'README.md'], temporary);
     command('git', ['commit', '-m', 'initial'], temporary);
-    command(process.execPath, [cli, 'init', 'crm', '--name', 'CRM', '--root', temporary], repository);
+    command(process.execPath, [cli, 'init', 'crm', '--name', 'CRM', '--defaults', '--root', temporary], repository);
     command(process.execPath, [cli, 'client', 'register', 'test-device', '--name', 'Test Device', '--type', 'device', '--owner', 'MEMBER-001', '--root', temporary], repository);
     const task = JSON.parse(command(process.execPath, [cli, 'task', 'add', 'API test', '--acceptance', 'works', '--project', 'crm', '--root', temporary, '--json'], repository));
 

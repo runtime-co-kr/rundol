@@ -51,7 +51,7 @@ function testInstalledBoundary() {
     git(remote, ['init', '--bare']);
     initializeRepository(temporary);
     git(temporary, ['remote', 'add', 'origin', remote]);
-    const initialized = rdl(temporary, ['init', 'demo', '--name', 'Demo']);
+    const initialized = rdl(temporary, ['init', 'demo', '--name', 'Demo', '--defaults']);
     assert.strictEqual(initialized.boundary.valid, true);
     assert.strictEqual(initialized.boundary.pushDefault, 'simple');
     assert.deepStrictEqual(initialized.boundary.roles.map((item) => `${item.role}:${item.branch}`), ['code:main', 'workspace:rundol/workspace', 'project:rundol/demo']);
@@ -81,7 +81,7 @@ function testExistingHookPreserved() {
     const original = '#!/bin/sh\necho existing-hook >&2\nexit 0\n';
     fs.writeFileSync(path.join(hooks, 'pre-push'), original, 'utf8');
     fs.chmodSync(path.join(hooks, 'pre-push'), 0o755);
-    const initialized = rdl(temporary, ['init', 'demo', '--name', 'Demo']);
+    const initialized = rdl(temporary, ['init', 'demo', '--name', 'Demo', '--defaults']);
     assert.strictEqual(initialized.boundary.hook.preserved, true);
     assert.strictEqual(fs.readFileSync(path.join(hooks, USER_HOOK_NAME), 'utf8'), original);
     assert(fs.readFileSync(path.join(hooks, 'pre-push'), 'utf8').includes(HOOK_MARKER));
@@ -96,7 +96,7 @@ function testUnbornPrimaryBranch() {
     git(temporary, ['init', '-b', 'main']);
     git(temporary, ['config', 'user.name', 'Rundol Test']);
     git(temporary, ['config', 'user.email', 'rundol@example.test']);
-    const initialized = rdl(temporary, ['init', 'blank', '--name', 'Blank']);
+    const initialized = rdl(temporary, ['init', 'blank', '--name', 'Blank', '--defaults']);
     assert.strictEqual(initialized.boundary.valid, true);
     assert.strictEqual(initialized.boundary.primaryBranch, 'main');
     assert.deepStrictEqual(initialized.boundary.roles.map((item) => item.branch), ['main', 'rundol/workspace', 'rundol/blank']);
@@ -112,7 +112,7 @@ function testRemoteDefaultBranch() {
     git(remote, ['init', '--bare']);
     initializeRepository(temporary);
     git(temporary, ['remote', 'add', 'origin', remote]);
-    rdl(temporary, ['init', 'demo', '--name', 'Demo']);
+    rdl(temporary, ['init', 'demo', '--name', 'Demo', '--defaults']);
     for (const branch of ['master', 'trunk']) {
       git(temporary, ['update-ref', `refs/remotes/origin/${branch}`, 'refs/heads/main']);
       git(temporary, ['symbolic-ref', 'refs/remotes/origin/HEAD', `refs/remotes/origin/${branch}`]);

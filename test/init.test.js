@@ -37,7 +37,7 @@ function testWorkspaceInitialization() {
     git(temporary, ['add', 'README.md']);
     git(temporary, ['commit', '-m', 'initial']);
 
-    const initialized = rdl(temporary, ['init', 'memo', '--name', '메모 앱']);
+    const initialized = rdl(temporary, ['init', 'memo', '--name', '메모 앱', '--defaults']);
     assert.strictEqual(initialized.project, 'memo');
     assert.strictEqual(initialized.branch, 'rundol/memo');
     assert(!fs.existsSync(path.join(temporary, '.rundol')));
