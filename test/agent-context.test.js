@@ -32,7 +32,7 @@ try {
   assert(catalog.commands.length > 40, `명령 수가 비정상입니다: ${catalog.commands.length}`);
   const taskList = catalog.commands.find((entry) => entry.command === 'task list');
   assert(taskList, 'rdl task list가 카탈로그에 없습니다.');
-  assert.deepStrictEqual(taskList.flags, ['--json', '--open', '--project', '--status']);
+  assert.deepStrictEqual(taskList.flags, ['--cold', '--index', '--json', '--open', '--project', '--status']);
   // 여러 줄로 이어진 명령은 하나의 항목으로 합쳐진다.
   const taskAdd = catalog.commands.find((entry) => entry.command === 'task add');
   assert(taskAdd.flags.includes('--reviewer') && taskAdd.flags.includes('--priority'), '이어진 줄의 플래그가 누락됐습니다.');

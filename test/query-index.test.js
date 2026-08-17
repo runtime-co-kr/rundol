@@ -50,14 +50,17 @@ try {
   const built = buildIndex(temporary);
   assert.strictEqual(built.version, INDEX_VERSION);
   assert.strictEqual(readIndex(temporary).status, 'valid');
-  const indexed = queryTasks(temporary, {});
+  // 인덱스가 유효해도 기본 경로는 정본이다 — 이 규모에서는 유효성 확인이 읽기보다
+  // 비싸다. 인덱스는 요청할 때만 쓴다.
+  assert.strictEqual(queryTasks(temporary, {}).source, 'cold', '기본 경로는 정본이어야 합니다.');
+  const indexed = queryTasks(temporary, { index: true });
   assert.strictEqual(indexed.source, 'index');
   assert.deepStrictEqual(indexed.tasks, cold.tasks, '인덱스 경로와 무인덱스 경로의 답이 같아야 합니다.');
   assert.deepStrictEqual(indexed.counts, cold.counts);
 
   // 필터도 같은 결과를 낸다.
   for (const filter of [{ project: 'crm' }, { status: 'todo' }, { open: true }]) {
-    const viaIndex = queryTasks(temporary, filter);
+    const viaIndex = queryTasks(temporary, Object.assign({ index: true }, filter));
     const viaCold = queryTasks(temporary, Object.assign({ cold: true }, filter));
     assert.deepStrictEqual(viaIndex.tasks, viaCold.tasks, `필터 결과가 갈립니다: ${JSON.stringify(filter)}`);
   }
@@ -72,7 +75,7 @@ try {
   buildIndex(temporary);
   fs.writeFileSync(indexFile(temporary), '{깨진 JSON', 'utf8');
   assert.strictEqual(readIndex(temporary).status, 'corrupt');
-  assert.strictEqual(queryTasks(temporary, {}).source, 'cold', '손상된 인덱스는 무인덱스 경로로 물러나야 합니다.');
+  assert.strictEqual(queryTasks(temporary, { index: true }).source, 'cold', '손상된 인덱스는 무인덱스 경로로 물러나야 합니다.');
 
   // 형식이 바뀌면 마이그레이션하지 않고 버린다.
   const stored = JSON.parse(JSON.stringify(buildIndex(temporary)));
@@ -96,7 +99,7 @@ try {
   rdl(['task', 'add', '셋째 태스크', '--project', 'crm', '--acceptance', '완료조건']);
   assert.notStrictEqual(indexFingerprint(workspaceLayout(temporary)), beforeTaskAdd, '태스크 변경이 지문에 반영되어야 합니다.');
   assert.strictEqual(readIndex(temporary).status, 'stale');
-  assert.strictEqual(queryTasks(temporary, {}).tasks.length, 3, '낡은 인덱스 대신 정본을 읽어야 합니다.');
+  assert.strictEqual(queryTasks(temporary, { index: true }).tasks.length, 3, '낡은 인덱스 대신 정본을 읽어야 합니다.');
 
   // 인덱스 내부 키는 문서 고유 식별자다 — 번호를 정리해도 스키마가 남는다.
   const rebuilt = buildIndex(temporary);
@@ -104,16 +107,23 @@ try {
   for (const document of rebuilt.documents) assert(document.uid, `문서에 식별자가 없습니다: ${document.id}`);
   assert.strictEqual(Object.keys(rebuilt.documentUidByDisplayId).length, rebuilt.documents.length);
 
-  // 인덱스는 실제 조회 명령에 배선되어야 한다. 만들어 놓고 쓰지 않으면 아무것도
-  // 가속하지 않는 죽은 코드다.
+  // 인덱스는 실제 조회 명령에서 쓸 수 있어야 한다. 만들어 놓고 부를 방법이 없으면
+  // 아무것도 가속하지 않는 죽은 코드다. 다만 기본값은 아니다 — 측정 결과 이 규모에서는
+  // 유효성 확인이 읽기보다 비싸다.
   buildIndex(temporary);
-  const viaCli = rdl(['task', 'list', '--project', 'crm']);
-  assert.strictEqual(viaCli.source, 'index', 'rdl task list가 유효한 인덱스를 써야 합니다.');
+  assert.strictEqual(rdl(['task', 'list', '--project', 'crm']).source, 'cold', '기본 경로는 정본이어야 합니다.');
+  const viaCli = rdl(['task', 'list', '--project', 'crm', '--index']);
+  assert.strictEqual(viaCli.source, 'index', '--index는 유효한 인덱스를 써야 합니다.');
   const viaColdCli = rdl(['task', 'list', '--project', 'crm', '--cold']);
   assert.strictEqual(viaColdCli.source, 'cold');
   assert.deepStrictEqual(viaCli.tasks, viaColdCli.tasks, 'CLI의 두 경로가 같은 답을 내야 합니다.');
   const contextCli = rdl(['context', '--project', 'crm']);
   assert.strictEqual(contextCli.tasks.counts.todo, viaColdCli.counts.todo, 'context도 같은 집계를 써야 합니다.');
+  // 두 경로가 다른 답을 낸 경우를 사후에 지목하려면 결과가 출처를 들고 있어야 한다.
+  assert.strictEqual(contextCli.tasks.source, 'cold', 'context가 어느 경로로 답했는지 남겨야 합니다.');
+  const contextIndexed = rdl(['context', '--project', 'crm', '--index']);
+  assert.strictEqual(contextIndexed.tasks.source, 'index');
+  assert.strictEqual(contextIndexed.tasks.counts.todo, viaColdCli.counts.todo, 'context의 두 경로가 같은 집계를 내야 합니다.');
 
   // CLI 표면.
   const status = rdl(['index', 'status']);
@@ -122,7 +132,7 @@ try {
   const removed = rdl(['index', 'clear']);
   assert.strictEqual(removed.removed, true);
   assert.strictEqual(rdl(['index', 'status']).status, 'missing');
-  assert.strictEqual(rdl(['task', 'list', '--project', 'crm']).tasks.length, 3, '인덱스 없이도 조회는 답해야 합니다.');
+  assert.strictEqual(rdl(['task', 'list', '--project', 'crm', '--index']).tasks.length, 3, '인덱스 없이도 조회는 답해야 합니다.');
   assert.strictEqual(rdl(['index', 'rebuild']).tasks, 3);
 
   // 인덱스는 정본이 아니라 런타임 홈의 로컬 파생물이다. Workspace의 추적 대상

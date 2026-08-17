@@ -65,7 +65,7 @@ Usage:
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
   rdl index status|rebuild|clear [--root <path>] [--json]
-  rdl task list [--project <key>] [--status <state>] [--open] [--json]
+  rdl task list [--project <key>] [--status <state>] [--open] [--index|--cold] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
@@ -177,7 +177,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, cold: false, orphans: false, unexplained: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, cold: false, index: false, orphans: false, unexplained: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -201,6 +201,7 @@ function parseOperationArgs(argv) {
     else if (value === '--active') options.active = true;
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--cold') options.cold = true;
+    else if (value === '--index') options.index = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes'].includes(value)) {
@@ -352,7 +353,7 @@ async function main() {
   if (command === 'context') {
     const options = parseOperationArgs(argv);
     if (options.positional.length) throw new Error('rdl context에는 위치 인수를 사용할 수 없습니다.');
-    const context = require('../src/agent-context').agentContext(options.root, { project: options.project });
+    const context = require('../src/agent-context').agentContext(options.root, { project: options.project, index: options.index });
     if (options.json) { process.stdout.write(`${JSON.stringify(context, null, 2)}\n`); return 0; }
     process.stdout.write(`root: ${context.root}\nprojects: ${context.projects.map((item) => item.key).join(', ') || '(없음)'}\n`);
     process.stdout.write(`branch: ${context.branch.current || '(알 수 없음)'} (기본 ${context.branch.primary || '(알 수 없음)'})\n`);
@@ -960,10 +961,9 @@ async function main() {
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
-      // 유효한 인덱스가 있으면 그것으로, 없으면 정본을 직접 읽는다. 어느
-      // 경로였는지는 결과의 source에 남는다. --cold로 인덱스를 건너뛸 수 있어
-      // 두 경로의 답을 대조할 수 있다.
-      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open, cold: options.cold });
+      // 기본은 정본 읽기다. --index로 인덱스 경로를 쓰고 --cold로 정본을 강제해
+      // 두 경로의 답을 대조할 수 있다. 어느 경로였는지는 결과의 source에 남는다.
+      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open, cold: options.cold, index: options.index });
       printOperation(listed, options.json);
       return 0;
     }

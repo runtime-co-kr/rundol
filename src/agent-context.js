@@ -157,9 +157,9 @@ function nextActions(context) {
 function agentContext(start, options) {
   const settings = options || {};
   const layout = workspaceLayout(start);
-  // 유효한 인덱스가 있으면 그것으로, 없으면 정본을 직접 읽는다. 답은 같고
-  // 속도만 다르다 — 어느 경로였는지는 결과의 source에 남는다.
-  const listed = require('./query-index').queryTasks(start, { project: settings.project });
+  // 기본은 정본 읽기다. 인덱스는 요청할 때만 쓴다 — 이 규모에서는 유효성 확인이
+  // 읽기보다 비싸다. 어느 경로였는지는 결과의 source에 남는다.
+  const listed = require('./query-index').queryTasks(start, { project: settings.project, index: settings.index });
   const open = listed.tasks.filter((task) => OPEN_STATES.has(task.status));
   const context = {
     root: layout.root,
@@ -169,6 +169,9 @@ function agentContext(start, options) {
     branch: branchSummary(layout.root),
     diagnostics: diagnosticSummary(layout.root, settings.project),
     tasks: {
+      // 어느 경로로 답했는지를 남긴다. 두 경로가 다른 답을 낸 경우를 사후에
+      // 지목하려면 결과 자체가 출처를 들고 있어야 한다.
+      source: listed.source,
       counts: listed.counts,
       active: open.filter((task) => ACTIVE_STATES.has(task.status)),
       todo: open.filter((task) => task.status === 'todo')

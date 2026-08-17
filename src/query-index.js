@@ -148,13 +148,21 @@ function indexStatus(start) {
   };
 }
 
-// 조회는 유효한 인덱스가 있으면 그것을 쓰고 없으면 정본을 직접 읽는다. 어느
-// 경로로 답했는지를 결과에 남겨, 두 경로가 다른 답을 낸 경우를 사후에 지목할
-// 수 있게 한다.
+// 조회의 기본 경로는 정본이다. 인덱스는 요청할 때만 쓴다.
+//
+// 이 저장소에서 실제로 재 보니 정본 경로는 4ms인데 인덱스 유효성 확인만
+// 280ms다 — git rev-parse와 git status 두 번의 하위 프로세스가 비용의 전부이고,
+// 인덱스가 아끼려던 일(문서 66개를 읽고 접는 것)이 이미 4ms다. 아끼는 것보다
+// 확인하는 것이 비싸면 캐시는 가속이 아니라 감속이다.
+//
+// 그래서 기본값을 되돌린다. 인덱스를 지우지는 않는다 — 정본 읽기 비용은 문서
+// 수에 비례해 늘지만 유효성 확인 비용은 늘지 않으므로 언젠가 교차점이 온다.
+// 그때 이 기본값을 다시 뒤집으면 되고, 그 판단의 근거는 추측이 아니라 측정이어야
+// 한다. 두 경로의 답이 같다는 것은 등가성 시험이 계속 지킨다.
 function queryTasks(start, options) {
   const settings = options || {};
   const { listTasks } = require('./agent-context');
-  if (settings.cold !== true) {
+  if (settings.index === true && settings.cold !== true) {
     const read = readIndex(start);
     if (read.status === 'valid') {
       const tasks = read.index.tasks.filter((task) => (!settings.project || task.project === settings.project)

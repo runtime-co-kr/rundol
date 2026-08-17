@@ -61,7 +61,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
   rdl index status|rebuild|clear [--root <path>] [--json]
-  rdl task list [--project <key>] [--status <state>] [--open] [--json]
+  rdl task list [--project <key>] [--status <state>] [--open] [--index|--cold] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
