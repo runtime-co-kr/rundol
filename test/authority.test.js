@@ -280,6 +280,74 @@ try {
   assert(auditFold.diagnostics.some((item) => item.eventId === `EVT-${hex('6')}` && ['RDL-DEC-021', 'RDL-DEC-026'].includes(item.code)),
     `사칭 답변이 진단으로 남아야 합니다: ${JSON.stringify(auditFold.diagnostics)}`);
 
+  // 지나간 질문을 대상으로 한 잘못된 대체도 드러나야 한다. 살아 있는 답변만
+  // 먼저 골라 내면 없는 이벤트·자기 자신·분기를 가리키는 대체가 진단 없이
+  // 사라진다 — 상태를 못 바꾸는 것과 잘못이 기록되지 않는 것은 다르다.
+  //
+  // 실제로 질문을 교체한 뒤 지나간 질문에 답을 밀어 넣어 확인한다. 교체 없이
+  // 확인하면 이 경로를 지나지 않는다.
+  const pastKey = decisionKey({ kind: 'release-version', project: 'crm', subject: 'v0.33.0' });
+  const pastDecisionId = require('../src/decision').decisionIdFor(pastKey);
+  const pastBase = {
+    schemaVersion: 1,
+    rootRequestId: `REQ-${hex('A')}`,
+    clientId: 'agent-a',
+    projectId: 'crm',
+    decisionId: pastDecisionId,
+    decisionKey: pastKey,
+    kind: 'release-version'
+  };
+  const firstQuestion = {
+    question: '첫 질문',
+    options: [{ id: 'minor', label: '마이너' }, { id: 'major', label: '메이저' }],
+    recommendation: { option: 'minor', because: '첫 근거' },
+    impact: { reversible: true, blast: '배포' },
+    evidence: []
+  };
+  const secondQuestion = Object.assign({}, firstQuestion, { question: '교체된 질문' });
+  const firstRequestId = `EVT-${hex('C')}`;
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, pastBase, firstQuestion, {
+    eventId: firstRequestId, requestId: `REQ-${hex('B')}`, type: 'decision.requested', recordedAt: new Date().toISOString()
+  }));
+  // Q1에 정상 답변.
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, pastBase, {
+    eventId: `EVT-${hex('D')}`, requestId: `REQ-${hex('E')}`, type: 'decision.answered',
+    selectedOption: 'minor', answeredBy: 'MEMBER-001',
+    requestDigest: requestDigestFor(firstQuestion),
+    reason: '첫 질문에 답한다', recordedAt: new Date().toISOString()
+  }));
+  // Q1을 Q2로 교체한다.
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, pastBase, secondQuestion, {
+    eventId: `EVT-${hex('F')}`, requestId: `REQ-${hex('9')}`, type: 'decision.requested',
+    supersedes: firstRequestId, recordedAt: new Date().toISOString()
+  }));
+  // 지나간 질문(Q1)을 대상으로 없는 이벤트를 대체하는 답변을 밀어 넣는다.
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, pastBase, {
+    eventId: `EVT-${'3'.repeat(20)}`, requestId: `REQ-${'4'.repeat(20)}`, type: 'decision.answered',
+    selectedOption: 'major', answeredBy: 'MEMBER-001',
+    requestDigest: requestDigestFor(firstQuestion),
+    supersedes: `EVT-${'7'.repeat(20)}`,
+    reason: '없는 답변을 대체한다', recordedAt: new Date().toISOString()
+  }));
+  // 자기 자신을 대체하는 답변도 같은 그룹에 넣는다.
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, pastBase, {
+    eventId: `EVT-${'5'.repeat(20)}`, requestId: `REQ-${'6'.repeat(20)}`, type: 'decision.answered',
+    selectedOption: 'major', answeredBy: 'MEMBER-001',
+    requestDigest: requestDigestFor(firstQuestion),
+    supersedes: `EVT-${'5'.repeat(20)}`,
+    reason: '자기 자신을 대체한다', recordedAt: new Date().toISOString()
+  }));
+  const pastFold = require('../src/decision').foldDecisions(
+    require('../src/decision').readDecisionEvents(eventsRoot(), 'crm'), { authority: authorityFor('crm') });
+  const pastDiagnostics = pastFold.diagnostics.filter((item) => ['RDL-DEC-022', 'RDL-DEC-023'].includes(item.code));
+  assert(pastDiagnostics.some((item) => item.code === 'RDL-DEC-023'),
+    `지나간 질문의 없는 대체 대상이 지목되어야 합니다: ${JSON.stringify(pastFold.diagnostics)}`);
+  assert(pastDiagnostics.some((item) => item.code === 'RDL-DEC-022'),
+    `지나간 질문의 자기 대체가 지목되어야 합니다: ${JSON.stringify(pastFold.diagnostics)}`);
+  // 그럼에도 상태는 바뀌지 않는다 — 교체된 질문에는 아직 답이 없다.
+  const pastDecision = pastFold.decisions.find((item) => item.decisionId === pastDecisionId);
+  assert.strictEqual(pastDecision.status, 'open', '교체된 질문은 새 답이 있어야 닫힌다.');
+
   // ── 5. 취소는 미래에만 작용한다 ──────────────────────────────────────
   // 인가를 "지금 유효한가"로 판정하면 두 가지가 동시에 깨진다. 만료·취소된 위임이
   // 영원히 통하고, 반대로 취소하면 그 전에 정당하게 한 일이 사라진다. 둘 다 원장의

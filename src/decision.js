@@ -397,9 +397,9 @@ function foldDecisions(events, options) {
         diagnostics.push({ code: verdict.code, severity: 'error', eventId: answer.eventId, message: verdict.message });
         return false;
       }
-      // 여기까지 온 답변은 유효하고 권한도 있다. 다만 답한 질문이 대체됐다면
-      // 지금 상태를 정하지는 못한다 — 잘못이 아니라 지나간 것이다.
-      return answer.requestDigest === liveDigest;
+      // 여기까지 온 답변은 유효하고 권한도 있다. 살아 있는지는 아직 보지 않는다 —
+      // 대체 관계를 먼저 검증해야 지나간 질문의 잘못된 대체도 드러난다.
+      return true;
     });
     // 서로 다른 선택이 동시에 도착하면 하나를 고르는 것은 결정이 아니라 은폐다.
     // 권한 결정에서 순서 결정성만으로는 부족하다 — 상충하는 답은 해소될 때까지
@@ -411,9 +411,26 @@ function foldDecisions(events, options) {
     // 대체는 같은 결정 안의 기존 답변만 가리킬 수 있고, 하나의 답변을 여럿이
     // 대체할 수 없으며, 자기 자신이나 순환을 이룰 수 없다. 이 제약이 없으면
     // 대체 관계로 임의의 답을 살리거나 죽일 수 있어 해소 경로가 새 공격면이 된다.
-    const live = resolveSuperseded(answers, diagnostics, {
-      self: 'RDL-DEC-022', unknown: 'RDL-DEC-023', fork: 'RDL-DEC-024', cycle: 'RDL-DEC-025'
-    });
+    //
+    // 대체 관계는 질문별로 검증한다. 살아 있는 답변만 먼저 골라 내면, 지나간
+    // 질문을 대상으로 한 잘못된 대체 — 없는 이벤트·자기 자신·분기·순환 — 가
+    // 진단 없이 사라진다. 상태를 바꾸지 못하는 것과 잘못이 기록되지 않는 것은
+    // 다르고, 감사 원장에서는 후자가 더 나쁘다.
+    //
+    // 대체는 같은 질문에 대한 답변끼리만 성립한다. 다른 질문의 답변을 가리키는
+    // 대체는 무엇을 해소하는지 알 수 없으므로 그 자체가 잘못이다.
+    const byRequestDigest = new Map();
+    for (const answer of answers) {
+      if (!byRequestDigest.has(answer.requestDigest)) byRequestDigest.set(answer.requestDigest, []);
+      byRequestDigest.get(answer.requestDigest).push(answer);
+    }
+    let live = [];
+    for (const [digest, entries] of Array.from(byRequestDigest).sort((left, right) => left[0].localeCompare(right[0]))) {
+      const survivors = resolveSuperseded(entries, diagnostics, {
+        self: 'RDL-DEC-022', unknown: 'RDL-DEC-023', fork: 'RDL-DEC-024', cycle: 'RDL-DEC-025'
+      });
+      if (digest === liveDigest) live = survivors;
+    }
     const selections = new Set(live.map((entry) => entry.selectedOption));
     if (selections.size > 1) {
       diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')}). 해소하려면 대체할 답변의 eventId를 supersedes로 지정하세요.` });
