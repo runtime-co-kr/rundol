@@ -214,7 +214,11 @@ const running = (async () => {
       syncLease: () => { heartbeatOrder.push('sync'); }, releaseLease: () => { heartbeatOrder.push('release'); },
       executeAdapter: async ({ signal }) => {
         const source = "const fs=require('fs');const {spawn}=require('child_process');const child=spawn(process.execPath,['-e',\"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)\"],{stdio:'ignore'});fs.writeFileSync(process.argv[1],String(child.pid));if(process.platform!=='win32')process.on('SIGTERM',()=>process.exit(0));setInterval(()=>{},1000);";
-        const execution = await executeOnce(process.execPath, ['-e', source, descendantFile], { cwd: heartbeatDirectory, env: process.env, timeoutSeconds: 10, signal });
+        // 자식과 손자의 cwd를 임시 디렉터리로 두면 Windows가 그 디렉터리를 잠그고,
+        // 정리가 EBUSY로 실패한다. 프로세스가 죽어도 핸들 해제가 늦으면 재시도로는
+        // 못 넘긴다 — 기다릴 게 아니라 잠금을 만들지 않는다. pid 파일 경로는
+        // 절대 경로이므로 cwd와 무관하다.
+        const execution = await executeOnce(process.execPath, ['-e', source, descendantFile], { cwd: os.tmpdir(), env: process.env, timeoutSeconds: 10, signal });
         return { exitCode: execution.category === 'success' ? 0 : 2, artifactIds: [] };
       },
       recordEvent: (_context, event) => { adapterRecords.push(event); adapterEvents.push(progress(adapterEvents[0], event)); }
