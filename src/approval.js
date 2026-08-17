@@ -66,7 +66,7 @@ function normalizeBasis(value) {
 function normalizeApprovalEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('승인 이벤트는 객체여야 합니다.');
   if (input.type !== 'approval.granted') throw new Error(`알 수 없는 승인 이벤트 종류입니다: ${input.type || '(없음)'}`);
-  const allowed = BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis', 'reason', 'delegationId', 'canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis', 'reason', 'delegationId', 'recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`승인 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis'])) if (input[field] === undefined) throw new Error(`approval.granted.${field}이(가) 필요합니다.`);
@@ -92,9 +92,22 @@ function normalizeApprovalEvent(input) {
     if (!DELEGATION_ID.test(input.delegationId || '')) throw new Error('위임 식별자가 유효하지 않습니다.');
     normalized.delegationId = input.delegationId;
   }
+  // 인가 판정에 쓰는 기록 시각. canonical 안에 있으므로 고치면 다이제스트가 달라진다.
+  if (input.recordedAt !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.recordedAt || '')) throw new Error('기록 시각은 밀리초 단위 ISO-8601 UTC여야 합니다.');
+    normalized.recordedAt = input.recordedAt;
+  }
   return normalized;
 }
 
+// 판정에 쓰는 값은 다이제스트가 덮어야 한다. occurredAt은 표시·정렬용이고
+// canonical 밖이라 같은 이벤트의 시각만 바꿔도 다이제스트가 그대로다 — 그 값으로
+// 권한을 판정하면 취소된 위임을 취소 전으로 되돌려 다시 쓸 수 있다. 그래서 인가에
+// 쓰는 시각은 canonical 안의 별도 필드로 둔다.
+//
+// 이렇게 하면 기록된 시각을 고치는 순간 다이제스트가 달라진다. 원본이 이미 공유된
+// 뒤라면 같은 eventId에 다른 다이제스트가 생겨 상충으로 잡히고, 그 기록은 상태를
+// 바꾸지 못한다(fail-closed).
 function approvalEnvelope(input) {
   const canonical = normalizeApprovalEvent(input);
   const canonicalBytes = Buffer.from(eventStore.canonicalJson(canonical), 'utf8');
@@ -116,9 +129,10 @@ function approvalEnvelope(input) {
 // 접기가 하고, 접기는 이 값과 위임의 부여·만료·취소 시각을 비교할 뿐 읽는
 // 시점의 시계를 보지 않는다 — 같은 이벤트를 언제 읽어도 같은 답이 나온다.
 function appendApprovalEvent(eventsRoot, input, options) {
-  const stamped = input && input.occurredAt === undefined
-    ? Object.assign({}, input, { occurredAt: new Date().toISOString() })
-    : input;
+  const now = new Date().toISOString();
+  const stamped = Object.assign({}, input,
+    input && input.occurredAt === undefined ? { occurredAt: now } : {},
+    input && input.recordedAt === undefined ? { recordedAt: now } : {});
   const envelope = approvalEnvelope(stamped);
   const file = eventStore.appendEvent(eventsRoot, 'approval', envelope.canonical.projectId, envelope.canonical.clientId, envelope.shared, {
     lockDirectory: options && options.lockDirectory,
@@ -172,14 +186,14 @@ function foldApprovals(events, options) {
     const codes = { unknownClient: 'RDL-APPROVE-020', impersonation: 'RDL-APPROVE-021', delegation: 'RDL-APPROVE-022', member: 'RDL-APPROVE-023' };
     // 행위자는 언제나 이 Client의 소유자여야 한다. 행위자 자리에는 위임이 서지 못한다 —
     // 위임은 누가 책임지는가를 옮길 뿐 누가 실제로 눌렀는가를 바꾸지 못한다.
-    const actor = verify({ clientId: event.clientId, memberId: event.actorMemberId, recordedAt: event.occurredAt }, authority, codes);
+    const actor = verify({ clientId: event.clientId, memberId: event.actorMemberId, recordedAt: event.recordedAt }, authority, codes);
     if (!actor.ok || actor.delegated) {
       diagnostics.push({ code: actor.code || 'RDL-APPROVE-021', severity: 'error', eventId: event.eventId, message: actor.message || '행위자를 위임으로 대신할 수 없습니다.' });
       return false;
     }
     if (event.approvedBy === event.actorMemberId) return true;
     // 책임자가 행위자와 다르면 그 차이를 위임이 정당화해야 한다.
-    const responsible = verify({ clientId: event.clientId, memberId: event.approvedBy, delegationId: event.delegationId, kind: APPROVAL_DELEGATION_KIND, recordedAt: event.occurredAt }, authority, codes);
+    const responsible = verify({ clientId: event.clientId, memberId: event.approvedBy, delegationId: event.delegationId, kind: APPROVAL_DELEGATION_KIND, recordedAt: event.recordedAt }, authority, codes);
     if (!responsible.ok) {
       diagnostics.push({ code: responsible.code, severity: 'error', eventId: event.eventId, message: responsible.message });
       return false;

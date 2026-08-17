@@ -18,6 +18,7 @@ require('./document-diagram.test');
 require('./document-composite.test');
 require('./implementation-contract.test');
 require('./document-contract.test');
+require('./document-grouping.test');
 require('./document-migration.test');
 require('./note-artifact.test');
 require('./git.test');

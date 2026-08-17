@@ -129,7 +129,7 @@ function normalizeDecisionEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('결정 이벤트는 객체여야 합니다.');
   if (!['decision.requested', 'decision.answered'].includes(input.type)) throw new Error(`알 수 없는 결정 이벤트 종류입니다: ${input.type || '(없음)'}`);
   const requested = input.type === 'decision.requested';
-  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence', 'supersedes'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId'], ['canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence', 'supersedes'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId'], ['recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`${input.type}에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS) if (input[field] === undefined) throw new Error(`${input.type}.${field}이(가) 필요합니다.`);
@@ -172,9 +172,22 @@ function normalizeDecisionEvent(input) {
       normalized.delegationId = input.delegationId;
     }
   }
+  // 인가 판정에 쓰는 기록 시각. canonical 안에 있으므로 고치면 다이제스트가 달라진다.
+  if (input.recordedAt !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.recordedAt || '')) throw new Error('기록 시각은 밀리초 단위 ISO-8601 UTC여야 합니다.');
+    normalized.recordedAt = input.recordedAt;
+  }
   return normalized;
 }
 
+// 판정에 쓰는 값은 다이제스트가 덮어야 한다. occurredAt은 표시·정렬용이고
+// canonical 밖이라 같은 이벤트의 시각만 바꿔도 다이제스트가 그대로다 — 그 값으로
+// 권한을 판정하면 취소된 위임을 취소 전으로 되돌려 다시 쓸 수 있다. 그래서 인가에
+// 쓰는 시각은 canonical 안의 별도 필드로 둔다.
+//
+// 이렇게 하면 기록된 시각을 고치는 순간 다이제스트가 달라진다. 원본이 이미 공유된
+// 뒤라면 같은 eventId에 다른 다이제스트가 생겨 상충으로 잡히고, 그 기록은 상태를
+// 바꾸지 못한다(fail-closed).
 function decisionEnvelope(input) {
   const canonical = normalizeDecisionEvent(input);
   const canonicalBytes = Buffer.from(eventStore.canonicalJson(canonical), 'utf8');
@@ -196,9 +209,10 @@ function decisionEnvelope(input) {
 // 접기가 하고, 접기는 이 값과 위임의 부여·만료·취소 시각을 비교할 뿐 읽는
 // 시점의 시계를 보지 않는다 — 같은 이벤트를 언제 읽어도 같은 답이 나온다.
 function appendDecisionEvent(eventsRoot, input, options) {
-  const stamped = input && input.occurredAt === undefined
-    ? Object.assign({}, input, { occurredAt: new Date().toISOString() })
-    : input;
+  const now = new Date().toISOString();
+  const stamped = Object.assign({}, input,
+    input && input.occurredAt === undefined ? { occurredAt: now } : {},
+    input && input.recordedAt === undefined ? { recordedAt: now } : {});
   const envelope = decisionEnvelope(stamped);
   const file = eventStore.appendEvent(eventsRoot, 'decision', envelope.canonical.projectId, envelope.canonical.clientId, envelope.shared, {
     lockDirectory: options && options.lockDirectory,
@@ -301,7 +315,7 @@ function foldDecisions(events, options) {
     // 상태로 만들어 진행을 막을 수 있다 — 답변만 지키면 반쪽이다.
     const authorizedRequests = group.requests.filter((entry) => {
       const verdict = require('./authority').verifyActor(
-        { clientId: entry.clientId, memberId: authority.owners.get(entry.clientId), recordedAt: entry.occurredAt },
+        { clientId: entry.clientId, memberId: authority.owners.get(entry.clientId), recordedAt: entry.recordedAt },
         authority, { unknownClient: 'RDL-DEC-020', impersonation: 'RDL-DEC-021', delegation: 'RDL-DEC-026', member: 'RDL-DEC-002' });
       if (!verdict.ok) {
         diagnostics.push({ code: verdict.code, severity: 'error', eventId: entry.eventId, message: verdict.message });
@@ -335,7 +349,7 @@ function foldDecisions(events, options) {
       // 이름으로 행위할 수 있었는가"를 확인해야 한다. 확인할 수 없는 답변은
       // 상태를 바꾸지 못한다 — run 원장의 sync 전이 인가(RDL-RUN-005)와 같은 경계다.
       const verdict = require('./authority').verifyActor(
-        { clientId: answer.clientId, memberId: answer.answeredBy, delegationId: answer.delegationId, kind: answer.kind, recordedAt: answer.occurredAt },
+        { clientId: answer.clientId, memberId: answer.answeredBy, delegationId: answer.delegationId, kind: answer.kind, recordedAt: answer.recordedAt },
         authority, { unknownClient: 'RDL-DEC-020', impersonation: 'RDL-DEC-021', delegation: 'RDL-DEC-026', member: 'RDL-DEC-002' });
       if (!verdict.ok) {
         diagnostics.push({ code: verdict.code, severity: 'error', eventId: answer.eventId, message: verdict.message });
@@ -496,14 +510,18 @@ function requestDecision(start, input) {
   const decisionId = decisionIdFor(key);
   const existing = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), foldContext(start, context))
     .decisions.find((decision) => decision.decisionKey === key);
-  if (existing) return { project: context.project.key, decision: existing, created: false };
+  // 이미 있는 결정에는 다시 묻지 않는다. 다만 요청 내용이 갈려 교착된 경우에는
+  // 대체할 요청을 지목해 해소할 수 있어야 한다 — 탈출구 없는 fail-closed는
+  // 교착이지 상태가 아니다.
+  if (existing && !settings.supersedes) return { project: context.project.key, decision: existing, created: false };
   const rootRequestId = settings.rootRequestId || newRootRequestId();
   const identity = decisionIdentity(rootRequestId, `decision:${settings.kind}:${key}`);
   const stored = appendDecisionEvent(context.eventsRoot, {
     schemaVersion: 1, eventId: identity.eventId, type: 'decision.requested', rootRequestId, requestId: identity.requestId,
     clientId, projectId: context.project.key, decisionId, decisionKey: key, kind: settings.kind,
     question: settings.question, options: settings.options, recommendation: settings.recommendation,
-    impact: settings.impact, evidence: settings.evidence
+    impact: settings.impact, evidence: settings.evidence,
+    ...(settings.supersedes ? { supersedes: settings.supersedes } : {})
   }, { lockDirectory: context.lockDirectory });
   // 위임은 질문을 없애되 기록을 없애지 않는다. 유효한 위임이 있으면 요청 직후
   // 부여자 명의의 답변을 함께 남긴다 — 감사 경로가 "물어본 결정"과 "위임된

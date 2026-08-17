@@ -269,7 +269,8 @@ try {
     options: [{ id: 'minor', label: '마이너' }, { id: 'major', label: '메이저' }],
     recommendation: { option: 'minor', because: '기능 추가' },
     impact: { reversible: true, blast: '배포' },
-    occurredAt: new Date().toISOString()
+    occurredAt: new Date().toISOString(),
+    recordedAt: new Date().toISOString()
   }));
   appendRaw('decision', 'crm', 'agent-a', Object.assign({}, lateBase, {
     eventId: `EVT-${hex('A')}`,
@@ -279,7 +280,8 @@ try {
     answeredBy: responsible,
     delegationId,
     reason: '취소된 위임을 근거로 든다',
-    occurredAt: new Date(Date.now() + 60000).toISOString()
+    occurredAt: new Date(Date.now() + 60000).toISOString(),
+    recordedAt: new Date(Date.now() + 60000).toISOString()
   }));
   const lateFold = rdl(['decision', 'list', '--project', 'crm']).decisions.find((item) => item.decisionId === lateDecisionId);
   assert.strictEqual(lateFold.status, 'open', '취소된 위임을 근거로 든 답변이 결정을 해소하면 안 됩니다.');
@@ -292,7 +294,76 @@ try {
   assert.strictEqual(afterDisable.answeredBy, responsible);
   rdl(['client', 'enable', 'agent-a']);
 
-  // ── 7. 인가 없는 접기는 불가능하다 ──────────────────────────────────
+  // ── 7. 판정에 쓰는 시각은 다이제스트가 덮는다 ────────────────────────
+  // occurredAt은 canonical 밖이라 같은 이벤트의 시각만 바꿔도 다이제스트가
+  // 그대로다. 그 값으로 권한을 판정하면 취소된 위임을 취소 전으로 되돌려 다시
+  // 쓸 수 있다 — 판정에 쓰는 값과 다이제스트가 덮는 값이 어긋나면 안 된다.
+  const { decisionEnvelope } = require('../src/decision');
+  const { approvalEnvelope } = require('../src/approval');
+  const { delegationEnvelope } = require('../src/delegation');
+  const answerBase = {
+    schemaVersion: 1,
+    eventId: `EVT-${hex('2')}`,
+    type: 'decision.answered',
+    rootRequestId: `REQ-${hex('3')}`,
+    requestId: `REQ-${hex('4')}`,
+    clientId: 'agent-a',
+    projectId: 'crm',
+    decisionId: lateDecisionId,
+    decisionKey: lateKey,
+    kind: 'release-version',
+    selectedOption: 'minor',
+    answeredBy: 'MEMBER-001',
+    reason: '시각이 다이제스트에 덮이는지 본다',
+    recordedAt: '2026-08-17T00:00:00.000Z'
+  };
+  const early = decisionEnvelope(answerBase).canonicalDigest;
+  const later = decisionEnvelope(Object.assign({}, answerBase, { recordedAt: '2026-08-18T00:00:00.000Z' })).canonicalDigest;
+  assert.notStrictEqual(early, later, '기록 시각을 바꾸면 결정 다이제스트가 달라져야 합니다.');
+  // 표시용 시각은 판정에 쓰이지 않으므로 다이제스트를 바꾸지 않는다.
+  assert.strictEqual(decisionEnvelope(Object.assign({}, answerBase, { occurredAt: '2026-01-01T00:00:00.000Z' })).canonicalDigest, early);
+
+  const approvalBase = {
+    schemaVersion: 1,
+    eventId: `EVT-${hex('5')}`,
+    type: 'approval.granted',
+    rootRequestId: `REQ-${hex('6')}`,
+    requestId: `REQ-${hex('0')}`,
+    clientId: 'agent-a',
+    projectId: 'crm',
+    targetId: document.id,
+    reviewedRevision: document.revision,
+    approvedBy: 'MEMBER-001',
+    actorMemberId: 'MEMBER-001',
+    basis: [{ kind: 'read' }],
+    recordedAt: '2026-08-17T00:00:00.000Z'
+  };
+  assert.notStrictEqual(
+    approvalEnvelope(approvalBase).canonicalDigest,
+    approvalEnvelope(Object.assign({}, approvalBase, { recordedAt: '2026-08-18T00:00:00.000Z' })).canonicalDigest,
+    '기록 시각을 바꾸면 승인 다이제스트가 달라져야 합니다.');
+
+  const revokeBase = {
+    schemaVersion: 1,
+    eventId: `EVT-${hex('C')}`,
+    type: 'delegation.revoked',
+    rootRequestId: `REQ-${hex('C')}`,
+    requestId: `REQ-${hex('D')}`,
+    clientId: 'desk-owner',
+    projectId: 'crm',
+    delegationId,
+    kind: 'release-version',
+    previousDelegationEventId: `EVT-${hex('E')}`,
+    revokedBy: responsible,
+    reason: '시각이 다이제스트에 덮이는지 본다',
+    recordedAt: '2026-08-17T00:00:00.000Z'
+  };
+  assert.notStrictEqual(
+    delegationEnvelope(revokeBase).canonicalDigest,
+    delegationEnvelope(Object.assign({}, revokeBase, { recordedAt: '2026-08-18T00:00:00.000Z' })).canonicalDigest,
+    '기록 시각을 바꾸면 위임 다이제스트가 달라져야 합니다.');
+
+  // ── 8. 인가 없는 접기는 불가능하다 ──────────────────────────────────
   // 안전한 경로가 opt-in이면 언젠가 꺼진다. 실제로 rdl check가 껐었다.
   assert.throws(() => foldApprovals([], {}), /인가 컨텍스트/u, '인가 없는 승인 접기는 거부되어야 합니다.');
   assert.throws(() => foldDelegations([], { now: 0 }), /인가 컨텍스트/u, '인가 없는 위임 접기는 거부되어야 합니다.');

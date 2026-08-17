@@ -301,11 +301,20 @@ function terminateTree(child) {
     // 않는다 — 트리 종료가 실패한 것은 실제 운영 사건이고, 아무 말도 남기지
     // 않으면 나중에 "왜 살아남았는가"에 답할 근거가 없다.
     const killed = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, shell: false, encoding: 'utf8' });
-    if (killed.status !== 0) {
-      const reason = String(killed.stderr || killed.stdout || '').trim() || `exit ${killed.status}`;
-      process.stderr.write(`rundol: 프로세스 트리 종료가 실패했습니다 (pid ${child.pid}): ${reason}\n`);
-    }
-    return Promise.resolve();
+    if (killed.status === 0) return Promise.resolve();
+    // taskkill이 접근 거부 등으로 실패했는데 성공한 것처럼 돌려주면, 취소는
+    // 끝났다고 보고되고 자손은 살아 있다. 실패했으면 남은 수단을 쓰고, 그래도
+    // 안 되면 그 사실이 드러나야 한다.
+    const reason = String(killed.stderr || killed.stdout || '').trim() || `exit ${killed.status}`;
+    process.stderr.write(`rundol: 프로세스 트리 종료가 실패했습니다 (pid ${child.pid}): ${reason}\n`);
+    try { child.kill('SIGKILL'); } catch (_) { try { child.kill(); } catch (_) {} }
+    return new Promise((resolve) => setTimeout(() => {
+      const retry = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, shell: false, encoding: 'utf8' });
+      if (retry.status !== 0 && !child.killed) {
+        process.stderr.write(`rundol: 프로세스 트리가 아직 살아 있습니다 (pid ${child.pid}). 자손 프로세스를 직접 확인하세요.\n`);
+      }
+      resolve();
+    }, 500));
   }
   try { process.kill(-child.pid, 'SIGTERM'); } catch (_) { try { child.kill('SIGTERM'); } catch (_) {} }
   // Keep the event loop alive for the full grace period. The group leader may

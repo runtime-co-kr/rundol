@@ -71,6 +71,7 @@ Usage:
   rdl help [--json]
   rdl decision list [--project <key>] [--open] [--json]
   rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
+                       [--supersedes <EVENT-ID>]
                        --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
                        [--evidence <근거>] --client-id <id> [--project <key>] [--json]
   rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
@@ -389,7 +390,7 @@ async function main() {
         question: options.question, options: parsed,
         recommendation: { option: options.recommend, because: options.because },
         impact: { reversible: !options.irreversible, blast: options.blast },
-        evidence: options.evidence, rootRequestId: options.requestId
+        evidence: options.evidence, supersedes: options.supersedes, rootRequestId: options.requestId
       });
       printOperation(result, options.json);
       return 0;
@@ -397,7 +398,8 @@ async function main() {
     if (options.positional.length !== 1) throw new Error('rdl decision answer에는 DEC-ID 하나가 필요합니다.');
     const answered = decision.answerDecision(options.root, {
       project: options.project, clientId: options.clientId, decisionId: options.positional[0],
-      selectedOption: options.select, answeredBy: options.member, reason: options.reason, supersedes: options.supersedes, rootRequestId: options.requestId
+      selectedOption: options.select, answeredBy: options.member, reason: options.reason, supersedes: options.supersedes,
+      delegationId: options.delegation, rootRequestId: options.requestId
     });
     printOperation(answered, options.json);
     return 0;
@@ -1107,7 +1109,10 @@ async function main() {
     const options = parseOperationArgs(argv);
     const type = options.positional.shift();
     const title = options.positional.join(' ').trim();
-    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes, functionIds: options.functionIds });
+    // 파싱한 플래그를 호출에 싣지 않으면 그 기능은 표면만 있고 경로가 없다.
+    // --grouped와 --reason이 정확히 그랬고, 기능 ID가 둘 이상인 문서를 CLI로는
+    // 만들 수 없었다 — supersedes·delegationId에 이은 세 번째 같은 누락이다.
+    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes, functionIds: options.functionIds, grouped: options.grouped, reason: options.reason });
     printOperation(result, options.json);
     if (DEBUG_CONTEXT) recordAction(options.root, { action: 'document.create', actualExecutor: 'cli', artifactId: result.id });
     return 0;

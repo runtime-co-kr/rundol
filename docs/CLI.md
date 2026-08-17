@@ -67,6 +67,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl help [--json]
   rdl decision list [--project <key>] [--open] [--json]
   rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
+                       [--supersedes <EVENT-ID>]
                        --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
                        [--evidence <근거>] --client-id <id> [--project <key>] [--json]
   rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
