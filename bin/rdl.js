@@ -64,6 +64,7 @@ Usage:
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
+  rdl index status|rebuild|clear [--root <path>] [--json]
   rdl task list [--project <key>] [--status <state>] [--open] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
@@ -396,6 +397,22 @@ async function main() {
       selectedOption: options.select, answeredBy: options.member, reason: options.reason, supersedes: options.supersedes, rootRequestId: options.requestId
     });
     printOperation(answered, options.json);
+    return 0;
+  }
+  if (command === 'index') {
+    const subcommand = argv.shift();
+    if (!['status', 'rebuild', 'clear'].includes(subcommand)) throw new Error('지원하는 인덱스 하위 명령은 status, rebuild, clear입니다.');
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error(`rdl index ${subcommand}에는 위치 인수를 사용할 수 없습니다.`);
+    const queryIndex = require('../src/query-index');
+    // 인덱스는 삭제 가능한 캐시다. 지워도 데이터가 사라지지 않고 조회도 멈추지
+    // 않는다 — 정확성의 기준은 언제나 무인덱스 경로다(REQ-041).
+    if (subcommand === 'status') printOperation(queryIndex.indexStatus(options.root), options.json);
+    else if (subcommand === 'clear') printOperation(queryIndex.clearIndex(options.root), options.json);
+    else {
+      const built = queryIndex.buildIndex(options.root);
+      printOperation({ file: queryIndex.indexFile(built.builtFrom), fingerprint: built.fingerprint, documents: built.documents.length, tasks: built.tasks.length }, options.json);
+    }
     return 0;
   }
   if (command === 'workset') {
