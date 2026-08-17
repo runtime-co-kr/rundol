@@ -114,6 +114,18 @@ try {
   assert.strictEqual(invalidOption.open.length, 1);
   assert(invalidOption.diagnostics.some((item) => item.code === 'RDL-DEC-017'));
 
+  // 서로 다른 답이 동시에 도착하면 하나를 고르는 것은 결정이 아니라 은폐다.
+  // 권한 결정은 모호할 때 열리는 것이 아니라 닫혀야 한다(fail-closed).
+  const conflicting = foldDecisions([requestEvent(), answerEvent(), answerEvent({ eventId: 'EVT-55555555555555555555', requestId: 'REQ-55555555555555555555', selectedOption: 'patch' })], { members: ['MEMBER-001'] });
+  assert.strictEqual(conflicting.open.length, 1, '상충하는 답변은 결정을 해소하면 안 됩니다.');
+  assert.strictEqual(conflicting.decisions[0].selectedOption, null);
+  assert(conflicting.diagnostics.some((item) => item.code === 'RDL-DEC-018'));
+
+  // 같은 결정 키에 다른 질문이 들어오면 무엇에 답하는지가 갈린다.
+  const forked = foldDecisions([requestEvent(), requestEvent({ eventId: 'EVT-66666666666666666666', requestId: 'REQ-66666666666666666666', question: '다른 질문입니다.' }), answerEvent()], { members: ['MEMBER-001'] });
+  assert.strictEqual(forked.open.length, 1);
+  assert(forked.diagnostics.some((item) => item.code === 'RDL-DEC-019'));
+
   // fold는 열거 순서의 함수가 아니다.
   const forward = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'] });
   const reversed = foldDecisions([answerEvent(), requestEvent()], { members: ['MEMBER-001'] });
@@ -129,6 +141,12 @@ try {
   rdl(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
   rdl(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
   rdl(['client', 'register', 'desk-b', '--name', 'Desk B', '--type', 'device', '--owner', 'MEMBER-001']);
+  // 다른 멤버를 사칭할 수 없다. 활성 Client와 멤버 존재만 확인하면 어떤 Client든
+  // 아무 멤버의 이름으로 결정할 수 있고, 그러면 승인 기록이 "누가 책임지는가"를
+  // 답하지 못한다.
+  rdl(['contract', 'set', '--project', 'crm', '--profile', 'lean', '--enforcement', 'advisory']);
+  const secondMember = rdl(['member', 'add', '두 번째 멤버', '--role', 'ROLE-001', '--organization', '조직', '--account', 'second@example.test', '--responsibility', '검토', '--project', 'crm']);
+  assert.strictEqual(secondMember.member, 'MEMBER-002');
 
   const requestInput = {
     project: 'crm', clientId: 'agent-a', kind: 'release-version', subject: 'v0.30.0',
@@ -149,6 +167,8 @@ try {
   // 요청하지 않은 클라이언트가 답하고, 그 답이 공유 원장에서 읽힌다.
   assert.throws(() => answerDecision(temporary, { project: 'crm', clientId: 'desk-b', decisionId: created.decision.decisionId, selectedOption: 'major', answeredBy: 'MEMBER-001', reason: 'x' }), /선택지에 없는 값/u);
   assert.throws(() => answerDecision(temporary, { project: 'crm', clientId: 'desk-b', decisionId: created.decision.decisionId, selectedOption: 'minor', answeredBy: 'MEMBER-404', reason: 'x' }), /등록된 멤버만/u);
+  // MEMBER-002는 등록된 멤버지만 desk-b의 소유자가 아니다 — 사칭은 거부된다.
+  assert.throws(() => answerDecision(temporary, { project: 'crm', clientId: 'desk-b', decisionId: created.decision.decisionId, selectedOption: 'minor', answeredBy: 'MEMBER-002', reason: '사칭 시도' }), /자기 소유 멤버의 이름으로만/u);
   const resolved = answerDecision(temporary, { project: 'crm', clientId: 'desk-b', decisionId: created.decision.decisionId, selectedOption: 'minor', answeredBy: 'MEMBER-001', reason: '새 명령이 포함되어 마이너가 맞습니다' });
   assert.strictEqual(resolved.decision.status, 'answered');
   assert.strictEqual(resolved.decision.answeredBy, 'MEMBER-001');

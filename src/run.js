@@ -829,9 +829,14 @@ async function tickRun(start, options, dependencies) {
     const verifier = deps.verifyArtifact || ((input) => require('./verify').verifyArtifact(start, input));
     let outcome;
     try {
+      // 검증은 자기 저널 root를 쓴다. drive의 root를 그대로 넘기면 같은 root에
+      // 서로 다른 command digest(run.drive vs verify)가 요구되어 재생 대조가
+      // 충돌한다. root를 operationId에서 파생시켜 재시도 멱등성은 지키면서
+      // 저널을 분리한다.
       outcome = await verifier({
         project: context.project.key, targetId, clientId: options.clientId, runId: context.fold.runId,
-        rootRequestId: options.requestId, lenses: undefined, adapter: undefined
+        rootRequestId: `REQ-${ledger.sha256(`rundol.drive-verify.v1\0${operationId}`).slice(0, 20).toUpperCase()}`,
+        lenses: undefined, adapter: undefined
       });
     } catch (error) {
       return { exitCode: 2, status: 'error', code: 'verification-environment', reason: error.message, operationId };

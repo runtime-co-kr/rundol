@@ -74,6 +74,10 @@ try {
 
   const created = rdl(['doc', 'create', 'ADR', '승인 대상 결정', '--owner', 'MEMBER-001', '--scope', '승인 흐름 검증을 위한 결정 기록', '--exclude', '구현 절차', '--project', 'crm']);
   const documentFile = path.join(temporary, 'projects', 'crm', created.relativeFile.replace(/^projects\/crm\//u, ''));
+  const projectRoot = path.join(temporary, 'projects', 'crm');
+  // 승인 이전에 커밋해 두어야 승인된 리비전을 담은 커밋이 실제로 존재한다.
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'add document'], projectRoot);
 
   // AI가 만든 문서는 승인 기록이 없으므로 미승인이다 — frontmatter의 state와 무관하다.
   const initial = documentStatus(temporary, { project: 'crm' });
@@ -112,11 +116,14 @@ try {
   assert.strictEqual(history.document.status, 'stale');
 
   // 승인 이후 변경분만 보여준다 — 재승인이 싸야 엄격한 무효화가 유지된다.
-  command('git', ['add', '-A'], path.join(temporary, 'projects', 'crm'));
-  command('git', ['commit', '-m', 'edit after approval'], path.join(temporary, 'projects', 'crm'));
+  // 조건부 단언은 결함을 덮는다: 기준 커밋을 찾지 못해도 통과해 버린다.
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'edit after approval'], projectRoot);
   const diff = diffSinceApproval(temporary, { project: 'crm', targetId: created.id });
   assert.strictEqual(diff.status, 'stale');
-  if (diff.diff) assert(diff.diff.includes('승인 이후 추가된 문장'), `승인 이후 변경분이 나와야 합니다: ${diff.diff.slice(0, 200)}`);
+  assert(diff.baseCommit, `승인된 리비전을 담은 커밋을 찾아야 합니다: ${diff.reason || '(사유 없음)'}`);
+  assert(diff.diff && diff.diff.includes('승인 이후 추가된 문장'), `승인 이후 변경분이 나와야 합니다: ${String(diff.diff).slice(0, 200)}`);
+  assert.strictEqual(diff.approvedBy, 'MEMBER-001');
 
   // CLI 표면과 검사.
   const statusCli = rdl(['doc', 'status', '--project', 'crm']);

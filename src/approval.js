@@ -13,8 +13,16 @@
 
 const crypto = require('crypto');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const eventStore = require('./event-store');
 const { runGit } = require('./git');
+
+// 커밋 시점의 파일 내용을 바이트 그대로 읽는다. 공용 runGit은 stdout을 trim하기
+// 때문에 내용 조회에는 쓸 수 없다 — 후행 개행 하나가 리비전을 바꾼다.
+function showFileAtCommit(root, commit, relativeFile) {
+  const result = spawnSync('git', ['show', `${commit}:${relativeFile}`], { cwd: root, encoding: 'utf8', windowsHide: true });
+  return result.status === 0 ? result.stdout : null;
+}
 
 const EVENT_ID = /^EVT-[A-F0-9]{20}$/u;
 const REQUEST_ID = /^REQ-[A-F0-9]{20}$/u;
@@ -202,9 +210,10 @@ function approveDocument(start, input) {
   const { getClient } = require('./collaboration-store');
   const { readCollaboration } = require('./collaboration');
   const clientId = String(settings.clientId || '').trim().toLowerCase();
-  if (getClient(start, clientId).status !== 'active') throw new Error(`비활성 Client는 승인할 수 없습니다: ${clientId}`);
+  const client = getClient(start, clientId);
+  if (client.status !== 'active') throw new Error(`비활성 Client는 승인할 수 없습니다: ${clientId}`);
   const members = readCollaboration(context.layout.root, context.project.key).members.map((member) => member.id);
-  if (!members.includes(settings.approvedBy)) throw new Error(`project.md에 등록된 멤버만 승인할 수 있습니다: ${settings.approvedBy || '(없음)'}`);
+  require('./decision').assertActingMember(client, settings.approvedBy, members, '승인');
   const document = findDocument(context.project, settings.targetId);
   const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
   const state = trustState(document, folded.approvals.get(document.id));
@@ -265,9 +274,12 @@ function diffSinceApproval(start, input) {
   const log = runGit(['log', '--follow', '--format=%H', '--', document.file], { cwd: context.project.root, allowFailure: true });
   const commits = (log.status === 0 ? log.stdout : '').split(/\r?\n/u).filter(Boolean);
   for (const commit of commits) {
-    const shown = runGit(['show', `${commit}:${document.file}`], { cwd: context.project.root, allowFailure: true });
-    if (shown.status !== 0) continue;
-    const parsed = parseFrontmatter(shown.stdout);
+    // runGit은 stdout을 trim한다. 파일 내용을 그렇게 읽으면 후행 개행이 잘려
+    // 리비전이 달라지고, 승인된 리비전을 담은 커밋이 있어도 영영 못 찾는다 —
+    // 내용은 바이트 그대로 읽어야 한다.
+    const shown = showFileAtCommit(context.project.root, commit, document.file);
+    if (shown === null) continue;
+    const parsed = parseFrontmatter(shown);
     if (!parsed || documentRevision(parsed.data, parsed.body) !== approvedRevision) continue;
     const diff = runGit(['diff', `${commit}`, '--', document.file], { cwd: context.project.root, allowFailure: true });
     return { project: context.project.key, targetId: document.id, status: state.status, approvedRevision, approvedBy: state.approvedBy, baseCommit: commit, diff: diff.status === 0 ? diff.stdout : null };

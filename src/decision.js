@@ -236,7 +236,19 @@ function foldDecisions(events, options) {
       }
       return true;
     });
-    const answer = answers[0] || null;
+    // 서로 다른 선택이 동시에 도착하면 하나를 고르는 것은 결정이 아니라 은폐다.
+    // 권한 결정에서 순서 결정성만으로는 부족하다 — 상충하는 답은 해소될 때까지
+    // 열린 상태로 두고 진단으로 드러낸다(fail-closed).
+    const selections = new Set(answers.map((entry) => entry.selectedOption));
+    if (selections.size > 1) {
+      diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')})` });
+    }
+    // 같은 결정 키에 서로 다른 질문이 들어오면 무엇에 답하는지가 갈린다.
+    const questions = new Set(group.requests.map((entry) => entry.question));
+    if (questions.size > 1) {
+      diagnostics.push({ code: 'RDL-DEC-019', severity: 'error', message: `같은 결정 키에 서로 다른 질문이 있습니다: ${decisionIdFor(key)}` });
+    }
+    const answer = selections.size > 1 || questions.size > 1 ? null : (answers[0] || null);
     decisions.push({
       decisionId: request.decisionId,
       decisionKey: key,
@@ -291,6 +303,15 @@ function assertActiveClient(start, clientId) {
   const client = getClient(start, clientId);
   if (client.status !== 'active') throw new Error(`비활성 Client는 결정을 다룰 수 없습니다: ${clientId}`);
   return client;
+}
+
+// 행위자 결박. 멤버가 등록돼 있다는 것만 확인하면 어떤 활성 Client든 아무 멤버의
+// 이름으로 결정하고 위임하고 승인할 수 있다 — 책임 귀속이 무너지고, 승인 기록은
+// "누가 책임지는가"를 답하지 못한다. Client는 자기 owner의 이름으로만 행위한다.
+// (소유권 해소가 이미 쓰던 결박이다: client.owner가 프로젝트 멤버여야 한다.)
+function assertActingMember(client, memberId, members, action) {
+  if (!members.includes(memberId)) throw new Error(`project.md에 등록된 멤버만 ${action}할 수 있습니다: ${memberId || '(없음)'}`);
+  if (client.owner !== memberId) throw new Error(`Client는 자기 소유 멤버의 이름으로만 ${action}할 수 있습니다: ${client.id}의 소유자는 ${client.owner}입니다.`);
 }
 
 function decisionIdentity(rootRequestId, childKey) {
@@ -353,9 +374,9 @@ function answerDecision(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
   const clientId = String(settings.clientId || '').trim().toLowerCase();
-  assertActiveClient(start, clientId);
+  const client = assertActiveClient(start, clientId);
   const members = projectMembers(context.layout.root, context.project.key);
-  if (!members.includes(settings.answeredBy)) throw new Error(`project.md에 등록된 멤버만 답할 수 있습니다: ${settings.answeredBy || '(없음)'}`);
+  assertActingMember(client, settings.answeredBy, members, '답변');
   const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members });
   const decision = folded.decisions.find((item) => item.decisionId === settings.decisionId);
   if (!decision) throw new Error(`결정을 찾지 못했습니다: ${settings.decisionId || '(없음)'}`);
@@ -375,7 +396,7 @@ function answerDecision(start, input) {
 }
 
 module.exports = {
-  FAMILIES, KINDS, DECISION_ID,
+  FAMILIES, KINDS, DECISION_ID, assertActingMember,
   sha256, kindDefinition, decisionKey, decisionIdFor,
   normalizeDecisionEvent, decisionEnvelope, appendDecisionEvent, readDecisionEvents, foldDecisions,
   listDecisions, requestDecision, answerDecision

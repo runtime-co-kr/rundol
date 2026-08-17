@@ -336,12 +336,18 @@ const running = (async () => {
   const passStart = startEvent(verifyProcedure);
   const passEvents = [passStart, progress(passStart, { type: 'run.step', stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: ['REQ-001'] })];
   const passRecords = [];
-  const passed = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
+  const verifyRoots = [];
+  const driveRequestId = identifier('REQ');
+  const passed = await tickRun('.', { clientId: 'agent-one', requestId: driveRequestId }, {
     runContext: () => context(passEvents), acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
-    verifyArtifact: (input) => { assert.strictEqual(input.targetId, 'REQ-001', '검증 대상은 최근 산출물이다'); return { fold: { status: 'passed' } }; },
+    verifyArtifact: (input) => { assert.strictEqual(input.targetId, 'REQ-001', '검증 대상은 최근 산출물이다'); verifyRoots.push(input.rootRequestId); return { fold: { status: 'passed' } }; },
     recordEvent: (_context, event) => { passRecords.push(event); passEvents.push(progress(passStart, event.type === 'run.gate' ? Object.assign({ attempt: 1 }, event) : event)); }
   });
   assert.strictEqual(passed.status, 'continue');
+  // 검증은 자기 저널 root를 쓴다. drive의 root를 그대로 넘기면 같은 root에 서로
+  // 다른 command digest(run.drive vs verify)가 요구되어 재생 대조가 충돌한다.
+  assert(verifyRoots[0] && verifyRoots[0] !== driveRequestId, `검증 저널 root는 drive root와 분리되어야 합니다: ${verifyRoots[0]}`);
+  assert.match(verifyRoots[0], /^REQ-[A-F0-9]{20}$/u);
   assert.deepStrictEqual(passRecords.map((event) => event.type), ['run.gate']);
   assert.strictEqual(passRecords[0].command, 'verify');
   assert.strictEqual(passRecords[0].exitCode, 0);

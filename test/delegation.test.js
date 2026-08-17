@@ -83,11 +83,31 @@ try {
     clientId: 'desk-b', projectId: 'crm', delegationId: grantEvent().delegationId, kind: 'scope-change',
     previousDelegationEventId: 'EVT-11111111111111111111', revokedBy: 'MEMBER-001', reason: '범위 판단을 다시 사람이 한다'
   };
+  // 만료 판정 시각은 호출자가 준다 — fold 안에서 벽시계를 읽으면 같은 이벤트가
+  // 언제 읽느냐에 따라 다른 결과를 낸다.
+  assert.throws(() => foldDelegations([grantEvent()], {}), /현재 시각\(now\)이 필요/u);
+  assert.throws(() => foldDelegations([grantEvent()]), /현재 시각\(now\)이 필요/u);
+
   const revoked = foldDelegations([grantEvent(), revokeEvent], { now: '2026-01-05T00:00:00.000Z' });
   assert.strictEqual(revoked.active.length, 0);
   assert.strictEqual(revoked.delegations[0].status, 'revoked');
   // 열거 순서에 의존하지 않는다.
   assert.deepStrictEqual(foldDelegations([revokeEvent, grantEvent()], { now: '2026-01-05T00:00:00.000Z' }).delegations, revoked.delegations);
+
+  // 취소는 자기가 가리키는 부여와 같은 위임·종류여야 한다. 이전 이벤트 ID만
+  // 맞으면 되게 두면 다른 위임의 취소로 엉뚱한 권한이 꺼진다.
+  const mismatchedRevoke = Object.assign({}, revokeEvent, { eventId: 'EVT-77777777777777777777', delegationId: 'DLG-FFFFFFFFFFFFFFFFFFFF' });
+  const wrongTarget = foldDelegations([grantEvent(), mismatchedRevoke], { now: '2026-01-05T00:00:00.000Z' });
+  assert.strictEqual(wrongTarget.active.length, 1, '다른 위임을 가리키는 취소로 권한이 꺼지면 안 됩니다.');
+  assert(wrongTarget.diagnostics.some((item) => item.code === 'RDL-DLG-017'));
+
+  // 같은 범위에 활성 위임이 둘이면 어느 것이 근거인지 갈린다 — 하나를 조용히
+  // 고르는 대신 그 범위를 비우고 진단한다.
+  const secondGrant = grantEvent({ eventId: 'EVT-88888888888888888888', requestId: 'REQ-88888888888888888888', expiresAt: '2026-01-07T00:00:00.000Z', delegationId: delegationIdFor({ kind: 'scope-change', projectId: 'crm', delegateClientId: 'agent-a', grantedBy: 'MEMBER-001', expiresAt: '2026-01-07T00:00:00.000Z' }) });
+  const ambiguous = foldDelegations([grantEvent(), secondGrant], { now: '2026-01-05T00:00:00.000Z' });
+  assert.strictEqual(ambiguous.active.length, 0, '모호한 위임은 권한을 열면 안 됩니다.');
+  assert.deepStrictEqual(ambiguous.ambiguous, [{ kind: 'scope-change', delegateClientId: 'agent-a' }]);
+  assert(ambiguous.diagnostics.some((item) => item.code === 'RDL-DLG-018'));
 
   // 실제 Workspace: 부여 → 자동 승인 → 취소 → 다시 질문.
   command('git', ['init', '-b', 'main']);
