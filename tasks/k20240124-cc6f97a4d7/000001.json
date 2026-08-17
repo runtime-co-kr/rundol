@@ -1279,6 +1279,41 @@
       "statusChangedAt": "2026-08-17T17:29:10.508Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSXIDIID26DC38062B012B36": {
+      "title": "[검증] 세 OS 프로세스 종료 행렬",
+      "summary": "",
+      "owner": null,
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정상 종료·timeout·lease 상실 중 취소·SIGTERM 무시 자손·부모 선종료 고아 자손·종료 실패 시 outcome 미기록 여섯 시나리오를 macOS(인텔)에서 실측한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "같은 여섯 시나리오를 macOS(Apple Silicon)에서 실측한다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "같은 여섯 시나리오를 Linux CI 러너에서 실측한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "검증되지 않은 OS는 자동 drive 실행을 fail-closed로 막고 지원 범위를 문서에 명시한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T17:29:22.932Z",
+      "updatedAt": "2026-08-17T17:29:22.932Z",
+      "statusChangedAt": "2026-08-17T17:29:22.932Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
