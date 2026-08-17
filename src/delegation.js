@@ -106,8 +106,18 @@ function delegationEnvelope(input) {
   };
 }
 
+// 기록 시각을 남긴다. 위임이 이 행위의 시점에 살아 있었는지 판정하려면 행위가
+// 언제 기록됐는지가 필요하고, 지금까지 세 원장 모두 그것을 남기지 않았다.
+// canonical 밖이라 기존 다이제스트는 바뀌지 않는다.
+//
+// 이것은 상태를 시각으로 판정하는 것이 아니라 사실을 기록하는 것이다. 판정은
+// 접기가 하고, 접기는 이 값과 위임의 부여·만료·취소 시각을 비교할 뿐 읽는
+// 시점의 시계를 보지 않는다 — 같은 이벤트를 언제 읽어도 같은 답이 나온다.
 function appendDelegationEvent(eventsRoot, input, options) {
-  const envelope = delegationEnvelope(input);
+  const stamped = input && input.occurredAt === undefined
+    ? Object.assign({}, input, { occurredAt: new Date().toISOString() })
+    : input;
+  const envelope = delegationEnvelope(stamped);
   const file = eventStore.appendEvent(eventsRoot, 'delegation', envelope.canonical.projectId, envelope.canonical.clientId, envelope.shared, {
     lockDirectory: options && options.lockDirectory,
     fsync: !options || options.fsync !== false
@@ -124,9 +134,18 @@ function readDelegationEvents(eventsRoot, projectId) {
 // 시각 비교이므로 fold의 입력으로 받는다 — 벽시계를 fold 안에 숨기지 않는다.
 // 부여자 검증에 필요한 최소 컨텍스트. 위임은 위임할 수 없으므로 여기서는
 // Client 소유자 목록만 있으면 된다.
-function delegationAuthority(start) {
+function delegationAuthority(start, projectKey) {
   const { listClients } = require('./collaboration-store');
-  return { clientOwners: (listClients(start).clients || []).filter((client) => client.status === 'active').map((client) => [client.id, client.owner]) };
+  const { readCollaboration } = require('./collaboration');
+  const { workspaceLayout } = require('./workspace');
+  // 귀속은 등록 이력 전체에서 찾는다. 비활성화는 앞으로를 막는 것이지 과거를
+  // 없던 일로 만드는 것이 아니다.
+  const clients = listClients(start).clients || [];
+  const root = workspaceLayout(start).root;
+  return {
+    clientOwners: clients.map((client) => [client.id, client.owner]),
+    members: projectKey ? readCollaboration(root, projectKey).members.map((member) => member.id) : null
+  };
 }
 
 function foldDelegations(events, options) {
@@ -149,6 +168,9 @@ function foldDelegations(events, options) {
       const expected = delegationEnvelope(event).canonicalDigest;
       if (raw.canonicalDigest !== undefined && raw.canonicalDigest !== expected) throw new Error('canonicalDigest 불일치');
       event.canonicalDigest = expected;
+      // 기록 시각은 canonical 밖이지만 취소가 언제 일어났는지를 알아야 "이 행위가
+      // 취소 전이었는가"를 판정할 수 있다. 정규화가 벗겨낸 값을 되붙인다.
+      if (raw.occurredAt !== undefined) event.occurredAt = raw.occurredAt;
     } catch (error) {
       diagnostics.push({ code: 'RDL-DLG-014', severity: 'error', eventId: raw && raw.eventId || null, message: error.message });
       continue;
@@ -179,7 +201,7 @@ function foldDelegations(events, options) {
   const grantByEventId = new Map(valid.filter((event) => event.type === 'delegation.granted').map((event) => [event.eventId, event]));
   // 취소는 자기가 가리키는 부여와 같은 위임·종류여야 한다. 이전 이벤트 ID만 맞으면
   // 되게 두면 다른 위임의 취소로 엉뚱한 권한이 꺼진다.
-  const revoked = new Set();
+  const revoked = new Map();
   for (const event of valid.filter((item) => item.type === 'delegation.revoked')) {
     const grant = grantByEventId.get(event.previousDelegationEventId);
     if (!grant) {
@@ -190,13 +212,15 @@ function foldDelegations(events, options) {
       diagnostics.push({ code: 'RDL-DLG-017', severity: 'error', eventId: event.eventId, message: `취소가 다른 위임을 가리킵니다: ${event.delegationId} != ${grant.delegationId}` });
       continue;
     }
-    revoked.add(grant.eventId);
+    // 취소 시각은 기록 시각이다. 이 값으로 "이 행위가 취소 전이었는가"를 판정한다.
+    revoked.set(grant.eventId, event.occurredAt || event.revokedAt || null);
   }
   const grants = valid.filter((event) => event.type === 'delegation.granted')
     .sort((left, right) => left.eventId.localeCompare(right.eventId))
     .map((event) => {
       const expiresAt = Date.parse(event.expiresAt);
       const status = revoked.has(event.eventId) ? 'revoked' : expiresAt <= now ? 'expired' : 'active';
+      const revokedAt = revoked.has(event.eventId) ? revoked.get(event.eventId) : null;
       return {
         delegationId: event.delegationId,
         eventId: event.eventId,
@@ -208,6 +232,7 @@ function foldDelegations(events, options) {
         grantedAt: event.grantedAt,
         expiresAt: event.expiresAt,
         reason: event.reason,
+        revokedAt,
         status
       };
     });
@@ -267,7 +292,7 @@ function newRootRequestId() {
 function listDelegations(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
-  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now, authority: delegationAuthority(start) });
+  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now, authority: delegationAuthority(start, context.project.key) });
   return {
     project: context.project.key,
     active: folded.active.length,

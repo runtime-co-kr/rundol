@@ -108,8 +108,18 @@ function approvalEnvelope(input) {
   };
 }
 
+// 기록 시각을 남긴다. 위임이 이 행위의 시점에 살아 있었는지 판정하려면 행위가
+// 언제 기록됐는지가 필요하고, 지금까지 세 원장 모두 그것을 남기지 않았다.
+// canonical 밖이라 기존 다이제스트는 바뀌지 않는다.
+//
+// 이것은 상태를 시각으로 판정하는 것이 아니라 사실을 기록하는 것이다. 판정은
+// 접기가 하고, 접기는 이 값과 위임의 부여·만료·취소 시각을 비교할 뿐 읽는
+// 시점의 시계를 보지 않는다 — 같은 이벤트를 언제 읽어도 같은 답이 나온다.
 function appendApprovalEvent(eventsRoot, input, options) {
-  const envelope = approvalEnvelope(input);
+  const stamped = input && input.occurredAt === undefined
+    ? Object.assign({}, input, { occurredAt: new Date().toISOString() })
+    : input;
+  const envelope = approvalEnvelope(stamped);
   const file = eventStore.appendEvent(eventsRoot, 'approval', envelope.canonical.projectId, envelope.canonical.clientId, envelope.shared, {
     lockDirectory: options && options.lockDirectory,
     fsync: !options || options.fsync !== false
@@ -159,17 +169,17 @@ function foldApprovals(events, options) {
   }
   const authorized = Array.from(byEventId.values()).filter(Boolean).filter((event) => {
     const verify = require('./authority').verifyActor;
-    const codes = { unknownClient: 'RDL-APPROVE-020', impersonation: 'RDL-APPROVE-021', delegation: 'RDL-APPROVE-022' };
+    const codes = { unknownClient: 'RDL-APPROVE-020', impersonation: 'RDL-APPROVE-021', delegation: 'RDL-APPROVE-022', member: 'RDL-APPROVE-023' };
     // 행위자는 언제나 이 Client의 소유자여야 한다. 행위자 자리에는 위임이 서지 못한다 —
     // 위임은 누가 책임지는가를 옮길 뿐 누가 실제로 눌렀는가를 바꾸지 못한다.
-    const actor = verify({ clientId: event.clientId, memberId: event.actorMemberId }, authority, codes);
+    const actor = verify({ clientId: event.clientId, memberId: event.actorMemberId, recordedAt: event.occurredAt }, authority, codes);
     if (!actor.ok || actor.delegated) {
       diagnostics.push({ code: actor.code || 'RDL-APPROVE-021', severity: 'error', eventId: event.eventId, message: actor.message || '행위자를 위임으로 대신할 수 없습니다.' });
       return false;
     }
     if (event.approvedBy === event.actorMemberId) return true;
     // 책임자가 행위자와 다르면 그 차이를 위임이 정당화해야 한다.
-    const responsible = verify({ clientId: event.clientId, memberId: event.approvedBy, delegationId: event.delegationId, kind: APPROVAL_DELEGATION_KIND }, authority, codes);
+    const responsible = verify({ clientId: event.clientId, memberId: event.approvedBy, delegationId: event.delegationId, kind: APPROVAL_DELEGATION_KIND, recordedAt: event.occurredAt }, authority, codes);
     if (!responsible.ok) {
       diagnostics.push({ code: responsible.code, severity: 'error', eventId: event.eventId, message: responsible.message });
       return false;

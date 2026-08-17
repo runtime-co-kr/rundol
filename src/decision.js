@@ -129,7 +129,7 @@ function normalizeDecisionEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('결정 이벤트는 객체여야 합니다.');
   if (!['decision.requested', 'decision.answered'].includes(input.type)) throw new Error(`알 수 없는 결정 이벤트 종류입니다: ${input.type || '(없음)'}`);
   const requested = input.type === 'decision.requested';
-  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId'], ['canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence', 'supersedes'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId'], ['canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`${input.type}에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS) if (input[field] === undefined) throw new Error(`${input.type}.${field}이(가) 필요합니다.`);
@@ -147,6 +147,12 @@ function normalizeDecisionEvent(input) {
     normalized.recommendation = normalizeRecommendation(input.recommendation, normalized.options);
     normalized.impact = normalizeImpact(input.impact);
     normalized.evidence = normalizeEvidence(input.evidence);
+    // 요청도 대체될 수 있다. 답변 충돌에만 탈출구를 주고 요청 충돌은 그대로 두면
+    // 상충 요청 하나가 그 결정을 영구 교착으로 만든다.
+    if (input.supersedes !== undefined) {
+      if (!EVENT_ID.test(input.supersedes || '')) throw new Error('대체 대상 요청이 유효하지 않습니다.');
+      normalized.supersedes = input.supersedes;
+    }
   } else {
     if (!OPTION_ID.test(input.selectedOption || '')) throw new Error('선택한 값이 유효하지 않습니다.');
     if (!MEMBER_ID.test(input.answeredBy || '')) throw new Error('답변자는 MEMBER-ID여야 합니다.');
@@ -182,8 +188,18 @@ function decisionEnvelope(input) {
   };
 }
 
+// 기록 시각을 남긴다. 위임이 이 행위의 시점에 살아 있었는지 판정하려면 행위가
+// 언제 기록됐는지가 필요하고, 지금까지 세 원장 모두 그것을 남기지 않았다.
+// canonical 밖이라 기존 다이제스트는 바뀌지 않는다.
+//
+// 이것은 상태를 시각으로 판정하는 것이 아니라 사실을 기록하는 것이다. 판정은
+// 접기가 하고, 접기는 이 값과 위임의 부여·만료·취소 시각을 비교할 뿐 읽는
+// 시점의 시계를 보지 않는다 — 같은 이벤트를 언제 읽어도 같은 답이 나온다.
 function appendDecisionEvent(eventsRoot, input, options) {
-  const envelope = decisionEnvelope(input);
+  const stamped = input && input.occurredAt === undefined
+    ? Object.assign({}, input, { occurredAt: new Date().toISOString() })
+    : input;
+  const envelope = decisionEnvelope(stamped);
   const file = eventStore.appendEvent(eventsRoot, 'decision', envelope.canonical.projectId, envelope.canonical.clientId, envelope.shared, {
     lockDirectory: options && options.lockDirectory,
     fsync: !options || options.fsync !== false
@@ -201,6 +217,54 @@ function readDecisionEvents(eventsRoot, projectId) {
 // 결정 상태의 fold. 같은 결정 키의 요청은 하나로 접히고, 권한 있는 답변이
 // 도착하면 해소된다. 답변 없는 결정의 기본은 언제나 정지다 — 무응답을 진행으로
 // 해석하는 경로는 두지 않는다.
+// 대체 관계 해소. 요청과 답변이 같은 규칙을 써야 한다 — 한쪽에만 탈출구를 주면
+// 그 결정은 다른 쪽 충돌로 영구 교착이 되고, 한쪽에만 제약을 주면 다른 쪽이 새
+// 공격면이 된다.
+//
+// 대체는 같은 묶음 안의 기존 항목만 가리킬 수 있고, 하나를 여럿이 대체할 수 없으며,
+// 자기 자신이나 순환을 이룰 수 없다. 이 제약을 어긴 항목은 진단으로 끝내지 않고
+// 무효로 둔다 — 해소에 실패한 기록이 그대로 살아남으면 그것이 상태를 바꾼다.
+function resolveSuperseded(entries, diagnostics, codes) {
+  const byEvent = new Map(entries.map((entry) => [entry.eventId, entry]));
+  const supersededBy = new Map();
+  const invalid = new Set();
+  for (const entry of entries) {
+    if (!entry.supersedes) continue;
+    if (entry.supersedes === entry.eventId) {
+      diagnostics.push({ code: codes.self, severity: 'error', eventId: entry.eventId, message: '기록이 자기 자신을 대체할 수 없습니다.' });
+      invalid.add(entry.eventId);
+      continue;
+    }
+    if (!byEvent.has(entry.supersedes)) {
+      diagnostics.push({ code: codes.unknown, severity: 'error', eventId: entry.eventId, message: `대체 대상이 이 결정의 기록이 아닙니다: ${entry.supersedes}` });
+      invalid.add(entry.eventId);
+      continue;
+    }
+    if (supersededBy.has(entry.supersedes)) {
+      diagnostics.push({ code: codes.fork, severity: 'error', eventId: entry.eventId, message: `한 기록을 둘 이상이 대체합니다: ${entry.supersedes}` });
+      invalid.add(entry.eventId);
+      invalid.add(supersededBy.get(entry.supersedes));
+      continue;
+    }
+    supersededBy.set(entry.supersedes, entry.eventId);
+  }
+  const cyclic = new Set();
+  for (const start of supersededBy.keys()) {
+    const seen = new Set();
+    let cursor = start;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      cursor = supersededBy.get(cursor);
+      if (cursor && seen.has(cursor)) {
+        for (const member of seen) cyclic.add(member);
+        diagnostics.push({ code: codes.cycle, severity: 'error', eventId: cursor, message: '대체 관계에 순환이 있습니다.' });
+      }
+    }
+  }
+  const superseded = new Set(Array.from(supersededBy.keys()).filter((eventId) => !cyclic.has(eventId)));
+  return entries.filter((entry) => !superseded.has(entry.eventId) && !cyclic.has(entry.eventId) && !invalid.has(entry.eventId));
+}
+
 function foldDecisions(events, options) {
   const settings = options || {};
   const authority = require('./authority').requireAuthority(settings, '결정');
@@ -218,6 +282,7 @@ function foldDecisions(events, options) {
       diagnostics.push({ code: 'RDL-DEC-014', severity: 'error', eventId: raw && raw.eventId || null, message: error.message });
       continue;
     }
+    if (raw.occurredAt !== undefined) event.occurredAt = raw.occurredAt;
     if (!byEventId.has(event.eventId)) byEventId.set(event.eventId, event);
     else if (byEventId.get(event.eventId) && byEventId.get(event.eventId).canonicalDigest !== event.canonicalDigest) {
       byEventId.set(event.eventId, null);
@@ -232,7 +297,23 @@ function foldDecisions(events, options) {
   }
   const decisions = [];
   for (const [key, group] of Array.from(byKey).sort((left, right) => left[0].localeCompare(right[0]))) {
-    const request = group.requests.slice().sort((left, right) => left.eventId.localeCompare(right.eventId))[0] || null;
+    // 요청도 인가한다. 인가하지 않으면 위조 요청 하나로 아무 결정이나 열린
+    // 상태로 만들어 진행을 막을 수 있다 — 답변만 지키면 반쪽이다.
+    const authorizedRequests = group.requests.filter((entry) => {
+      const verdict = require('./authority').verifyActor(
+        { clientId: entry.clientId, memberId: authority.owners.get(entry.clientId), recordedAt: entry.occurredAt },
+        authority, { unknownClient: 'RDL-DEC-020', impersonation: 'RDL-DEC-021', delegation: 'RDL-DEC-026', member: 'RDL-DEC-002' });
+      if (!verdict.ok) {
+        diagnostics.push({ code: verdict.code, severity: 'error', eventId: entry.eventId, message: verdict.message });
+        return false;
+      }
+      return true;
+    });
+    const liveRequests = resolveSuperseded(authorizedRequests, diagnostics, {
+      self: 'RDL-DEC-027', unknown: 'RDL-DEC-028', fork: 'RDL-DEC-029', cycle: 'RDL-DEC-030'
+    });
+    group.requests = liveRequests;
+    const request = liveRequests.slice().sort((left, right) => left.eventId.localeCompare(right.eventId))[0] || null;
     if (!request) {
       diagnostics.push({ code: 'RDL-DEC-016', severity: 'error', message: `요청 없는 결정 답변입니다: ${decisionIdFor(key)}` });
       continue;
@@ -254,8 +335,8 @@ function foldDecisions(events, options) {
       // 이름으로 행위할 수 있었는가"를 확인해야 한다. 확인할 수 없는 답변은
       // 상태를 바꾸지 못한다 — run 원장의 sync 전이 인가(RDL-RUN-005)와 같은 경계다.
       const verdict = require('./authority').verifyActor(
-        { clientId: answer.clientId, memberId: answer.answeredBy, delegationId: answer.delegationId, kind: answer.kind },
-        authority, { unknownClient: 'RDL-DEC-020', impersonation: 'RDL-DEC-021', delegation: 'RDL-DEC-026' });
+        { clientId: answer.clientId, memberId: answer.answeredBy, delegationId: answer.delegationId, kind: answer.kind, recordedAt: answer.occurredAt },
+        authority, { unknownClient: 'RDL-DEC-020', impersonation: 'RDL-DEC-021', delegation: 'RDL-DEC-026', member: 'RDL-DEC-002' });
       if (!verdict.ok) {
         diagnostics.push({ code: verdict.code, severity: 'error', eventId: answer.eventId, message: verdict.message });
         return false;
@@ -272,45 +353,9 @@ function foldDecisions(events, options) {
     // 대체는 같은 결정 안의 기존 답변만 가리킬 수 있고, 하나의 답변을 여럿이
     // 대체할 수 없으며, 자기 자신이나 순환을 이룰 수 없다. 이 제약이 없으면
     // 대체 관계로 임의의 답을 살리거나 죽일 수 있어 해소 경로가 새 공격면이 된다.
-    const byEvent = new Map(answers.map((entry) => [entry.eventId, entry]));
-    const supersededBy = new Map();
-    const invalidResolution = new Set();
-    for (const entry of answers) {
-      if (!entry.supersedes) continue;
-      if (entry.supersedes === entry.eventId) {
-        diagnostics.push({ code: 'RDL-DEC-022', severity: 'error', eventId: entry.eventId, message: '답변이 자기 자신을 대체할 수 없습니다.' });
-        invalidResolution.add(entry.eventId);
-        continue;
-      }
-      if (!byEvent.has(entry.supersedes)) {
-        diagnostics.push({ code: 'RDL-DEC-023', severity: 'error', eventId: entry.eventId, message: `대체 대상이 이 결정의 답변이 아닙니다: ${entry.supersedes}` });
-        invalidResolution.add(entry.eventId);
-        continue;
-      }
-      if (supersededBy.has(entry.supersedes)) {
-        diagnostics.push({ code: 'RDL-DEC-024', severity: 'error', eventId: entry.eventId, message: `한 답변을 둘 이상이 대체합니다: ${entry.supersedes}` });
-        invalidResolution.add(entry.eventId);
-        invalidResolution.add(supersededBy.get(entry.supersedes));
-        continue;
-      }
-      supersededBy.set(entry.supersedes, entry.eventId);
-    }
-    // 순환 탐지: 대체 사슬을 따라가다 자기에게 돌아오면 그 사슬 전체를 무효로 둔다.
-    const cyclic = new Set();
-    for (const startEventId of supersededBy.keys()) {
-      const seen = new Set();
-      let cursor = startEventId;
-      while (cursor && !seen.has(cursor)) {
-        seen.add(cursor);
-        cursor = supersededBy.get(cursor);
-        if (cursor && seen.has(cursor)) {
-          for (const member of seen) cyclic.add(member);
-          diagnostics.push({ code: 'RDL-DEC-025', severity: 'error', eventId: cursor, message: '대체 관계에 순환이 있습니다.' });
-        }
-      }
-    }
-    const superseded = new Set(Array.from(supersededBy.keys()).filter((eventId) => !cyclic.has(eventId)));
-    const live = answers.filter((entry) => !superseded.has(entry.eventId) && !cyclic.has(entry.eventId) && !invalidResolution.has(entry.eventId));
+    const live = resolveSuperseded(answers, diagnostics, {
+      self: 'RDL-DEC-022', unknown: 'RDL-DEC-023', fork: 'RDL-DEC-024', cycle: 'RDL-DEC-025'
+    });
     const selections = new Set(live.map((entry) => entry.selectedOption));
     if (selections.size > 1) {
       diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')}). 해소하려면 대체할 답변의 eventId를 supersedes로 지정하세요.` });

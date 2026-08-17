@@ -95,8 +95,9 @@ try {
     projectId: 'crm',
     targetId: document.id,
     reviewedRevision: document.revision,
-    approvedBy: otherMember,
-    actorMemberId: otherMember,
+    // 등록된 멤버이지만 이 Client의 소유자는 아니다 — 순수한 명의 위조다.
+    approvedBy: responsible,
+    actorMemberId: responsible,
     basis: [{ kind: 'read' }]
   };
   // 형식이 온전한지 먼저 확인한다. 여기서 걸리면 이 시험은 인가를 시험하지 못한다.
@@ -121,6 +122,18 @@ try {
   const report = JSON.parse(checked.stdout);
   assert.strictEqual(report.diagnostics.filter((item) => item.code === 'RDL-APPROVE-021').length, 1,
     `검사가 위조된 승인을 지목해야 합니다: ${JSON.stringify(report.diagnostics.filter((item) => String(item.code).startsWith('RDL-APPROVE')))}`);
+
+  // 프로젝트에 등록되지 않은 멤버 명의는 별도로 지목한다. 멤버 경계를 한 원장만
+  // 검사하면 다른 원장으로 우회된다.
+  appendRaw('approval', 'crm', 'agent-a', Object.assign({}, forgedApproval, {
+    eventId: `EVT-${hex('1')}`,
+    requestId: `REQ-${hex('2')}`,
+    approvedBy: otherMember,
+    actorMemberId: otherMember
+  }));
+  const outsiderFold = foldApprovals(readApprovalEvents(eventsRoot(), 'crm'), { authority: authorityFor('crm') });
+  assert.strictEqual(outsiderFold.diagnostics.filter((item) => item.code === 'RDL-APPROVE-023').length, 1,
+    `등록되지 않은 멤버 명의를 지목해야 합니다: ${JSON.stringify(outsiderFold.diagnostics)}`);
 
   // ── 2. 위조된 위임은 활성이 되지 않는다 ──────────────────────────────
   const expiresAt = '2026-08-24T00:00:00.000Z';
@@ -218,7 +231,68 @@ try {
   assert.strictEqual(delegatedDecision.decision.answeredBy, responsible, '책임은 부여자가 진다.');
   assert.strictEqual(delegatedDecision.delegationId, delegationId);
 
-  // ── 5. 인가 없는 접기는 불가능하다 ──────────────────────────────────
+  // ── 5. 취소는 미래에만 작용한다 ──────────────────────────────────────
+  // 인가를 "지금 유효한가"로 판정하면 두 가지가 동시에 깨진다. 만료·취소된 위임이
+  // 영원히 통하고, 반대로 취소하면 그 전에 정당하게 한 일이 사라진다. 둘 다 원장의
+  // 과거 사실을 현재 상태로 판정한 결과다.
+  const beforeRevoke = rdl(['decision', 'list', '--project', 'crm']).decisions
+    .find((item) => item.decisionId === delegatedDecision.decision.decisionId);
+  assert.strictEqual(beforeRevoke.status, 'answered');
+
+  rdl(['delegation', 'revoke', delegationId, '--member', responsible, '--reason', '위임을 거둔다',
+    '--client-id', 'desk-owner', '--project', 'crm']);
+
+  // 취소 전에 남은 답변은 그대로 살아 있어야 한다.
+  const afterRevoke = rdl(['decision', 'list', '--project', 'crm']).decisions
+    .find((item) => item.decisionId === delegatedDecision.decision.decisionId);
+  assert.strictEqual(afterRevoke.status, 'answered', '취소가 그 전의 정당한 답변을 지우면 안 됩니다.');
+  assert.strictEqual(afterRevoke.answeredBy, responsible);
+
+  // 취소 뒤에 그 위임을 근거로 든 행위는 인정되지 않는다. 쓰기 경로는 이미 막지만
+  // Git 병합으로 들어오는 경로가 남으므로 접기가 판정해야 한다.
+  const lateKey = decisionKey({ kind: 'release-version', project: 'crm', subject: 'v0.32.0' });
+  const lateDecisionId = require('../src/decision').decisionIdFor(lateKey);
+  const lateBase = {
+    schemaVersion: 1,
+    rootRequestId: `REQ-${hex('7')}`,
+    clientId: 'agent-a',
+    projectId: 'crm',
+    decisionId: lateDecisionId,
+    decisionKey: lateKey,
+    kind: 'release-version'
+  };
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, lateBase, {
+    eventId: `EVT-${hex('8')}`,
+    requestId: `REQ-${hex('9')}`,
+    type: 'decision.requested',
+    question: '취소 뒤의 결정',
+    options: [{ id: 'minor', label: '마이너' }, { id: 'major', label: '메이저' }],
+    recommendation: { option: 'minor', because: '기능 추가' },
+    impact: { reversible: true, blast: '배포' },
+    occurredAt: new Date().toISOString()
+  }));
+  appendRaw('decision', 'crm', 'agent-a', Object.assign({}, lateBase, {
+    eventId: `EVT-${hex('A')}`,
+    requestId: `REQ-${hex('B')}`,
+    type: 'decision.answered',
+    selectedOption: 'minor',
+    answeredBy: responsible,
+    delegationId,
+    reason: '취소된 위임을 근거로 든다',
+    occurredAt: new Date(Date.now() + 60000).toISOString()
+  }));
+  const lateFold = rdl(['decision', 'list', '--project', 'crm']).decisions.find((item) => item.decisionId === lateDecisionId);
+  assert.strictEqual(lateFold.status, 'open', '취소된 위임을 근거로 든 답변이 결정을 해소하면 안 됩니다.');
+
+  // ── 6. Client 비활성화는 과거 기록을 지우지 않는다 ───────────────────
+  rdl(['client', 'disable', 'agent-a']);
+  const afterDisable = rdl(['decision', 'list', '--project', 'crm']).decisions
+    .find((item) => item.decisionId === delegatedDecision.decision.decisionId);
+  assert.strictEqual(afterDisable.status, 'answered', 'Client 비활성화가 과거 기록을 소급 무효화하면 안 됩니다.');
+  assert.strictEqual(afterDisable.answeredBy, responsible);
+  rdl(['client', 'enable', 'agent-a']);
+
+  // ── 7. 인가 없는 접기는 불가능하다 ──────────────────────────────────
   // 안전한 경로가 opt-in이면 언젠가 꺼진다. 실제로 rdl check가 껐었다.
   assert.throws(() => foldApprovals([], {}), /인가 컨텍스트/u, '인가 없는 승인 접기는 거부되어야 합니다.');
   assert.throws(() => foldDelegations([], { now: 0 }), /인가 컨텍스트/u, '인가 없는 위임 접기는 거부되어야 합니다.');
