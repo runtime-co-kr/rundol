@@ -207,10 +207,11 @@ function foldApprovals(events, options) {
   }
   const approvals = new Map();
   for (const [targetId, events] of byTarget) {
-    // 정렬 기준은 기록된 시각이고, 같은 시각이면 eventId로 결정성을 얻는다.
-    // eventId만으로 정렬하면 해시 순서가 시간 순서를 가장해 "마지막 승인"이
-    // 실제 마지막이 아니게 된다. occurredAt이 없는 기록은 뒤로 보낸다.
-    approvals.set(targetId, events.slice().sort((left, right) => String(left.occurredAt || '').localeCompare(String(right.occurredAt || ''))
+    // 정렬 기준은 canonical 안의 기록 시각이다. 표시용 occurredAt으로 정렬하면
+    // 다이제스트를 건드리지 않고 "마지막 승인"을 바꿀 수 있고, 그 값이 낡음
+    // 판정과 차분 기준을 정하므로 표시용이 아니라 상태를 정하는 값이 된다.
+    // 없는 기록은 뒤로 보내고, 같은 시각이면 eventId로 결정성을 얻는다.
+    approvals.set(targetId, events.slice().sort((left, right) => String(left.recordedAt || '').localeCompare(String(right.recordedAt || ''))
       || left.eventId.localeCompare(right.eventId)).map((event) => ({
       targetId,
       reviewedRevision: event.reviewedRevision,
@@ -218,6 +219,7 @@ function foldApprovals(events, options) {
       basis: event.basis,
       reason: event.reason || null,
       delegationId: event.delegationId || null,
+      recordedAt: event.recordedAt || null,
       eventId: event.eventId,
       clientId: event.clientId
     })));

@@ -576,6 +576,22 @@ const SHARD_LEVEL_LEDGER_CODES = new Set(['RDL-DEC-014', 'RDL-DLG-014', 'RDL-APP
 // 새 원장의 교차 이벤트 진단(상충하는 답변, 취소 대상 불일치, 모호한 위임 등)은
 // 파일 단위 검사로는 보이지 않는다 — fold를 거쳐야 나온다. 검사 결과에 합치지
 // 않으면 그 진단은 그것을 부르는 명령을 아는 사람에게만 보인다.
+// 다이제스트는 체크섬이지 서명이 아니다. 기존 행을 고치고 다시 계산하면 파일
+// 안에는 변형 하나만 남아 상충 검출이 성립하지 않는다. 파일이 덧붙여지기만
+// 했는지는 이 저장소 밖의 기준점 — Git 이력 — 으로만 판정할 수 있다.
+function checkLedgerIntegrity(diagnostics, layout) {
+  if (layout.schemaVersion < 6) return;
+  let violations;
+  try { violations = require('./ledger-integrity').appendOnlyViolations(layout.root); }
+  catch (error) {
+    diagnostic(diagnostics, { code: 'RDL-LEDGER-002', category: 'workspace', message: `원장 무결성을 확인할 수 없습니다: ${error.message}` });
+    return;
+  }
+  for (const violation of violations) {
+    diagnostic(diagnostics, { code: 'RDL-LEDGER-003', category: 'workspace', file: violation.file, line: 1, message: `append-only 위반: ${violation.message}` });
+  }
+}
+
 function checkLedgerFolds(diagnostics, layout, projectKey) {
   if (layout.schemaVersion < 6) return;
   const eventsRoot = path.join(layout.root, 'projects', 'workspace', 'events');
@@ -920,6 +936,7 @@ function checkWorkspace(start, options) {
   const diagnostics = [];
   checkWorkspaceStore(diagnostics, layout);
   checkLedgerFolds(diagnostics, layout, settings.project);
+  checkLedgerIntegrity(diagnostics, layout);
   if (settings.project && projects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-006', category: 'governance', target: settings.project, message: `프로젝트를 찾지 못했습니다: ${settings.project}` });
   if (!settings.project && allProjects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-007', category: 'governance', file: layout.mountRelative, message: 'project.md가 있는 프로젝트를 찾지 못했습니다.' });
   let documents = 0;

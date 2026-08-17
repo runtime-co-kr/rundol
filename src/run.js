@@ -531,6 +531,14 @@ function listProceduresCommand(start, options) {
   }) };
 }
 
+// 취소가 실제로 끝나는지 보장할 수 없는 환경인가. 지금은 Windows가 그렇다 —
+// 트리 종료가 권한에 달려 있고 실패해도 호출자가 알 방법이 마땅치 않다.
+function unguaranteedTermination(classification) {
+  if (process.platform !== 'win32') return false;
+  if (!['adapter', 'cli'].includes(classification)) return false;
+  return process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER !== '1';
+}
+
 function driveStepClass(step) {
   const classes = [];
   if (step && step.human === true) classes.push('human');
@@ -797,6 +805,22 @@ async function tickRun(start, options, dependencies) {
   const step = context.fold.cursorStep;
   const classification = driveStepClass(step);
   if (classification === 'human') return { exitCode: 0, status: 'waiting_human', step: step.id };
+  // Windows에서는 자식 프로세스 트리의 종료를 보장할 수 없다. taskkill /T가 권한
+  // 부족으로 거부되면 취소는 끝났다고 보고되지만 자손은 살아남고, 그 프로세스가
+  // 정본을 계속 쓸 수 있다. 취소를 전제로 한 자동 실행을 그 상태에서 돌리는 것은
+  // 보장하지 못하는 것을 보장하는 척하는 것이다.
+  //
+  // 제대로 된 해소는 Job Object로 트리를 소유하는 것이고 그것은 네이티브 확장을
+  // 요구한다. 그때까지는 자동 실행을 열지 않는다 — 아는 사람이 명시적으로 켜야 한다.
+  if (unguaranteedTermination(classification)) {
+    return {
+      exitCode: 1,
+      status: 'halted',
+      reason: 'termination-unsafe',
+      step: step.id,
+      detail: 'Windows에서는 자식 프로세스 트리의 종료를 보장할 수 없습니다. 위험을 알고 켜려면 RUNDOL_ALLOW_WINDOWS_ADAPTER=1을 설정하세요.'
+    };
+  }
   const record = async (event, childKey) => {
     if (deps.recordEvent) return deps.recordEvent(context, event, childKey);
     return ledger.recordRunEvent(start, { project: context.project.key, runId: context.fold.runId, rootRequestId: options.requestId, childKey, commandDigest, event });
@@ -1060,6 +1084,6 @@ module.exports = {
   recordVerificationResult,
   listRunsCommand, runLog, listProceduresCommand,
   runContext, authorizeClient,
-  driveStepClass, validateDriveGate, preflightDriveProcedure, substituteDriveArgs,
+  driveStepClass, unguaranteedTermination, validateDriveGate, preflightDriveProcedure, substituteDriveArgs,
   driveCommandDigest, driveChildKey, executeDriveCli, tickRun, runDrive, resolveOperation
 };

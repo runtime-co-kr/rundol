@@ -3,8 +3,14 @@
 const os = require('os');
 const path = require('path');
 process.env.RUNDOL_HOME = path.join(os.tmpdir(), `rundol-test-runtime-${process.pid}`);
+// Windows에서 어댑터 자동 실행은 기본으로 막혀 있다(트리 종료를 보장할 수 없다).
+// 시험은 그 경로 자체를 검증해야 하므로 켠다. 게이트가 실제로 막는지는
+// windows-termination 시험이 따로 확인한다.
+process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = '1';
 
 require('./check.test');
+require('./ledger-integrity.test');
+require('./windows-termination.test');
 require('./cli-doc.test');
 require('./init.test');
 require('./attach.test');

@@ -508,11 +508,25 @@ function requestDecision(start, input) {
   assertActiveClient(start, clientId);
   const key = decisionKey({ kind: settings.kind, project: context.project.key, subject: settings.subject });
   const decisionId = decisionIdFor(key);
-  const existing = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), foldContext(start, context))
-    .decisions.find((decision) => decision.decisionKey === key);
+  const before = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), foldContext(start, context));
+  const existing = before.decisions.find((decision) => decision.decisionKey === key);
   // 이미 있는 결정에는 다시 묻지 않는다. 다만 요청 내용이 갈려 교착된 경우에는
   // 대체할 요청을 지목해 해소할 수 있어야 한다 — 탈출구 없는 fail-closed는
   // 교착이지 상태가 아니다.
+  //
+  // 그 탈출구는 교착에만 열려야 한다. 정상 결정에도 요청을 갈아끼울 수 있으면,
+  // 이미 답변된 질문의 내용을 바꿔 그 답을 전혀 다른 질문의 답으로 만들 수 있다 —
+  // "배포할까요"에 받은 승인이 "운영 데이터를 지울까요"의 승인이 된다. 해소
+  // 수단이 그대로 공격면이 되는 것이고, 답변 대체에 걸어 둔 제약과 같은 이유다.
+  if (existing && settings.supersedes) {
+    const conflicted = (before.diagnostics || []).some((item) => item.code === 'RDL-DEC-019' && String(item.message || '').includes(decisionId));
+    if (!conflicted) {
+      throw new Error(`요청 대체는 상충하는 요청이 있을 때만 쓸 수 있습니다: ${decisionId} (RDL-DEC-019 없음)`);
+    }
+    if (existing.status === 'answered') {
+      throw new Error(`이미 답변된 결정의 요청은 대체할 수 없습니다: ${decisionId}`);
+    }
+  }
   if (existing && !settings.supersedes) return { project: context.project.key, decision: existing, created: false };
   const rootRequestId = settings.rootRequestId || newRootRequestId();
   const identity = decisionIdentity(rootRequestId, `decision:${settings.kind}:${key}`);

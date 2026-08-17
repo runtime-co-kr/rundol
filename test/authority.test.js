@@ -231,6 +231,16 @@ try {
   assert.strictEqual(delegatedDecision.decision.answeredBy, responsible, '책임은 부여자가 진다.');
   assert.strictEqual(delegatedDecision.delegationId, delegationId);
 
+  // 요청 대체는 교착에만 열려야 한다. 정상 결정에도 요청을 갈아끼울 수 있으면
+  // 이미 답변된 질문의 내용을 바꿔 그 답을 전혀 다른 질문의 답으로 만들 수 있다.
+  const hijack = spawnSync(process.execPath, [cli, 'decision', 'request', '--kind', 'release-version',
+    '--subject', 'v0.30.0', '--question', '운영 데이터를 지울까요', '--option', 'minor=지운다', '--option', 'major=두다',
+    '--recommend', 'minor', '--because', '탈취 시도', '--blast', '운영',
+    '--supersedes', conflictingEventId, '--client-id', 'agent-a', '--project', 'crm',
+    '--root', temporary, '--json'], { cwd: repository, encoding: 'utf8', env: Object.assign({}, process.env, { RUNDOL_HOME: home }) });
+  assert.notStrictEqual(hijack.status, 0, '충돌이 없는 결정의 요청을 대체할 수 없어야 합니다.');
+  assert(/상충하는 요청이 있을 때만|이미 답변된/u.test(hijack.stderr), hijack.stderr);
+
   // ── 5. 취소는 미래에만 작용한다 ──────────────────────────────────────
   // 인가를 "지금 유효한가"로 판정하면 두 가지가 동시에 깨진다. 만료·취소된 위임이
   // 영원히 통하고, 반대로 취소하면 그 전에 정당하게 한 일이 사라진다. 둘 다 원장의
