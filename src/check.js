@@ -14,6 +14,7 @@ const { isIndexArtifact, validateImplementationDocument, validateImplementationT
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
+const { normalizeDelegationEvent, delegationEnvelope } = require('./delegation');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -679,6 +680,37 @@ function checkWorkspaceStore(diagnostics, layout) {
         if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical projection과 일치하지 않습니다.');
       } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-DEC-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `결정 schema/envelope가 유효하지 않습니다: ${error.message}` });
+      }
+    }
+  }
+  const delegationRoot = path.join(eventsRoot, 'delegation');
+  if (fs.existsSync(delegationRoot)) for (const entry of fs.readdirSync(delegationRoot, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(delegationRoot, entry.name);
+    if (!/^delegation-[a-z0-9]+(?:-[a-z0-9]+)*-[a-z0-9]+(?:-[a-z0-9]+)*-\d{6}\.jsonl$/u.test(entry.name)) {
+      diagnostic(diagnostics, { code: 'RDL-DLG-010', category: 'workspace', file: relative(layout.root, file), message: '위임 이벤트 파일명이 표준 패턴과 다릅니다.' });
+      continue;
+    }
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/u).entries()) {
+      if (!line.trim()) continue;
+      let event;
+      try { event = JSON.parse(line); } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-DLG-011', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL 위임 이벤트를 파싱할 수 없습니다: ${error.message}` });
+        continue;
+      }
+      if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-DLG-012', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 Client를 참조합니다: ${event.clientId || '(없음)'}` });
+      if (!entry.name.startsWith(`delegation-${event.projectId}-${event.clientId}-`)) diagnostic(diagnostics, { code: 'RDL-DLG-013', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: '위임 이벤트의 프로젝트 또는 Client가 파일명과 일치하지 않습니다.' });
+      // 수임 Client도 등록된 주체여야 한다. 권한을 받는 쪽이 레지스트리에 없으면
+      // 그 위임은 누구에게 준 것인지 알 수 없다.
+      if (event.type === 'delegation.granted' && !clients.has(event.delegateClientId)) {
+        diagnostic(diagnostics, { code: 'RDL-DLG-012', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 수임 Client입니다: ${event.delegateClientId || '(없음)'}` });
+      }
+      try {
+        const normalized = normalizeDelegationEvent(event);
+        const expected = delegationEnvelope(normalized).canonicalDigest;
+        if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical projection과 일치하지 않습니다.');
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-DLG-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `위임 schema/envelope가 유효하지 않습니다: ${error.message}` });
       }
     }
   }

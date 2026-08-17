@@ -331,8 +331,22 @@ function requestDecision(start, input) {
     question: settings.question, options: settings.options, recommendation: settings.recommendation,
     impact: settings.impact, evidence: settings.evidence
   }, { lockDirectory: context.lockDirectory });
+  // 위임은 질문을 없애되 기록을 없애지 않는다. 유효한 위임이 있으면 요청 직후
+  // 부여자 명의의 답변을 함께 남긴다 — 감사 경로가 "물어본 결정"과 "위임된
+  // 결정"으로 갈리면 나중에 둘을 맞춰 읽어야 한다. 선택은 권고안을 따른다.
+  const delegation = require('./delegation').activeDelegationFor(start, { project: context.project.key, kind: settings.kind, clientId, now: settings.now });
+  if (delegation) {
+    const answerIdentity = decisionIdentity(rootRequestId, `decision-answer:${key}`);
+    appendDecisionEvent(context.eventsRoot, {
+      schemaVersion: 1, eventId: answerIdentity.eventId, type: 'decision.answered', rootRequestId, requestId: answerIdentity.requestId,
+      clientId, projectId: context.project.key, decisionId, decisionKey: key, kind: settings.kind,
+      selectedOption: settings.recommendation.option, answeredBy: delegation.grantedBy,
+      reason: `위임 ${delegation.delegationId}에 의한 자동 승인 (만료 ${delegation.expiresAt}): ${delegation.reason}`
+    }, { lockDirectory: context.lockDirectory });
+  }
   const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members: projectMembers(context.layout.root, context.project.key) });
-  return { project: context.project.key, decision: folded.decisions.find((item) => item.decisionKey === key), created: true, file: stored.file };
+  const result = { project: context.project.key, decision: folded.decisions.find((item) => item.decisionKey === key), created: true, file: stored.file };
+  return delegation ? Object.assign(result, { delegated: true, delegationId: delegation.delegationId }) : result;
 }
 
 function answerDecision(start, input) {

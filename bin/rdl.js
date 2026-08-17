@@ -74,6 +74,11 @@ Usage:
   rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
                       --client-id <id> [--project <key>] [--json]
   rdl decision kinds [--json]
+  rdl delegation list [--project <key>] [--active] [--json]
+  rdl delegation grant --kind <종류> --delegate <client-id> --member <MEMBER-ID> --reason <사유>
+                       [--days <n>] --client-id <id> [--project <key>] [--json]
+  rdl delegation revoke <DLG-ID> --member <MEMBER-ID> --reason <사유> --client-id <id>
+                        [--project <key>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
@@ -162,7 +167,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -183,7 +188,8 @@ function parseOperationArgs(argv) {
     else if (value === '--irreversible') options.irreversible = true;
     else if (value === '--defaults') options.defaults = true;
     else if (value === '--questions') options.questions = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch'].includes(value)) {
+    else if (value === '--active') options.active = true;
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -379,6 +385,32 @@ async function main() {
       selectedOption: options.select, answeredBy: options.member, reason: options.reason, rootRequestId: options.requestId
     });
     printOperation(answered, options.json);
+    return 0;
+  }
+  if (command === 'delegation') {
+    const subcommand = argv.shift();
+    if (!['list', 'grant', 'revoke'].includes(subcommand)) throw new Error('지원하는 위임 하위 명령은 list, grant, revoke입니다.');
+    const options = parseOperationArgs(argv);
+    const delegation = require('../src/delegation');
+    if (subcommand === 'list') {
+      if (options.positional.length) throw new Error('rdl delegation list에는 위치 인수를 사용할 수 없습니다.');
+      printOperation(delegation.listDelegations(options.root, { project: options.project, active: options.active }), options.json);
+      return 0;
+    }
+    if (subcommand === 'grant') {
+      if (options.positional.length) throw new Error('rdl delegation grant에는 위치 인수를 사용할 수 없습니다.');
+      printOperation(delegation.grantDelegation(options.root, {
+        project: options.project, clientId: options.clientId, kind: options.kind,
+        delegateClientId: options.delegate, grantedBy: options.member, reason: options.reason,
+        days: options.days === undefined ? undefined : Number.parseInt(options.days, 10), rootRequestId: options.requestId
+      }), options.json);
+      return 0;
+    }
+    if (options.positional.length !== 1) throw new Error('rdl delegation revoke에는 DLG-ID 하나가 필요합니다.');
+    printOperation(delegation.revokeDelegation(options.root, {
+      project: options.project, clientId: options.clientId, delegationId: options.positional[0],
+      revokedBy: options.member, reason: options.reason, rootRequestId: options.requestId
+    }), options.json);
     return 0;
   }
   if (command === 'doctor') {

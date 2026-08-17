@@ -32,6 +32,7 @@ require('./docs.test');
 require('./action.test');
 require('./agent-context.test');
 require('./decision.test');
+require('./delegation.test');
 require('./run-ledger.test');
 require('./run-cli.test');
 require('./harness-settings.test');

@@ -70,6 +70,11 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
                       --client-id <id> [--project <key>] [--json]
   rdl decision kinds [--json]
+  rdl delegation list [--project <key>] [--active] [--json]
+  rdl delegation grant --kind <종류> --delegate <client-id> --member <MEMBER-ID> --reason <사유>
+                       [--days <n>] --client-id <id> [--project <key>] [--json]
+  rdl delegation revoke <DLG-ID> --member <MEMBER-ID> --reason <사유> --client-id <id>
+                        [--project <key>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
