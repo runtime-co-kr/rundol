@@ -971,12 +971,12 @@
         },
         "AC-003": {
           "text": "rdl context --json이 워크스페이스 상태와 다음 행동·명령 요약을 반환하고 스킬이 이를 첫 지시로 사용한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:47:18.991Z",
-      "updatedAt": "2026-08-17T00:27:15.162Z",
+      "updatedAt": "2026-08-17T00:27:18.081Z",
       "statusChangedAt": "2026-08-17T00:03:22.322Z",
       "externalRefs": [],
       "project": "rundol",
