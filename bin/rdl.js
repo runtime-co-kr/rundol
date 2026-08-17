@@ -75,7 +75,8 @@ Usage:
                        --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
                        [--evidence <근거>] --client-id <id> [--project <key>] [--json]
   rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
-                      --client-id <id> [--project <key>] [--json]
+                      --client-id <id> [--supersedes <EVENT-ID>] [--delegation <DLG-ID>]
+                      [--project <key>] [--json]
   rdl decision kinds [--json]
   rdl delegation list [--project <key>] [--active] [--json]
   rdl delegation grant --kind <종류> --delegate <client-id> --member <MEMBER-ID> --reason <사유>

@@ -69,6 +69,21 @@ try {
   const document = { id: created.id, revision: listed.revision };
   assert(document.revision, `문서 리비전을 얻지 못했습니다: ${JSON.stringify(listed)}`);
 
+  // 합법 시나리오에 필요한 두 번째 책임자를 먼저 세운다. 위조 이벤트를 심은
+  // 뒤에는 project.md를 고치는 명령이 사전 검사에서 정당하게 막힌다.
+  for (const [type, title, scope] of [['PRD', '제품 요구사항', '제품 범위와 목표'], ['REQ', '기능 요구사항', '기능 하나의 요구']]) {
+    const args = ['doc', 'create', type, title, '--owner', 'MEMBER-001', '--scope', scope, '--exclude', '그 밖', '--project', 'crm'];
+    if (type === 'REQ') args.push('--related', created.id, '--function-id', 'AUT-01');
+    rdl(args);
+  }
+  const roles = require('../src/collaboration').readCollaboration(temporary, 'crm').roles || [];
+  const roleId = (roles[0] && roles[0].id) || 'ROLE-001';
+  const added = rdl(['member', 'add', '책임자', '--role', roleId, '--organization', '런타임',
+    '--account', 'owner@example.test', '--responsibility', '릴리스 승인', '--project', 'crm']);
+  const responsible = added.memberId || added.member;
+  assert(responsible && responsible !== 'MEMBER-001', `두 번째 멤버가 필요합니다: ${JSON.stringify(added)}`);
+  rdl(['client', 'register', 'desk-owner', '--name', '책임자 데스크', '--type', 'device', '--owner', responsible]);
+
   // ── 1. 위조된 승인은 채택되지 않는다 ────────────────────────────────
   const forgedApproval = {
     schemaVersion: 1,
@@ -133,7 +148,77 @@ try {
   assert.strictEqual(delegationFold.delegations.filter((item) => item.delegationId === forgedDelegation.delegationId).length, 0,
     '위조된 위임이 활성이 되면 안 됩니다.');
 
-  // ── 3. 인가 없는 접기는 불가능하다 ──────────────────────────────────
+  // ── 3. 충돌 해소가 CLI에서 실제로 동작한다 ───────────────────────────
+  // 쓰기 경로가 supersedes를 이벤트에 싣지 않아 이 기능은 표면만 있고 경로가
+  // 없었다. 명령은 성공했고 결정은 계속 열려 있었다.
+  const { decisionKey } = require('../src/decision');
+  rdl(['client', 'register', 'agent-b', '--name', 'B', '--type', 'agent', '--owner', 'MEMBER-001']);
+  const requested = rdl(['decision', 'request', '--kind', 'release-version', '--subject', 'v0.30.0',
+    '--question', '어떤 버전으로 올리나', '--option', 'minor=마이너', '--option', 'major=메이저',
+    '--recommend', 'minor', '--because', '새 명령이 추가됐다', '--blast', '배포',
+    '--client-id', 'agent-a', '--project', 'crm']);
+  const decisionId = requested.decision.decisionId;
+  rdl(['decision', 'answer', decisionId, '--select', 'minor', '--member', 'MEMBER-001',
+    '--reason', '마이너가 맞다', '--client-id', 'agent-a', '--project', 'crm']);
+
+  // 다른 Client에서 다른 선택이 병합돼 들어온다. 상충하는 답은 해소될 때까지
+  // 열린 상태로 둔다 — 하나를 고르는 것은 결정이 아니라 은폐다.
+  const conflictingEventId = `EVT-${hex('B')}`;
+  appendRaw('decision', 'crm', 'agent-b', {
+    schemaVersion: 1,
+    eventId: conflictingEventId,
+    type: 'decision.answered',
+    rootRequestId: `REQ-${hex('D')}`,
+    requestId: `REQ-${hex('E')}`,
+    clientId: 'agent-b',
+    projectId: 'crm',
+    decisionId,
+    decisionKey: decisionKey({ kind: 'release-version', project: 'crm', subject: 'v0.30.0' }),
+    kind: 'release-version',
+    selectedOption: 'major',
+    answeredBy: 'MEMBER-001',
+    reason: '메이저가 맞다'
+  });
+  const conflicted = rdl(['decision', 'list', '--project', 'crm']).decisions.find((item) => item.decisionId === decisionId);
+  assert.strictEqual(conflicted.status, 'open', '상충하는 답변이 있으면 결정은 열린 채로 남아야 합니다.');
+
+  // 잘못된 대체는 해소하지 못한다. 진단만 하고 답변을 살려 두면 self·unknown·
+  // 분기 대체로 아무 결정이나 answered로 만들 수 있다.
+  rdl(['decision', 'answer', decisionId, '--select', 'minor', '--member', 'MEMBER-001',
+    '--reason', '없는 대상을 대체한다', '--supersedes', `EVT-${hex('C')}`,
+    '--client-id', 'agent-a', '--project', 'crm']);
+  const stillOpen = rdl(['decision', 'list', '--project', 'crm']).decisions.find((item) => item.decisionId === decisionId);
+  assert.strictEqual(stillOpen.status, 'open', '대체 대상이 없는 답변이 결정을 해소하면 안 됩니다.');
+
+  // 올바른 대체는 해소한다. 탈출구 없이 닫기만 하면 영구 교착이 된다.
+  const resolved = rdl(['decision', 'answer', decisionId, '--select', 'minor', '--member', 'MEMBER-001',
+    '--reason', '마이너로 확정한다', '--supersedes', conflictingEventId,
+    '--client-id', 'agent-a', '--project', 'crm']);
+  assert.strictEqual(resolved.decision.status, 'answered', `대체가 충돌을 해소해야 합니다: ${JSON.stringify(resolved.decision)}`);
+  assert.strictEqual(resolved.decision.selectedOption, 'minor');
+
+  // ── 4. 교차 소유자 위임이 실제로 동작한다 ────────────────────────────
+  // 접기가 위임을 몰라 위임된 답변이 버려졌다. 명령은 delegated:true를
+  // 돌려주면서 상태는 open이었다 — 표면과 상태가 갈렸다.
+  // 책임자가 자기 Client로 위임을 부여하고, 수임 Client가 그 이름으로 답한다.
+  const granted = rdl(['delegation', 'grant', '--kind', 'release-version', '--delegate', 'agent-a',
+    '--member', responsible, '--reason', '릴리스 판단을 위임한다', '--days', '7',
+    '--client-id', 'desk-owner', '--project', 'crm']);
+  const delegationId = granted.delegation.delegationId;
+
+  const delegatedDecision = rdl(['decision', 'request', '--kind', 'release-version', '--subject', 'v0.31.0',
+    '--question', '다음 버전은', '--option', 'minor=마이너', '--option', 'major=메이저',
+    '--recommend', 'minor', '--because', '기능 추가', '--blast', '배포',
+    '--client-id', 'agent-a', '--project', 'crm']);
+  // 유효한 위임이 있으면 요청 즉시 부여자 명의의 답변이 함께 남는다. 그 답변이
+  // 접기에서 살아남아야 결정이 실제로 닫힌다.
+  assert.strictEqual(delegatedDecision.delegated, true, '위임이 적용되어야 합니다.');
+  assert.strictEqual(delegatedDecision.decision.status, 'answered',
+    `위임된 결정은 열린 채로 남으면 안 됩니다: ${JSON.stringify(delegatedDecision.decision)}`);
+  assert.strictEqual(delegatedDecision.decision.answeredBy, responsible, '책임은 부여자가 진다.');
+  assert.strictEqual(delegatedDecision.delegationId, delegationId);
+
+  // ── 5. 인가 없는 접기는 불가능하다 ──────────────────────────────────
   // 안전한 경로가 opt-in이면 언젠가 꺼진다. 실제로 rdl check가 껐었다.
   assert.throws(() => foldApprovals([], {}), /인가 컨텍스트/u, '인가 없는 승인 접기는 거부되어야 합니다.');
   assert.throws(() => foldDelegations([], { now: 0 }), /인가 컨텍스트/u, '인가 없는 위임 접기는 거부되어야 합니다.');

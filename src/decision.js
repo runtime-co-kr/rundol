@@ -10,6 +10,7 @@ const eventStore = require('./event-store');
 const EVENT_ID = /^EVT-[A-F0-9]{20}$/u;
 const REQUEST_ID = /^REQ-[A-F0-9]{20}$/u;
 const DECISION_ID = /^DEC-[A-F0-9]{20}$/u;
+const DELEGATION_ID = /^DLG-[A-F0-9]{20}$/u;
 const SIMPLE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const MEMBER_ID = /^MEMBER-\d{3}$/u;
 const DIGEST = /^[a-f0-9]{64}$/u;
@@ -157,6 +158,12 @@ function normalizeDecisionEvent(input) {
     if (input.supersedes !== undefined) {
       if (!EVENT_ID.test(input.supersedes || '')) throw new Error('대체 대상 답변이 유효하지 않습니다.');
       normalized.supersedes = input.supersedes;
+    }
+    // 명의가 Client 소유자와 다를 때 그 차이를 정당화하는 위임. 허용 목록에만
+    // 넣고 복사하지 않으면 읽는 쪽은 위임을 보지 못하고 답변을 사칭으로 버린다.
+    if (input.delegationId !== undefined) {
+      if (!DELEGATION_ID.test(input.delegationId || '')) throw new Error('위임 식별자가 유효하지 않습니다.');
+      normalized.delegationId = input.delegationId;
     }
   }
   return normalized;
