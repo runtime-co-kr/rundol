@@ -1096,6 +1096,45 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSWHJILL7B14E4A099223E46": {
+      "title": "[기능] 사람 결정 카탈로그와 결정 요청 기록",
+      "summary": "AI가 사람에게 반드시 물어야 하는 결정을 정책으로 명문화하고, 질문을 대화가 아니라 기록되는 상태로 만든다. 카탈로그 기준은 비가역성과 외부 노출이며 rdl check가 판정할 수 있는 것과 안전한 기본값이 있는 것은 묻지 않는다. 질문·선택지·권고안·답변·결정자는 소유권 해소 이벤트와 같은 패턴으로 남아 어느 클라이언트에서든 답변하고 감사할 수 있다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-038",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "결정 카탈로그가 비가역성 기준으로 정의되고 각 항목의 기본 동작과 답변 권한이 명시된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "결정 요청이 질문·선택지·권고안을 담은 상태로 기록되고 작업은 그 지점에서 정지한다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "답변이 결정자와 사유를 포함해 기록되며 어느 클라이언트에서든 답변할 수 있다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "절차의 human 스텝과 태스크 waiting 상태가 같은 결정 기록을 사용한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T00:18:17.189Z",
+      "updatedAt": "2026-08-17T00:18:17.189Z",
+      "statusChangedAt": "2026-08-17T00:18:17.189Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
