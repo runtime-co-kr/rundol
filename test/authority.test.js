@@ -253,6 +253,33 @@ try {
   assert.strictEqual(resolveReport.diagnostics.filter((item) => item.code === 'RDL-DEC-031').length, 0,
     `해소된 결정에 답변 결박 오류가 남으면 안 됩니다: ${JSON.stringify(resolveReport.diagnostics.filter((item) => String(item.code).startsWith('RDL-DEC')))}`);
 
+  // 지나간 질문을 겨냥한 사칭 답변도 감사 기록에 남아야 한다. 살아 있는 질문의
+  // 답변만 먼저 걸러 내면 그런 시도가 진단 없이 사라진다 — 상태를 못 바꾼다는
+  // 것과 있었다는 사실이 지워지는 것은 다르다.
+  appendRaw('decision', 'crm', 'agent-a', {
+    schemaVersion: 1,
+    eventId: `EVT-${hex('6')}`,
+    type: 'decision.answered',
+    rootRequestId: `REQ-${hex('7')}`,
+    requestId: `REQ-${hex('8')}`,
+    clientId: 'agent-a',
+    projectId: 'crm',
+    decisionId,
+    decisionKey: decisionKey({ kind: 'release-version', project: 'crm', subject: 'v0.30.0' }),
+    kind: 'release-version',
+    selectedOption: 'major',
+    // agent-a의 소유자가 아닌 명의 — 순수한 사칭이다.
+    answeredBy: responsible,
+    requestDigest: requestDigestFor(liveRequest),
+    reason: '지나간 질문을 겨냥한 사칭',
+    recordedAt: new Date().toISOString()
+  });
+  const auditFold = require('../src/decision').foldDecisions(
+    require('../src/decision').readDecisionEvents(eventsRoot(), 'crm'),
+    { authority: authorityFor('crm') });
+  assert(auditFold.diagnostics.some((item) => item.eventId === `EVT-${hex('6')}` && ['RDL-DEC-021', 'RDL-DEC-026'].includes(item.code)),
+    `사칭 답변이 진단으로 남아야 합니다: ${JSON.stringify(auditFold.diagnostics)}`);
+
   // ── 5. 취소는 미래에만 작용한다 ──────────────────────────────────────
   // 인가를 "지금 유효한가"로 판정하면 두 가지가 동시에 깨진다. 만료·취소된 위임이
   // 영원히 통하고, 반대로 취소하면 그 전에 정당하게 한 일이 사라진다. 둘 다 원장의

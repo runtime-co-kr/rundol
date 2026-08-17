@@ -1,9 +1,17 @@
 'use strict';
 
-// 이 스위트는 실제 자식 프로세스를 띄워 drive 경로를 시험한다. Windows에서
-// 그 실행은 기본으로 막혀 있으므로 여기서만 명시적으로 켠다 — 전역으로 켜면
-// 기본 차단 모드가 전체 게이트에서 한 번도 시험되지 않는다.
+// 이 스위트는 실제 자식 프로세스를 띄운다. Windows에서 그 실행은 기본으로 막혀
+// 있으므로 여기서만 켜고, 끝나면 반드시 되돌린다.
+//
+// 되돌리지 않으면 같은 프로세스에서 뒤이어 도는 스위트로 새어 나가 전체 게이트가
+// 위험 모드에서 돈다 — 실제로 그랬고, "기본 차단에서 검증된다"는 말이 거짓이 됐다.
+// 환경변수를 켜는 것과 켠 채로 두는 것은 다른 일이다.
+const PREVIOUS_WINDOWS_ADAPTER = process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
 process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = '1';
+function restoreWindowsAdapterOptIn() {
+  if (PREVIOUS_WINDOWS_ADAPTER === undefined) delete process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
+  else process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = PREVIOUS_WINDOWS_ADAPTER;
+}
 
 const assert = require('assert');
 const crypto = require('crypto');
@@ -419,5 +427,6 @@ try {
 
   process.stdout.write('run CLI tests passed\n');
 } finally {
+  restoreWindowsAdapterOptIn();
   fs.rmSync(temporary, { recursive: true, force: true });
 }

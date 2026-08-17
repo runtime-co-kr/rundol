@@ -96,6 +96,48 @@ try {
     fs.rmSync(workspaceLike, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 
+  // 얕은 복제는 과거를 가지고 있지 않다. 볼 수 없는 이력을 "위반 없음"으로 읽으면
+  // 잘라낸 구간의 변조가 전부 무사통과한다 — 가장 조용한 실패다.
+  const { appendOnlyReport } = require('../src/ledger-integrity');
+  const deep = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-integrity-deep-'));
+  const shallowRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-integrity-shallow-'));
+  try {
+    const source = path.join(deep, 'projects', 'workspace');
+    fs.mkdirSync(path.join(source, 'events', 'decision'), { recursive: true });
+    fs.writeFileSync(path.join(source, 'events', 'decision', 'decision-crm-agent-a-000001.jsonl'), '{"eventId":"EVT-1"}\n', 'utf8');
+    git(['init', '-b', 'main'], source);
+    git(['config', 'user.name', 'Rundol Test'], source);
+    git(['config', 'user.email', 'rundol@example.test'], source);
+    git(['add', '-A'], source);
+    git(['commit', '-m', 'first'], source);
+    fs.appendFileSync(path.join(source, 'events', 'decision', 'decision-crm-agent-a-000001.jsonl'), '{"eventId":"EVT-2"}\n', 'utf8');
+    git(['add', '-A'], source);
+    git(['commit', '-m', 'second'], source);
+    assert.strictEqual(appendOnlyReport(deep).checked, true, '온전한 이력은 확인 가능해야 합니다.');
+
+    const clonePath = path.join(shallowRoot, 'projects', 'workspace');
+    fs.mkdirSync(path.dirname(clonePath), { recursive: true });
+    const cloned = spawnSync('git', ['clone', '--depth', '1', `file://${source.replace(/\\/gu, '/')}`, clonePath], { encoding: 'utf8' });
+    if (cloned.status === 0) {
+      const report = appendOnlyReport(shallowRoot);
+      assert.strictEqual(report.checked, false, '얕은 복제를 확인 완료로 판정하면 안 됩니다.');
+      assert(report.reason && /얕은|잘려/u.test(report.reason), `확인 불가 사유가 있어야 합니다: ${JSON.stringify(report)}`);
+    }
+  } finally {
+    fs.rmSync(deep, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    fs.rmSync(shallowRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+
+  // 공유 worktree가 아예 없으면 확인할 방법이 없다 — 그것도 사유로 남긴다.
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-integrity-empty-'));
+  try {
+    const report = appendOnlyReport(empty);
+    assert.strictEqual(report.checked, false);
+    assert(report.reason, '공유 worktree 부재도 확인 불가 사유여야 합니다.');
+  } finally {
+    fs.rmSync(empty, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+
   // Git 저장소가 아니면 조용히 빈 목록을 돌려준다 — 검사가 실패로 번지면 안 된다.
   const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-integrity-bare-'));
   try {

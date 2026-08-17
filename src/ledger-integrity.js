@@ -142,7 +142,11 @@ function appendOnlyReport(root) {
   // 위반인데, 지운 자리를 보고 "볼 것이 없다"고 판정하면 그 위반만 무사통과한다.
   // 무엇이 있었는지는 파일 시스템이 아니라 Git 이력이 안다.
   const workspaceRoot = path.join(root, 'projects', 'workspace');
-  if (!fs.existsSync(workspaceRoot)) return { checked: false, reason: null, violations: [], shards: [] };
+  // 공유 worktree가 아예 없으면 원장의 과거를 확인할 방법이 없다. 확인하지 못한
+  // 것을 조용히 넘기면 검사 통과가 아무것도 뜻하지 않는다.
+  if (!fs.existsSync(workspaceRoot)) {
+    return { checked: false, reason: '공유 원장 worktree가 없어 append-only를 확인할 수 없습니다.', violations: [], shards: [] };
+  }
   const inside = git(workspaceRoot, ['rev-parse', '--is-inside-work-tree']);
   if (inside.status !== 0) {
     return { checked: false, reason: '공유 원장이 Git 작업 트리 안에 없어 append-only를 확인할 수 없습니다.', violations: [], shards: [] };
@@ -154,6 +158,18 @@ function appendOnlyReport(root) {
     const eventsRoot = path.join(workspaceRoot, 'events');
     if (!fs.existsSync(eventsRoot)) return { checked: false, reason: null, violations: [], shards: [] };
     return { checked: false, reason: '공유 원장 worktree에 커밋이 없어 비교할 기준점이 없습니다.', violations: [], shards: [] };
+  }
+  // 얕은 복제는 과거를 가지고 있지 않다. 볼 수 없는 이력을 "위반 없음"으로
+  // 읽으면, 잘라낸 구간의 변조가 전부 무사통과한다 — 가장 조용한 실패다.
+  const shallow = git(workspaceRoot, ['rev-parse', '--is-shallow-repository']);
+  if (shallow.status === 0 && String(shallow.stdout || '').trim() === 'true') {
+    return { checked: false, reason: '얕은 복제라 과거 이력을 볼 수 없어 append-only를 확인할 수 없습니다.', violations: [], shards: [] };
+  }
+  // grafted 커밋이 있으면 그 지점 이전은 잘려 있다. shallow 플래그가 없어도
+  // 같은 상태이므로 함께 본다.
+  const grafted = git(workspaceRoot, ['log', '--format=%H %D', '-1', '--all']);
+  if (grafted.status === 0 && /\bgrafted\b/u.test(grafted.stdout || '')) {
+    return { checked: false, reason: '이력이 잘려 있어(grafted) append-only를 확인할 수 없습니다.', violations: [], shards: [] };
   }
   const shards = historicalShards(workspaceRoot, 'events');
   if (shards === null) {

@@ -360,20 +360,23 @@ function foldDecisions(events, options) {
     // 이 결정에 한 번이라도 존재한 요청들의 투영. 대체된 질문에 답한 기록은
     // 잘못된 것이 아니라 지나간 것이다 — 그때는 그 질문이 살아 있었다.
     const knownDigests = new Set(historicalRequests.map((entry) => requestDigestFor(entry)));
+    // 검사 순서가 감사 기록을 정한다. 살아 있는 질문의 답변만 먼저 걸러 내면,
+    // 지나간 질문을 겨냥해 사후에 끼워 넣은 사칭 답변이 상태를 바꾸지는 못하되
+    // 진단도 없이 사라진다 — 원장에서 그런 시도가 있었다는 사실 자체가 지워진다.
+    // 그래서 유효성과 권한을 먼저 보고, 살아 있는지는 마지막에 본다.
     const answers = group.answers.slice().sort((left, right) => left.eventId.localeCompare(right.eventId)).filter((answer) => {
-      // 이 답변이 답한 질문이 지금 살아 있는 질문인가. 다르면 그 답은 다른
-      // 질문의 답이고, 여기에 재사용될 수 없다.
-      if (answer.requestDigest !== liveDigest) {
-        // 이 결정에 실제로 있었던 질문에 답한 것이라면 오류가 아니다. 질문이
-        // 대체되면 답도 함께 지나가고, 새 질문에는 새 답이 필요할 뿐이다.
-        // 여기서 오류로 남기면 정상적으로 다시 답해도 검사가 영원히 실패한다 —
-        // 탈취는 막았는데 복구 경로가 없는 상태가 된다.
-        if (!knownDigests.has(answer.requestDigest)) {
-          diagnostics.push({ code: 'RDL-DEC-031', severity: 'error', eventId: answer.eventId, message: `이 결정에 없던 요청 내용에 대한 답변입니다: ${decisionIdFor(key)}` });
-        }
+      // 이 결정에 존재한 적 없는 질문에 답한 것은 그 자체로 잘못이다.
+      if (answer.requestDigest !== liveDigest && !knownDigests.has(answer.requestDigest)) {
+        diagnostics.push({ code: 'RDL-DEC-031', severity: 'error', eventId: answer.eventId, message: `이 결정에 없던 요청 내용에 대한 답변입니다: ${decisionIdFor(key)}` });
         return false;
       }
-      if (!optionIds.has(answer.selectedOption)) {
+      // 선택지는 답변이 답한 질문의 것으로 본다. 지나간 질문의 답변을 지금
+      // 질문의 선택지로 재면 엉뚱한 진단이 나온다.
+      const answered = answer.requestDigest === liveDigest
+        ? request
+        : historicalRequests.find((entry) => requestDigestFor(entry) === answer.requestDigest) || request;
+      const answeredOptionIds = answered === request ? optionIds : new Set(answered.options.map((option) => option.id));
+      if (!answeredOptionIds.has(answer.selectedOption)) {
         diagnostics.push({ code: 'RDL-DEC-017', severity: 'error', eventId: answer.eventId, message: `선택지에 없는 값입니다: ${answer.selectedOption}` });
         return false;
       }
@@ -394,7 +397,9 @@ function foldDecisions(events, options) {
         diagnostics.push({ code: verdict.code, severity: 'error', eventId: answer.eventId, message: verdict.message });
         return false;
       }
-      return true;
+      // 여기까지 온 답변은 유효하고 권한도 있다. 다만 답한 질문이 대체됐다면
+      // 지금 상태를 정하지는 못한다 — 잘못이 아니라 지나간 것이다.
+      return answer.requestDigest === liveDigest;
     });
     // 서로 다른 선택이 동시에 도착하면 하나를 고르는 것은 결정이 아니라 은폐다.
     // 권한 결정에서 순서 결정성만으로는 부족하다 — 상충하는 답은 해소될 때까지
