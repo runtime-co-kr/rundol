@@ -30,11 +30,15 @@ function validateProject(key, name) {
 }
 
 function renderProject(key, name) {
-  return template('PROJECT.template.md')
+  const source = template('PROJECT.template.md')
     .replaceAll('<프로젝트키>', key)
     .replaceAll('<프로젝트 이름>', String(name).trim())
     .replaceAll('[[PRD-001-<제품명>|PRD-001]]', '[[project|project]]')
     .replace(/related:\s*\r?\n(?:\s+-[^\r\n]*\r?\n)+/u, 'related: []\n');
+  // 프로젝트 charter도 정본 문서다. 여기서 식별자를 주지 않으면 새 프로젝트가
+  // 만들어지는 순간부터 미부여 경고를 달고 시작한다.
+  const { newDocumentUid, insertUid } = require('./document-identity');
+  return insertUid(source, newDocumentUid());
 }
 
 function ensureIgnore(root) {

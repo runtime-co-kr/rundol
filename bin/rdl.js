@@ -84,6 +84,7 @@ Usage:
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
+  rdl doc identity [--project <key>] [--apply] [--json]
   rdl doc status [--project <key>] [--status <approved|stale|unapproved>] [--json]
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
                   --client-id <id> [--reason <사유>] [--project <key>] [--json]
@@ -1026,6 +1027,14 @@ async function main() {
     const subcommand = argv.shift();
     // 승인은 초안과 정본의 경계다. 신뢰 상태는 파일이 아니라 원장에서 파생하므로
     // frontmatter의 state를 무엇으로 적든 이 결과는 바뀌지 않는다.
+    // 소급 부여는 문서 내용을 바꿔 리비전이 변하고, 그러면 기존 승인이 낡는다.
+    // 그래서 --apply 없이는 무엇이 바뀔지만 보여준다.
+    if (subcommand === 'identity') {
+      const identityOptions = parseOperationArgs(argv);
+      if (identityOptions.positional.length) throw new Error('rdl doc identity는 위치 인수를 사용하지 않습니다.');
+      printOperation(require('../src/document-identity').migrateDocumentUids(identityOptions.root, { project: identityOptions.project, apply: identityOptions.apply }), identityOptions.json);
+      return 0;
+    }
     if (['status', 'approve', 'history', 'diff'].includes(subcommand)) {
       const options = parseOperationArgs(argv);
       const approval = require('../src/approval');

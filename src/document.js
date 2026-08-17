@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readCollaboration } = require('./collaboration');
-const { reserveDocumentId } = require('./document-sequence');
+const { documentIdFor, newDocumentUid, insertUid } = require('./document-identity');
 const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
 const { assertBoundaryInput } = require('./document-boundary');
@@ -46,6 +46,10 @@ function safeTitle(value) {
   return { title, filename };
 }
 
+// 번호는 이제 표시값이다. 조인은 uid가 맡으므로 번호를 안전하게 나눠 주려고
+// 문서를 하나 만들 때마다 원격에 예약을 밀어 넣을 이유가 없어졌다 — 구멍은
+// 정체성을 깨뜨리지 않는 표시상의 빈칸일 뿐이다(ADR-009). 오프라인에서도
+// 문서를 만들 수 있고 병렬 생성이 서로를 밀어내지 않는다.
 function nextId(layout, project, type) {
   let maximum = 0;
   for (const id of registry(project).keys()) {
@@ -53,7 +57,7 @@ function nextId(layout, project, type) {
     if (match) maximum = Math.max(maximum, Number.parseInt(match[1], 10));
   }
   if (maximum >= 999) throw new Error(`${type} 문서 번호 999를 초과할 수 없습니다.`);
-  return reserveDocumentId(layout.root, project.key, type, maximum);
+  return documentIdFor(type, maximum + 1);
 }
 
 function wikiLinks(ids, artifacts) {
@@ -135,9 +139,13 @@ function createDocument(start, input) {
     }
   }
   if (functionContracts) source += functionContracts;
+  // 조인 키는 번호가 아니라 uid다. 번호와 제목을 나중에 다시 정리해도 이 값을
+  // 가리키는 연결은 살아남는다.
+  const uid = newDocumentUid();
+  source = insertUid(source, uid);
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
-  return { root: layout.root, project: project.key, id, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null };
+  return { root: layout.root, project: project.key, id, uid, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null };
 }
 
 function yamlQuote(value) {

@@ -35,6 +35,7 @@ require('./decision.test');
 require('./delegation.test');
 require('./workset.test');
 require('./approval.test');
+require('./document-identity.test');
 require('./run-ledger.test');
 require('./run-cli.test');
 require('./harness-settings.test');

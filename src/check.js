@@ -16,6 +16,7 @@ const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
 const { normalizeDelegationEvent, delegationEnvelope } = require('./delegation');
 const { normalizeApprovalEvent, approvalEnvelope } = require('./approval');
+const { isDocumentUid, duplicateUids } = require('./document-identity');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -385,6 +386,11 @@ function checkLegacyWorkspace(start, options, scope) {
     if (typeof meta.title === 'string' && /[A-Za-z]/.test(meta.title)) diagnostic(diagnostics, { code: 'RDL-DOC-006', file: doc.relativeFile, line: doc.frontmatter.locations.title, artifactId, message: '문서 title은 한글 중심으로 작성하고 영문 약어는 description 또는 본문에서 설명하세요.' });
     const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
     if (aliases[0] !== artifactId) diagnostic(diagnostics, { code: 'RDL-DOC-007', file: doc.relativeFile, line: doc.frontmatter.locations.aliases, artifactId, message: 'aliases의 첫 값은 문서 ID와 같아야 합니다.' });
+    // 조인 키는 번호가 아니라 uid다. 형식이 어긋난 값은 조용히 무시하면 그 문서가
+    // 조인에서 사라지므로 진단한다. 부여 자체가 없는 것은 아직 마이그레이션하지
+    // 않은 문서일 수 있어 경고로 둔다.
+    if (meta.uid === undefined) diagnostic(diagnostics, { code: 'RDL-DOC-014', severity: 'warning', file: doc.relativeFile, artifactId, message: '문서 고유 식별자(uid)가 없습니다. rdl doc identity --apply로 부여하세요.' });
+    else if (!isDocumentUid(meta.uid)) diagnostic(diagnostics, { code: 'RDL-DOC-015', file: doc.relativeFile, line: doc.frontmatter.locations.uid, artifactId, message: `문서 고유 식별자 형식이 잘못되었습니다: ${meta.uid}` });
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
     const requiredNamespaces = NON_CANONICAL_CODES.has(typeof artifactId === 'string' ? artifactId.slice(0, 3) : '') ? NOTE_TAG_NAMESPACES : REQUIRED_TAG_NAMESPACES;
     for (const namespace of requiredNamespaces) if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) diagnostic(diagnostics, { code: 'RDL-DOC-008', file: doc.relativeFile, line: doc.frontmatter.locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
@@ -420,6 +426,13 @@ function checkLegacyWorkspace(start, options, scope) {
   const stakeholderIds = new Set(projectDoc ? Array.from(projectDoc.blocks).filter((id) => id.startsWith('STAKEHOLDER-')) : []);
   if (!projectDoc) diagnostic(diagnostics, { code: 'RDL-META-001', message: 'PRJ 문서를 찾지 못했습니다.' });
   checkProjectGovernance(diagnostics, projectDoc);
+  // 같은 식별자를 가진 문서가 둘이면 조인이 갈린다. 확률은 낮지만 조용한 손상
+  // 대신 두 문서를 모두 지목한다 — 짧은 식별자를 쓰는 대가는 이 진단으로 치른다.
+  for (const duplicate of duplicateUids(canonicalDocuments.filter((doc) => doc.id).map((doc) => ({ id: doc.id, uid: doc.frontmatter.data.uid })))) {
+    for (const document of canonicalDocuments.filter((doc) => duplicate.ids.includes(doc.id))) {
+      diagnostic(diagnostics, { code: 'RDL-DOC-016', file: document.relativeFile, artifactId: document.id, target: duplicate.uid, message: `문서 고유 식별자가 중복됩니다: ${duplicate.uid} (${duplicate.ids.join(', ')})` });
+    }
+  }
 
   for (const doc of canonicalDocuments) {
     const meta = doc.frontmatter.data;
