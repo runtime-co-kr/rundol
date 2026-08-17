@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { INDEX_VERSION, indexFingerprint, buildIndex, readIndex, clearIndex, queryTasks, indexFile } = require('../src/query-index');
+const { INDEX_VERSION, indexFingerprint, buildIndex, readIndex, clearIndex, indexStatus, queryTasks, indexFile } = require('../src/query-index');
 const { workspaceLayout } = require('../src/workspace');
 const { listTasks } = require('../src/agent-context');
 
@@ -128,33 +128,32 @@ try {
   for (const document of rebuilt.documents) assert(document.uid, `문서에 식별자가 없습니다: ${document.id}`);
   assert.strictEqual(Object.keys(rebuilt.documentUidByDisplayId).length, rebuilt.documents.length);
 
-  // 인덱스는 실제 조회 명령에서 쓸 수 있어야 한다. 만들어 놓고 부를 방법이 없으면
-  // 아무것도 가속하지 않는 죽은 코드다. 다만 기본값은 아니다 — 측정 결과 이 규모에서는
-  // 유효성 확인이 읽기보다 비싸다.
+  // 인덱스는 0.30에서 공개 표면이 아니다. 이 규모에서 정본 조회보다 느리고,
+  // 공개 기능은 틀릴 여지를 남기는 것보다 없는 편이 낫다. 계층과 시험은 남긴다 —
+  // 규모가 달라지면 그때 다시 재고 다시 연다.
   buildIndex(temporary);
-  assert.strictEqual(rdl(['task', 'list', '--project', 'crm']).source, 'cold', '기본 경로는 정본이어야 합니다.');
-  const viaCli = rdl(['task', 'list', '--project', 'crm', '--index']);
-  assert.strictEqual(viaCli.source, 'index', '--index는 유효한 인덱스를 써야 합니다.');
-  const viaColdCli = rdl(['task', 'list', '--project', 'crm', '--cold']);
-  assert.strictEqual(viaColdCli.source, 'cold');
-  assert.deepStrictEqual(viaCli.tasks, viaColdCli.tasks, 'CLI의 두 경로가 같은 답을 내야 합니다.');
+  assert.strictEqual(rdl(['task', 'list', '--project', 'crm']).source, 'cold', '조회는 정본으로 답해야 합니다.');
   const contextCli = rdl(['context', '--project', 'crm']);
-  assert.strictEqual(contextCli.tasks.counts.todo, viaColdCli.counts.todo, 'context도 같은 집계를 써야 합니다.');
-  // 두 경로가 다른 답을 낸 경우를 사후에 지목하려면 결과가 출처를 들고 있어야 한다.
   assert.strictEqual(contextCli.tasks.source, 'cold', 'context가 어느 경로로 답했는지 남겨야 합니다.');
-  const contextIndexed = rdl(['context', '--project', 'crm', '--index']);
-  assert.strictEqual(contextIndexed.tasks.source, 'index');
-  assert.strictEqual(contextIndexed.tasks.counts.todo, viaColdCli.counts.todo, 'context의 두 경로가 같은 집계를 내야 합니다.');
+  assert.strictEqual(contextCli.tasks.counts.todo, queryTasks(temporary, { project: 'crm' }).counts.todo);
 
-  // CLI 표면.
-  const status = rdl(['index', 'status']);
-  assert.strictEqual(status.status, 'valid');
-  assert.strictEqual(status.tasks, 3);
-  const removed = rdl(['index', 'clear']);
-  assert.strictEqual(removed.removed, true);
-  assert.strictEqual(rdl(['index', 'status']).status, 'missing');
-  assert.strictEqual(rdl(['task', 'list', '--project', 'crm', '--index']).tasks.length, 3, '인덱스 없이도 조회는 답해야 합니다.');
-  assert.strictEqual(rdl(['index', 'rebuild']).tasks, 3);
+  // 명령 표면에 인덱스가 없어야 한다. 남아 있으면 내렸다는 말이 사실이 아니다.
+  const help = spawnSync(process.execPath, [cli, '--help'], { cwd: repository, encoding: 'utf8', env: Object.assign({}, process.env, { RUNDOL_HOME: home }) });
+  assert.strictEqual(help.status, 0);
+  assert.strictEqual(/rdl index /u.test(help.stdout), false, 'rdl index 명령이 도움말에 남아 있습니다.');
+  assert.strictEqual(/--index/u.test(help.stdout), false, '--index 플래그가 도움말에 남아 있습니다.');
+  for (const attempt of [['index', 'status'], ['task', 'list', '--index']]) {
+    const rejected = spawnSync(process.execPath, [cli].concat(attempt, ['--root', temporary, '--json']), { cwd: repository, encoding: 'utf8', env: Object.assign({}, process.env, { RUNDOL_HOME: home }) });
+    assert.notStrictEqual(rejected.status, 0, `내린 표면이 아직 동작합니다: rdl ${attempt.join(' ')}`);
+  }
+
+  // 내부 API는 그대로 동작한다.
+  assert.strictEqual(indexStatus(temporary).status, 'valid');
+  assert.strictEqual(indexStatus(temporary).tasks, 3);
+  assert.strictEqual(clearIndex(temporary).removed, true);
+  assert.strictEqual(indexStatus(temporary).status, 'missing');
+  assert.strictEqual(rdl(['task', 'list', '--project', 'crm']).tasks.length, 3, '인덱스 없이도 조회는 답해야 합니다.');
+  assert.strictEqual(buildIndex(temporary).tasks.length, 3);
 
   // 등가성은 목록만이 아니라 응답 전체여야 한다. 프로젝트가 하나뿐인 Workspace에서
   // 목록만 비교하면 집계가 갈리는 것을 볼 수 없다 — 실제로 인덱스는 프로젝트
@@ -163,7 +162,7 @@ try {
   rdl(['project', 'add', 'ops', '--name', 'Ops', '--profile', 'lean']);
   rdl(['task', 'add', '운영 일감', '--project', 'ops', '--acceptance', '완료조건']);
   rdl(['task', 'add', '운영 둘째', '--project', 'ops', '--acceptance', '완료조건', '--priority', 'high']);
-  rdl(['index', 'rebuild']);
+  buildIndex(temporary);
   for (const filter of [{}, { project: 'crm' }, { project: 'ops' }, { project: 'crm', status: 'todo' }, { project: 'ops', open: true }]) {
     const viaIndex = queryTasks(temporary, Object.assign({ index: true }, filter));
     const viaCold = queryTasks(temporary, Object.assign({ cold: true }, filter));

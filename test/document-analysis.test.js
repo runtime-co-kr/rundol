@@ -80,7 +80,6 @@ try {
   // 태스크가 연결되어도 설명된 상태가 된다 — 승인만이 유일한 근거는 아니다.
   const task = rdl(['task', 'add', '참조 문서 작업', '--project', 'crm', '--acceptance', '완료조건', '--link', referring.id]);
   assert(task.taskId);
-  rdl(['index', 'rebuild']);
   const withTask = analyzeDocuments(temporary, { project: 'crm' }).documents.find((entry) => entry.id === referring.id);
   assert.deepStrictEqual(withTask.tasks, [task.taskId]);
   assert.strictEqual(withTask.unexplained, false, '연결된 태스크가 있으면 왜 바뀌었는지 답할 기록이 있습니다.');

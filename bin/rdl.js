@@ -64,8 +64,7 @@ Usage:
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
-  rdl index status|rebuild|clear [--root <path>] [--json]
-  rdl task list [--project <key>] [--status <state>] [--open] [--index|--cold] [--json]
+  rdl task list [--project <key>] [--status <state>] [--open] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
@@ -178,7 +177,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, cold: false, index: false, orphans: false, unexplained: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -201,8 +200,6 @@ function parseOperationArgs(argv) {
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
     else if (value === '--since-approval') options.sinceApproval = true;
-    else if (value === '--cold') options.cold = true;
-    else if (value === '--index') options.index = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes'].includes(value)) {
@@ -354,7 +351,7 @@ async function main() {
   if (command === 'context') {
     const options = parseOperationArgs(argv);
     if (options.positional.length) throw new Error('rdl context에는 위치 인수를 사용할 수 없습니다.');
-    const context = require('../src/agent-context').agentContext(options.root, { project: options.project, index: options.index });
+    const context = require('../src/agent-context').agentContext(options.root, { project: options.project });
     if (options.json) { process.stdout.write(`${JSON.stringify(context, null, 2)}\n`); return 0; }
     process.stdout.write(`root: ${context.root}\nprojects: ${context.projects.map((item) => item.key).join(', ') || '(없음)'}\n`);
     process.stdout.write(`branch: ${context.branch.current || '(알 수 없음)'} (기본 ${context.branch.primary || '(알 수 없음)'})\n`);
@@ -403,22 +400,6 @@ async function main() {
       selectedOption: options.select, answeredBy: options.member, reason: options.reason, supersedes: options.supersedes, rootRequestId: options.requestId
     });
     printOperation(answered, options.json);
-    return 0;
-  }
-  if (command === 'index') {
-    const subcommand = argv.shift();
-    if (!['status', 'rebuild', 'clear'].includes(subcommand)) throw new Error('지원하는 인덱스 하위 명령은 status, rebuild, clear입니다.');
-    const options = parseOperationArgs(argv);
-    if (options.positional.length) throw new Error(`rdl index ${subcommand}에는 위치 인수를 사용할 수 없습니다.`);
-    const queryIndex = require('../src/query-index');
-    // 인덱스는 삭제 가능한 캐시다. 지워도 데이터가 사라지지 않고 조회도 멈추지
-    // 않는다 — 정확성의 기준은 언제나 무인덱스 경로다(REQ-041).
-    if (subcommand === 'status') printOperation(queryIndex.indexStatus(options.root), options.json);
-    else if (subcommand === 'clear') printOperation(queryIndex.clearIndex(options.root), options.json);
-    else {
-      const built = queryIndex.buildIndex(options.root);
-      printOperation({ file: queryIndex.indexFile(built.builtFrom), fingerprint: built.fingerprint, documents: built.documents.length, tasks: built.tasks.length }, options.json);
-    }
     return 0;
   }
   if (command === 'workset') {
@@ -962,9 +943,10 @@ async function main() {
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
-      // 기본은 정본 읽기다. --index로 인덱스 경로를 쓰고 --cold로 정본을 강제해
-      // 두 경로의 답을 대조할 수 있다. 어느 경로였는지는 결과의 source에 남는다.
-      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open, cold: options.cold, index: options.index });
+      // 조회는 정본을 직접 읽는다. 인덱스 계층은 남아 있지만 명령 표면에는
+      // 없다 — 이 규모에서 이득이 없고, 공개 기능은 틀릴 여지를 남기는 것보다
+      // 없는 편이 낫다. 어느 경로였는지는 결과의 source에 남는다.
+      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open });
       printOperation(listed, options.json);
       return 0;
     }
