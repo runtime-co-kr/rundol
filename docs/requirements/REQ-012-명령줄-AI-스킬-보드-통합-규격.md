@@ -252,7 +252,7 @@ sequenceDiagram
 
 #### 업무 규칙
 
-- REQ·SCR·MOD·API·TST는 function-id 없이 만들 수 없고 여러 ID는 각각 독립 섹션으로 생성한다.
+- REQ·SCR·MOD·API·TST는 function-id 없이 만들 수 없다. 문서 1개가 기능 1개를 나르는 것이 기본 계약이고, 다기능은 `--grouped --reason`으로 선언한 opt-in만 허용한다. 유형이 선언의 효력을 정한다 — REQ·SCR은 선언이 있어도 거부하며 분리가 유일한 해소이고, TST는 선언으로 허용되며, MOD·API는 허용하되 검사가 사유를 표면화한다. 선언으로 허용된 다기능 문서는 기능 ID마다 독립 계약 섹션을 생성한다.
 
 #### 상태와 전이
 
