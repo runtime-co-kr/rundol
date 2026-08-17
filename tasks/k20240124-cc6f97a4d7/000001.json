@@ -836,7 +836,7 @@
         },
         "AC-003": {
           "text": "stale 감지 입력 지문(다중 worktree HEAD·더티 파일·git 밖 로컬 상태)과 watch 없는 cold-query 경로가 정의된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "인덱스가 샤드·행 순서를 보존하고 시각 의존 값을 굽지 않는 결정성 계약이 명세된다",
@@ -849,7 +849,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:27.551Z",
-      "updatedAt": "2026-08-16T23:43:27.551Z",
+      "updatedAt": "2026-08-17T12:37:33.928Z",
       "statusChangedAt": "2026-08-16T23:43:27.551Z",
       "externalRefs": [],
       "project": "rundol"
