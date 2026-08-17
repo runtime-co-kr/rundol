@@ -12,6 +12,7 @@ const {
   normalizeDecisionEvent,
   decisionEnvelope,
   foldDecisions,
+  requestDigestFor,
   listDecisions,
   requestDecision,
   answerDecision
@@ -68,7 +69,9 @@ function answerEvent(overrides) {
     kind: 'release-version',
     selectedOption: 'minor',
     answeredBy: 'MEMBER-001',
-    reason: '새 명령이 포함되어 마이너가 맞습니다'
+    reason: '새 명령이 포함되어 마이너가 맞습니다',
+    // 답변은 답한 요청의 내용에 결박된다 — 질문이 바뀌면 답이 따라오지 않는다.
+    requestDigest: requestDigestFor(requestEvent())
   }, overrides || {});
 }
 

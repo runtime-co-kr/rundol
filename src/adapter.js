@@ -290,6 +290,19 @@ function capture(stream) {
   return () => value.toString('utf8').replace(/[\0\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '').trim();
 }
 
+// Windows에서는 자식 프로세스 트리의 종료를 보장할 수 없다. taskkill /T는 부모-자식
+// 관계를 스냅숏으로 훑는 최선 노력이고 권한이 부족하면 거부된다. 취소를 전제로 한
+// 실행은 그 상태에서 열지 않는다 — 판정은 여기 한 곳에만 둔다.
+function terminationGuaranteed() {
+  if (process.platform !== 'win32') return true;
+  return process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER === '1';
+}
+
+function assertTerminationGuaranteed(what) {
+  if (terminationGuaranteed()) return;
+  throw new Error(`${what}: Windows에서는 자식 프로세스 트리의 종료를 보장할 수 없습니다. 위험을 알고 켜려면 RUNDOL_ALLOW_WINDOWS_ADAPTER=1을 설정하세요.`);
+}
+
 function terminateTree(child) {
   if (!child || !child.pid) return Promise.resolve();
   if (process.platform === 'win32') {
@@ -554,6 +567,7 @@ function generateInvocationId() {
 }
 
 async function runAdapterCommand(start, options) {
+  assertTerminationGuaranteed('rdl adapter run');
   const run = require('./run');
   const context = run.runContext(start, options);
   const client = run.authorizeClient(start, context.project, options.clientId, ['agent', 'service']);
@@ -622,6 +636,8 @@ function probeAdapter(adapter, options) {
 
 module.exports = {
   ENV_ALLOWLIST,
+  terminationGuaranteed,
+  assertTerminationGuaranteed,
   resolveExecutable,
   adapterEnvironment,
   validateResult,

@@ -534,9 +534,9 @@ function listProceduresCommand(start, options) {
 // 취소가 실제로 끝나는지 보장할 수 없는 환경인가. 지금은 Windows가 그렇다 —
 // 트리 종료가 권한에 달려 있고 실패해도 호출자가 알 방법이 마땅치 않다.
 function unguaranteedTermination(classification) {
-  if (process.platform !== 'win32') return false;
-  if (!['adapter', 'cli'].includes(classification)) return false;
-  return process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER !== '1';
+  // verify도 외부 어댑터 프로세스를 띄운다. 분류가 다를 뿐 같은 위험이다.
+  if (!['adapter', 'cli', 'verify'].includes(classification)) return false;
+  return !require('./adapter').terminationGuaranteed();
 }
 
 function driveStepClass(step) {

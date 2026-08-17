@@ -26,19 +26,26 @@ try {
   delete process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
   assert.strictEqual(unguaranteedTermination('human'), false);
   assert.strictEqual(unguaranteedTermination('gate'), false);
-  assert.strictEqual(unguaranteedTermination('verify'), false);
 
   if (process.platform === 'win32') {
-    // 옵트인이 없으면 자식 프로세스를 띄우는 분류가 막힌다.
+    // 옵트인이 없으면 자식 프로세스를 띄우는 분류가 전부 막힌다. verify도
+    // 외부 어댑터 프로세스를 띄우므로 같은 위험이다 — 분류만 다르다.
     assert.strictEqual(unguaranteedTermination('adapter'), true, 'Windows에서 어댑터 자동 실행은 기본으로 막혀야 합니다.');
     assert.strictEqual(unguaranteedTermination('cli'), true, 'CLI 스텝도 자식 프로세스를 띄웁니다.');
+    assert.strictEqual(unguaranteedTermination('verify'), true, '검증도 외부 어댑터 프로세스를 띄웁니다.');
+    // 공개 명령도 같은 판정을 거쳐야 한다. drive만 막고 명령이 열려 있으면
+    // 차단이 아니라 우회로 안내다.
+    assert.throws(() => require('../src/adapter').assertTerminationGuaranteed('rdl adapter run'), /RUNDOL_ALLOW_WINDOWS_ADAPTER/u);
     // 위험을 아는 사람이 명시적으로 켤 수 있다.
     process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = '1';
     assert.strictEqual(unguaranteedTermination('adapter'), false, '명시적 옵트인은 게이트를 연다.');
+    assert.strictEqual(unguaranteedTermination('verify'), false);
+    assert.doesNotThrow(() => require('../src/adapter').assertTerminationGuaranteed('rdl adapter run'));
   } else {
     // POSIX는 프로세스 그룹으로 트리를 소유하므로 이 게이트를 걸지 않는다.
     assert.strictEqual(unguaranteedTermination('adapter'), false);
     assert.strictEqual(unguaranteedTermination('cli'), false);
+    assert.strictEqual(unguaranteedTermination('verify'), false);
   }
 
   // 게이트가 실제 실행 경로에 붙어 있는지 확인한다. 술어만 시험하면 술어가
@@ -48,6 +55,21 @@ try {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'run.js'), 'utf8');
   assert(/if \(unguaranteedTermination\(classification\)\)/u.test(source), '게이트가 tickRun의 분류 직후에 붙어 있어야 합니다.');
   assert(/reason: 'termination-unsafe'/u.test(source), '막힌 이유가 상태로 남아야 합니다.');
+
+  // 기본 안전 모드를 실제로 검증한다. 전체 러너가 옵트인을 전역 설정하므로,
+  // 그 안에서만 확인하면 "기본은 막힌다"가 한 번도 시험되지 않는다 — 게이트가
+  // 자기가 지켜야 할 상태를 가리는 셈이다. 그래서 자식 프로세스로 확인한다.
+  if (process.platform === 'win32') {
+    const { spawnSync } = require('child_process');
+    const clean = Object.assign({}, process.env);
+    delete clean.RUNDOL_ALLOW_WINDOWS_ADAPTER;
+    const probe = spawnSync(process.execPath, ['-e', "process.exitCode = require('./src/adapter').terminationGuaranteed() ? 0 : 7;"],
+      { cwd: path.join(__dirname, '..'), encoding: 'utf8', env: clean });
+    assert.strictEqual(probe.status, 7, `옵트인 없는 프로세스에서는 보장되지 않아야 합니다: ${probe.stdout}${probe.stderr}`);
+    const opted = spawnSync(process.execPath, ['-e', "process.exitCode = require('./src/adapter').terminationGuaranteed() ? 0 : 7;"],
+      { cwd: path.join(__dirname, '..'), encoding: 'utf8', env: Object.assign({}, clean, { RUNDOL_ALLOW_WINDOWS_ADAPTER: '1' }) });
+    assert.strictEqual(opted.status, 0, '옵트인한 프로세스에서는 열려야 합니다.');
+  }
 
   process.stdout.write('windows termination tests passed\n');
 } finally {

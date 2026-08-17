@@ -176,6 +176,8 @@ try {
 
   // 다른 Client에서 다른 선택이 병합돼 들어온다. 상충하는 답은 해소될 때까지
   // 열린 상태로 둔다 — 하나를 고르는 것은 결정이 아니라 은폐다.
+  const { requestDigestFor } = require('../src/decision');
+  const liveRequest = rdl(['decision', 'list', '--project', 'crm']).decisions.find((item) => item.decisionId === decisionId);
   const conflictingEventId = `EVT-${hex('B')}`;
   appendRaw('decision', 'crm', 'agent-b', {
     schemaVersion: 1,
@@ -190,7 +192,8 @@ try {
     kind: 'release-version',
     selectedOption: 'major',
     answeredBy: 'MEMBER-001',
-    reason: '메이저가 맞다'
+    reason: '메이저가 맞다',
+    requestDigest: requestDigestFor(liveRequest)
   });
   const conflicted = rdl(['decision', 'list', '--project', 'crm']).decisions.find((item) => item.decisionId === decisionId);
   assert.strictEqual(conflicted.status, 'open', '상충하는 답변이 있으면 결정은 열린 채로 남아야 합니다.');
@@ -289,6 +292,13 @@ try {
     selectedOption: 'minor',
     answeredBy: responsible,
     delegationId,
+    requestDigest: requestDigestFor({
+      question: '취소 뒤의 결정',
+      options: [{ id: 'minor', label: '마이너' }, { id: 'major', label: '메이저' }],
+      recommendation: { option: 'minor', because: '기능 추가' },
+      impact: { reversible: true, blast: '배포' },
+      evidence: []
+    }),
     reason: '취소된 위임을 근거로 든다',
     occurredAt: new Date(Date.now() + 60000).toISOString(),
     recordedAt: new Date(Date.now() + 60000).toISOString()
@@ -325,6 +335,7 @@ try {
     selectedOption: 'minor',
     answeredBy: 'MEMBER-001',
     reason: '시각이 다이제스트에 덮이는지 본다',
+    requestDigest: hex('0') + hex('0') + '0'.repeat(24),
     recordedAt: '2026-08-17T00:00:00.000Z'
   };
   const early = decisionEnvelope(answerBase).canonicalDigest;

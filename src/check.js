@@ -581,13 +581,18 @@ const SHARD_LEVEL_LEDGER_CODES = new Set(['RDL-DEC-014', 'RDL-DLG-014', 'RDL-APP
 // 했는지는 이 저장소 밖의 기준점 — Git 이력 — 으로만 판정할 수 있다.
 function checkLedgerIntegrity(diagnostics, layout) {
   if (layout.schemaVersion < 6) return;
-  let violations;
-  try { violations = require('./ledger-integrity').appendOnlyViolations(layout.root); }
+  let report;
+  try { report = require('./ledger-integrity').appendOnlyReport(layout.root); }
   catch (error) {
     diagnostic(diagnostics, { code: 'RDL-LEDGER-002', category: 'workspace', message: `원장 무결성을 확인할 수 없습니다: ${error.message}` });
     return;
   }
-  for (const violation of violations) {
+  // 확인하지 못한 것과 확인해서 문제가 없는 것은 다르다. 증명할 수 없는 상태를
+  // 깨끗함으로 보고하면, 검사를 통과했다는 말이 아무것도 뜻하지 않게 된다.
+  if (!report.checked && report.reason) {
+    diagnostic(diagnostics, { code: 'RDL-LEDGER-002', category: 'workspace', message: `원장 무결성을 확인할 수 없습니다: ${report.reason}` });
+  }
+  for (const violation of report.violations) {
     diagnostic(diagnostics, { code: 'RDL-LEDGER-003', category: 'workspace', file: violation.file, line: 1, message: `append-only 위반: ${violation.message}` });
   }
 }

@@ -308,6 +308,9 @@ function assertVerificationGuard(start, project, input) {
   return settings;
 }
 async function verifyArtifact(start, input) {
+  // 검증도 외부 어댑터 프로세스를 띄운다. drive의 adapter·cli만 막고 verify를
+  // 통과시키면 같은 위험이 다른 이름으로 지나간다.
+  require('./adapter').assertTerminationGuaranteed('rdl verify');
   const layout = workspaceLayout(start); const project = selectProject(layout, input.project, true); const clientId = String(input.clientId || '').trim().toLowerCase();
   const client = getClient(start, clientId);
   if (client.status !== 'active' || !['agent', 'service'].includes(client.type) || !projectMember(project, client.owner)) throw new Error('verify client must be an active project-member agent/service');

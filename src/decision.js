@@ -125,11 +125,28 @@ function normalizeEvidence(value) {
 
 const BASE_FIELDS = ['schemaVersion', 'eventId', 'type', 'rootRequestId', 'requestId', 'clientId', 'projectId', 'decisionId', 'decisionKey', 'kind'];
 
+// 답변은 결정 키가 아니라 "무엇에 답했는가"에 결박되어야 한다. 키에만 묶이면
+// 답변 뒤에 상충 요청을 밀어 넣고 그 요청으로 갈아끼워, 예전 답을 전혀 다른
+// 질문의 답으로 재사용할 수 있다 — 배포 승인이 운영 데이터 삭제 승인이 된다.
+//
+// 그래서 답변이 답한 요청의 내용 투영을 다이제스트로 싣고, 접기는 살아 있는
+// 요청의 투영과 일치하는 답변만 인정한다. 질문이 바뀌면 답이 따라오지 않는다.
+function requestProjection(request) {
+  return eventStore.canonicalJson({
+    question: request.question, options: request.options, recommendation: request.recommendation,
+    impact: request.impact, evidence: request.evidence
+  });
+}
+
+function requestDigestFor(request) {
+  return sha256(requestProjection(request));
+}
+
 function normalizeDecisionEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('결정 이벤트는 객체여야 합니다.');
   if (!['decision.requested', 'decision.answered'].includes(input.type)) throw new Error(`알 수 없는 결정 이벤트 종류입니다: ${input.type || '(없음)'}`);
   const requested = input.type === 'decision.requested';
-  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence', 'supersedes'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId'], ['recordedAt', 'canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence', 'supersedes'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId', 'requestDigest'], ['recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`${input.type}에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS) if (input[field] === undefined) throw new Error(`${input.type}.${field}이(가) 필요합니다.`);
@@ -165,6 +182,9 @@ function normalizeDecisionEvent(input) {
       if (!EVENT_ID.test(input.supersedes || '')) throw new Error('대체 대상 답변이 유효하지 않습니다.');
       normalized.supersedes = input.supersedes;
     }
+    // 답변이 답한 요청의 내용 투영. 없으면 무엇에 답한 것인지 알 수 없다.
+    if (!DIGEST.test(input.requestDigest || '')) throw new Error('답변에는 답한 요청의 requestDigest가 필요합니다.');
+    normalized.requestDigest = input.requestDigest;
     // 명의가 Client 소유자와 다를 때 그 차이를 정당화하는 위임. 허용 목록에만
     // 넣고 복사하지 않으면 읽는 쪽은 위임을 보지 못하고 답변을 사칭으로 버린다.
     if (input.delegationId !== undefined) {
@@ -333,7 +353,14 @@ function foldDecisions(events, options) {
       continue;
     }
     const optionIds = new Set(request.options.map((option) => option.id));
+    const liveDigest = requestDigestFor(request);
     const answers = group.answers.slice().sort((left, right) => left.eventId.localeCompare(right.eventId)).filter((answer) => {
+      // 이 답변이 답한 질문이 지금 살아 있는 질문인가. 다르면 그 답은 다른
+      // 질문의 답이고, 여기에 재사용될 수 없다.
+      if (answer.requestDigest !== liveDigest) {
+        diagnostics.push({ code: 'RDL-DEC-031', severity: 'error', eventId: answer.eventId, message: `다른 요청 내용에 대한 답변입니다: ${decisionIdFor(key)}` });
+        return false;
+      }
       if (!optionIds.has(answer.selectedOption)) {
         diagnostics.push({ code: 'RDL-DEC-017', severity: 'error', eventId: answer.eventId, message: `선택지에 없는 값입니다: ${answer.selectedOption}` });
         return false;
@@ -547,6 +574,7 @@ function requestDecision(start, input) {
       schemaVersion: 1, eventId: answerIdentity.eventId, type: 'decision.answered', rootRequestId, requestId: answerIdentity.requestId,
       clientId, projectId: context.project.key, decisionId, decisionKey: key, kind: settings.kind,
       selectedOption: settings.recommendation.option, answeredBy: delegation.grantedBy, delegationId: delegation.delegationId,
+      requestDigest: requestDigestFor({ question: settings.question, options: settings.options, recommendation: settings.recommendation, impact: settings.impact, evidence: settings.evidence || [] }),
       reason: `위임 ${delegation.delegationId}에 의한 자동 승인 (만료 ${delegation.expiresAt}): ${delegation.reason}`
     }, { lockDirectory: context.lockDirectory });
   }
@@ -580,7 +608,8 @@ function answerDecision(start, input) {
   appendDecisionEvent(context.eventsRoot, Object.assign({
     schemaVersion: 1, eventId: identity.eventId, type: 'decision.answered', rootRequestId, requestId: identity.requestId,
     clientId, projectId: context.project.key, decisionId: decision.decisionId, decisionKey: decision.decisionKey, kind: decision.kind,
-    selectedOption: settings.selectedOption, answeredBy: settings.answeredBy, reason: settings.reason
+    selectedOption: settings.selectedOption, answeredBy: settings.answeredBy, reason: settings.reason,
+    requestDigest: requestDigestFor(decision)
   }, settings.supersedes ? { supersedes: settings.supersedes } : {},
      settings.delegationId ? { delegationId: settings.delegationId } : {}), { lockDirectory: context.lockDirectory });
   const after = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), context2);
@@ -590,6 +619,6 @@ function answerDecision(start, input) {
 module.exports = {
   FAMILIES, KINDS, DECISION_ID, assertActingMember, assertAuthority, actingMember,
   sha256, kindDefinition, decisionKey, decisionIdFor,
-  normalizeDecisionEvent, decisionEnvelope, appendDecisionEvent, readDecisionEvents, foldDecisions,
+  normalizeDecisionEvent, decisionEnvelope, appendDecisionEvent, readDecisionEvents, foldDecisions, requestDigestFor,
   listDecisions, requestDecision, answerDecision
 };
