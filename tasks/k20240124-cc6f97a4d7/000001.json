@@ -819,7 +819,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "links": [
         "PRD-001"
@@ -849,8 +849,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:27.551Z",
-      "updatedAt": "2026-08-17T12:37:36.915Z",
-      "statusChangedAt": "2026-08-16T23:43:27.551Z",
+      "updatedAt": "2026-08-17T12:37:39.230Z",
+      "statusChangedAt": "2026-08-17T12:37:39.230Z",
       "externalRefs": [],
       "project": "rundol"
     },
