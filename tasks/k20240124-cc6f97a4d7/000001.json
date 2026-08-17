@@ -1135,6 +1135,45 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSWHJL3BBBCC15B92001DC8F": {
+      "title": "[기능] 결정 위임과 클라이언트 메모리 분리",
+      "summary": "결정 카탈로그 위에 위임을 얹되 권한과 편의를 분리한다. 위임은 권한 부여이므로 공유 레지스트리에 부여자·범위·만료·사유와 함께 남고 조회·취소할 수 있으며 lease처럼 갱신하지 않으면 소멸한다. 클라이언트 메모리는 결정이 아닌 선호만 담는 로컬 상태이고 커밋되지 않는다. 위임 불가 티어를 두어 카탈로그가 위임 한 번으로 무력화되지 않게 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-019",
+        "REQ-038"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "위임이 부여자·범위·결정 종류·만료·사유와 함께 공유 레지스트리에 기록되고 조회·취소할 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "만료된 위임은 자동으로 효력을 잃고 갱신이 명시적 행위다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "위임 불가 결정 종류가 정의되고 위임 시도가 거부된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "클라이언트 메모리는 로컬 전용이며 결정 권한을 담지 못한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T00:18:20.418Z",
+      "updatedAt": "2026-08-17T00:18:20.418Z",
+      "statusChangedAt": "2026-08-17T00:18:20.418Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
