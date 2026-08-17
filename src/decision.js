@@ -346,6 +346,9 @@ function foldDecisions(events, options) {
     const liveRequests = resolveSuperseded(authorizedRequests, diagnostics, {
       self: 'RDL-DEC-027', unknown: 'RDL-DEC-028', fork: 'RDL-DEC-029', cycle: 'RDL-DEC-030'
     });
+    // 대체된 요청도 이 결정에 실제로 있었던 질문이다. 그 목록을 잃으면 지나간
+    // 질문에 답한 기록을 "없던 질문에 답한 것"으로 오인한다.
+    const historicalRequests = authorizedRequests.slice();
     group.requests = liveRequests;
     const request = liveRequests.slice().sort((left, right) => left.eventId.localeCompare(right.eventId))[0] || null;
     if (!request) {
@@ -354,11 +357,20 @@ function foldDecisions(events, options) {
     }
     const optionIds = new Set(request.options.map((option) => option.id));
     const liveDigest = requestDigestFor(request);
+    // 이 결정에 한 번이라도 존재한 요청들의 투영. 대체된 질문에 답한 기록은
+    // 잘못된 것이 아니라 지나간 것이다 — 그때는 그 질문이 살아 있었다.
+    const knownDigests = new Set(historicalRequests.map((entry) => requestDigestFor(entry)));
     const answers = group.answers.slice().sort((left, right) => left.eventId.localeCompare(right.eventId)).filter((answer) => {
       // 이 답변이 답한 질문이 지금 살아 있는 질문인가. 다르면 그 답은 다른
       // 질문의 답이고, 여기에 재사용될 수 없다.
       if (answer.requestDigest !== liveDigest) {
-        diagnostics.push({ code: 'RDL-DEC-031', severity: 'error', eventId: answer.eventId, message: `다른 요청 내용에 대한 답변입니다: ${decisionIdFor(key)}` });
+        // 이 결정에 실제로 있었던 질문에 답한 것이라면 오류가 아니다. 질문이
+        // 대체되면 답도 함께 지나가고, 새 질문에는 새 답이 필요할 뿐이다.
+        // 여기서 오류로 남기면 정상적으로 다시 답해도 검사가 영원히 실패한다 —
+        // 탈취는 막았는데 복구 경로가 없는 상태가 된다.
+        if (!knownDigests.has(answer.requestDigest)) {
+          diagnostics.push({ code: 'RDL-DEC-031', severity: 'error', eventId: answer.eventId, message: `이 결정에 없던 요청 내용에 대한 답변입니다: ${decisionIdFor(key)}` });
+        }
         return false;
       }
       if (!optionIds.has(answer.selectedOption)) {
@@ -574,7 +586,10 @@ function requestDecision(start, input) {
       schemaVersion: 1, eventId: answerIdentity.eventId, type: 'decision.answered', rootRequestId, requestId: answerIdentity.requestId,
       clientId, projectId: context.project.key, decisionId, decisionKey: key, kind: settings.kind,
       selectedOption: settings.recommendation.option, answeredBy: delegation.grantedBy, delegationId: delegation.delegationId,
-      requestDigest: requestDigestFor({ question: settings.question, options: settings.options, recommendation: settings.recommendation, impact: settings.impact, evidence: settings.evidence || [] }),
+      // 다이제스트는 저장된 요청에서 뽑는다. 정규화 전 입력에서 뽑으면 공백이나
+      // 개행만 있어도 값이 갈리고, 접기는 그 답변을 다른 질문의 답으로 보고 버린다 —
+      // 위임된 결정이 정상 입력에서 열린 채로 남는다.
+      requestDigest: requestDigestFor(stored.event),
       reason: `위임 ${delegation.delegationId}에 의한 자동 승인 (만료 ${delegation.expiresAt}): ${delegation.reason}`
     }, { lockDirectory: context.lockDirectory });
   }

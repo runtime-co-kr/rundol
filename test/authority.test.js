@@ -244,6 +244,15 @@ try {
   assert.notStrictEqual(hijack.status, 0, '충돌이 없는 결정의 요청을 대체할 수 없어야 합니다.');
   assert(/상충하는 요청이 있을 때만|이미 답변된/u.test(hijack.stderr), hijack.stderr);
 
+  // 탈취는 막되 복구 경로는 남아야 한다. 대체된 질문에 답한 기록은 잘못된 것이
+  // 아니라 지나간 것이다 — 그때는 그 질문이 살아 있었다. 오류로 남기면 정상적으로
+  // 다시 답해도 검사가 영원히 실패한다.
+  const afterResolve = spawnSync(process.execPath, [cli, 'check', '--root', temporary, '--json'],
+    { cwd: repository, encoding: 'utf8', env: Object.assign({}, process.env, { RUNDOL_HOME: home }) });
+  const resolveReport = JSON.parse(afterResolve.stdout);
+  assert.strictEqual(resolveReport.diagnostics.filter((item) => item.code === 'RDL-DEC-031').length, 0,
+    `해소된 결정에 답변 결박 오류가 남으면 안 됩니다: ${JSON.stringify(resolveReport.diagnostics.filter((item) => String(item.code).startsWith('RDL-DEC')))}`);
+
   // ── 5. 취소는 미래에만 작용한다 ──────────────────────────────────────
   // 인가를 "지금 유효한가"로 판정하면 두 가지가 동시에 깨진다. 만료·취소된 위임이
   // 영원히 통하고, 반대로 취소하면 그 전에 정당하게 한 일이 사라진다. 둘 다 원장의

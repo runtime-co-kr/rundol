@@ -3,10 +3,10 @@
 const os = require('os');
 const path = require('path');
 process.env.RUNDOL_HOME = path.join(os.tmpdir(), `rundol-test-runtime-${process.pid}`);
-// Windows에서 어댑터 자동 실행은 기본으로 막혀 있다(트리 종료를 보장할 수 없다).
-// 시험은 그 경로 자체를 검증해야 하므로 켠다. 게이트가 실제로 막는지는
-// windows-termination 시험이 따로 확인한다.
-process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = '1';
+// Windows에서 어댑터 자동 실행은 기본으로 막혀 있다. 여기서 전역으로 켜면
+// 전체 스위트가 위험 모드에서만 돌고, "기본은 막힌다"가 한 번도 시험되지
+// 않는다 — 게이트가 자기가 지켜야 할 상태를 가린다. 켜야 하는 스위트는
+// 각자 자기 파일에서 켠다.
 
 require('./check.test');
 require('./ledger-integrity.test');

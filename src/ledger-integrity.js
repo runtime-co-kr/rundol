@@ -138,15 +138,21 @@ function shardViolations(root, relativeOrAbsolute) {
 // 확인할 수 없는 경우를 조용히 통과시키지 않는다. 반환값은 위반과 "확인 불가"를
 // 함께 담고, 호출자가 둘을 다른 진단으로 낸다.
 function appendOnlyReport(root) {
-  const eventsRoot = path.join(root, 'projects', 'workspace', 'events');
-  if (!fs.existsSync(eventsRoot)) return { checked: false, reason: null, violations: [], shards: [] };
+  // 디렉터리가 없다고 먼저 돌아서면 안 된다. 원장을 통째로 지우는 것이 가장 큰
+  // 위반인데, 지운 자리를 보고 "볼 것이 없다"고 판정하면 그 위반만 무사통과한다.
+  // 무엇이 있었는지는 파일 시스템이 아니라 Git 이력이 안다.
   const workspaceRoot = path.join(root, 'projects', 'workspace');
+  if (!fs.existsSync(workspaceRoot)) return { checked: false, reason: null, violations: [], shards: [] };
   const inside = git(workspaceRoot, ['rev-parse', '--is-inside-work-tree']);
   if (inside.status !== 0) {
     return { checked: false, reason: '공유 원장이 Git 작업 트리 안에 없어 append-only를 확인할 수 없습니다.', violations: [], shards: [] };
   }
   const head = git(workspaceRoot, ['rev-parse', 'HEAD']);
   if (head.status !== 0) {
+    // 커밋이 없으면 비교할 기준점이 없다. 다만 원장이 실제로 있는데 기준점이
+    // 없는 것과, 아직 아무것도 없는 것은 다르다 — 전자만 진단한다.
+    const eventsRoot = path.join(workspaceRoot, 'events');
+    if (!fs.existsSync(eventsRoot)) return { checked: false, reason: null, violations: [], shards: [] };
     return { checked: false, reason: '공유 원장 worktree에 커밋이 없어 비교할 기준점이 없습니다.', violations: [], shards: [] };
   }
   const shards = historicalShards(workspaceRoot, 'events');

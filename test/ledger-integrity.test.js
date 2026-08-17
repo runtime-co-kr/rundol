@@ -66,6 +66,36 @@ try {
   fs.writeFileSync(shard, '{"eventId":"EVT-2","recordedAt":"2026-08-16T00:00:00.000Z"}\n', 'utf8');
   assert(shardViolations(temporary, shard).length >= 1, '기존 행 삭제도 위반이어야 합니다.');
 
+  // 원장을 통째로 지우는 것이 가장 큰 위반이다. 지운 자리를 보고 "볼 것이 없다"고
+  // 판정하면 그 위반만 무사통과한다 — 무엇이 있었는지는 파일 시스템이 아니라
+  // Git 이력이 안다.
+  const workspaceLike = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-integrity-wipe-'));
+  try {
+    const projects = path.join(workspaceLike, 'projects', 'workspace');
+    const events = path.join(projects, 'events', 'decision');
+    fs.mkdirSync(events, { recursive: true });
+    const wipedShard = path.join(events, 'decision-crm-agent-a-000001.jsonl');
+    fs.writeFileSync(wipedShard, '{"eventId":"EVT-1"}\n', 'utf8');
+    git(['init', '-b', 'main'], projects);
+    git(['config', 'user.name', 'Rundol Test'], projects);
+    git(['config', 'user.email', 'rundol@example.test'], projects);
+    git(['add', '-A'], projects);
+    git(['commit', '-m', 'ledger'], projects);
+    assert.deepStrictEqual(appendOnlyViolations(workspaceLike), [], '정상 상태에서는 위반이 없어야 합니다.');
+
+    // events/ 전체를 지운다.
+    fs.rmSync(path.join(projects, 'events'), { recursive: true, force: true });
+    const afterWipe = appendOnlyViolations(workspaceLike);
+    assert(afterWipe.length >= 1, '원장 디렉터리를 통째로 지운 것이 드러나야 합니다.');
+
+    // 삭제를 커밋해도 마찬가지다. 이력이 남기 때문이다.
+    git(['add', '-A'], projects);
+    git(['commit', '-m', 'wipe'], projects);
+    assert(appendOnlyViolations(workspaceLike).length >= 1, '삭제 커밋도 드러나야 합니다.');
+  } finally {
+    fs.rmSync(workspaceLike, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+
   // Git 저장소가 아니면 조용히 빈 목록을 돌려준다 — 검사가 실패로 번지면 안 된다.
   const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-integrity-bare-'));
   try {
