@@ -1209,6 +1209,41 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSWINLU595CFE01BF3B69A62": {
+      "title": "[문서] WS-0 공유 개념 정본화 — 결정 기록과 문서 정체성",
+      "summary": "0.30.0의 여러 작업 묶음이 공유하는 개념을 먼저 고정한다. 질문을 대화가 아니라 기록되는 결정으로 두는 선택과 문서 정체성을 표시에서 분리하는 선택을 ADR로 남기고, 사람 결정 요청·응답을 REQ로 명세한다. 나머지 REQ는 각 작업 묶음 착수 시 설계가 확정된 뒤 작성한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-038",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "사람 결정의 기록 방식 ADR이 선택과 대가를 담아 작성된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "문서 정체성과 표시 분리 ADR이 조율 없는 식별자 선택 근거를 담아 작성된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "사람 결정 요청과 응답 REQ가 기능 계약 전체를 확정해 구현 준비도 게이트를 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T00:49:27.627Z",
+      "updatedAt": "2026-08-17T00:49:27.627Z",
+      "statusChangedAt": "2026-08-17T00:49:27.627Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
