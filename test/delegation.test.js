@@ -56,6 +56,10 @@ function grantEvent(overrides) {
   }, overrides || {});
 }
 
+// 접기는 인가 컨텍스트를 요구한다. 손으로 만든 이벤트를 접는 시험도 같은
+// 조건을 지나야 한다 — 시험만 인가를 끄면 시험은 실제 경로를 시험하지 않는다.
+const LEDGER_AUTHORITY = { clientOwners: [['agent-a', 'MEMBER-001'], ['desk-b', 'MEMBER-001'], ['agent-b', 'MEMBER-002']], members: ['MEMBER-001', 'MEMBER-002'], delegations: [] };
+
 try {
   // 위임 불가 티어가 없으면 카탈로그 전체가 위임 한 번으로 무력화된다.
   for (const kind of ['publish', 'pr-merge', 'force-takeover', 'delegation-grant']) {
@@ -70,10 +74,10 @@ try {
   assert.strictEqual(DEFAULT_EXPIRY_DAYS, 7);
 
   // 만료는 벽시계가 아니라 fold의 입력이다.
-  const active = foldDelegations([grantEvent()], { now: '2026-01-05T00:00:00.000Z' });
+  const active = foldDelegations([grantEvent()], { authority: LEDGER_AUTHORITY, now: '2026-01-05T00:00:00.000Z' });
   assert.strictEqual(active.active.length, 1);
   assert.strictEqual(active.delegations[0].status, 'active');
-  const expired = foldDelegations([grantEvent()], { now: '2026-02-01T00:00:00.000Z' });
+  const expired = foldDelegations([grantEvent()], { authority: LEDGER_AUTHORITY, now: '2026-02-01T00:00:00.000Z' });
   assert.strictEqual(expired.active.length, 0);
   assert.strictEqual(expired.delegations[0].status, 'expired');
 
@@ -88,23 +92,23 @@ try {
   assert.throws(() => foldDelegations([grantEvent()], {}), /현재 시각\(now\)이 필요/u);
   assert.throws(() => foldDelegations([grantEvent()]), /현재 시각\(now\)이 필요/u);
 
-  const revoked = foldDelegations([grantEvent(), revokeEvent], { now: '2026-01-05T00:00:00.000Z' });
+  const revoked = foldDelegations([grantEvent(), revokeEvent], { authority: LEDGER_AUTHORITY, now: '2026-01-05T00:00:00.000Z' });
   assert.strictEqual(revoked.active.length, 0);
   assert.strictEqual(revoked.delegations[0].status, 'revoked');
   // 열거 순서에 의존하지 않는다.
-  assert.deepStrictEqual(foldDelegations([revokeEvent, grantEvent()], { now: '2026-01-05T00:00:00.000Z' }).delegations, revoked.delegations);
+  assert.deepStrictEqual(foldDelegations([revokeEvent, grantEvent()], { authority: LEDGER_AUTHORITY, now: '2026-01-05T00:00:00.000Z' }).delegations, revoked.delegations);
 
   // 취소는 자기가 가리키는 부여와 같은 위임·종류여야 한다. 이전 이벤트 ID만
   // 맞으면 되게 두면 다른 위임의 취소로 엉뚱한 권한이 꺼진다.
   const mismatchedRevoke = Object.assign({}, revokeEvent, { eventId: 'EVT-77777777777777777777', delegationId: 'DLG-FFFFFFFFFFFFFFFFFFFF' });
-  const wrongTarget = foldDelegations([grantEvent(), mismatchedRevoke], { now: '2026-01-05T00:00:00.000Z' });
+  const wrongTarget = foldDelegations([grantEvent(), mismatchedRevoke], { authority: LEDGER_AUTHORITY, now: '2026-01-05T00:00:00.000Z' });
   assert.strictEqual(wrongTarget.active.length, 1, '다른 위임을 가리키는 취소로 권한이 꺼지면 안 됩니다.');
   assert(wrongTarget.diagnostics.some((item) => item.code === 'RDL-DLG-017'));
 
   // 같은 범위에 활성 위임이 둘이면 어느 것이 근거인지 갈린다 — 하나를 조용히
   // 고르는 대신 그 범위를 비우고 진단한다.
   const secondGrant = grantEvent({ eventId: 'EVT-88888888888888888888', requestId: 'REQ-88888888888888888888', expiresAt: '2026-01-07T00:00:00.000Z', delegationId: delegationIdFor({ kind: 'scope-change', projectId: 'crm', delegateClientId: 'agent-a', grantedBy: 'MEMBER-001', expiresAt: '2026-01-07T00:00:00.000Z' }) });
-  const ambiguous = foldDelegations([grantEvent(), secondGrant], { now: '2026-01-05T00:00:00.000Z' });
+  const ambiguous = foldDelegations([grantEvent(), secondGrant], { authority: LEDGER_AUTHORITY, now: '2026-01-05T00:00:00.000Z' });
   assert.strictEqual(ambiguous.active.length, 0, '모호한 위임은 권한을 열면 안 됩니다.');
   assert.deepStrictEqual(ambiguous.ambiguous, [{ kind: 'scope-change', delegateClientId: 'agent-a' }]);
   assert(ambiguous.diagnostics.some((item) => item.code === 'RDL-DLG-018'));

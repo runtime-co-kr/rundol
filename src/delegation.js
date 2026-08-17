@@ -122,11 +122,21 @@ function readDelegationEvents(eventsRoot, projectId) {
 
 // 유효한 위임은 부여됐고, 취소되지 않았고, 아직 만료되지 않은 것이다. 만료는
 // 시각 비교이므로 fold의 입력으로 받는다 — 벽시계를 fold 안에 숨기지 않는다.
+// 부여자 검증에 필요한 최소 컨텍스트. 위임은 위임할 수 없으므로 여기서는
+// Client 소유자 목록만 있으면 된다.
+function delegationAuthority(start) {
+  const { listClients } = require('./collaboration-store');
+  return { clientOwners: (listClients(start).clients || []).filter((client) => client.status === 'active').map((client) => [client.id, client.owner]) };
+}
+
 function foldDelegations(events, options) {
   const settings = options || {};
   // 만료 판정 시각은 호출자가 준다. fold 안에서 벽시계를 읽으면 같은 이벤트가
   // 언제 읽느냐에 따라 다른 결과를 내고, 원장이 지키는 성질이 위임에서만 깨진다.
   if (settings.now === undefined) throw new Error('위임 fold에는 현재 시각(now)이 필요합니다.');
+  // 위조된 위임 부여는 그 자체로 권한을 만든다. 쓰기 경로에서만 막으면 Git 병합으로
+  // 들어온 부여가 그대로 active가 된다 — 실제로 그랬다.
+  const authority = require('./authority').requireAuthority(settings, '위임');
   const nowValue = settings.now;
   const now = nowValue instanceof Date ? nowValue.getTime() : typeof nowValue === 'string' ? Date.parse(nowValue) : Number(nowValue);
   if (!Number.isFinite(now)) throw new Error('위임 fold에는 유효한 현재 시각이 필요합니다.');
@@ -149,7 +159,23 @@ function foldDelegations(events, options) {
       diagnostics.push({ code: 'RDL-DLG-015', severity: 'error', eventId: event.eventId, message: '같은 eventId에 상충하는 위임 기록이 있습니다.' });
     }
   }
-  const valid = Array.from(byEventId.values()).filter(Boolean);
+  const authorized = Array.from(byEventId.values()).filter(Boolean).filter((event) => {
+    // 부여자·취소자는 그 기록을 남긴 Client의 소유자여야 한다. 위임은 위임할 수
+    // 없으므로(delegation-grant는 위임 불가 종류다) 여기서 위임은 근거가 되지 못한다.
+    const memberId = event.type === 'delegation.granted' ? event.grantedBy : event.revokedBy;
+    const verdict = require('./authority').verifyActor({ clientId: event.clientId, memberId }, authority,
+      { unknownClient: 'RDL-DLG-020', impersonation: 'RDL-DLG-021', delegation: 'RDL-DLG-021' });
+    if (!verdict.ok) {
+      diagnostics.push({ code: verdict.code, severity: 'error', eventId: event.eventId, message: verdict.message });
+      return false;
+    }
+    if (verdict.delegated) {
+      diagnostics.push({ code: 'RDL-DLG-021', severity: 'error', eventId: event.eventId, message: '위임을 근거로 위임을 부여하거나 취소할 수 없습니다.' });
+      return false;
+    }
+    return true;
+  });
+  const valid = authorized;
   const grantByEventId = new Map(valid.filter((event) => event.type === 'delegation.granted').map((event) => [event.eventId, event]));
   // 취소는 자기가 가리키는 부여와 같은 위임·종류여야 한다. 이전 이벤트 ID만 맞으면
   // 되게 두면 다른 위임의 취소로 엉뚱한 권한이 꺼진다.
@@ -241,7 +267,7 @@ function newRootRequestId() {
 function listDelegations(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
-  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now });
+  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now, authority: delegationAuthority(start) });
   return {
     project: context.project.key,
     active: folded.active.length,
@@ -275,7 +301,7 @@ function grantDelegation(start, input) {
     clientId: recorder, projectId: context.project.key, delegationId, kind: settings.kind,
     delegateClientId: delegate, grantedBy: settings.grantedBy, grantedAt: grantedAtValue, expiresAt, reason: settings.reason
   }, { lockDirectory: context.lockDirectory });
-  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now || Date.parse(grantedAtValue) });
+  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now || Date.parse(grantedAtValue), authority: delegationAuthority(start) });
   return { project: context.project.key, delegation: folded.delegations.find((grant) => grant.eventId === stored.event.eventId) };
 }
 
@@ -289,7 +315,7 @@ function revokeDelegation(start, input) {
   if (recordingClient.status !== 'active') throw new Error(`비활성 Client는 위임을 취소할 수 없습니다: ${recorder}`);
   const members = readCollaboration(context.layout.root, context.project.key).members.map((member) => member.id);
   require('./decision').assertActingMember(recordingClient, settings.revokedBy, members, '취소');
-  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now });
+  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now, authority: delegationAuthority(start) });
   const target = folded.delegations.find((grant) => grant.delegationId === settings.delegationId);
   if (!target) throw new Error(`위임을 찾지 못했습니다: ${settings.delegationId || '(없음)'}`);
   if (target.status === 'revoked') return { project: context.project.key, delegation: target, changed: false };
@@ -300,7 +326,7 @@ function revokeDelegation(start, input) {
     clientId: recorder, projectId: context.project.key, delegationId: target.delegationId, kind: target.kind,
     previousDelegationEventId: target.eventId, revokedBy: settings.revokedBy, reason: settings.reason
   }, { lockDirectory: context.lockDirectory });
-  const after = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now });
+  const after = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now, authority: delegationAuthority(start) });
   return { project: context.project.key, delegation: after.delegations.find((grant) => grant.delegationId === target.delegationId), changed: true };
 }
 
@@ -309,7 +335,7 @@ function revokeDelegation(start, input) {
 function activeDelegationFor(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
-  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now });
+  const folded = foldDelegations(readDelegationEvents(context.eventsRoot, context.project.key), { now: settings.now === undefined ? Date.now() : settings.now, authority: delegationAuthority(start) });
   return findDelegation(folded, settings.kind, String(settings.clientId || '').trim().toLowerCase());
 }
 

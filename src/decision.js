@@ -32,6 +32,7 @@ const KINDS = Object.freeze({
   'push-shared': { family: 'outward', delegable: true, summary: '공유 브랜치 push' },
   'pr-open': { family: 'outward', delegable: true, summary: '병합 요청 생성' },
   'pr-merge': { family: 'outward', delegable: false, summary: '병합 요청 병합' },
+  'doc-approve': { family: 'governance', delegable: true, summary: '정본 문서 승인' },
   'doc-replace': { family: 'destructive', delegable: true, summary: '정본 문서 삭제·대체·이동' },
   'task-cancel': { family: 'destructive', delegable: true, summary: '다른 주체가 소유한 태스크 반려' },
   'cleanup-apply': { family: 'destructive', delegable: true, summary: '구조 정리 적용' },
@@ -127,7 +128,7 @@ function normalizeDecisionEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('결정 이벤트는 객체여야 합니다.');
   if (!['decision.requested', 'decision.answered'].includes(input.type)) throw new Error(`알 수 없는 결정 이벤트 종류입니다: ${input.type || '(없음)'}`);
   const requested = input.type === 'decision.requested';
-  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes'], ['canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(requested ? ['question', 'options', 'recommendation', 'impact', 'evidence'] : ['selectedOption', 'answeredBy', 'reason', 'supersedes', 'delegationId'], ['canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`${input.type}에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS) if (input[field] === undefined) throw new Error(`${input.type}.${field}이(가) 필요합니다.`);
@@ -195,9 +196,8 @@ function readDecisionEvents(eventsRoot, projectId) {
 // 해석하는 경로는 두지 않는다.
 function foldDecisions(events, options) {
   const settings = options || {};
-  const members = settings.members ? new Set(settings.members) : null;
-  // clientId → 소유 멤버. 있으면 읽는 쪽에서도 명의를 검증한다.
-  const clientOwners = settings.clientOwners ? new Map(settings.clientOwners) : null;
+  const authority = require('./authority').requireAuthority(settings, '결정');
+  const members = settings.members ? new Set(settings.members) : (authority.members ? new Set(authority.members) : null);
   const diagnostics = [];
   const byEventId = new Map();
   for (const raw of events || []) {
@@ -246,16 +246,12 @@ function foldDecisions(events, options) {
       // 이벤트는 그 경로를 지나지 않으므로, 읽는 쪽에서도 "이 Client가 이 멤버
       // 이름으로 행위할 수 있었는가"를 확인해야 한다. 확인할 수 없는 답변은
       // 상태를 바꾸지 못한다 — run 원장의 sync 전이 인가(RDL-RUN-005)와 같은 경계다.
-      if (clientOwners) {
-        const owner = clientOwners.get(answer.clientId);
-        if (owner === undefined) {
-          diagnostics.push({ code: 'RDL-DEC-020', severity: 'error', eventId: answer.eventId, message: `등록되지 않은 Client의 답변입니다: ${answer.clientId}` });
-          return false;
-        }
-        if (owner !== answer.answeredBy) {
-          diagnostics.push({ code: 'RDL-DEC-021', severity: 'error', eventId: answer.eventId, message: `Client 소유자가 아닌 멤버 명의의 답변입니다: ${answer.clientId}(${owner}) → ${answer.answeredBy}` });
-          return false;
-        }
+      const verdict = require('./authority').verifyActor(
+        { clientId: answer.clientId, memberId: answer.answeredBy, delegationId: answer.delegationId, kind: answer.kind },
+        authority, { unknownClient: 'RDL-DEC-020', impersonation: 'RDL-DEC-021', delegation: 'RDL-DEC-026' });
+      if (!verdict.ok) {
+        diagnostics.push({ code: verdict.code, severity: 'error', eventId: answer.eventId, message: verdict.message });
+        return false;
       }
       return true;
     });
@@ -271,18 +267,23 @@ function foldDecisions(events, options) {
     // 대체 관계로 임의의 답을 살리거나 죽일 수 있어 해소 경로가 새 공격면이 된다.
     const byEvent = new Map(answers.map((entry) => [entry.eventId, entry]));
     const supersededBy = new Map();
+    const invalidResolution = new Set();
     for (const entry of answers) {
       if (!entry.supersedes) continue;
       if (entry.supersedes === entry.eventId) {
         diagnostics.push({ code: 'RDL-DEC-022', severity: 'error', eventId: entry.eventId, message: '답변이 자기 자신을 대체할 수 없습니다.' });
+        invalidResolution.add(entry.eventId);
         continue;
       }
       if (!byEvent.has(entry.supersedes)) {
         diagnostics.push({ code: 'RDL-DEC-023', severity: 'error', eventId: entry.eventId, message: `대체 대상이 이 결정의 답변이 아닙니다: ${entry.supersedes}` });
+        invalidResolution.add(entry.eventId);
         continue;
       }
       if (supersededBy.has(entry.supersedes)) {
         diagnostics.push({ code: 'RDL-DEC-024', severity: 'error', eventId: entry.eventId, message: `한 답변을 둘 이상이 대체합니다: ${entry.supersedes}` });
+        invalidResolution.add(entry.eventId);
+        invalidResolution.add(supersededBy.get(entry.supersedes));
         continue;
       }
       supersededBy.set(entry.supersedes, entry.eventId);
@@ -302,7 +303,7 @@ function foldDecisions(events, options) {
       }
     }
     const superseded = new Set(Array.from(supersededBy.keys()).filter((eventId) => !cyclic.has(eventId)));
-    const live = answers.filter((entry) => !superseded.has(entry.eventId) && !cyclic.has(entry.eventId));
+    const live = answers.filter((entry) => !superseded.has(entry.eventId) && !cyclic.has(entry.eventId) && !invalidResolution.has(entry.eventId));
     const selections = new Set(live.map((entry) => entry.selectedOption));
     if (selections.size > 1) {
       diagnostics.push({ code: 'RDL-DEC-018', severity: 'error', message: `같은 결정에 서로 다른 답변이 있습니다: ${decisionIdFor(key)} (${Array.from(selections).sort().join(', ')}). 해소하려면 대체할 답변의 eventId를 supersedes로 지정하세요.` });
@@ -373,8 +374,11 @@ function clientOwnerMap(start) {
   return (listClients(start).clients || []).filter((client) => client.status === 'active').map((client) => [client.id, client.owner]);
 }
 
-function foldContext(start, context) {
-  return { members: projectMembers(context.layout.root, context.project.key), clientOwners: clientOwnerMap(start) };
+function foldContext(start, context, now) {
+  return {
+    members: projectMembers(context.layout.root, context.project.key),
+    authority: require('./authority').authorityContext(start, context.project.key, { now: now === undefined ? Date.now() : now })
+  };
 }
 
 function assertActiveClient(start, clientId) {
@@ -458,7 +462,7 @@ function requestDecision(start, input) {
     appendDecisionEvent(context.eventsRoot, {
       schemaVersion: 1, eventId: answerIdentity.eventId, type: 'decision.answered', rootRequestId, requestId: answerIdentity.requestId,
       clientId, projectId: context.project.key, decisionId, decisionKey: key, kind: settings.kind,
-      selectedOption: settings.recommendation.option, answeredBy: delegation.grantedBy,
+      selectedOption: settings.recommendation.option, answeredBy: delegation.grantedBy, delegationId: delegation.delegationId,
       reason: `위임 ${delegation.delegationId}에 의한 자동 승인 (만료 ${delegation.expiresAt}): ${delegation.reason}`
     }, { lockDirectory: context.lockDirectory });
   }
@@ -473,22 +477,29 @@ function answerDecision(start, input) {
   const clientId = String(settings.clientId || '').trim().toLowerCase();
   const client = assertActiveClient(start, clientId);
   const members = projectMembers(context.layout.root, context.project.key);
-  assertActingMember(client, settings.answeredBy, members, '답변');
-  const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members });
+  const context2 = foldContext(start, context, settings.now);
+  const folded = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), context2);
   const decision = folded.decisions.find((item) => item.decisionId === settings.decisionId);
   if (!decision) throw new Error(`결정을 찾지 못했습니다: ${settings.decisionId || '(없음)'}`);
   if (decision.status === 'answered') return { project: context.project.key, decision, created: false };
   if (!decision.options.some((option) => option.id === settings.selectedOption)) {
     throw new Error(`선택지에 없는 값입니다: ${settings.selectedOption || '(없음)'} (가능: ${decision.options.map((option) => option.id).join(', ')})`);
   }
+  // 명의가 이 Client의 소유자와 다르면 위임이 그 차이를 정당화해야 한다.
+  // 쓰기와 읽기가 같은 규칙을 봐야 하므로 검증은 인가 모듈 하나만 쓴다.
+  const delegation = settings.delegationId
+    ? (context2.authority.delegations || []).find((item) => item.delegationId === settings.delegationId) || null
+    : null;
+  assertAuthority(client, settings.answeredBy, members, '답변', delegation);
   const rootRequestId = settings.rootRequestId || newRootRequestId();
   const identity = decisionIdentity(rootRequestId, `decision-answer:${decision.decisionKey}`);
-  appendDecisionEvent(context.eventsRoot, {
+  appendDecisionEvent(context.eventsRoot, Object.assign({
     schemaVersion: 1, eventId: identity.eventId, type: 'decision.answered', rootRequestId, requestId: identity.requestId,
     clientId, projectId: context.project.key, decisionId: decision.decisionId, decisionKey: decision.decisionKey, kind: decision.kind,
     selectedOption: settings.selectedOption, answeredBy: settings.answeredBy, reason: settings.reason
-  }, { lockDirectory: context.lockDirectory });
-  const after = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), { members });
+  }, settings.supersedes ? { supersedes: settings.supersedes } : {},
+     settings.delegationId ? { delegationId: settings.delegationId } : {}), { lockDirectory: context.lockDirectory });
+  const after = foldDecisions(readDecisionEvents(context.eventsRoot, context.project.key), context2);
   return { project: context.project.key, decision: after.decisions.find((item) => item.decisionId === decision.decisionId), created: true };
 }
 

@@ -49,7 +49,9 @@ function analyzeDocuments(start, options) {
   const eventsRoot = path.join(layout.root, 'projects', 'workspace', 'events');
   const documents = listDocuments(project);
   const knownIds = new Set(documents.map((document) => document.id));
-  const approvals = foldApprovals(readApprovalEvents(eventsRoot, project.key));
+  const approvals = foldApprovals(readApprovalEvents(eventsRoot, project.key), {
+    authority: require('./authority').authorityContext(start, project.key, { now: Date.now() })
+  });
   const tasks = queryTasks(start, { project: project.key }).tasks;
 
   // 역참조는 계산한다. 저장된 목록을 두면 문서를 고칠 때마다 어긋난다.

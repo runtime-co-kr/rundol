@@ -582,11 +582,18 @@ function checkLedgerFolds(diagnostics, layout, projectKey) {
   if (!fs.existsSync(eventsRoot)) return;
   const projects = (layout.projects || []).filter((project) => !projectKey || project.key === projectKey);
   const now = Date.now();
+  // 검사가 인가를 끈 채 접으면 위조된 승인·위임을 정상으로 보고한다. 검사는
+  // 가장 마지막으로 남는 안전망이므로 여기서 끄면 아무 데서도 걸리지 않는다.
+  const cache = new Map();
+  const authorityFor = (key) => {
+    if (!cache.has(key)) cache.set(key, require('./authority').authorityContext(layout.root, key, { now }));
+    return cache.get(key);
+  };
   for (const project of projects) {
     const folds = [
-      () => require('./decision').foldDecisions(require('./decision').readDecisionEvents(eventsRoot, project.key), {}),
-      () => require('./delegation').foldDelegations(require('./delegation').readDelegationEvents(eventsRoot, project.key), { now }),
-      () => require('./approval').foldApprovals(require('./approval').readApprovalEvents(eventsRoot, project.key))
+      () => require('./decision').foldDecisions(require('./decision').readDecisionEvents(eventsRoot, project.key), authorityFor(project.key)),
+      () => require('./delegation').foldDelegations(require('./delegation').readDelegationEvents(eventsRoot, project.key), { now, authority: authorityFor(project.key) }),
+      () => require('./approval').foldApprovals(require('./approval').readApprovalEvents(eventsRoot, project.key), { authority: authorityFor(project.key) })
     ];
     for (const fold of folds) {
       let result;

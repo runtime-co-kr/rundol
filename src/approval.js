@@ -122,7 +122,19 @@ function readApprovalEvents(eventsRoot, projectId) {
   return eventStore.readEvents(eventsRoot, 'approval', projectId, { sort: 'file', dedupe: false });
 }
 
-function foldApprovals(events) {
+// 승인을 위임할 때 쓰는 결정 종류. 문자열을 여기저기 적으면 하나만 어긋나도
+// 조회가 조용히 빈 결과를 내고 위임이 없는 것처럼 보인다.
+const APPROVAL_DELEGATION_KIND = 'doc-approve';
+
+// 인가 컨텍스트는 접기의 조건이다. 여기서 한 번 만들어 모든 읽기 경로가 같은 것을 쓴다.
+function approvalAuthority(start, projectKey, now) {
+  return require('./authority').authorityContext(start, projectKey, { now: now === undefined ? Date.now() : now });
+}
+
+function foldApprovals(events, options) {
+  // 위조된 승인은 문서를 approved로 만들고 그 판정이 분석과 게이트로 흘러간다.
+  // 쓰기 경로에서만 막으면 Git 병합으로 들어온 승인이 그대로 채택된다.
+  const authority = require('./authority').requireAuthority(options, '승인');
   const diagnostics = [];
   const byEventId = new Map();
   for (const raw of events || []) {
@@ -145,8 +157,27 @@ function foldApprovals(events) {
       diagnostics.push({ code: 'RDL-APPROVE-015', severity: 'error', eventId: event.eventId, message: '같은 eventId에 상충하는 승인 기록이 있습니다.' });
     }
   }
+  const authorized = Array.from(byEventId.values()).filter(Boolean).filter((event) => {
+    const verify = require('./authority').verifyActor;
+    const codes = { unknownClient: 'RDL-APPROVE-020', impersonation: 'RDL-APPROVE-021', delegation: 'RDL-APPROVE-022' };
+    // 행위자는 언제나 이 Client의 소유자여야 한다. 행위자 자리에는 위임이 서지 못한다 —
+    // 위임은 누가 책임지는가를 옮길 뿐 누가 실제로 눌렀는가를 바꾸지 못한다.
+    const actor = verify({ clientId: event.clientId, memberId: event.actorMemberId }, authority, codes);
+    if (!actor.ok || actor.delegated) {
+      diagnostics.push({ code: actor.code || 'RDL-APPROVE-021', severity: 'error', eventId: event.eventId, message: actor.message || '행위자를 위임으로 대신할 수 없습니다.' });
+      return false;
+    }
+    if (event.approvedBy === event.actorMemberId) return true;
+    // 책임자가 행위자와 다르면 그 차이를 위임이 정당화해야 한다.
+    const responsible = verify({ clientId: event.clientId, memberId: event.approvedBy, delegationId: event.delegationId, kind: APPROVAL_DELEGATION_KIND }, authority, codes);
+    if (!responsible.ok) {
+      diagnostics.push({ code: responsible.code, severity: 'error', eventId: event.eventId, message: responsible.message });
+      return false;
+    }
+    return true;
+  });
   const byTarget = new Map();
-  for (const event of Array.from(byEventId.values()).filter(Boolean)) {
+  for (const event of authorized) {
     if (!byTarget.has(event.targetId)) byTarget.set(event.targetId, []);
     byTarget.get(event.targetId).push(event);
   }
@@ -202,7 +233,7 @@ function projectDocuments(project) {
 function documentStatus(start, options) {
   const settings = options || {};
   const context = workspaceContext(start, settings.project);
-  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
+  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key), { authority: approvalAuthority(start, context.project.key) });
   const documents = projectDocuments(context.project).map((document) => Object.assign({
     id: document.id,
     type: document.type,
@@ -237,7 +268,7 @@ function approveDocument(start, input) {
   if (!delegated && settings.delegationId) throw new Error('위임을 근거로 쓰려면 --basis delegated가 필요합니다.');
   let delegation = null;
   if (delegated) {
-    delegation = require('./delegation').activeDelegationFor(start, { project: context.project.key, kind: 'doc-approve', clientId, now: settings.now });
+    delegation = require('./delegation').activeDelegationFor(start, { project: context.project.key, kind: APPROVAL_DELEGATION_KIND, clientId, now: settings.now });
     if (!delegation || delegation.delegationId !== settings.delegationId) {
       throw new Error(`유효한 위임이 아닙니다: ${settings.delegationId} (만료·취소되었거나 이 Client의 위임이 아닙니다)`);
     }
@@ -246,7 +277,7 @@ function approveDocument(start, input) {
   // 다를 수 있고, 그때 위임이 그 차이를 정당화한다.
   const authority = require('./decision').assertAuthority(client, settings.approvedBy, members, '승인', delegation);
   const document = findDocument(context.project, settings.targetId);
-  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
+  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key), { authority: approvalAuthority(start, context.project.key) });
   const state = trustState(document, folded.approvals.get(document.id));
   if (state.status === 'approved') return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, state), created: false };
   const requestJournal = require('./request-journal');
@@ -260,7 +291,7 @@ function approveDocument(start, input) {
     approvedBy: settings.approvedBy, actorMemberId: authority.actor, basis: settings.basis, reason: settings.reason,
     ...(settings.delegationId ? { delegationId: settings.delegationId } : {})
   }, { lockDirectory: context.lockDirectory });
-  const after = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
+  const after = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key), { authority: approvalAuthority(start, context.project.key) });
   return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, trustState(document, after.approvals.get(document.id))), created: true };
 }
 
@@ -270,7 +301,7 @@ function documentHistory(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
   const document = findDocument(context.project, settings.targetId);
-  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
+  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key), { authority: approvalAuthority(start, context.project.key) });
   const history = folded.approvals.get(document.id) || [];
   const log = runGit(['log', '--follow', '--format=%H%an%aI%s', '--', document.file], { cwd: context.project.root, allowFailure: true });
   const commits = (log.status === 0 ? log.stdout : '').split(/\r?\n/u).filter(Boolean).map((line) => {
@@ -302,7 +333,7 @@ function diffSinceApproval(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
   const document = findDocument(context.project, settings.targetId);
-  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
+  const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key), { authority: approvalAuthority(start, context.project.key) });
   const history = folded.approvals.get(document.id) || [];
   const state = trustState(document, history);
   if (state.status === 'unapproved') return { project: context.project.key, targetId: document.id, status: state.status, diff: null, reason: '승인 기록이 없어 비교 기준이 없습니다.' };

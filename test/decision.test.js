@@ -72,6 +72,10 @@ function answerEvent(overrides) {
   }, overrides || {});
 }
 
+// 접기는 인가 컨텍스트를 요구한다. 손으로 만든 이벤트를 접는 시험도 같은
+// 조건을 지나야 한다 — 시험만 인가를 끄면 시험은 실제 경로를 시험하지 않는다.
+const LEDGER_AUTHORITY = { clientOwners: [['agent-a', 'MEMBER-001'], ['desk-b', 'MEMBER-001'], ['agent-b', 'MEMBER-002']], members: ['MEMBER-001', 'MEMBER-002'], delegations: [] };
+
 try {
   // 카탈로그: 위임이 성립하지 않는 결정은 정책으로 고정된다.
   assert.strictEqual(KINDS.publish.delegable, false, '배포는 위임 불가여야 합니다.');
@@ -94,77 +98,77 @@ try {
   assert.match(decisionEnvelope(requestEvent()).canonicalDigest, /^[a-f0-9]{64}$/u);
 
   // 무응답의 기본은 정지다 — 요청만 있으면 열린 상태로 남는다.
-  const openFold = foldDecisions([requestEvent()], { members: ['MEMBER-001'] });
+  const openFold = foldDecisions([requestEvent()], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(openFold.open.length, 1);
   assert.strictEqual(openFold.decisions[0].status, 'open');
   assert.strictEqual(openFold.decisions[0].selectedOption, null);
 
   // 다른 클라이언트의 권한 있는 답변이 결정을 해소한다.
-  const answered = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'] });
+  const answered = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(answered.open.length, 0);
   assert.strictEqual(answered.decisions[0].status, 'answered');
   assert.strictEqual(answered.decisions[0].selectedOption, 'minor');
   assert.strictEqual(answered.decisions[0].answeredBy, 'MEMBER-001');
 
   // 등록되지 않은 답변자와 선택지 밖의 값은 해소하지 못하고 진단으로 남는다.
-  const intruder = foldDecisions([requestEvent(), answerEvent({ answeredBy: 'MEMBER-404' })], { members: ['MEMBER-001'] });
+  const intruder = foldDecisions([requestEvent(), answerEvent({ answeredBy: 'MEMBER-404' })], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(intruder.open.length, 1, '권한 없는 답변이 결정을 해소하면 안 됩니다.');
   assert(intruder.diagnostics.some((item) => item.code === 'RDL-DEC-002'));
-  const invalidOption = foldDecisions([requestEvent(), answerEvent({ selectedOption: 'major' })], { members: ['MEMBER-001'] });
+  const invalidOption = foldDecisions([requestEvent(), answerEvent({ selectedOption: 'major' })], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(invalidOption.open.length, 1);
   assert(invalidOption.diagnostics.some((item) => item.code === 'RDL-DEC-017'));
 
   // 서로 다른 답이 동시에 도착하면 하나를 고르는 것은 결정이 아니라 은폐다.
   // 권한 결정은 모호할 때 열리는 것이 아니라 닫혀야 한다(fail-closed).
-  const conflicting = foldDecisions([requestEvent(), answerEvent(), answerEvent({ eventId: 'EVT-55555555555555555555', requestId: 'REQ-55555555555555555555', selectedOption: 'patch' })], { members: ['MEMBER-001'] });
+  const conflicting = foldDecisions([requestEvent(), answerEvent(), answerEvent({ eventId: 'EVT-55555555555555555555', requestId: 'REQ-55555555555555555555', selectedOption: 'patch' })], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(conflicting.open.length, 1, '상충하는 답변은 결정을 해소하면 안 됩니다.');
   assert.strictEqual(conflicting.decisions[0].selectedOption, null);
   assert(conflicting.diagnostics.some((item) => item.code === 'RDL-DEC-018'));
 
   // 같은 결정 키에 다른 질문이 들어오면 무엇에 답하는지가 갈린다.
-  const forked = foldDecisions([requestEvent(), requestEvent({ eventId: 'EVT-66666666666666666666', requestId: 'REQ-66666666666666666666', question: '다른 질문입니다.' }), answerEvent()], { members: ['MEMBER-001'] });
+  const forked = foldDecisions([requestEvent(), requestEvent({ eventId: 'EVT-66666666666666666666', requestId: 'REQ-66666666666666666666', question: '다른 질문입니다.' }), answerEvent()], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(forked.open.length, 1);
   assert(forked.diagnostics.some((item) => item.code === 'RDL-DEC-019'));
 
   // 쓰기 경로의 결박만으로는 부족하다. 직접 append나 Git 병합으로 들어온 답변은
   // 그 경로를 지나지 않으므로, 읽는 쪽에서도 명의를 확인해야 한다.
   const owners = [['agent-a', 'MEMBER-001'], ['desk-b', 'MEMBER-001']];
-  const smuggled = foldDecisions([requestEvent(), answerEvent({ answeredBy: 'MEMBER-002' })], { members: ['MEMBER-001', 'MEMBER-002'], clientOwners: owners });
+  const smuggled = foldDecisions([requestEvent(), answerEvent({ answeredBy: 'MEMBER-002' })], { members: ['MEMBER-001', 'MEMBER-002'], authority: { clientOwners: owners } });
   assert.strictEqual(smuggled.open.length, 1, '병합으로 들어온 사칭 답변이 결정을 해소하면 안 됩니다.');
   assert(smuggled.diagnostics.some((item) => item.code === 'RDL-DEC-021'));
-  const unknownClient = foldDecisions([requestEvent(), answerEvent({ clientId: 'ghost' })], { members: ['MEMBER-001'], clientOwners: owners });
+  const unknownClient = foldDecisions([requestEvent(), answerEvent({ clientId: 'ghost' })], { members: ['MEMBER-001'], authority: { clientOwners: owners } });
   assert.strictEqual(unknownClient.open.length, 1);
   assert(unknownClient.diagnostics.some((item) => item.code === 'RDL-DEC-020'));
   // 명의가 맞으면 정상 해소된다 — 오탐이 아니어야 한다.
-  assert.strictEqual(foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'], clientOwners: owners }).open.length, 0);
+  assert.strictEqual(foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'], authority: { clientOwners: owners } }).open.length, 0);
 
   // 상충은 닫되 탈출구가 있어야 한다. 해소 수단 없이 닫기만 하면 영구 교착이다.
   const rival = answerEvent({ eventId: 'EVT-55555555555555555555', requestId: 'REQ-55555555555555555555', selectedOption: 'patch' });
-  const deadlocked = foldDecisions([requestEvent(), answerEvent(), rival], { members: ['MEMBER-001'] });
+  const deadlocked = foldDecisions([requestEvent(), answerEvent(), rival], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(deadlocked.open.length, 1);
   const resolution = answerEvent({ eventId: 'EVT-99999999999999999999', requestId: 'REQ-99999999999999999999', selectedOption: 'minor', supersedes: rival.eventId, reason: '상충 해소: 명령 추가가 있어 마이너' });
-  const resolvedConflict = foldDecisions([requestEvent(), answerEvent(), rival, resolution], { members: ['MEMBER-001'] });
+  const resolvedConflict = foldDecisions([requestEvent(), answerEvent(), rival, resolution], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.strictEqual(resolvedConflict.open.length, 0, '대체 답변으로 상충이 해소되어야 합니다.');
   assert.strictEqual(resolvedConflict.decisions[0].selectedOption, 'minor');
 
   // 해소 경로가 새 공격면이 되면 안 된다 — 대체는 같은 결정의 기존 답변만
   // 가리키고, 자기 자신·다중 대체·순환은 전부 닫힌다.
   const selfSuper = answerEvent({ eventId: 'EVT-AAAAAAAAAAAAAAAAAAAA', requestId: 'REQ-AAAAAAAAAAAAAAAAAAAA', supersedes: 'EVT-AAAAAAAAAAAAAAAAAAAA' });
-  assert(foldDecisions([requestEvent(), selfSuper], { members: ['MEMBER-001'] }).diagnostics.some((item) => item.code === 'RDL-DEC-022'));
+  assert(foldDecisions([requestEvent(), selfSuper], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY }).diagnostics.some((item) => item.code === 'RDL-DEC-022'));
   const ghostSuper = answerEvent({ eventId: 'EVT-BBBBBBBBBBBBBBBBBBBB', requestId: 'REQ-BBBBBBBBBBBBBBBBBBBB', supersedes: 'EVT-CCCCCCCCCCCCCCCCCCCC' });
-  assert(foldDecisions([requestEvent(), ghostSuper], { members: ['MEMBER-001'] }).diagnostics.some((item) => item.code === 'RDL-DEC-023'));
+  assert(foldDecisions([requestEvent(), ghostSuper], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY }).diagnostics.some((item) => item.code === 'RDL-DEC-023'));
   const forkA = answerEvent({ eventId: 'EVT-DDDDDDDDDDDDDDDDDDDD', requestId: 'REQ-DDDDDDDDDDDDDDDDDDDD', supersedes: answerEvent().eventId, selectedOption: 'patch' });
   const forkB = answerEvent({ eventId: 'EVT-EEEEEEEEEEEEEEEEEEEE', requestId: 'REQ-EEEEEEEEEEEEEEEEEEEE', supersedes: answerEvent().eventId, selectedOption: 'minor' });
-  assert(foldDecisions([requestEvent(), answerEvent(), forkA, forkB], { members: ['MEMBER-001'] }).diagnostics.some((item) => item.code === 'RDL-DEC-024'));
+  assert(foldDecisions([requestEvent(), answerEvent(), forkA, forkB], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY }).diagnostics.some((item) => item.code === 'RDL-DEC-024'));
   const cycleA = answerEvent({ eventId: 'EVT-FFFFFFFFFFFFFFFFFFF1', requestId: 'REQ-FFFFFFFFFFFFFFFFFFF1', supersedes: 'EVT-FFFFFFFFFFFFFFFFFFF2' });
   const cycleB = answerEvent({ eventId: 'EVT-FFFFFFFFFFFFFFFFFFF2', requestId: 'REQ-FFFFFFFFFFFFFFFFFFF2', supersedes: 'EVT-FFFFFFFFFFFFFFFFFFF1', selectedOption: 'patch' });
-  const cycled = foldDecisions([requestEvent(), cycleA, cycleB], { members: ['MEMBER-001'] });
+  const cycled = foldDecisions([requestEvent(), cycleA, cycleB], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert(cycled.diagnostics.some((item) => item.code === 'RDL-DEC-025'));
   assert.strictEqual(cycled.open.length, 1, '순환하는 대체 사슬은 결정을 해소하지 못합니다.');
 
   // fold는 열거 순서의 함수가 아니다.
-  const forward = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'] });
-  const reversed = foldDecisions([answerEvent(), requestEvent()], { members: ['MEMBER-001'] });
+  const forward = foldDecisions([requestEvent(), answerEvent()], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
+  const reversed = foldDecisions([answerEvent(), requestEvent()], { members: ['MEMBER-001'], authority: LEDGER_AUTHORITY });
   assert.deepStrictEqual(reversed.decisions, forward.decisions, '결정 fold가 열거 순서에 의존하면 안 됩니다.');
 
   // 실제 Workspace 경로: 요청·조회·응답과 재질문 방지.

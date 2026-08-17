@@ -31,6 +31,7 @@ require('./release.test');
 require('./docs.test');
 require('./action.test');
 require('./agent-context.test');
+require('./authority.test');
 require('./setup.test');
 require('./decision.test');
 require('./delegation.test');
