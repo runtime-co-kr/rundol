@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readCollaboration } = require('./collaboration');
-const { documentIdFor, newDocumentUid, insertUid } = require('./document-identity');
+const { reserveDocumentId } = require('./document-sequence');
+const { newDocumentUid, insertUid } = require('./document-identity');
 const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
 const { assertBoundaryInput } = require('./document-boundary');
@@ -46,10 +47,11 @@ function safeTitle(value) {
   return { title, filename };
 }
 
-// 번호는 이제 표시값이다. 조인은 uid가 맡으므로 번호를 안전하게 나눠 주려고
-// 문서를 하나 만들 때마다 원격에 예약을 밀어 넣을 이유가 없어졌다 — 구멍은
-// 정체성을 깨뜨리지 않는 표시상의 빈칸일 뿐이다(ADR-009). 오프라인에서도
-// 문서를 만들 수 있고 병렬 생성이 서로를 밀어내지 않는다.
+// 채번 예약은 유지한다. ADR-009는 번호를 표시값으로 내리기로 했지만, 조인이
+// 실제로 uid로 옮겨가기 전까지 번호는 여전히 사실상의 키다 — 태스크 links,
+// related 위키 링크, 추적성, 승인 대상이 모두 번호로 조인한다. 조인이 남아
+// 있는 채로 예약만 없애면 두 클라이언트가 같은 번호를 만들어 한쪽이 조용히
+// 덮인다. 조율 제거는 uid 전환을 마친 뒤다.
 function nextId(layout, project, type) {
   let maximum = 0;
   for (const id of registry(project).keys()) {
@@ -57,7 +59,7 @@ function nextId(layout, project, type) {
     if (match) maximum = Math.max(maximum, Number.parseInt(match[1], 10));
   }
   if (maximum >= 999) throw new Error(`${type} 문서 번호 999를 초과할 수 없습니다.`);
-  return documentIdFor(type, maximum + 1);
+  return reserveDocumentId(layout.root, project.key, type, maximum);
 }
 
 function wikiLinks(ids, artifacts) {

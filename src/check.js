@@ -570,6 +570,34 @@ function checkProjectCharter(diagnostics, root, project) {
   if (aliases[0] !== expectedId) diagnostic(diagnostics, { code: 'RDL-PROJECT-005', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md aliases의 첫 값은 프로젝트 ID여야 합니다.' });
 }
 
+// 새 원장의 교차 이벤트 진단(상충하는 답변, 취소 대상 불일치, 모호한 위임 등)은
+// 파일 단위 검사로는 보이지 않는다 — fold를 거쳐야 나온다. 검사 결과에 합치지
+// 않으면 그 진단은 그것을 부르는 명령을 아는 사람에게만 보인다.
+function checkLedgerFolds(diagnostics, layout, projectKey) {
+  if (layout.schemaVersion < 6) return;
+  const eventsRoot = path.join(layout.root, 'projects', 'workspace', 'events');
+  if (!fs.existsSync(eventsRoot)) return;
+  const projects = (layout.projects || []).filter((project) => !projectKey || project.key === projectKey);
+  const now = Date.now();
+  for (const project of projects) {
+    const folds = [
+      () => require('./decision').foldDecisions(require('./decision').readDecisionEvents(eventsRoot, project.key), {}),
+      () => require('./delegation').foldDelegations(require('./delegation').readDelegationEvents(eventsRoot, project.key), { now }),
+      () => require('./approval').foldApprovals(require('./approval').readApprovalEvents(eventsRoot, project.key))
+    ];
+    for (const fold of folds) {
+      let result;
+      try { result = fold(); } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-LEDGER-001', category: 'workspace', project: project.key, message: `원장을 접을 수 없습니다: ${error.message}` });
+        continue;
+      }
+      for (const item of result.diagnostics || []) {
+        diagnostic(diagnostics, { code: item.code, category: 'workspace', severity: item.severity, project: project.key, target: item.eventId || null, message: item.message });
+      }
+    }
+  }
+}
+
 function checkWorkspaceStore(diagnostics, layout) {
   if (layout.schemaVersion < 6) return;
   const workspaceRoot = path.join(layout.root, 'projects', 'workspace');
@@ -877,6 +905,7 @@ function checkWorkspace(start, options) {
   const projects = settings.project ? allProjects.filter((project) => project.key === settings.project) : allProjects;
   const diagnostics = [];
   checkWorkspaceStore(diagnostics, layout);
+  checkLedgerFolds(diagnostics, layout, settings.project);
   if (settings.project && projects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-006', category: 'governance', target: settings.project, message: `프로젝트를 찾지 못했습니다: ${settings.project}` });
   if (!settings.project && allProjects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-007', category: 'governance', file: layout.mountRelative, message: 'project.md가 있는 프로젝트를 찾지 못했습니다.' });
   let documents = 0;

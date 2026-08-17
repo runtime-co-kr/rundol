@@ -214,6 +214,18 @@ function approveDocument(start, input) {
   if (client.status !== 'active') throw new Error(`비활성 Client는 승인할 수 없습니다: ${clientId}`);
   const members = readCollaboration(context.layout.root, context.project.key).members.map((member) => member.id);
   require('./decision').assertActingMember(client, settings.approvedBy, members, '승인');
+  // delegated 근거는 실제 위임과 결박한다. 결박하지 않으면 "위임받아 승인했다"는
+  // 주장만으로 책임이 옮겨가고, 위임의 만료·취소가 승인에 아무 영향을 주지 못한다.
+  if ((settings.basis || []).some((item) => item && item.kind === 'delegated')) {
+    if (!settings.delegationId) throw new Error('delegated 근거에는 근거가 된 위임(--delegation)이 필요합니다.');
+    const delegation = require('./delegation').activeDelegationFor(start, { project: context.project.key, kind: 'doc-replace', clientId, now: settings.now });
+    if (!delegation || delegation.delegationId !== settings.delegationId) {
+      throw new Error(`유효한 위임이 아닙니다: ${settings.delegationId} (만료·취소되었거나 이 Client의 위임이 아닙니다)`);
+    }
+    if (delegation.grantedBy !== settings.approvedBy) throw new Error('위임에 의한 승인의 결정자는 위임 부여자여야 합니다.');
+  } else if (settings.delegationId) {
+    throw new Error('위임을 근거로 쓰려면 --basis delegated가 필요합니다.');
+  }
   const document = findDocument(context.project, settings.targetId);
   const folded = foldApprovals(readApprovalEvents(context.eventsRoot, context.project.key));
   const state = trustState(document, folded.approvals.get(document.id));
