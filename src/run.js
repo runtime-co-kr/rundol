@@ -555,10 +555,13 @@ function preflightDriveProcedure(procedure) {
     const classification = driveStepClass(step);
     if (classification === 'human') continue;
     if (classification === 'gate') { validateDriveGate(step); continue; }
-    // drive의 verify 실행은 아직 verifyArtifact(quorum·verdict 기록)로 배선되지
-    // 않았다. 미구현을 일반 adapter 실행으로 대신하면 verdict 없는 검증이 되므로
-    // 자리표시 대신 닫는다 — verify 경계는 rdl verify가 담당한다.
-    if (classification === 'verify') throw new Error(`drive does not execute verification steps yet; run rdl verify at this boundary: ${step.id}`);
+    // verify 스텝은 일반 adapter 실행이 아니라 검증 커널을 지난다 — 절차가 pin한
+    // 렌즈·지시·정족수로 verdict를 남기고, 그 판정만 원장에 기록한다. 재시도
+    // 안전성은 verdict 원장의 검증 요청 재개가 보증하므로 retrySafety를 요구하지 않는다.
+    if (classification === 'verify') {
+      if (!step.onFail) throw new Error(`drive verification step requires onFail: ${step.id}`);
+      continue;
+    }
     if (!step.retrySafety || typeof step.retrySafety !== 'object' || Array.isArray(step.retrySafety) || !['operation-id', 'gate-recheck'].includes(step.retrySafety.mode)) throw new Error(`drive executable step requires retrySafety: ${step.id}`);
     if (step.retrySafety.mode === 'operation-id') {
       if (ledger.canonicalJson(Object.keys(step.retrySafety).sort()) !== ledger.canonicalJson(['mode'])) throw new Error(`operation-id retrySafety has unknown fields: ${step.id}`);
@@ -814,6 +817,37 @@ async function tickRun(start, options, dependencies) {
       return { exitCode: 1, status: 'halted', reason: 'gate-failed', operationId };
     }
     return { exitCode: 0, status: 'continue', operationId };
+  }
+  // 검증 경계. 원장은 verify 커서에 run.gate만 받으므로 정족수 판정을 그 형태로
+  // 기록한다 — 통과는 커서를 전진시키고, 반박은 절차의 onFail로 되돌리며,
+  // 정족수 미달은 재시도로 풀리지 않으므로 사람을 기다리는 정지다.
+  if (classification === 'verify') {
+    const attempt = ledger.logicalAttemptForStep(context.events, step.id);
+    const operationId = ledger.operationIdFor({ runId: context.fold.runId, procedureContentHash: context.fold.procedure.contentHash, stepId: step.id, logicalAttempt: attempt });
+    const targetId = context.fold.artifactIds[context.fold.artifactIds.length - 1] || null;
+    if (!targetId) return { exitCode: 2, status: 'error', code: 'verification-target-missing', operationId };
+    const verifier = deps.verifyArtifact || ((input) => require('./verify').verifyArtifact(start, input));
+    let outcome;
+    try {
+      outcome = await verifier({
+        project: context.project.key, targetId, clientId: options.clientId, runId: context.fold.runId,
+        rootRequestId: options.requestId, lenses: undefined, adapter: undefined
+      });
+    } catch (error) {
+      return { exitCode: 2, status: 'error', code: 'verification-environment', reason: error.message, operationId };
+    }
+    const status = outcome && outcome.fold && outcome.fold.status || outcome && outcome.status || 'human_required';
+    const exitCode = status === 'passed' ? 0 : 1;
+    const diagnostics = [`verdict:${status}`];
+    const kind = exitCode === 0 ? 'gate-passed' : 'gate-failed';
+    const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt: attempt, outcomeKind: kind, exitCode, sortedArtifactIds: [], sortedDiagnosticCodes: diagnostics, boundedResultDecision: { diagnostics } });
+    await record({ type: 'run.gate', stepId: step.id, command: 'verify', args: [targetId], exitCode, diagnostics, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
+    if (exitCode === 0) return { exitCode: 0, status: 'continue', operationId, verdict: status };
+    // 정족수 미달은 더 돌린다고 달라지지 않는다 — 검증자를 늘리거나 사람이
+    // 판단해야 한다. 반박은 절차가 정한 onFail 경로로 되돌아간다.
+    const reason = status === 'human_required' ? 'verification-required' : 'gate-failed';
+    await record({ type: 'run.halted', reason, atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, reason));
+    return { exitCode: 1, status: 'halted', reason, operationId, verdict: status };
   }
   const logicalAttempt = ledger.logicalAttemptForStep(context.events, step.id);
   const operationId = ledger.operationIdFor({ runId: context.fold.runId, procedureContentHash: context.fold.procedure.contentHash, stepId: step.id, logicalAttempt });

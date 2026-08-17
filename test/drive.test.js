@@ -317,12 +317,71 @@ const running = (async () => {
   assert.strictEqual(ledger.foldRun(failedEvents).status, 'halted');
   assert.strictEqual(ledger.foldRun(failedEvents).haltReason, 'step-failed');
 
-  // drive는 verify 스텝을 아직 몰지 못한다 — 일반 adapter로 오분류해 run.step을
-  // 기록하는 대신 preflight가 명시적으로 거부한다(fail-closed).
-  assert.throws(() => preflightDriveProcedure(procedure([
-    { id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'] }, retrySafety: { mode: 'operation-id' } },
+  // verify 스텝은 검증 커널을 지나고 정족수 판정만 run.gate로 남는다. onFail이
+  // 없으면 반박됐을 때 돌아갈 곳이 없으므로 preflight가 거부한다.
+  const verifyStep = { id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'] }, onFail: { goto: 'author', maxAttempts: 2 } };
+  const verifyProcedure = procedure([
+    { id: 'author', executor: 'cli', command: 'x', args: ['{operationId}'], retrySafety: { mode: 'operation-id' } },
+    verifyStep,
     { id: 'sync', human: true }
-  ])), /verification steps/u);
+  ]);
+  assert.strictEqual(preflightDriveProcedure(verifyProcedure), verifyProcedure);
+  assert.throws(() => preflightDriveProcedure(procedure([
+    { id: 'author', executor: 'cli', command: 'x', args: ['{operationId}'], retrySafety: { mode: 'operation-id' } },
+    { id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'] } },
+    { id: 'sync', human: true }
+  ])), /requires onFail/u);
+
+  // 통과한 검증은 run.gate(exit 0)로 커서를 전진시킨다.
+  const passStart = startEvent(verifyProcedure);
+  const passEvents = [passStart, progress(passStart, { type: 'run.step', stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: ['REQ-001'] })];
+  const passRecords = [];
+  const passed = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
+    runContext: () => context(passEvents), acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
+    verifyArtifact: (input) => { assert.strictEqual(input.targetId, 'REQ-001', '검증 대상은 최근 산출물이다'); return { fold: { status: 'passed' } }; },
+    recordEvent: (_context, event) => { passRecords.push(event); passEvents.push(progress(passStart, event.type === 'run.gate' ? Object.assign({ attempt: 1 }, event) : event)); }
+  });
+  assert.strictEqual(passed.status, 'continue');
+  assert.deepStrictEqual(passRecords.map((event) => event.type), ['run.gate']);
+  assert.strictEqual(passRecords[0].command, 'verify');
+  assert.strictEqual(passRecords[0].exitCode, 0);
+  assert.strictEqual(ledger.foldRun(passEvents).cursor, 'sync', '통과하면 다음 경계로 전진한다');
+
+  // 반박은 절차가 정한 onFail 경로로 되돌아간다.
+  const refuteStart = startEvent(verifyProcedure);
+  const refuteEvents = [refuteStart, progress(refuteStart, { type: 'run.step', stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: ['REQ-001'] })];
+  const refuteRecords = [];
+  const refuted = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
+    runContext: () => context(refuteEvents), acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
+    verifyArtifact: () => ({ fold: { status: 'refuted' } }),
+    recordEvent: (_context, event) => { refuteRecords.push(event); refuteEvents.push(progress(refuteStart, event.type === 'run.gate' ? Object.assign({ attempt: 1 }, event) : event)); }
+  });
+  assert.strictEqual(refuted.status, 'halted');
+  assert.strictEqual(refuted.reason, 'gate-failed');
+  assert.deepStrictEqual(refuteRecords.map((event) => event.type), ['run.gate', 'run.halted']);
+  assert.strictEqual(ledger.foldRun(refuteEvents).cursor, 'author', '반박은 onFail 경로로 되돌린다');
+
+  // 정족수 미달은 재시도로 풀리지 않는다 — 사람을 기다리는 정지다.
+  const quorumStart = startEvent(verifyProcedure);
+  const quorumEvents = [quorumStart, progress(quorumStart, { type: 'run.step', stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: ['REQ-001'] })];
+  const quorumRecords = [];
+  const quorum = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
+    runContext: () => context(quorumEvents), acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
+    verifyArtifact: () => ({ fold: { status: 'human_required' } }),
+    recordEvent: (_context, event) => { quorumRecords.push(event); quorumEvents.push(progress(quorumStart, event.type === 'run.gate' ? Object.assign({ attempt: 1 }, event) : event)); }
+  });
+  assert.strictEqual(quorum.reason, 'verification-required');
+  assert.strictEqual(quorumRecords.at(-1).reason, 'verification-required');
+
+  // 검증 대상 산출물이 없으면 실행하지 않고 환경 오류로 멈춘다.
+  const emptyStart = startEvent(verifyProcedure);
+  const empty = await tickRun('.', { clientId: 'agent-one', requestId: identifier('REQ') }, {
+    runContext: () => context([emptyStart, progress(emptyStart, { type: 'run.step', stepId: 'author', executor: 'cli', exitCode: 0, artifactIds: [] })]),
+    acquireLease: () => ({ id: 'lease' }), releaseLease: () => {},
+    verifyArtifact: () => { throw new Error('대상 없이 검증을 실행하면 안 됩니다.'); },
+    recordEvent: () => { throw new Error('대상 없이 기록하면 안 됩니다.'); }
+  });
+  assert.strictEqual(empty.code, 'verification-target-missing');
 
   const ledgerWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-drive-ledger-'));
   const ledgerRuntimeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-drive-ledger-runtime-'));
