@@ -30,6 +30,7 @@ require('./doctor.test');
 require('./release.test');
 require('./docs.test');
 require('./action.test');
+require('./agent-context.test');
 require('./run-ledger.test');
 require('./run-cli.test');
 require('./harness-settings.test');

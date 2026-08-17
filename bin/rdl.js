@@ -61,8 +61,11 @@ Usage:
                    [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
+  rdl task list [--project <key>] [--status <state>] [--open] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
+  rdl context [--root <path>] [--project <key>] [--json]
+  rdl help [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
@@ -92,6 +95,7 @@ Options:
   --strict       Treat unresolved body wiki links as errors.
   --links        Print only reference-integrity diagnostics.
   --tasks        Print only task diagnostics.
+  --open         열린 태스크(todo, doing, waiting, review)만 나열합니다.
   --acceptance   태스크 완료조건. 여러 번 지정할 수 있습니다.
   --reviewer     project.md에 등록된 검토 멤버. 여러 번 지정할 수 있습니다.
   --stakeholder  project.md에 등록된 이해관계자. 여러 번 지정할 수 있습니다.
@@ -165,6 +169,7 @@ function parseOperationArgs(argv) {
     else if (value === '--unreported') options.unreported = true;
     else if (value === '--pending') options.pending = true;
     else if (value === '--write') options.write = true;
+    else if (value === '--open') options.open = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
@@ -298,6 +303,27 @@ async function main() {
     return 0;
   }
   const command = argv.shift();
+  // 발견 표면: 에이전트는 소스나 사람용 텍스트를 파싱하는 대신 이 둘로 명령과
+  // 상태를 얻는다. help는 usage 정본에서 파생하므로 사본이 낡을 수 없다.
+  if (command === 'help') {
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl help에는 위치 인수를 사용할 수 없습니다.');
+    if (!options.json) { process.stdout.write(usage()); return 0; }
+    process.stdout.write(`${JSON.stringify(require('../src/agent-context').commandCatalog(usage()), null, 2)}\n`);
+    return 0;
+  }
+  if (command === 'context') {
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl context에는 위치 인수를 사용할 수 없습니다.');
+    const context = require('../src/agent-context').agentContext(options.root, { project: options.project });
+    if (options.json) { process.stdout.write(`${JSON.stringify(context, null, 2)}\n`); return 0; }
+    process.stdout.write(`root: ${context.root}\nprojects: ${context.projects.map((item) => item.key).join(', ') || '(없음)'}\n`);
+    process.stdout.write(`branch: ${context.branch.current || '(알 수 없음)'} (기본 ${context.branch.primary || '(알 수 없음)'})\n`);
+    process.stdout.write(`diagnostics: 오류 ${context.diagnostics.errors} · 경고 ${context.diagnostics.warnings}\n`);
+    process.stdout.write(`tasks: ${Object.entries(context.tasks.counts).map(([state, count]) => `${state} ${count}`).join(' · ') || '(없음)'}\n`);
+    for (const action of context.next) process.stdout.write(`next: ${action}\n`);
+    return 0;
+  }
   if (command === 'doctor') {
     const options = parseOperationArgs(argv);
     if (options.positional.length) throw new Error('rdl doctor에는 위치 인수를 사용할 수 없습니다.');
@@ -787,8 +813,14 @@ async function main() {
   }
   if (command === 'task') {
     const subcommand = argv.shift();
-    if (!['add', 'set', 'acceptance', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, acceptance, migrate입니다.');
+    if (!['add', 'set', 'list', 'acceptance', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, migrate입니다.');
     const options = parseOperationArgs(argv);
+    if (subcommand === 'list') {
+      if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
+      const listed = require('../src/agent-context').listTasks(options.root, { project: options.project, status: options.status, open: options.open });
+      printOperation(listed, options.json);
+      return 0;
+    }
     if (subcommand === 'migrate') {
       if (options.positional.length) throw new Error('rdl task migrate에는 위치 인수를 사용할 수 없습니다.');
       const maxItems = Number.parseInt(options.maxItems || '500', 10);
