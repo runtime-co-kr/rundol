@@ -62,6 +62,13 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
   rdl help [--json]
+  rdl decision list [--project <key>] [--open] [--json]
+  rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
+                       --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
+                       [--evidence <근거>] --client-id <id> [--project <key>] [--json]
+  rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
+                      --client-id <id> [--project <key>] [--json]
+  rdl decision kinds [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]

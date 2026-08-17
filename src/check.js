@@ -13,6 +13,7 @@ const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, composi
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
+const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -652,6 +653,32 @@ function checkWorkspaceStore(diagnostics, layout) {
         if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical verdict projection과 일치하지 않습니다.');
       } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-VERDICT-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `verdict schema/envelope가 유효하지 않습니다: ${error.message}` });
+      }
+    }
+  }
+  const decisionRoot = path.join(eventsRoot, 'decision');
+  if (fs.existsSync(decisionRoot)) for (const entry of fs.readdirSync(decisionRoot, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(decisionRoot, entry.name);
+    if (!/^decision-[a-z0-9]+(?:-[a-z0-9]+)*-[a-z0-9]+(?:-[a-z0-9]+)*-\d{6}\.jsonl$/u.test(entry.name)) {
+      diagnostic(diagnostics, { code: 'RDL-DEC-010', category: 'workspace', file: relative(layout.root, file), message: '결정 이벤트 파일명이 표준 패턴과 다릅니다.' });
+      continue;
+    }
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/u).entries()) {
+      if (!line.trim()) continue;
+      let event;
+      try { event = JSON.parse(line); } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-DEC-011', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL 결정 이벤트를 파싱할 수 없습니다: ${error.message}` });
+        continue;
+      }
+      if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-DEC-012', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 Client를 참조합니다: ${event.clientId || '(없음)'}` });
+      if (!entry.name.startsWith(`decision-${event.projectId}-${event.clientId}-`)) diagnostic(diagnostics, { code: 'RDL-DEC-013', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: '결정 이벤트의 프로젝트 또는 Client가 파일명과 일치하지 않습니다.' });
+      try {
+        const normalized = normalizeDecisionEvent(event);
+        const expected = decisionEnvelope(normalized).canonicalDigest;
+        if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical projection과 일치하지 않습니다.');
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-DEC-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `결정 schema/envelope가 유효하지 않습니다: ${error.message}` });
       }
     }
   }

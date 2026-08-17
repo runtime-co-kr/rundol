@@ -66,6 +66,13 @@ Usage:
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
   rdl help [--json]
+  rdl decision list [--project <key>] [--open] [--json]
+  rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
+                       --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
+                       [--evidence <근거>] --client-id <id> [--project <key>] [--json]
+  rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
+                      --client-id <id> [--project <key>] [--json]
+  rdl decision kinds [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
@@ -152,7 +159,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -170,7 +177,8 @@ function parseOperationArgs(argv) {
     else if (value === '--pending') options.pending = true;
     else if (value === '--write') options.write = true;
     else if (value === '--open') options.open = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode'].includes(value)) {
+    else if (value === '--irreversible') options.irreversible = true;
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -199,6 +207,8 @@ function parseOperationArgs(argv) {
       else if (value === '--acceptance') options.acceptance.push(argv[i]);
       else if (value === '--related') options.related.push(argv[i]);
       else if (value === '--lens') options.lenses.push(argv[i]);
+      else if (value === '--option') options.decisionOptions.push(argv[i]);
+      else if (value === '--evidence') options.evidence.push(argv[i]);
       else if (value === '--trait') options.traits.push(argv[i]);
       else if (['--required', '--recommended', '--on-demand', '--disabled'].includes(value)) {
         const state = value === '--on-demand' ? 'onDemand' : value.slice(2);
@@ -322,6 +332,48 @@ async function main() {
     process.stdout.write(`diagnostics: 오류 ${context.diagnostics.errors} · 경고 ${context.diagnostics.warnings}\n`);
     process.stdout.write(`tasks: ${Object.entries(context.tasks.counts).map(([state, count]) => `${state} ${count}`).join(' · ') || '(없음)'}\n`);
     for (const action of context.next) process.stdout.write(`next: ${action}\n`);
+    return 0;
+  }
+  if (command === 'decision') {
+    const subcommand = argv.shift();
+    if (!['list', 'request', 'answer', 'kinds'].includes(subcommand)) throw new Error('지원하는 결정 하위 명령은 list, request, answer, kinds입니다.');
+    const options = parseOperationArgs(argv);
+    const decision = require('../src/decision');
+    if (subcommand === 'kinds') {
+      const kinds = Object.entries(decision.KINDS).map(([kind, definition]) => ({ kind, family: definition.family, delegable: definition.delegable, summary: definition.summary }));
+      printOperation({ families: decision.FAMILIES, kinds }, options.json);
+      return 0;
+    }
+    if (subcommand === 'list') {
+      if (options.positional.length) throw new Error('rdl decision list에는 위치 인수를 사용할 수 없습니다.');
+      printOperation(decision.listDecisions(options.root, { project: options.project, open: options.open }), options.json);
+      return 0;
+    }
+    if (subcommand === 'request') {
+      if (options.positional.length) throw new Error('rdl decision request에는 위치 인수를 사용할 수 없습니다.');
+      // 선택지는 닫힌 목록이고 권고안은 필수다. 명령 표면에서부터 그 계약을 지켜야
+      // 권고 없는 질문이 기록으로 들어오지 않는다.
+      const parsed = options.decisionOptions.map((entry) => {
+        const separator = String(entry).indexOf('=');
+        if (separator < 1) throw new Error(`--option은 <id>=<설명> 형식이어야 합니다: ${entry}`);
+        return { id: entry.slice(0, separator), label: entry.slice(separator + 1) };
+      });
+      const result = decision.requestDecision(options.root, {
+        project: options.project, clientId: options.clientId, kind: options.kind, subject: options.subject,
+        question: options.question, options: parsed,
+        recommendation: { option: options.recommend, because: options.because },
+        impact: { reversible: !options.irreversible, blast: options.blast },
+        evidence: options.evidence, rootRequestId: options.requestId
+      });
+      printOperation(result, options.json);
+      return 0;
+    }
+    if (options.positional.length !== 1) throw new Error('rdl decision answer에는 DEC-ID 하나가 필요합니다.');
+    const answered = decision.answerDecision(options.root, {
+      project: options.project, clientId: options.clientId, decisionId: options.positional[0],
+      selectedOption: options.select, answeredBy: options.member, reason: options.reason, rootRequestId: options.requestId
+    });
+    printOperation(answered, options.json);
     return 0;
   }
   if (command === 'doctor') {

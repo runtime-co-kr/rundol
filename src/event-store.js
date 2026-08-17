@@ -17,7 +17,8 @@ const KINDS = {
   lease: { flat: true, pattern: new RegExp(`^lease-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
   run: { flat: false, runScoped: true, pattern: new RegExp(`^run-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') },
   verdict: { flat: false, pattern: new RegExp(`^verdict-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
-  driver: { flat: false, runScoped: true, pattern: new RegExp(`^driver-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') }
+  driver: { flat: false, runScoped: true, pattern: new RegExp(`^driver-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') },
+  decision: { flat: false, pattern: new RegExp(`^decision-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
 };
 
 function kindDefinition(kind) {
