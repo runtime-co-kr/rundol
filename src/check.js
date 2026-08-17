@@ -15,6 +15,7 @@ const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
 const { normalizeDelegationEvent, delegationEnvelope } = require('./delegation');
+const { normalizeApprovalEvent, approvalEnvelope } = require('./approval');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 
@@ -680,6 +681,32 @@ function checkWorkspaceStore(diagnostics, layout) {
         if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical projection과 일치하지 않습니다.');
       } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-DEC-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `결정 schema/envelope가 유효하지 않습니다: ${error.message}` });
+      }
+    }
+  }
+  const approvalRoot = path.join(eventsRoot, 'approval');
+  if (fs.existsSync(approvalRoot)) for (const entry of fs.readdirSync(approvalRoot, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(approvalRoot, entry.name);
+    if (!/^approval-[a-z0-9]+(?:-[a-z0-9]+)*-[a-z0-9]+(?:-[a-z0-9]+)*-\d{6}\.jsonl$/u.test(entry.name)) {
+      diagnostic(diagnostics, { code: 'RDL-APPROVE-010', category: 'workspace', file: relative(layout.root, file), message: '승인 이벤트 파일명이 표준 패턴과 다릅니다.' });
+      continue;
+    }
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/u).entries()) {
+      if (!line.trim()) continue;
+      let event;
+      try { event = JSON.parse(line); } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-APPROVE-011', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `JSONL 승인 이벤트를 파싱할 수 없습니다: ${error.message}` });
+        continue;
+      }
+      if (!clients.has(event.clientId)) diagnostic(diagnostics, { code: 'RDL-APPROVE-012', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `등록되지 않은 Client를 참조합니다: ${event.clientId || '(없음)'}` });
+      if (!entry.name.startsWith(`approval-${event.projectId}-${event.clientId}-`)) diagnostic(diagnostics, { code: 'RDL-APPROVE-013', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: '승인 이벤트의 프로젝트 또는 Client가 파일명과 일치하지 않습니다.' });
+      try {
+        const normalized = normalizeApprovalEvent(event);
+        const expected = approvalEnvelope(normalized).canonicalDigest;
+        if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical projection과 일치하지 않습니다.');
+      } catch (error) {
+        diagnostic(diagnostics, { code: 'RDL-APPROVE-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `승인 schema/envelope가 유효하지 않습니다: ${error.message}` });
       }
     }
   }

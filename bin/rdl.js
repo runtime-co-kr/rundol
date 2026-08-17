@@ -84,6 +84,11 @@ Usage:
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
+  rdl doc status [--project <key>] [--status <approved|stale|unapproved>] [--json]
+  rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
+                  --client-id <id> [--reason <사유>] [--project <key>] [--json]
+  rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
+  rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
   rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--request-id <REQ-ID>] [--json]
   rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
   rdl conflict list [--project <key>] [--json]
@@ -169,7 +174,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -191,7 +196,8 @@ function parseOperationArgs(argv) {
     else if (value === '--defaults') options.defaults = true;
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch'].includes(value)) {
+    else if (value === '--since-approval') options.sinceApproval = true;
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -223,6 +229,7 @@ function parseOperationArgs(argv) {
       else if (value === '--option') options.decisionOptions.push(argv[i]);
       else if (value === '--evidence') options.evidence.push(argv[i]);
       else if (value === '--external-ref') options.externalRefs.push(argv[i]);
+      else if (value === '--basis') options.basis.push(argv[i]);
       else if (value === '--trait') options.traits.push(argv[i]);
       else if (['--required', '--recommended', '--on-demand', '--disabled'].includes(value)) {
         const state = value === '--on-demand' ? 'onDemand' : value.slice(2);
@@ -1017,6 +1024,38 @@ async function main() {
   }
   if (command === 'doc') {
     const subcommand = argv.shift();
+    // 승인은 초안과 정본의 경계다. 신뢰 상태는 파일이 아니라 원장에서 파생하므로
+    // frontmatter의 state를 무엇으로 적든 이 결과는 바뀌지 않는다.
+    if (['status', 'approve', 'history', 'diff'].includes(subcommand)) {
+      const options = parseOperationArgs(argv);
+      const approval = require('../src/approval');
+      if (subcommand === 'status') {
+        if (options.positional.length) throw new Error('rdl doc status에는 위치 인수를 사용할 수 없습니다.');
+        printOperation(approval.documentStatus(options.root, { project: options.project, status: options.status }), options.json);
+        return 0;
+      }
+      if (options.positional.length !== 1) throw new Error(`rdl doc ${subcommand}에는 ARTIFACT-ID 하나가 필요합니다.`);
+      if (subcommand === 'history') {
+        printOperation(approval.documentHistory(options.root, { project: options.project, targetId: options.positional[0] }), options.json);
+        return 0;
+      }
+      if (subcommand === 'diff') {
+        if (!options.sinceApproval) throw new Error('rdl doc diff에는 --since-approval이 필요합니다.');
+        printOperation(approval.diffSinceApproval(options.root, { project: options.project, targetId: options.positional[0] }), options.json);
+        return 0;
+      }
+      // 근거는 무엇에 기대어 승인했는지다. 사유 문장은 선택이지만 근거는 필수다 —
+      // 나중에 "AI 검토가 놓쳤나 사람이 건너뛰었나"를 구분하려면 그것이 필요하다.
+      const basis = options.basis.map((entry) => {
+        const separator = String(entry).indexOf('=');
+        return separator < 1 ? { kind: entry } : { kind: entry.slice(0, separator), detail: entry.slice(separator + 1) };
+      });
+      printOperation(approval.approveDocument(options.root, {
+        project: options.project, clientId: options.clientId, targetId: options.positional[0],
+        approvedBy: options.member, basis, reason: options.reason, rootRequestId: options.requestId
+      }), options.json);
+      return 0;
+    }
     if (subcommand === 'migrate') {
       const migrationOptions = parseOperationArgs(argv);
       if (migrationOptions.positional.length) throw new Error('rdl doc migrate는 위치 인수를 사용하지 않습니다.');

@@ -19,7 +19,8 @@ const KINDS = {
   verdict: { flat: false, pattern: new RegExp(`^verdict-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
   driver: { flat: false, runScoped: true, pattern: new RegExp(`^driver-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') },
   decision: { flat: false, pattern: new RegExp(`^decision-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
-  delegation: { flat: false, pattern: new RegExp(`^delegation-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
+  delegation: { flat: false, pattern: new RegExp(`^delegation-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
+  approval: { flat: false, pattern: new RegExp(`^approval-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
 };
 
 function kindDefinition(kind) {
