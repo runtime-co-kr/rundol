@@ -903,7 +903,7 @@
         },
         "AC-002": {
           "text": "작업 종료 시 acceptance 반영과 done 전환·sync가 흐름에 포함된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "태스크 없이 정본을 변경하는 경로가 스킬 안내에서 예외로 표면화된다",
@@ -912,7 +912,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:42.541Z",
-      "updatedAt": "2026-08-17T00:27:23.397Z",
+      "updatedAt": "2026-08-17T00:27:26.625Z",
       "statusChangedAt": "2026-08-17T00:27:20.407Z",
       "externalRefs": [],
       "project": "rundol",
