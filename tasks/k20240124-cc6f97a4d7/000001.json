@@ -963,7 +963,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl task list --json이 상태·링크·수용 기준 요약과 함께 태스크를 열거한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "명령별 도움말을 기계가 읽을 수 있는 형태로 제공한다",
@@ -976,7 +976,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:47:18.991Z",
-      "updatedAt": "2026-08-17T00:03:22.322Z",
+      "updatedAt": "2026-08-17T00:27:12.063Z",
       "statusChangedAt": "2026-08-17T00:03:22.322Z",
       "externalRefs": [],
       "project": "rundol",
