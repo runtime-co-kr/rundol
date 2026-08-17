@@ -1056,6 +1056,46 @@
         "decidedBy": "MEMBER-001",
         "at": "2026-08-17T00:06:17.188Z"
       }
+    },
+    "TASK-00MSWH45F613F048D06047A9F3": {
+      "title": "[기능] 번들 브랜치·PR 워크플로 배선",
+      "summary": "여러 기능을 한 브랜치에 묶어 작업하고 하나의 PR로 병합하는 실제 개발 흐름을 지원한다. review 상태와 externalRefs PR 요구(RDL-TASK-020)는 계약에 이미 있으나 CLI가 externalRefs를 설정할 수 없어 review 전이가 도달 불능이다. 브랜치·PR은 전용 필드 신설 대신 종류를 가진 externalRefs 항목으로 표현해 N개 태스크가 한 브랜치를 공유하는 관계를 그대로 담고, 영구 추적은 커밋 트레일러에서 계산한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-037",
+        "REQ-038",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl task set이 branch·PR 등 종류를 가진 externalRef를 설정·제거할 수 있어 review 전이가 CLI로 도달 가능하다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "한 브랜치를 공유하는 여러 태스크를 브랜치 또는 PR 기준으로 조회할 수 있다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "커밋 트레일러 규약으로 태스크와 배달 커밋의 대응이 계산되고 브랜치 삭제 후에도 유지된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "스킬이 번들 브랜치 생성부터 PR·review 일괄 전이·병합 후 done까지의 순서를 안내한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T00:06:20.272Z",
+      "updatedAt": "2026-08-17T00:06:20.272Z",
+      "statusChangedAt": "2026-08-17T00:06:20.272Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
