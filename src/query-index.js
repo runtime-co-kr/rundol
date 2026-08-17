@@ -35,15 +35,36 @@ function indexFingerprint(layout) {
     inputs.projects.push({
       key: project.key,
       head: head.status === 0 ? head.stdout : null,
-      // 커밋되지 않은 변경도 입력이다. 내용까지 읽지 않고 상태 목록의 지문만 쓴다 —
-      // 파일이 바뀌면 상태 줄이 바뀌므로 낡음을 잡기에 충분하다.
-      dirty: status.status === 0 ? sha256(status.stdout) : null
+      // 커밋되지 않은 변경도 입력이다. 상태 목록만으로는 부족하다 — 이미 M으로
+      // 표시된 파일을 다시 고치면 상태 줄이 그대로여서 지문이 변하지 않고,
+      // 낡은 인덱스가 유효로 판정되어 틀린 답을 자신 있게 내놓는다. 그래서
+      // 변경된 파일의 내용까지 지문에 넣는다. 대상은 status가 지목한 파일뿐이라
+      // 비용은 작업 중인 파일 수에 비례한다.
+      dirty: status.status === 0 ? sha256(dirtyDigest(project.root, status.stdout)) : null
     });
   }
   // 공유 원장은 git 밖에서도 갱신된다(로컬 append 후 아직 커밋 전). 파일 목록과
   // 크기·수정 시각을 지문에 넣어 그 변화를 잡는다.
   inputs.events = eventsFingerprint(path.join(layout.root, 'projects', 'workspace', 'events'));
   return sha256(canonical(inputs));
+}
+
+// 상태 목록이 지목한 파일의 내용을 함께 읽는다. 읽을 수 없는 항목(삭제됨,
+// 디렉터리)은 경로만 남긴다 — 존재하지 않는다는 사실 자체가 입력이다.
+function dirtyDigest(root, porcelain) {
+  const entries = [];
+  for (const line of String(porcelain || '').split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    const relative = line.slice(3).trim().replace(/^"|"$/gu, '');
+    const target = path.join(root, relative.includes(' -> ') ? relative.split(' -> ').pop() : relative);
+    let content = null;
+    try {
+      const stat = fs.statSync(target);
+      if (stat.isFile()) content = sha256(fs.readFileSync(target));
+    } catch (error) { content = null; }
+    entries.push([line, content]);
+  }
+  return canonical(entries);
 }
 
 function eventsFingerprint(eventsRoot) {
@@ -124,8 +145,28 @@ function readIndex(start) {
   try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) { return { status: 'corrupt', fingerprint, index: null, file, reason: error.message }; }
   if (parsed.version !== INDEX_VERSION) return { status: 'outdated', fingerprint, index: null, file };
+  const shape = schemaProblem(parsed);
+  if (shape) return { status: 'corrupt', fingerprint, index: null, file, reason: shape };
   if (parsed.fingerprint !== fingerprint) return { status: 'stale', fingerprint, index: null, file };
   return { status: 'valid', fingerprint, index: parsed, file };
+}
+
+// JSON으로 파싱된다는 것과 쓸 수 있다는 것은 다르다. 형태를 확인하지 않으면
+// tasks가 null인 인덱스가 유효로 통과한 뒤 조회에서 터진다 — 캐시 손상이
+// 조회 실패가 되면 캐시가 정확성의 조건이 되어버린다.
+function schemaProblem(index) {
+  if (!index || typeof index !== 'object') return '인덱스가 객체가 아닙니다.';
+  if (!Array.isArray(index.tasks)) return 'tasks가 배열이 아닙니다.';
+  if (!Array.isArray(index.documents)) return 'documents가 배열이 아닙니다.';
+  if (!Array.isArray(index.projects)) return 'projects가 배열이 아닙니다.';
+  if (!index.taskCounts || typeof index.taskCounts !== 'object') return 'taskCounts가 객체가 아닙니다.';
+  if (index.documentUidByDisplayId && typeof index.documentUidByDisplayId !== 'object') return 'documentUidByDisplayId가 객체가 아닙니다.';
+  for (const task of index.tasks) {
+    if (!task || typeof task !== 'object' || typeof task.id !== 'string' || typeof task.project !== 'string') {
+      return '태스크 항목의 형태가 다릅니다.';
+    }
+  }
+  return null;
 }
 
 function clearIndex(start) {
@@ -165,10 +206,15 @@ function queryTasks(start, options) {
   if (settings.index === true && settings.cold !== true) {
     const read = readIndex(start);
     if (read.status === 'valid') {
-      const tasks = read.index.tasks.filter((task) => (!settings.project || task.project === settings.project)
-        && (!settings.status || task.status === settings.status)
+      const scoped = read.index.tasks.filter((task) => !settings.project || task.project === settings.project);
+      const tasks = scoped.filter((task) => (!settings.status || task.status === settings.status)
         && (!settings.open || ['todo', 'doing', 'waiting', 'review'].includes(task.status)));
-      return { source: 'index', fingerprint: read.fingerprint, root: read.index.builtFrom, projects: settings.project ? [settings.project] : read.index.projects, counts: read.index.taskCounts, total: read.index.tasks.length, tasks };
+      // 집계는 선택된 프로젝트 범위에서 세고 상태 필터 이전 값을 쓴다 — 무인덱스
+      // 경로가 정확히 그렇게 센다. 여기서 갈리면 같은 응답의 목록과 집계가
+      // 서로 다른 질문에 답한다.
+      const counts = {};
+      for (const task of scoped) counts[task.status] = (counts[task.status] || 0) + 1;
+      return { source: 'index', fingerprint: read.fingerprint, root: read.index.builtFrom, projects: settings.project ? [settings.project] : read.index.projects, counts, total: scoped.length, tasks };
     }
   }
   return Object.assign({ source: 'cold' }, listTasks(start, settings));

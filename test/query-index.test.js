@@ -101,6 +101,27 @@ try {
   assert.strictEqual(readIndex(temporary).status, 'stale');
   assert.strictEqual(queryTasks(temporary, { index: true }).tasks.length, 3, '낡은 인덱스 대신 정본을 읽어야 합니다.');
 
+  // 내용을 덮지 않는 지문은 낡음을 놓친다. git status는 "무엇이 바뀌었나"만
+  // 말하고 "무엇으로 바뀌었나"는 말하지 않으므로, 이미 M으로 표시된 파일을 다시
+  // 고치면 상태 줄이 그대로다. 그러면 낡은 인덱스가 유효로 판정되어 조회가
+  // 성공하면서 틀린 답을 돌려준다 — 이 기능에서 가장 나쁜 실패다.
+  const dirtyFile = path.join(documentRoot, 'dirty-note.md');
+  fs.writeFileSync(dirtyFile, '첫 내용\n', 'utf8');
+  buildIndex(temporary);
+  assert.strictEqual(readIndex(temporary).status, 'valid');
+  fs.writeFileSync(dirtyFile, '완전히 다른 내용\n', 'utf8');
+  assert.strictEqual(readIndex(temporary).status, 'stale', '이미 dirty인 파일의 내용 변경도 낡음이어야 합니다.');
+  fs.rmSync(dirtyFile, { force: true });
+
+  // JSON으로 파싱된다는 것과 쓸 수 있다는 것은 다르다. 형태를 확인하지 않으면
+  // 조회가 터진다 — 캐시 손상이 조회 실패가 되면 캐시가 정확성의 조건이 된다.
+  buildIndex(temporary);
+  const shapeBroken = JSON.parse(fs.readFileSync(indexFile(temporary), 'utf8'));
+  shapeBroken.tasks = null;
+  fs.writeFileSync(indexFile(temporary), `${JSON.stringify(shapeBroken)}\n`, 'utf8');
+  assert.strictEqual(readIndex(temporary).status, 'corrupt', '형태가 깨진 인덱스는 손상으로 봐야 합니다.');
+  assert.strictEqual(queryTasks(temporary, { index: true }).source, 'cold', '형태가 깨져도 조회는 정본으로 답해야 합니다.');
+
   // 인덱스 내부 키는 문서 고유 식별자다 — 번호를 정리해도 스키마가 남는다.
   const rebuilt = buildIndex(temporary);
   assert(rebuilt.documents.length > 0);
@@ -134,6 +155,25 @@ try {
   assert.strictEqual(rdl(['index', 'status']).status, 'missing');
   assert.strictEqual(rdl(['task', 'list', '--project', 'crm', '--index']).tasks.length, 3, '인덱스 없이도 조회는 답해야 합니다.');
   assert.strictEqual(rdl(['index', 'rebuild']).tasks, 3);
+
+  // 등가성은 목록만이 아니라 응답 전체여야 한다. 프로젝트가 하나뿐인 Workspace에서
+  // 목록만 비교하면 집계가 갈리는 것을 볼 수 없다 — 실제로 인덱스는 프로젝트
+  // 필터를 무시하고 Workspace 전체 집계를 돌려주고 있었고, 그래서 같은 응답 안의
+  // 목록과 집계가 서로 다른 질문에 답했다.
+  rdl(['project', 'add', 'ops', '--name', 'Ops', '--profile', 'lean']);
+  rdl(['task', 'add', '운영 일감', '--project', 'ops', '--acceptance', '완료조건']);
+  rdl(['task', 'add', '운영 둘째', '--project', 'ops', '--acceptance', '완료조건', '--priority', 'high']);
+  rdl(['index', 'rebuild']);
+  for (const filter of [{}, { project: 'crm' }, { project: 'ops' }, { project: 'crm', status: 'todo' }, { project: 'ops', open: true }]) {
+    const viaIndex = queryTasks(temporary, Object.assign({ index: true }, filter));
+    const viaCold = queryTasks(temporary, Object.assign({ cold: true }, filter));
+    const label = JSON.stringify(filter);
+    assert.strictEqual(viaIndex.source, 'index', `인덱스 경로여야 합니다: ${label}`);
+    assert.deepStrictEqual(viaIndex.tasks, viaCold.tasks, `목록이 갈립니다: ${label}`);
+    assert.deepStrictEqual(viaIndex.counts, viaCold.counts, `집계가 갈립니다: ${label}`);
+    assert.strictEqual(viaIndex.total, viaCold.total, `총계가 갈립니다: ${label}`);
+    assert.deepStrictEqual(viaIndex.projects, viaCold.projects, `프로젝트 목록이 갈립니다: ${label}`);
+  }
 
   // 인덱스는 정본이 아니라 런타임 홈의 로컬 파생물이다. Workspace의 추적 대상
   // 경로(projects/)에 놓이면 커밋되어 정본을 오염시킨다.
