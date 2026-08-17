@@ -899,7 +899,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "스킬이 작업 시작 시 연결 태스크 확인·생성과 doing 전환을 흐름에 포함한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "작업 종료 시 acceptance 반영과 done 전환·sync가 흐름에 포함된다",
@@ -912,7 +912,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:42.541Z",
-      "updatedAt": "2026-08-17T00:27:20.407Z",
+      "updatedAt": "2026-08-17T00:27:23.397Z",
       "statusChangedAt": "2026-08-17T00:27:20.407Z",
       "externalRefs": [],
       "project": "rundol",
