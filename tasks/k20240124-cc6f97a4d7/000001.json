@@ -1244,6 +1244,41 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSXID8X9E6BC60944E270F84": {
+      "title": "[하네스] ProcessSupervisor 계약과 Windows Job Object",
+      "summary": "",
+      "owner": null,
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "세 OS가 같은 종료 계약을 구현한다: 취소 후 부모·자식·손자가 모두 종료되거나 termination-failed로 남는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "Windows가 Job Object로 트리를 소유하고 taskkill 최선 노력에 의존하지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "종료 실패가 성공 Promise로 반환되지 않고 실행 원장에 상태로 남는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "RUNDOL_ALLOW_WINDOWS_ADAPTER 차단을 해제하는 조건이 문서화된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-17T17:29:10.508Z",
+      "updatedAt": "2026-08-17T17:29:10.508Z",
+      "statusChangedAt": "2026-08-17T17:29:10.508Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
