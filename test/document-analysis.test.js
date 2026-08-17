@@ -86,6 +86,19 @@ try {
   assert.strictEqual(withTask.unexplained, false, '연결된 태스크가 있으면 왜 바뀌었는지 답할 기록이 있습니다.');
   assert.strictEqual(withTask.orphan, false, '태스크가 연결되면 고아가 아닙니다.');
 
+  // 추적성도 연결이다. 검증 문서는 요구를 참조하지만 화살표가 되돌아오지 않으므로,
+  // 표시 링크만 보면 모든 TST가 잎 노드라 영구히 고아가 된다 — 문서 종류 하나를
+  // 통째로 오탐하면 이 신호는 죽는다.
+  const requirement = rdl(['doc', 'create', 'REQ', '기능 ID를 선언하는 요구', '--owner', 'MEMBER-001', '--scope', '기능 ID를 선언하는 요구', '--exclude', '그 밖', '--function-id', 'ANL-01', '--related', referenced.id, '--project', 'crm']);
+  const verification = rdl(['doc', 'create', 'TST', '같은 기능 ID를 덮는 검증', '--owner', 'MEMBER-001', '--scope', '같은 기능 ID를 덮는 검증', '--exclude', '그 밖', '--function-id', 'ANL-01', '--related', requirement.id, '--project', 'crm']);
+  const traced = analyzeDocuments(temporary, { project: 'crm' });
+  const verificationEntry = traced.documents.find((entry) => entry.id === verification.id);
+  const requirementEntry = traced.documents.find((entry) => entry.id === requirement.id);
+  assert.deepStrictEqual(verificationEntry.traceability, [requirement.id], '기능 ID를 공유하는 문서가 추적성으로 이어져야 합니다.');
+  assert.deepStrictEqual(requirementEntry.traceability, [verification.id]);
+  assert.strictEqual(verificationEntry.referencedBy.length, 0, '검증 문서를 가리키는 표시 링크는 없습니다.');
+  assert.strictEqual(verificationEntry.orphan, false, '기능 ID로 이어진 문서는 고아가 아닙니다.');
+
   // 필터.
   assert(analyzeDocuments(temporary, { project: 'crm', orphans: true }).documents.every((entry) => entry.orphan));
   assert(analyzeDocuments(temporary, { project: 'crm', unexplained: true }).documents.every((entry) => entry.unexplained));

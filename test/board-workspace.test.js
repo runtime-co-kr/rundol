@@ -21,6 +21,7 @@ function request(port, pathname, token, method, body) {
   return new Promise((resolve, reject) => {
     const content = body === undefined ? null : JSON.stringify(body);
     const headers = content ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(content), 'X-Rundol-Token': token } : {};
+    // agent: false — 연결 재사용을 끈다. 이유는 board.test.js의 같은 자리에 적었다.
     const call = http.request({ hostname: '127.0.0.1', port, path: pathname, method: method || 'GET', headers }, (response) => {
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));

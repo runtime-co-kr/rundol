@@ -10,12 +10,19 @@ const root = path.resolve(__dirname, '..');
 function request(port, pathname, options) {
   const settings = Object.assign({ method: 'GET', headers: {} }, options || {});
   return new Promise((resolve, reject) => {
+    // agent: false로 연결 재사용을 끈다. Node의 globalAgent는 keep-alive가 기본이라
+    // 소켓이 풀에 남는데, 서버의 유휴 연결 타임아웃(5초)이 먼저 지나면 서버가 그
+    // 소켓을 닫는다. 전체 스위트를 동시에 돌려 부하가 걸리면 요청 사이 간격이 그
+    // 시간을 넘고, 클라이언트가 죽은 소켓을 재사용하면서 ECONNRESET으로 터진다.
+    // 단독 실행에서는 재현되지 않아 게이트만 간헐적으로 무너뜨린다.
     const call = http.request({ hostname: '127.0.0.1', port, path: pathname, method: settings.method, headers: settings.headers }, (response) => {
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));
       response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks).toString('utf8') }));
     });
-    call.on('error', reject);
+    // 어느 요청이 터졌는지 이름을 붙인다. 익명 ECONNRESET은 어디를 고쳐야
+    // 하는지 알려주지 않아 추측만 늘린다.
+    call.on('error', (error) => reject(new Error(`${settings.method} ${pathname} 실패: ${error.code || error.message}`)));
     if (settings.body) call.write(settings.body);
     call.end();
   });

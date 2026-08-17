@@ -42,6 +42,8 @@ function analyzeDocuments(start, options) {
   const { listDocuments } = require('./board-data');
   const { foldApprovals, readApprovalEvents, trustState } = require('./approval');
   const { queryTasks } = require('./query-index');
+  const { parseFrontmatter } = require('./frontmatter');
+  const fs = require('fs');
   const layout = workspaceLayout(start);
   const project = selectProject(layout, settings.project, true);
   const eventsRoot = path.join(layout.root, 'projects', 'workspace', 'events');
@@ -59,6 +61,29 @@ function analyzeDocuments(start, options) {
     for (const target of targets) inbound.get(target).push(document.id);
   }
 
+  // 추적성도 연결이다. 요구가 기능 ID를 선언하고 검증이 같은 ID를 덮으면 둘은
+  // 이어져 있다 — 화살표가 검증에서 요구로만 향할 뿐이다. 표시 링크만 보면
+  // 모든 TST가 잎 노드라 고아로 잡히고, 그러면 이 신호는 문서 종류 하나를
+  // 통째로 잘못 지목하며 죽는다.
+  const byFunction = new Map();
+  const functionIdsOf = new Map();
+  for (const document of documents) {
+    const parsed = parseFrontmatter(fs.readFileSync(path.join(project.root, document.file), 'utf8'));
+    const declared = (parsed && Array.isArray(parsed.data.functionIds)) ? parsed.data.functionIds : [];
+    functionIdsOf.set(document.id, declared);
+    for (const functionId of declared) {
+      if (!byFunction.has(functionId)) byFunction.set(functionId, []);
+      byFunction.get(functionId).push(document.id);
+    }
+  }
+  const traceability = new Map(documents.map((document) => {
+    const peers = new Set();
+    for (const functionId of functionIdsOf.get(document.id)) {
+      for (const peer of byFunction.get(functionId) || []) if (peer !== document.id) peers.add(peer);
+    }
+    return [document.id, Array.from(peers).sort()];
+  }));
+
   const entries = documents.map((document) => {
     const history = approvals.approvals.get(document.id) || [];
     const state = trustState(document, history);
@@ -72,10 +97,18 @@ function analyzeDocuments(start, options) {
       approvals: history.length,
       referencedBy: inbound.get(document.id).slice().sort(),
       references: outbound.get(document.id),
+      traceability: traceability.get(document.id),
       tasks: linkedTasks,
-      // 고아: 아무도 참조하지 않고 연결된 태스크도 없다. 지워야 한다는 뜻이
-      // 아니라 살아 있는지 확인해야 한다는 신호다.
-      orphan: inbound.get(document.id).length === 0 && linkedTasks.length === 0,
+      // 고아: 아무도 참조하지 않고, 연결된 태스크도 없고, 기능 ID로 이어진
+      // 문서도 없다. 지워야 한다는 뜻이 아니라 살아 있는지 확인해야 한다는 신호다.
+      //
+      // 프로젝트 문서는 뿌리라 묻지 않는다. 아무도 가리키지 않는 것이 정상이고,
+      // 실제로는 모든 문서의 소유자 필드가 이것을 가리키지만 그 링크 형태를
+      // 표시 링크 스캐너가 읽지 않는다. 뿌리를 고아로 부르면 신호가 아니라 잡음이다.
+      orphan: document.type !== 'project'
+        && inbound.get(document.id).length === 0
+        && linkedTasks.length === 0
+        && traceability.get(document.id).length === 0,
       // 승인도 태스크도 없이 존재하는 정본. 왜 이런 내용인지 답할 기록이 없다.
       unexplained: state.status !== 'approved' && linkedTasks.length === 0
     };
