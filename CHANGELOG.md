@@ -2,7 +2,7 @@
 
 이 문서는 사용자에게 영향을 주는 Rundol 변경을 기록한다. 버전 분류와 tag 규칙은 [버전과 릴리스 정책](docs/RELEASES.md)을 따른다.
 
-## [Unreleased]
+## [0.30.0] - 2026-08-18
 
 ### Changed
 
