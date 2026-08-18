@@ -101,7 +101,7 @@ try {
     steps: [{ id: 'author', executor: 'adapter' }, { id: 'save', executor: 'cli' }]
   };
   const first = ledger.createRun(workspace, { project: 'crm', goal: '타볼 호환 런', clientId: 'agent-a', procedure, settings });
-  assert.strictEqual(first.event.schemaVersion, 2, '픽스처 런은 canonical v2여야 합니다.');
+  assert.strictEqual(first.event.schemaVersion, 3, '픽스처 런은 이 판의 canonical 스키마여야 합니다.');
   const eventsRoot = path.join(workspace, 'projects', 'workspace', 'events');
   const lockDirectory = path.join(temporary, 'locks');
   const driverBase = { schemaVersion: 1, rootRequestId: ledger.newRequestId(), requestId: ledger.newRequestId(), clientId: 'agent-a', projectId: 'crm', runId: first.runId, leaseId: 'LEASE-00000000000000000D01', ownerToken: first.event.ownerToken };

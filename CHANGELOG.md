@@ -2,6 +2,16 @@
 
 이 문서는 사용자에게 영향을 주는 Rundol 변경을 기록한다. 버전 분류와 tag 규칙은 [버전과 릴리스 정책](docs/RELEASES.md)을 따른다.
 
+## [0.31.1] - 2026-08-18
+
+`0.31.0` tag는 release check를 통과하지 못해 어떤 산출물도 배포되지 않았다. 내용은 `0.31.0` 항목과 같고, 아래 둘을 고쳤다.
+
+### Fixed
+
+- **`package-lock.json`을 재생성하면서 monorepo 설치 구조가 깨졌다.** 버전만 바꿔야 할 lockfile을 `npm install --package-lock-only`로 다시 만들어, workspace 패키지가 로컬 link 대신 registry 의존으로 기록됐다(`packages/*/node_modules/@rundol/*`). 아직 배포되지 않은 버전을 요구하므로 `npm ci`가 모든 플랫폼에서 실패했다. 이 저장소는 `.npmrc`의 `workspaces=false`·`install-links=true`로 루트 설치가 workspace 패키지를 건드리지 않게 되어 있고, lockfile은 그 구조를 유지한 채 버전 문자열만 바뀌어야 한다.
+- **타볼 호환성 픽스처가 원장 스키마 v2를 단정하고 있었다.** v3 전환에 맞춰 갱신했다. 이 스위트는 `npm test`가 아니라 `npm run test:install`에 있어서 전체 게이트가 덮지 않았다 — 게이트가 초록인 것과 릴리스 조건을 만족하는 것은 다른 말이다.
+
+
 ## [0.31.0] - 2026-08-18
 
 이 판은 하네스가 문서를 저작·검사·저장·검증하고 사람 앞에서 멈추는 종단 경로를 처음으로 완주시킨다. 그 과정에서 드러난 안전 결함들을 함께 닫았고, run 원장 스키마를 v3으로 올렸다.
