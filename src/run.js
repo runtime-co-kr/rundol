@@ -85,6 +85,13 @@ function startRun(start, options) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, options.project, true);
   authorizeClient(start, project, options.clientId);
+  // 대상 문서를 만들지 않는 절차는 대상 없이 시작할 수 없다. 시작 시점에 묻지 않으면
+  // {artifact}에 닿을 때까지 런이 돌다가 치환 실패라는 엉뚱한 이름으로 멈춘다 — 빠진
+  // 것은 인수인데 실패는 실행 오류로 보고된다.
+  if (resolved.resolved.requiresArtifact === true && !options.artifactId) {
+    throw new Error(`${resolved.resolved.name}은 대상 문서를 요구하는 절차입니다. --artifact-id <ARTIFACT-ID>를 지정하세요.`);
+  }
+  if (options.artifactId && !/^[A-Z]{3}-\d{3,}$/u.test(String(options.artifactId))) throw new Error(`--artifact-id는 정본 문서 ID여야 합니다: ${options.artifactId}`);
   const projectHead = runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout.trim().toLowerCase();
   const pinnedProcedure = pinProcedureVerificationRevision(resolved.resolved, projectHead);
   const harness = loadHarnessSettings(start, { project: options.project });
@@ -165,6 +172,12 @@ function reportStep(start, options) {
   if (restricted) {
     const reason = String(options.reason || '').trim();
     if (!options.force || !reason) throw new Error(`${stepId}은 전용 실행 경로가 필요한 스텝입니다. 명시적 승인이라면 --force --reason <사유>를 사용하세요.`);
+    // 사람 게이트는 자동 실행을 멈추라고 있는 것이다. 하네스가 띄운 자식이 그것을
+    // 스스로 지나가면 게이트는 이름만 남는다. 난간이지 경계는 아니다 — 표시를
+    // 지운 자식은 여기를 통과하고, 그것은 sync가 공유를 막아 잡는다.
+    if (definition.human === true && process.env.RUNDOL_HARNESS_CHILD === '1') {
+      throw new Error(`${stepId}은 사람 게이트입니다. 하네스가 실행한 프로세스는 스스로 승인할 수 없습니다.`);
+    }
     const forced = ledger.recordRunEvent(start, {
       project: options.project,
       runId: options.run,

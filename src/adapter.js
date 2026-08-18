@@ -160,6 +160,13 @@ function resolveExecutable(command, environment) {
 function adapterEnvironment(source) {
   const environment = {};
   for (const key of ENV_ALLOWLIST) if (source && source[key] !== undefined) environment[key] = source[key];
+  // 하네스가 띄운 자식은 자기가 하네스 안에 있다는 것을 안다. 사람 게이트를 스스로
+  // 지나가려는 시도를 여기서 알아본다.
+  //
+  // 이것은 경계가 아니라 난간이다. 자식이 자기 자식에게 이 표시를 지운 env를 주면
+  // 그만이므로, 적대적인 어댑터는 막지 못한다. 막는 것은 sync의 공유 차단이고,
+  // 이 표시는 에이전트가 무심코 하는 일을 그 자리에서 멈춘다.
+  environment.RUNDOL_HARNESS_CHILD = '1';
   return environment;
 }
 

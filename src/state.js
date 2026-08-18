@@ -694,13 +694,59 @@ function transitionRuns(config, apply, settings) {
   return transitions;
 }
 
+// 런이 만든 커밋 중 아직 사람 게이트를 통과하지 못한 것. save는 로컬 커밋이고
+// sync는 공유다 — 이 둘 사이가 Rundol이 "아직 나가지 않았다"고 말할 수 있는
+// 유일한 구간이다. 검증 전에 저장하는 절차를 열었으면서 이 구간을 지키지 않으면
+// "검증되지 않은 내용은 이 기계를 벗어나지 않는다"는 말은 성립하지 않는다.
+//
+// forced는 통과가 아니다. 사람 게이트를 --force로 지나간 런은 사람이 승인했다는
+// 근거가 없고, 그 판단은 공유 시점에 사람에게 다시 물어야 한다.
+function unclearedRunCommits(config) {
+  if (!config.project) return [];
+  const ledger = require('./run-ledger');
+  const runIds = new Set(ledger.listRuns(config.worktree).map((run) => run.runId));
+  if (typeof ledger.listSharedRunIds === 'function') {
+    const { workspaceLayout } = require('./workspace');
+    for (const runId of ledger.listSharedRunIds(workspaceLayout(config.root), config.project)) runIds.add(runId);
+  }
+  const blocked = [];
+  for (const runId of Array.from(runIds).sort()) {
+    const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId }) : null;
+    const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, runId));
+    if (!events.length) continue;
+    const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion === 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
+    const commits = (fold.producedCommits || []).filter((commit) => /^[a-f0-9]{40,64}$/u.test(String(commit)));
+    if (!commits.length) continue;
+    if (['completed_local', 'synced'].includes(fold.status) && !(fold.forcedHumanSteps || []).length) continue;
+    for (const commit of commits) {
+      // 조상이 아닌 커밋은 이번 push에 실리지 않는다. 실리지 않는 것을 막으면
+      // 무관한 런 하나가 프로젝트 전체의 공유를 영원히 잠근다.
+      if (runGit(['merge-base', '--is-ancestor', commit, 'HEAD'], { cwd: config.worktree, allowFailure: true }).status !== 0) continue;
+      blocked.push({ runId, commit, status: fold.status, forcedHumanSteps: (fold.forcedHumanSteps || []).slice() });
+    }
+  }
+  return blocked;
+}
+
 function syncProjectStateWithRuns(config, settings) {
+  const uncleared = settings.push === false ? [] : unclearedRunCommits(config);
+  if (uncleared.length) {
+    const reason = String(settings.shareUnverified || '').trim();
+    if (!reason) {
+      const shown = uncleared.slice(0, 3).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status}${item.forcedHumanSteps.length ? `, forced: ${item.forcedHumanSteps.join(',')}` : ''})`).join(', ');
+      throw new Error(`RDL-SYNC-030: 사람 게이트를 통과하지 못한 런의 커밋이 push 대상에 있습니다: ${shown}${uncleared.length > 3 ? ` 외 ${uncleared.length - 3}건` : ''}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유>로 공유하세요.`);
+    }
+    settings.sharedUnverified = uncleared.map((item) => Object.assign({}, item, { reason }));
+  }
   try {
     const result = syncProjectState(config, settings);
     const transitions = result.pushed ? transitionRuns(config, (run) => (run.status === 'completed_local'
       ? { type: 'run.synced', commit: result.commit, remoteRef: `refs/remotes/${result.remote}/${result.branch}` }
       : null), settings) : [];
-    return Object.assign({}, result, { transitions });
+    // 검증되지 않은 채 공유된 커밋은 결과에 남긴다. 원장은 그 런이 게이트를 통과한
+    // 적 없다고 이미 말하고 있으므로, 둘을 맞추면 무엇이 그렇게 나갔는지는 나중에도
+    // 정확히 답할 수 있다. 대신 이 우회는 저장되지 않는다 — 매번 다시 말해야 한다.
+    return Object.assign({}, result, { transitions }, settings.sharedUnverified ? { sharedUnverified: settings.sharedUnverified } : {});
   } catch (error) {
     const reason = /충돌/u.test(error.message || '') ? 'merge-conflict' : 'sync-failed';
     try {

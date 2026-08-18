@@ -52,6 +52,11 @@ const BUILTIN = {
   'document.verified': {
     revision: 2,
     idempotent: true,
+    // 이 절차는 문서를 만들지 않는다. 대상이 없으면 시작할 수 없고, 그 사실은
+    // {artifact}에 닿는 스텝에서가 아니라 시작할 때 말해야 한다 — 나중에 말하면
+    // 빠진 것은 인수인데 실패는 치환 오류라는 엉뚱한 이름으로 보고된다.
+    // document.authored는 create 스텝이 대상을 만들므로 이것을 선언하지 않는다.
+    requiresArtifact: true,
     steps: [
       { id: 'author', executor: 'adapter', instruction: pinInstruction('author-v1'), retrySafety: { mode: 'operation-id' } },
       { id: 'mech-gate', gate: { command: 'check', args: ['{artifact}', '--strict', '--project', '{project}'] }, onFail: { goto: 'author', maxAttempts: 3 } },

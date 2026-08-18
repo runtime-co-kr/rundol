@@ -122,8 +122,10 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
   const probe = probeAdapter({ command: process.execPath }, { cwd: project });
   assert.strictEqual(probe.status, 0);
   assert.match(probe.version, /^v\d+/u);
+  // 자식은 allowlist에 있는 것만 물려받는다. 거기에 하나가 더 붙는다 — 자기가
+  // 하네스 안에 있다는 표시. 사람 게이트를 스스로 지나가려는 시도를 그것으로 알아본다.
   const environment = adapterEnvironment({ PATH: 'safe', TOKEN: 'secret', HOME: 'home' });
-  assert.deepStrictEqual(environment, { PATH: 'safe', HOME: 'home' });
+  assert.deepStrictEqual(environment, { PATH: 'safe', HOME: 'home', RUNDOL_HARNESS_CHILD: '1' });
 
   const author = await runAdapterOnce(invocation(project, 'INV-00000000000000000001', 'author', 'author'));
   assert.strictEqual(author.exitCode, 0, JSON.stringify(author));
