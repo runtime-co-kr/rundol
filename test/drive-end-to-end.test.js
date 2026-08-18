@@ -196,6 +196,19 @@ try {
   assert.strictEqual(git(['log', '-1', '--name-only', '--format='], projectRoot).includes('STRAY.md'), false,
     '대상 밖 파일이 커밋됐습니다');
 
+  // 격리 탈출. worktree는 cwd를 가둘 뿐 OS 샌드박스가 아니므로, 어댑터는 넘겨받은
+  // 절대 경로에서 본 저장소를 역산해 직접 쓸 수 있다. 막지는 못한다 — 그러나 그것을
+  // 알아차리지 못한 채 성공으로 보고하면, 하네스는 자기가 무엇을 승인했는지 모른다.
+  const escapeRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', document.id]);
+  stubControl({ artifactId: document.id, verdict: 'pass', escape: 'ESCAPED.txt' });
+  const escapeDrive = rdlRaw(['run', 'drive', '--run', escapeRun.runId, '--project', 'crm', '--client-id', 'agent-a']);
+  const escapeOutcome = escapeDrive.stdout ? JSON.parse(escapeDrive.stdout) : { status: 'no-output', stderr: escapeDrive.stderr };
+  assert.notStrictEqual(escapeOutcome.status, 'waiting_human', `격리를 빠져나간 저작이 완주했습니다: ${JSON.stringify(escapeOutcome)}`);
+  assert.match(String(escapeOutcome.detail || ''), /ADAPTER_ESCAPED_SANDBOX|outside its sandbox/u,
+    `막은 이유가 격리 탈출이어야 합니다: ${JSON.stringify(escapeOutcome)}`);
+  assert(fs.existsSync(path.join(projectRoot, 'ESCAPED.txt')), '픽스처가 실제로 탈출하지 않았다면 이 시험은 아무것도 증명하지 않습니다');
+  fs.rmSync(path.join(projectRoot, 'ESCAPED.txt'));
+
   // 런이 시킨 저장은 그 런의 대상 하나에만 닿는다. 대상 밖이 더러우면 담지 않는
   // 것으로 끝내지 않고 멈춘다 — 조용히 남겨 두면 다음 저장에 섞이고, 그때는 어느
   // 런의 것인지 아무도 모른다.

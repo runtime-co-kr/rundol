@@ -267,6 +267,9 @@ function resumeRun(start, options) {
 // 원장은 "사람이 승인했다"에 답하지 못하고, 공유를 물을 근거도 사라진다.
 function approveRun(start, options) {
   const context = runContext(start, options);
+  // 신원을 먼저 묻는다. 자격이 없는 주체에게 "지금은 그 스텝이 아니다"라고 답하면,
+  // 자격 없음이 상태 문제로 읽히고 언제 다시 오면 되는지를 알려 주는 셈이 된다.
+  const approver = authorizeClient(start, context.project, options.clientId, ['human']);
   if (context.fold.status !== 'running') throw new Error(`실행 중인 런만 승인할 수 있습니다: ${context.fold.status}`);
   const stepId = options.step || context.fold.cursor;
   if (!stepId) throw new Error('승인할 스텝이 없습니다. 런이 이미 완료됐습니다.');
@@ -283,7 +286,6 @@ function approveRun(start, options) {
   // 승인자는 런의 소유자가 아니다. 런을 모는 것과 그것을 승인하는 것은 다른
   // 역할이고, 같은 자격이 둘 다 하면 게이트는 이름만 남는다. 그래서 소유권 검사가
   // 아니라 신원 검사를 건다 — 활성 human Client이고 이 프로젝트의 활성 멤버일 것.
-  const approver = authorizeClient(start, context.project, options.clientId, ['human']);
   if (!context.ownership || context.ownership.status !== 'ACTIVE') {
     throw new Error('런 소유권이 활성 상태가 아닙니다. 승인은 활성 epoch에만 기록할 수 있습니다.');
   }

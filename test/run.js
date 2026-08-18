@@ -10,6 +10,7 @@ process.env.RUNDOL_HOME = path.join(os.tmpdir(), `rundol-test-runtime-${process.
 
 require('./check.test');
 require('./ledger-integrity.test');
+require('./adversarial.test');
 require('./windows-termination.test');
 require('./cli-doc.test');
 require('./init.test');

@@ -13,6 +13,7 @@ const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, composi
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const { runGit } = require('./git');
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
+const { createEventEnvelope: createRunEnvelope, normalizeRunEvent } = require('./run-ledger');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
 const { normalizeDelegationEvent, delegationEnvelope } = require('./delegation');
@@ -700,6 +701,25 @@ function checkWorkspaceStore(diagnostics, layout) {
           const client = clients.get(event.clientId);
           if (!client || client.status !== 'active' || !['agent', 'service'].includes(client.type)) {
             diagnostic(diagnostics, { code: 'RDL-RUN-005', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `sync 전이의 clientId가 활성 agent/service Client가 아닙니다: ${event.clientId || '(없음)'}` });
+          }
+        }
+        // 사람 승인의 신원 인가. sync 전이(RDL-RUN-005)와 같은 자리이고 같은 이유다 —
+        // 순수 fold는 레지스트리를 못 보므로 형태만 제한하고, 레지스트리를 가진 이
+        // 계층이 "그 clientId가 정말 human 유형 활성 Client인가"를 답한다.
+        if (event.type === 'run.forced' && event.basis === 'human-approval') {
+          const client = clients.get(event.clientId);
+          if (!client || client.status !== 'active' || client.type !== 'human') {
+            diagnostic(diagnostics, { code: 'RDL-RUN-031', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `사람 승인의 clientId가 활성 human Client가 아닙니다: ${event.clientId || '(없음)'}(${client ? client.type : '미등록'})` });
+          }
+        }
+        // 사후 변조. 이미 기록된 이벤트의 값만 바꿔치기하면 승인은 자기가 본 적 없는
+        // 상태를 승인한 것이 된다. canonicalDigest가 그것을 덮는지 여기서 확인한다 —
+        // 접기는 런을 읽을 때만 알아차리고, 감사에서는 읽기 전에 물어야 한다.
+        if (event.canonicalDigest !== undefined) {
+          try {
+            if (normalizeRunEvent && createRunEnvelope(event).canonicalDigest !== event.canonicalDigest) throw new Error('canonicalDigest가 canonical projection과 일치하지 않습니다.');
+          } catch (digestError) {
+            diagnostic(diagnostics, { code: 'RDL-RUN-033', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `런 이벤트의 canonical 봉투가 유효하지 않습니다: ${digestError.message}` });
           }
         }
       } catch (error) {

@@ -51,6 +51,16 @@ if (mode === 'author') {
   // 대상 밖에 쓰는 저작자. 하네스가 이것을 막는지 보기 위한 것이고, 막지 못하면
   // 문서 한 편을 쓰라는 권한이 프로젝트 전체 쓰기가 된다.
   if (control.stray) fs.writeFileSync(control.stray, '스텁이 대상 밖에 쓴 파일\n', 'utf8');
+  // 격리 탈출. 격리 worktree는 cwd만 가둘 뿐이고, 어댑터는 넘겨받은 절대 경로에서
+  // 본 저장소를 역산할 수 있다 — contextFile은 언제나 <본 프로젝트>/.rundol/ 아래다.
+  // 하네스가 이것을 탐지하는지 보기 위한 것이고, 탐지하지 못하면 저작은 프로젝트를
+  // 마음대로 고친 뒤에도 성공으로 보고된다.
+  if (control.escape) {
+    let current = path.dirname(contextFile);
+    while (path.basename(current) !== '.rundol' && path.dirname(current) !== current) current = path.dirname(current);
+    const mainRoot = path.dirname(current);
+    fs.writeFileSync(path.join(mainRoot, control.escape), '격리를 빠져나가 쓴 파일\n', 'utf8');
+  }
   // 저작 스텝은 대상 문서를 실제로 고친다. 고치지 않으면 이 경로가 무엇을
   // 증명하는지 알 수 없다 — 검증이 깨끗한 worktree를 요구하는지도 여기서 드러난다.
   const target = context.target;
