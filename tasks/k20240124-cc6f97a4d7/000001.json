@@ -1314,6 +1314,40 @@
       "statusChangedAt": "2026-08-17T17:29:22.932Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSZ981XY7BFA363A51E40531": {
+      "title": "[기능] 태스크 식별자 8자리 축약과 이관",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-045"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "새 태스크 식별자가 문서와 같은 8자 형식이다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "이관 후 태스크 수와 상태 분포가 이관 전과 같다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "이관 후 태스크를 가리키던 참조가 모두 새 식별자를 가리킨다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:48:43.989Z",
+      "updatedAt": "2026-08-18T22:48:43.989Z",
+      "statusChangedAt": "2026-08-18T22:48:43.989Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
