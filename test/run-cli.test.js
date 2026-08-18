@@ -178,28 +178,29 @@ try {
   assert.deepStrictEqual(verifyStep.verify.revisionPin, { strategy: 'run-start-head' });
 
   // Run-bound verification result is converted to a deterministic run.gate child under the same root request.
-  const verificationRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a']);
+  // revision 2는 문서를 만들지 않는다. 대상 문서를 run 시작 시 고정하고, 절차는
+  // 그것을 쓰고·검사하고·검증하고·저장한 뒤 사람 앞에서 멈춘다.
+  const verificationRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', resumeArtifact.id]);
   const startedPin = rdl(['run', 'log', '--run', verificationRun.runId, '--project', 'crm']).events.find((item) => item.type === 'run.started').procedure.resolved.steps.find((item) => item.id === 'verify').verify.revisionPin;
   assert.match(startedPin.reviewedRevision, /^[a-f0-9]{40}$/u);
   assert.strictEqual(startedPin.strategy, 'git-commit');
-  rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a']);
-  rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', 'REQ-999']);
+  // revision 2의 첫 스텝은 author다 — plan·create가 없다.
   rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture author bypass']);
   rdl(['run', 'gate', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture mechanical gate bypass']);
   const verificationRootId = 'REQ-CCCCCCCCCCCCCCCCCCCC';
   const verificationDigest = 'c'.repeat(64);
   requestJournal.prepareRoot(runtimeWorkspace(temporary), { rootRequestId: verificationRootId, commandDigest: verificationDigest, clientId: 'agent-a' });
   const transition = recordVerificationResult(temporary, {
-    project: 'crm', run: verificationRun.runId, clientId: 'agent-a', positional: ['REQ-999']
+    project: 'crm', run: verificationRun.runId, clientId: 'agent-a', positional: [resumeArtifact.id]
   }, {
-    exitCode: 0, status: 'passed', targetId: 'REQ-999', rootRequestId: verificationRootId, commandDigest: verificationDigest,
+    exitCode: 0, status: 'passed', targetId: resumeArtifact.id, rootRequestId: verificationRootId, commandDigest: verificationDigest,
     fold: { lenses: [{ lens: 'satisfaction-v1' }, { lens: 'omission-v1' }, { lens: 'boundary-v1' }] }
   });
   assert.strictEqual(transition.transition, 'run.gate');
   const repeatedTransition = recordVerificationResult(temporary, {
-    project: 'crm', run: verificationRun.runId, clientId: 'agent-a', positional: ['REQ-999']
+    project: 'crm', run: verificationRun.runId, clientId: 'agent-a', positional: [resumeArtifact.id]
   }, {
-    exitCode: 0, status: 'passed', targetId: 'REQ-999', rootRequestId: verificationRootId, commandDigest: verificationDigest,
+    exitCode: 0, status: 'passed', targetId: resumeArtifact.id, rootRequestId: verificationRootId, commandDigest: verificationDigest,
     fold: { lenses: [{ lens: 'satisfaction-v1' }, { lens: 'omission-v1' }, { lens: 'boundary-v1' }] }
   });
   assert.strictEqual(repeatedTransition.transitionEventId, transition.transitionEventId, 'same verification root must reuse its run transition');

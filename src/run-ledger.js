@@ -21,7 +21,7 @@ const REVISION = /^[a-f0-9]{40,64}$/u;
 const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.synced', 'run.takeover', 'run.ownership_resolved']);
 const HALT_REASONS = new Set(['gate-failed', 'step-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual', 'settings-drift', 'ownership-conflict', 'operation-conflict', 'legacy-conflict', 'verification-required']);
 const TYPE_FIELDS = {
-  'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal'] },
+  'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId'] },
   'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
   'run.gate': { required: ['ownerToken', 'stepId', 'command', 'args', 'exitCode', 'diagnostics', 'attempt'], optional: ['operation'] },
   'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['operation'] },
@@ -266,6 +266,11 @@ function normalizeRunEvent(event) {
     if (owner() !== event.eventId) throw new Error('run.started ownerToken must equal eventId');
     normalized.ownerToken = event.ownerToken;
     if (event.goal !== undefined) normalized.goal = normalizeText(event.goal, 'goal', 500, false);
+    // 이 런이 다루는 정본 문서. 절차의 {artifact}가 여기서 온다.
+    if (event.targetArtifactId !== undefined) {
+      if (!/^[A-Z]{3}-\d{3,}$/u.test(String(event.targetArtifactId))) throw new Error('targetArtifactId는 정본 문서 ID여야 합니다.');
+      normalized.targetArtifactId = event.targetArtifactId;
+    }
     normalized.procedure = normalizeProcedure(event.procedure);
     normalized.settings = normalizeSettings(event.settings);
   } else if (event.type === 'run.step') {
@@ -703,7 +708,13 @@ function foldProgress(events, ownership) {
   const completed = new Set();
   let attempts = {};
   const forcedSteps = [];
+  // 런 시작 시 고정한 대상 문서가 있으면 그것이 첫 산출물이다. 절차가 문서를
+  // 만들지 않고 이미 있는 것을 다루기 때문이다.
   const artifactIds = [];
+  // 루프는 run.started를 걸러 내고 돈다. 그래서 시드는 루프 안이 아니라 여기다 —
+  // 안에 두면 절대 실행되지 않는 코드가 된다.
+  const startedEvent = events.find((item) => item.type === 'run.started');
+  if (startedEvent && startedEvent.targetArtifactId) artifactIds.push(startedEvent.targetArtifactId);
   const diagnostics = ownership ? ownership.diagnostics.slice() : [];
   let lastGate = null;
   // 소유권 충돌이어도 가시 이벤트까지의 진행(커서·완료)은 계산해 보존한다 —
@@ -1138,6 +1149,7 @@ function createRun(start, input) {
   const event = {
     type: 'run.started', runId, projectId: project.key, clientId,
     goal: String(input.goal || '').trim() || undefined,
+    targetArtifactId: String(input.targetArtifactId || '').trim() || undefined,
     procedure: { name: procedure.name, revision: procedure.revision, schemaVersion: procedure.schemaVersion || 1, contentHash, resolved: procedure }
   };
   if (v2) {

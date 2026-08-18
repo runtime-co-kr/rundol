@@ -577,9 +577,13 @@ async function runAdapterCommand(start, options) {
   const inferredMode = step.verify || step.lenses ? 'verify' : 'author';
   if (options.mode !== inferredMode) throw new Error(`The pinned step requires ${inferredMode} mode.`);
   if (step.executor !== 'adapter' && !step.adapter) throw new Error('The active run step is not an adapter step.');
-  const adapterName = options.adapter || options.name || (typeof step.adapter === 'string' ? step.adapter : step.adapter && step.adapter.name);
-  if (!ADAPTER_ID.test(adapterName || '')) throw new Error('A valid pinned adapter name is required.');
   const settings = loadHarnessSettings(start, { project: context.project.key });
+  // 스텝이 어댑터 이름을 지정하지 않으면 하네스가 정한 기본 어댑터로 떨어진다.
+  // 내장 절차는 프로젝트가 무엇을 쓰는지 알 수 없으므로 이름을 박지 않는다.
+  const adapterName = options.adapter || options.name
+    || (typeof step.adapter === 'string' ? step.adapter : step.adapter && step.adapter.name)
+    || settings.runtimeResolved.verify.defaultAdapter;
+  if (!ADAPTER_ID.test(adapterName || '')) throw new Error('A valid pinned adapter name is required.');
   const started = context.events.find((event) => event.type === 'run.started');
   if (!started || canonicalJson(started.settings.safeResolved) !== canonicalJson(settings.safeResolved)) throw new Error('settings-drift');
   const adapter = settings.runtimeResolved.adapters[adapterName];
@@ -614,7 +618,9 @@ async function runAdapterCommand(start, options) {
     adapter: result.adapter,
     instanceId: result.instanceId,
     receipt: result.receipt,
-    diagnosticCodes: result.diagnosticCodes || (result.exitCode === 2 ? ['ADAPTER_INVALID_OUTPUT'] : [])
+    diagnosticCodes: result.diagnosticCodes || (result.exitCode === 2 ? ['ADAPTER_INVALID_OUTPUT'] : []),
+    // 왜 무효인지를 호출자에게 넘긴다. 코드만 남으면 설정을 고칠 근거가 없다.
+    ...(result.error ? { error: result.error } : {})
   };
 }
 

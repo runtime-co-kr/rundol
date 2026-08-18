@@ -30,14 +30,22 @@ const BUILTIN = {
       { id: 'sync-gate', human: true }
     ]
   },
+  // 이미 있는 문서를 저작하고 검증해 저장까지 미는 절차. drive로 완주한다.
+  //
+  // 문서를 만드는 일은 여기 없다. 무엇을 만들 것인가 — 유형·제목·단일 책임·
+  // 제외 범위 — 는 사람이 정하는 의도이고, 절차가 지어낼 것이 아니다. 이전
+  // revision은 create 스텝을 갖고 있었지만 그 스텝에는 인수가 없었고 채울
+  // placeholder도 없었다. 실행되지 않는 형태였다는 뜻이고, 그것이 이 절차가
+  // idempotent: false였던 이유다.
+  //
+  // 그래서 대상 문서는 run 시작 시 고정하고({artifact}), 절차는 그 문서를
+  // 쓰고·검사하고·검증하고·저장한 뒤 사람 앞에서 멈춘다.
   'document.verified': {
-    revision: 1,
-    idempotent: false,
+    revision: 2,
+    idempotent: true,
     steps: [
-      { id: 'plan', executor: 'cli', command: 'contract', args: ['next', '--project', '{project}', '--json'] },
-      { id: 'create', executor: 'cli', command: 'doc', args: ['create'] },
-      { id: 'author', executor: 'adapter', instruction: pinInstruction('author-v1') },
-      { id: 'mech-gate', gate: { command: 'check', args: ['{artifact}', '--strict'] }, onFail: { goto: 'author', maxAttempts: 3 } },
+      { id: 'author', executor: 'adapter', instruction: pinInstruction('author-v1'), retrySafety: { mode: 'operation-id' } },
+      { id: 'mech-gate', gate: { command: 'check', args: ['{artifact}', '--strict', '--project', '{project}'] }, onFail: { goto: 'author', maxAttempts: 3 } },
       {
         id: 'verify',
         executor: 'adapter',
@@ -47,9 +55,13 @@ const BUILTIN = {
           revisionPin: { strategy: 'run-start-head' },
           policy: { validators: 1, quorum: 1, maxRefuted: 0, maxAbstain: 0, requireAdapterDiversity: false }
         },
-        onFail: { goto: 'author', maxAttempts: 3 }
+        onFail: { goto: 'author', maxAttempts: 3 },
+        retrySafety: { mode: 'operation-id' }
       },
-      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'] },
+      // save는 본래 되풀이해도 같은 곳에 도착한다 — 바뀐 것이 없으면 커밋하지
+      // 않는다. gate-recheck를 붙이면 문서 검사 통과를 저장 완료로 읽어, 저장되지
+      // 않은 작업이 저장된 것으로 기록될 수 있다.
+      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'], retrySafety: { mode: 'converging' } },
       { id: 'sync-gate', human: true }
     ]
   }
@@ -184,6 +196,10 @@ function validateClosedDriveGate(step, origin) {
   return step;
 }
 
+// 되풀이해도 같은 곳에 도착하는 명령의 닫힌 목록. 여기 없는 명령에 converging을
+// 선언하면 거부한다 — 검사할 수 없는 안전 주장을 받지 않는다.
+const CONVERGING_COMMANDS = new Set(['save']);
+
 function validateDriveSafety(procedure, source) {
   const origin = source || procedure.name || 'procedure';
   const steps = new Map(procedure.steps.map((step) => [step.id, step]));
@@ -204,7 +220,12 @@ function validateDriveSafety(procedure, source) {
         if (!gate || !gate.gate || gate.human === true || gate.executor === 'adapter' || gate.verify || gate.lenses) {
           throw new Error(`${origin}: ${step.id}.retrySafety gateStep은 결정적 비인간 게이트여야 합니다.`);
         }
-      } else throw new Error(`${origin}: ${step.id}.retrySafety.mode은 operation-id 또는 gate-recheck여야 합니다.`);
+      } else if (step.retrySafety.mode === 'converging') {
+        if (canonicalJson(keys) !== canonicalJson(['mode'])) throw new Error(`${origin}: ${step.id}.retrySafety converging에는 mode만 허용됩니다.`);
+        if (step.executor !== 'cli') throw new Error(`${origin}: ${step.id} converging은 cli 스텝에만 쓸 수 있습니다.`);
+        if (!CONVERGING_COMMANDS.has(step.command)) throw new Error(`${origin}: ${step.id} converging 허용 목록에 없는 명령입니다: ${step.command || '(없음)'}`);
+        if (operationPlaceholderCount(step) !== 0) throw new Error(`${origin}: ${step.id} converging 스텝은 {operationId}를 쓰지 않습니다.`);
+      } else throw new Error(`${origin}: ${step.id}.retrySafety.mode은 operation-id, gate-recheck 또는 converging이어야 합니다.`);
     }
   }
   if (procedure.idempotent === true) {

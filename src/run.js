@@ -96,7 +96,7 @@ function startRun(start, options) {
   if (harness.workspaceRevision !== undefined) settings.workspaceRevision = harness.workspaceRevision;
   if (harness.projectRevision !== undefined) settings.projectRevision = harness.projectRevision;
   return ledger.createRun(start, {
-    project: options.project, goal: options.goal, clientId: options.clientId, procedure: pinnedProcedure,
+    project: options.project, goal: options.goal, targetArtifactId: options.artifactId, clientId: options.clientId, procedure: pinnedProcedure,
     settings, rootRequestId: options.requestId
   });
 }
@@ -570,12 +570,16 @@ function preflightDriveProcedure(procedure) {
       if (!step.onFail) throw new Error(`drive verification step requires onFail: ${step.id}`);
       continue;
     }
-    if (!step.retrySafety || typeof step.retrySafety !== 'object' || Array.isArray(step.retrySafety) || !['operation-id', 'gate-recheck'].includes(step.retrySafety.mode)) throw new Error(`drive executable step requires retrySafety: ${step.id}`);
+    if (!step.retrySafety || typeof step.retrySafety !== 'object' || Array.isArray(step.retrySafety) || !['operation-id', 'gate-recheck', 'converging'].includes(step.retrySafety.mode)) throw new Error(`drive executable step requires retrySafety: ${step.id}`);
     if (step.retrySafety.mode === 'operation-id') {
       if (ledger.canonicalJson(Object.keys(step.retrySafety).sort()) !== ledger.canonicalJson(['mode'])) throw new Error(`operation-id retrySafety has unknown fields: ${step.id}`);
       const count = (step.args || []).reduce((total, value) => total + (String(value).match(/\{operationId\}/gu) || []).length, 0);
       if (classification === 'cli' && count !== 1) throw new Error(`drive CLI operation-id step requires exactly one placeholder: ${step.id}`);
       if (classification === 'adapter' && count !== 0) throw new Error(`drive adapter operation-id is injected through context.json only: ${step.id}`);
+    } else if (step.retrySafety.mode === 'converging') {
+      if (ledger.canonicalJson(Object.keys(step.retrySafety).sort()) !== ledger.canonicalJson(['mode'])) throw new Error(`converging retrySafety has unknown fields: ${step.id}`);
+      if (classification !== 'cli') throw new Error(`converging retrySafety is cli only: ${step.id}`);
+      if ((step.args || []).some((argument) => String(argument).includes('{operationId}'))) throw new Error(`converging step cannot consume operationId: ${step.id}`);
     } else {
       if (ledger.canonicalJson(Object.keys(step.retrySafety).sort()) !== ledger.canonicalJson(['gateStep', 'mode'])) throw new Error(`gate-recheck retrySafety has unknown fields: ${step.id}`);
       if ((step.args || []).some((argument) => String(argument).includes('{operationId}'))) throw new Error(`gate-recheck step cannot consume operationId: ${step.id}`);
@@ -911,8 +915,10 @@ async function tickRun(start, options, dependencies) {
       ? await deps.acquireLease({ context, step, operationId, logicalAttempt })
       : acquireDefaultDriverLease(start, options, context, step, operationId, commandDigest, deps);
   } catch (error) {
+    // 왜 얻지 못했는지를 삼키지 않는다. lease-lost만 남으면 경합인지 설정 오류인지
+    // 구분할 수 없고, 그 구분이 다음에 무엇을 할지를 정한다.
     await record({ type: 'run.halted', reason: 'lease-lost', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'lease-lost'));
-    return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId };
+    return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId, detail: error.message };
   }
   // acquire 후 read-back: 기록만 하고 다시 읽지 않는 lease는 소프트 조정조차 아니다.
   // 자기 사슬이 invalid면 진행하지 않고, 파티션의 다른 유효 사슬은 상호 배제 약속이
@@ -925,8 +931,13 @@ async function tickRun(start, options, dependencies) {
     const leaseFold = store.api.foldDriverLeases(store.api.readDriverEvents(store.eventsRoot, context.project.key, context.fold.runId), { now: nowValue });
     const mine = leaseFold.leases.find((entry) => entry.leaseId === lease.leaseId);
     if (!mine || mine.status === 'invalid') {
+      // 자기 사슬을 다시 읽었는데 없거나 무효다. 둘은 원인이 다르므로 구분해 남긴다 —
+      // 없는 것은 기록이 도달하지 않은 것이고, 무효는 사슬이 깨진 것이다.
+      const detail = mine
+        ? `lease chain is invalid: ${mine.leaseId}`
+        : `lease was not readable after acquire: ${lease.leaseId}`;
       await record({ type: 'run.halted', reason: 'lease-lost', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'lease-lost'));
-      return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId };
+      return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId, detail };
     }
     leaseContention = (leaseFold.activeLeases || []).filter((entry) => entry.leaseId !== lease.leaseId).map((entry) => ({ leaseId: entry.leaseId, clientId: entry.clientId }));
   }
@@ -983,16 +994,20 @@ async function tickRun(start, options, dependencies) {
       heartbeat.stop();
     }
   } catch (error) {
+    // 실행 중 실패한 이유를 삼키지 않는다. lease-lost만 남으면 하트비트가 끊긴
+    // 것인지 어댑터가 터진 것인지 구분할 수 없고, 그 구분이 다음 행동을 정한다.
     heartbeat.stop();
     try { await releaseLease('lost'); } catch {}
     await record({ type: 'run.halted', reason: 'lease-lost', atStep: step.id, resumable: true, clientId: options.clientId, ownerToken: context.ownership.ownerToken }, driveChildKey('halt', operationId, 'lease-lost'));
-    return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId };
+    return { exitCode: 1, status: 'halted', reason: 'lease-lost', operationId, detail: error && error.message };
   }
   let releaseReason = 'error';
   try {
     if (!result || !Number.isSafeInteger(result.exitCode) || result.exitCode < 0) throw new Error('drive executor returned an invalid result');
     if (result.exitCode === 2) {
-      return { exitCode: 2, status: 'error', code: 'executor-environment', operationId };
+      // 환경 오류도 이유를 남긴다. 어댑터가 왜 2로 끝났는지 모르면 설정을 고칠
+      // 수 없고, 그 답은 실행자만 알고 있다.
+      return { exitCode: 2, status: 'error', code: 'executor-environment', operationId, detail: result.error || result.stderr || result.reason || (result.diagnosticCodes || []).join(',') || null };
     }
     const artifactIds = Array.from(new Set((result.result && result.result.artifactIds || result.artifactIds || []).map(String))).sort();
     const diagnosticCodes = Array.from(new Set(result.diagnosticCodes || [])).sort();
@@ -1030,7 +1045,8 @@ function pinnedDrivePreflight(start, options) {
   if (ledger.canonicalJson(started.settings.safeResolved) !== ledger.canonicalJson(harness.safeResolved)) throw new Error('settings-drift');
   if (options.scheduled && harness.runtimeResolved.drive.schedulerClientId !== client.id) throw new Error('scheduled drive client does not match drive.schedulerClientId');
   for (const step of started.procedure.resolved.steps.filter((item) => item.executor === 'adapter' && item.retrySafety && item.retrySafety.mode === 'operation-id')) {
-    const name = typeof step.adapter === 'string' ? step.adapter : step.adapter && step.adapter.name;
+    const name = (typeof step.adapter === 'string' ? step.adapter : step.adapter && step.adapter.name)
+      || harness.runtimeResolved.verify.defaultAdapter;
     const adapter = name && harness.runtimeResolved.adapters[name];
     if (!adapter || adapter.enabled !== true) throw new Error(`drive adapter is not enabled: ${name || step.id}`);
     if (adapter.argsTemplate.some((argument) => String(argument).includes('{operationId}'))) throw new Error(`drive adapter operationId must use context.json, not argv: ${name}`);
