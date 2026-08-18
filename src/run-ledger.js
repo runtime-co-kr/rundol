@@ -797,7 +797,7 @@ function foldProgress(events, ownership) {
   const humanApprovalIds = new Set(humanApprovalEvents.map((item) => item.eventId));
   for (const event of humanApprovalEvents) {
     completed.add(event.stepId);
-    forcedSteps.push({ stepId: event.stepId, reason: event.reason || null, basis: 'human-approval', commit: event.commit });
+    forcedSteps.push({ stepId: event.stepId, reason: event.reason || null, basis: 'human-approval', commit: event.commit, clientId: event.clientId || null });
   }
   const diagnostics = ownership ? ownership.diagnostics.slice() : [];
   let lastGate = null;
@@ -846,7 +846,7 @@ function foldProgress(events, ownership) {
         }
       } else invalid('gate exit 2 is an invocation failure and cannot advance or count as a verdict');
     } else if (event.type === 'run.forced') {
-      completed.add(event.stepId); forcedSteps.push({ stepId: event.stepId, reason: event.reason || null, basis: event.basis || 'operator-override', commit: event.commit || null });
+      completed.add(event.stepId); forcedSteps.push({ stepId: event.stepId, reason: event.reason || null, basis: event.basis || 'operator-override', commit: event.commit || null, clientId: event.clientId || null });
     } else if (event.type === 'run.halted') {
       status = 'halted'; haltReason = HALT_REASONS.has(event.reason) ? event.reason : 'manual';
     } else if (event.type === 'run.resumed') {
@@ -902,7 +902,7 @@ function foldProgress(events, ownership) {
     else if (pin.strategy === 'git-commit') verifiedCommit = pin.reviewedRevision || null;
   }
   const humanSteps = forcedSteps.filter((item) => { const step = byId.get(item.stepId); return Boolean(step && step.human === true); });
-  const humanApprovals = humanSteps.filter((item) => item.basis === 'human-approval').map((item) => ({ stepId: item.stepId, commit: item.commit }));
+  const humanApprovals = humanSteps.filter((item) => item.basis === 'human-approval').map((item) => ({ stepId: item.stepId, commit: item.commit, clientId: item.clientId }));
   // 사람이 승인한 커밋과 검증이 본 커밋이 다르면, 승인은 검증되지 않은 상태에 붙은
   // 것이다. 검증 통과 뒤에 HEAD가 움직였다는 뜻이고, 공유되는 것은 판정된 적 없는
   // 내용이 된다. 이것을 말하지 않으면 원장은 "검증하고 승인했다"고 읽힌다.
@@ -1165,6 +1165,14 @@ function reconcileRun(start, input) {
   return { project: project.key, runId: input.runId, events: unionRunEvents(readRunEvents(directory), shared), repaired };
 }
 
+// 런이 어느 판으로 시작했는가. run.started가 정하고 그 뒤로 바뀌지 않는다.
+function startedSchemaVersion(start, project, runId) {
+  const local = readRunEvents(runDirectory(project.root, runId));
+  const shared = readSharedRunEvents(workspaceLayout(start), project.key, runId);
+  const started = local.concat(shared).find((event) => event && event.type === 'run.started');
+  return started ? started.schemaVersion : null;
+}
+
 function prepareV2Event(start, project, runId, input) {
   const rootRequestId = input.rootRequestId || input.event.rootRequestId || newRequestId();
   const childKey = input.childKey || `event:${input.event.type}:${runId}`;
@@ -1185,6 +1193,17 @@ function prepareV2Event(start, project, runId, input) {
     if (base.command === undefined && step && step.gate) base.command = step.gate.command;
     if (base.args === undefined && step && step.gate) base.args = step.gate.args || [];
     if (base.attempt === undefined) base.attempt = ((fold && fold.attempts[base.stepId]) || 0) + 1;
+  }
+  // 런의 스키마는 run.started가 정하고 그 뒤로 바뀌지 않는다. 판을 올린 클라이언트가
+  // 진행 중인 v2 런에 v3 이벤트를 이어 붙이면, 옛 판독기는 그 이벤트만 버리고 낡은
+  // 진행 상태를 사실로 내놓는다 — 멈추지 않고 다른 답을 한다. 판이 다르면 새 런이다.
+  if (base.type !== 'run.started') {
+    const started = startedSchemaVersion(start, project, runId);
+    // legacy(v1) 런을 canonical로 올리는 것은 이미 지원하는 전환이다. 막는 것은
+    // canonical 판끼리의 혼합이다 — v2와 v3은 같은 런 안에 섞일 수 없다.
+    if (started && SUPPORTED_SCHEMA.has(started) && started !== base.schemaVersion) {
+      throw new Error(`RDL-RUN-032: 이 런은 schemaVersion ${started}로 시작했습니다. 판이 다른 이벤트는 이어 붙일 수 없습니다(${base.schemaVersion}). 새 런을 시작하세요.`);
+    }
   }
   if (base.type === 'run.started') base.ownerToken = eventId;
   if (base.type === 'run.takeover') base.ownerToken = eventId;

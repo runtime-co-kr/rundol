@@ -761,6 +761,8 @@ function unclearedRunCommits(config) {
     for (const runId of ledger.listSharedRunIds(workspaceLayout(config.root), config.project)) runIds.add(runId);
   }
   const blocked = [];
+  // 지금 push되는 것은 ref의 tip이다. 런이 통과했는지를 물을 때 대조할 대상도 그것이다.
+  const headCommit = runGit(['rev-parse', 'HEAD'], { cwd: config.worktree, allowFailure: true }).stdout.trim().toLowerCase();
   for (const runId of Array.from(runIds).sort()) {
     const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId }) : null;
     const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, runId));
@@ -771,7 +773,19 @@ function unclearedRunCommits(config) {
     // 통과의 조건은 셋이다. 런이 로컬 완료에 닿았을 것, 사람 게이트를 사람의 승인
     // 으로 지났을 것, 그리고 그 승인이 검증이 본 커밋에 붙어 있을 것. 셋 중 하나라도
     // 없으면 이 런의 커밋은 아직 나갈 수 없다.
-    const approvals = fold.humanApprovals || [];
+    // 승인이 사람의 것인지는 원장만 보고 알 수 없다. 원장에 있는 것은 "이 clientId가
+    // human-approval이라고 적었다"뿐이고, 그 clientId가 실제로 human 유형 활성
+    // Client인지는 registry가 답한다. 이 대조가 없으면 에이전트가 이벤트를 직접
+    // 써 넣는 것만으로 사람 승인이 된다 — git 병합으로 들어온 이벤트도 마찬가지다.
+    const approvals = (fold.humanApprovals || []).filter((item) => {
+      if (!item.clientId) return false;
+      try {
+        const client = getClient(config.root, item.clientId);
+        return client && client.type === 'human' && client.status === 'active';
+      } catch (_) {
+        return false;
+      }
+    });
     const gates = fold.humanGateSteps || [];
     const cleared = ['completed_local', 'synced'].includes(fold.status)
       && !(fold.unapprovedHumanSteps || []).length
@@ -779,7 +793,11 @@ function unclearedRunCommits(config) {
       && approvals.every((item) => !fold.verifiedCommit || item.commit === fold.verifiedCommit)
       // 완료가 기록한 커밋도 승인된 그것이어야 한다. 승인 시점만 대조하고 완료
       // 시점을 묻지 않으면, 승인 뒤 HEAD를 옮겨 다른 커밋으로 완료할 수 있다.
-      && (!approvals.length || approvals.every((item) => item.commit === fold.completedCommit));
+      && (!approvals.length || approvals.every((item) => item.commit === fold.completedCommit))
+      // 그리고 지금 나가려는 것이 그 커밋이어야 한다. 완료 뒤에 쌓은 커밋은 아무도
+      // 승인한 적이 없는데, 승인된 런의 커밋이 조상이라는 이유로 함께 나간다.
+      // 런의 통과는 그 런의 커밋에 대한 것이지 그 위에 쌓인 것에 대한 것이 아니다.
+      && fold.completedCommit === headCommit;
     if (cleared) continue;
     for (const commit of commits) {
       // 조상이 아닌 커밋은 이번 push에 실리지 않는다. 실리지 않는 것을 막으면
@@ -795,11 +813,23 @@ function syncProjectStateWithRuns(config, settings) {
   const uncleared = settings.push === false ? [] : unclearedRunCommits(config);
   if (uncleared.length) {
     const reason = String(settings.shareUnverified || '').trim();
+    // 우회도 사람의 판단이어야 한다. 사유 문자열은 누구나 적을 수 있으므로, 사유만
+    // 요구하면 에이전트가 자기 판단으로 사람 게이트를 지나간다 — 막으려던 바로 그
+    // 일이다. 승인과 같은 자격을 요구한다.
+    if (reason) {
+      const approver = String(settings.approvedBy || '').trim().toLowerCase();
+      if (!approver) throw new Error('RDL-SYNC-031: --share-unverified에는 --approved-by <human-client-id>가 필요합니다. 검증되지 않은 내용의 공유는 사람의 판단이어야 합니다.');
+      const client = getClient(config.root, approver);
+      if (!client || client.type !== 'human' || client.status !== 'active') {
+        throw new Error(`RDL-SYNC-031: --approved-by는 활성 human Client여야 합니다: ${approver}(${client ? client.type : '없음'}).`);
+      }
+      settings.shareApprovedBy = approver;
+    }
     if (!reason) {
       const shown = uncleared.slice(0, 3).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status}${item.unapprovedHumanSteps.length ? `, 승인 없이 지난 게이트: ${item.unapprovedHumanSteps.join(',')}` : ''})`).join(', ');
       throw new Error(`RDL-SYNC-030: 사람 게이트를 통과하지 못한 런의 커밋이 push 대상에 있습니다: ${shown}${uncleared.length > 3 ? ` 외 ${uncleared.length - 3}건` : ''}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유>로 공유하세요.`);
     }
-    settings.sharedUnverified = uncleared.map((item) => Object.assign({}, item, { reason }));
+    settings.sharedUnverified = uncleared.map((item) => Object.assign({}, item, { reason, approvedBy: settings.shareApprovedBy }));
   }
   try {
     const result = syncProjectState(config, settings);

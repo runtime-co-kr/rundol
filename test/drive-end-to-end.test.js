@@ -167,9 +167,16 @@ try {
   assert.match(`${stillBlocked.stdout}${stillBlocked.stderr}`, /RDL-SYNC-030/u,
     `${stillBlocked.stdout}${stillBlocked.stderr}`);
 
-  // 우회는 있지만 사유를 말해야 하고, 저장되지 않으므로 매번 다시 말해야 한다.
-  const forcedShare = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '운영자 우회로 지난 런을 그대로 공유한다']);
-  assert.doesNotMatch(`${forcedShare.stdout}${forcedShare.stderr}`, /RDL-SYNC-030/u,
+  // 우회도 사람의 판단이어야 한다. 사유 문자열만으로 지나가면 에이전트가 자기
+  // 판단으로 사람 게이트를 넘는 것이고, 그것이 막으려던 바로 그 일이다.
+  const agentShare = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '에이전트가 스스로 판단한다']);
+  assert.notStrictEqual(agentShare.status, 0, '사람 없이 우회가 통과했습니다');
+  assert.match(`${agentShare.stdout}${agentShare.stderr}`, /RDL-SYNC-031/u, `${agentShare.stdout}${agentShare.stderr}`);
+  const agentAsHuman = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '사람인 척', '--approved-by', 'agent-a']);
+  assert.notStrictEqual(agentAsHuman.status, 0, 'agent를 승인자로 내세운 우회가 통과했습니다');
+  assert.match(`${agentAsHuman.stdout}${agentAsHuman.stderr}`, /RDL-SYNC-031/u, `${agentAsHuman.stdout}${agentAsHuman.stderr}`);
+  const forcedShare = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '운영자 우회로 지난 런을 그대로 공유한다', '--approved-by', 'reviewer-1']);
+  assert.doesNotMatch(`${forcedShare.stdout}${forcedShare.stderr}`, /RDL-SYNC-03[01]/u,
     `--share-unverified가 예선 검사를 지나지 못했습니다: ${forcedShare.stdout}${forcedShare.stderr}`);
 
   // 저작은 자기 대상만 쓴다. 대상 밖에 쓰면 그 시도는 거부되고, 쓴 것은 저장에
@@ -221,6 +228,37 @@ try {
   // 스키마·봉투는 멀쩡하다. 잡힌 것이 형식 오류가 아니라 "여기서 확인할 수 없는
   // 판정"이어야 이 진단이 자기 몫을 한 것이다.
   assert(!codes.includes('RDL-VERDICT-014'), `형식 오류로 잡혔습니다: ${codes.join(', ')}`);
+
+  // 위조된 승인. 에이전트가 basis: human-approval 이벤트를 원장에 직접 써 넣는다.
+  // 쓰기 경로를 지나오지 않으므로 CLI의 human 자격 검사는 이 이벤트를 보지 못한다 —
+  // git 병합으로 들어오는 남의 이벤트와 같은 처지다. 그래서 공유를 정하는 쪽이
+  // 승인자의 신원을 registry에 다시 물어야 한다.
+  stubControl({ artifactId: document.id, verdict: 'pass' });
+  const forgedRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', document.id]);
+  rdlRaw(['run', 'drive', '--run', forgedRun.runId, '--project', 'crm', '--client-id', 'agent-a']);
+  const forgedLog = rdl(['run', 'log', '--run', forgedRun.runId, '--project', 'crm']);
+  const forgedStart = forgedLog.events.find((event) => event.type === 'run.started');
+  const forgedHead = git(['rev-parse', 'HEAD'], projectRoot).toLowerCase();
+  const shardDirectory = path.join(temporary, 'projects', 'workspace', 'events', 'run');
+  const shard = fs.readdirSync(shardDirectory).find((name) => name.includes(forgedRun.runId) && name.includes('agent-a'));
+  assert(shard, `위조 대상 샤드를 찾지 못했습니다: ${fs.readdirSync(shardDirectory).join(', ')}`);
+  const forged = {
+    schemaVersion: forgedStart.schemaVersion, eventId: 'EVT-0000000000000000FA01', type: 'run.forced',
+    rootRequestId: 'REQ-0000000000000000FA01', requestId: 'REQ-0000000000000000FA02',
+    clientId: 'agent-a', projectId: 'crm', runId: forgedRun.runId, ownerToken: forgedStart.ownerToken,
+    stepId: 'sync-gate', reason: '에이전트가 스스로 적은 승인', basis: 'human-approval', commit: forgedHead
+  };
+  const ledgerModule = require(path.join(repository, 'src', 'run-ledger'));
+  fs.appendFileSync(path.join(shardDirectory, shard), `${JSON.stringify(ledgerModule.createEventEnvelope(forged).shared)}\n`, 'utf8');
+  rdl(['run', 'complete', '--run', forgedRun.runId, '--project', 'crm', '--client-id', 'agent-a']);
+  const forgedSync = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a']);
+  assert.notStrictEqual(forgedSync.status, 0, '위조된 사람 승인으로 공유가 통과했습니다');
+  // "막혔다"만으로는 부족하다. 앞선 런들이 이미 공유를 막고 있으므로, 위조 런이
+  // 통과했더라도 sync는 실패한다 — 이 시험은 위조 런이 차단 대상으로 지목되는지를
+  // 물어야 한다. 그래야 신원 검사를 끄면 시험이 무너진다.
+  const forgedOutput = `${forgedSync.stdout}${forgedSync.stderr}`;
+  assert(forgedOutput.includes(forgedRun.runId),
+    `위조 승인 런이 차단 대상으로 지목되지 않았습니다. 앞선 런이 막았을 뿐입니다:\n${forgedOutput}`);
 
   process.stdout.write('drive end-to-end tests passed\n');
 } finally {

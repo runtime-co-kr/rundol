@@ -536,6 +536,11 @@ async function runAdapterOnce(invocation, executionOptions) {
   const contexts = Array.from(new Set((invocation.allowedContextPaths || []).map((item) => normalizedRelative(item, 'allowedContextPaths')))).sort();
   const contextSnapshots = contexts.map((context) => trustedFileSnapshot(workRoot, context, `context ${context}`));
   const beforeGit = gitSnapshot(workRoot);
+  // 격리 worktree는 어댑터의 자연스러운 쓰기를 가둘 뿐, OS 샌드박스가 아니다 —
+  // 어댑터는 넘겨받은 절대 경로에서 본 저장소를 역산해 직접 쓸 수 있다. 그것을 막지는
+  // 못하지만 알아차리지 못한 채 성공으로 보고하는 것은 다른 문제다. 본 저장소의
+  // 상태도 함께 스냅숏해서, 탈출한 저작은 실패로 끝나게 한다.
+  const mainBefore = sandbox ? { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() } : null;
   const location = invocationDirectory(projectRoot, invocation);
   inspectExistingComponents(projectRoot, location.parent, 'directory');
   const directory = makeDirectoriesExclusive(projectRoot, location.parent, location.instanceId);
@@ -665,6 +670,17 @@ async function runAdapterOnce(invocation, executionOptions) {
       const strayed = foreignChangedPaths(workRoot, target.real);
       if (strayed.length) throw new Error(`Author adapter changed files outside its target: ${strayed.slice(0, 5).join(', ')}`);
     }
+    // 격리를 빠져나가 본 저장소를 직접 고친 저작은 성공일 수 없다. 여기서 묻지
+    // 않으면 어댑터는 main HEAD를 옮기고 파일을 고친 뒤에도 성공을 돌려주고,
+    // 하네스는 자기가 무엇을 승인했는지 모른 채 다음 스텝으로 넘어간다.
+    if (sandbox) {
+      const mainAfter = { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() };
+      if (mainAfter.git.head !== mainBefore.git.head || canonicalJson(mainAfter.paths) !== canonicalJson(mainBefore.paths)) {
+        const error = new Error('Author adapter modified the main project repository from outside its sandbox.');
+        error.rdlCode = 'ADAPTER_ESCAPED_SANDBOX';
+        throw error;
+      }
+    }
     // 여기까지 온 저작만 본 트리에 닿는다. 옮기는 것은 대상 파일 하나뿐이다.
     if (sandbox) {
       const produced = fs.readFileSync(target.real);
@@ -685,7 +701,7 @@ async function runAdapterOnce(invocation, executionOptions) {
     // 것은 애초에 본 트리에 쓴 적이 없기 때문이다 — 옮기기는 성공 경로에만 있다.
     let receipt;
     if (!fs.existsSync(path.join(directory, 'receipt.json'))) receipt = failureReceipt(directory, baseReceipt, 'invalid-output', resultHash);
-    return { ...responseBase, exitCode: 2, status: 'invalid-output', receipt, error: error.message };
+    return { ...responseBase, exitCode: 2, status: 'invalid-output', receipt, error: error.message, ...(error.rdlCode ? { diagnosticCodes: [error.rdlCode] } : {}) };
   } finally {
     removeAuthorSandbox(projectRoot, sandbox);
   }
