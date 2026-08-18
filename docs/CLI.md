@@ -41,6 +41,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run next --run <RUN-ID> --project <key> [--json]
   rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
   rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run approve --run <RUN-ID> --project <key> --client-id <id> --reason <사유> [--step <id>] [--request-id <REQ-ID>] [--json]
   rdl run halt|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
   rdl run resume --run <RUN-ID> --project <key> --client-id <id> [--grant-attempts <step[,step]> --reason <사유>] [--json]
   rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--request-id <REQ-ID>] [--json]

@@ -717,12 +717,21 @@ function unclearedRunCommits(config) {
     const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion === 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const commits = (fold.producedCommits || []).filter((commit) => /^[a-f0-9]{40,64}$/u.test(String(commit)));
     if (!commits.length) continue;
-    if (['completed_local', 'synced'].includes(fold.status) && !(fold.forcedHumanSteps || []).length) continue;
+    // 통과의 조건은 셋이다. 런이 로컬 완료에 닿았을 것, 사람 게이트를 사람의 승인
+    // 으로 지났을 것, 그리고 그 승인이 검증이 본 커밋에 붙어 있을 것. 셋 중 하나라도
+    // 없으면 이 런의 커밋은 아직 나갈 수 없다.
+    const approvals = fold.humanApprovals || [];
+    const gates = fold.humanGateSteps || [];
+    const cleared = ['completed_local', 'synced'].includes(fold.status)
+      && !(fold.unapprovedHumanSteps || []).length
+      && gates.every((stepId) => approvals.some((item) => item.stepId === stepId))
+      && approvals.every((item) => !fold.verifiedCommit || item.commit === fold.verifiedCommit);
+    if (cleared) continue;
     for (const commit of commits) {
       // 조상이 아닌 커밋은 이번 push에 실리지 않는다. 실리지 않는 것을 막으면
       // 무관한 런 하나가 프로젝트 전체의 공유를 영원히 잠근다.
       if (runGit(['merge-base', '--is-ancestor', commit, 'HEAD'], { cwd: config.worktree, allowFailure: true }).status !== 0) continue;
-      blocked.push({ runId, commit, status: fold.status, forcedHumanSteps: (fold.forcedHumanSteps || []).slice() });
+      blocked.push({ runId, commit, status: fold.status, unapprovedHumanSteps: (fold.unapprovedHumanSteps || []).slice() });
     }
   }
   return blocked;
@@ -733,7 +742,7 @@ function syncProjectStateWithRuns(config, settings) {
   if (uncleared.length) {
     const reason = String(settings.shareUnverified || '').trim();
     if (!reason) {
-      const shown = uncleared.slice(0, 3).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status}${item.forcedHumanSteps.length ? `, forced: ${item.forcedHumanSteps.join(',')}` : ''})`).join(', ');
+      const shown = uncleared.slice(0, 3).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status}${item.unapprovedHumanSteps.length ? `, 승인 없이 지난 게이트: ${item.unapprovedHumanSteps.join(',')}` : ''})`).join(', ');
       throw new Error(`RDL-SYNC-030: 사람 게이트를 통과하지 못한 런의 커밋이 push 대상에 있습니다: ${shown}${uncleared.length > 3 ? ` 외 ${uncleared.length - 3}건` : ''}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유>로 공유하세요.`);
     }
     settings.sharedUnverified = uncleared.map((item) => Object.assign({}, item, { reason }));

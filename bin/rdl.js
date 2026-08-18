@@ -45,6 +45,7 @@ Usage:
   rdl run next --run <RUN-ID> --project <key> [--json]
   rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
   rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run approve --run <RUN-ID> --project <key> --client-id <id> --reason <사유> [--step <id>] [--request-id <REQ-ID>] [--json]
   rdl run halt|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
   rdl run resume --run <RUN-ID> --project <key> --client-id <id> [--grant-attempts <step[,step]> --reason <사유>] [--json]
   rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
@@ -893,7 +894,8 @@ async function main() {
       const result = run.runGate(options.root, requireRun());
       printOperation(result, options.json);
       return result.exitCode === 0 ? 0 : (result.exitCode === 1 ? 1 : 2);
-    } else if (subcommand === 'halt') printOperation(run.haltRun(options.root, requireRun()), options.json);
+    } else if (subcommand === 'approve') printOperation(run.approveRun(options.root, requireRun()), options.json);
+    else if (subcommand === 'halt') printOperation(run.haltRun(options.root, requireRun()), options.json);
     else if (subcommand === 'resume') printOperation(run.resumeRun(options.root, requireRun()), options.json);
     else if (subcommand === 'complete') printOperation(run.completeRun(options.root, requireRun()), options.json);
     else if (subcommand === 'takeover') {
@@ -940,7 +942,7 @@ async function main() {
     } else if (subcommand === 'list') printOperation(run.listRunsCommand(options.root, options), options.json);
     else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
-    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, log, procedures입니다.');
+    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, log, procedures입니다.');
     return 0;
   }
   if (command === 'task') {

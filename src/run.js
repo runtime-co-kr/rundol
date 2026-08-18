@@ -254,6 +254,34 @@ function resumeRun(start, options) {
   return { runId: options.run, fromStep: event.fromStep, event: recorded.event };
 }
 
+// 사람 게이트를 지나는 유일한 정상 경로. run step --force와 나뉘어 있는 이유는
+// 둘이 다른 일이기 때문이다 — 하나는 사람이 무엇을 보고 승인했다는 사실이고,
+// 다른 하나는 막힌 절차를 운영자가 밀어 통과시켰다는 사실이다. 구분이 없으면
+// 원장은 "사람이 승인했다"에 답하지 못하고, 공유를 물을 근거도 사라진다.
+function approveRun(start, options) {
+  const context = runContext(start, options);
+  if (context.fold.status !== 'running') throw new Error(`실행 중인 런만 승인할 수 있습니다: ${context.fold.status}`);
+  const stepId = options.step || context.fold.cursor;
+  if (!stepId) throw new Error('승인할 스텝이 없습니다. 런이 이미 완료됐습니다.');
+  if (stepId !== context.fold.cursor) throw new Error(`현재 cursor 스텝만 승인할 수 있습니다: ${context.fold.cursor} (요청: ${stepId})`);
+  const definition = context.fold.cursorStep;
+  if (!definition || definition.human !== true) throw new Error(`사람 게이트가 아닌 스텝은 승인으로 지날 수 없습니다: ${stepId}`);
+  const reason = String(options.reason || '').trim();
+  if (!reason) throw new Error('--reason <사유>가 필요합니다. 무엇을 보고 승인했는지가 기록되어야 합니다.');
+  // 난간은 여기에도 둔다. 경계가 아니라는 것은 run step --force에서 적은 그대로다.
+  if (process.env.RUNDOL_HARNESS_CHILD === '1') throw new Error(`${stepId}은 사람 게이트입니다. 하네스가 실행한 프로세스는 스스로 승인할 수 없습니다.`);
+  // 승인은 상태에 붙는다. 무엇을 승인했는지 말하지 않는 승인은, 뒤에 무엇이
+  // 공유되든 자기가 승인한 것이라고 주장하게 된다.
+  const commit = runGit(['rev-parse', 'HEAD'], { cwd: context.project.root }).stdout.trim().toLowerCase();
+  const verified = context.fold.verifiedCommit;
+  if (verified && commit !== verified) {
+    throw new Error(`검증이 본 커밋과 현재 HEAD가 다릅니다. 검증 ${verified}, 현재 ${commit}. 이 상태는 판정된 적이 없으므로 승인할 수 없습니다.`);
+  }
+  const event = Object.assign({ type: 'run.forced', stepId, reason, basis: 'human-approval', commit, clientId: actorClientId(context, start, options) }, ownershipFields(context));
+  const recorded = ledger.recordRunEvent(start, { project: options.project, runId: options.run, rootRequestId: options.requestId, event });
+  return { runId: options.run, stepId, approved: true, commit, reason, event: recorded.event };
+}
+
 function haltRun(start, options) {
   const context = runContext(start, options);
   if (context.fold.status !== 'running') throw new Error(`실행 중이 아닌 런은 정지할 수 없습니다: ${context.fold.status}`);
@@ -1123,7 +1151,7 @@ async function resolveOperation(start, options) {
 }
 
 module.exports = {
-  startRun, nextStep, reportStep, runGate, resumeRun, haltRun, completeRun,
+  startRun, nextStep, reportStep, runGate, approveRun, resumeRun, haltRun, completeRun,
   takeoverRunCommand, resolveOwnershipCommand, listRunRequests, resumeRunRequest,
   recordVerificationResult,
   listRunsCommand, runLog, listProceduresCommand,

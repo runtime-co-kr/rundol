@@ -24,7 +24,7 @@ const TYPE_FIELDS = {
   'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId'] },
   'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['commit', 'operation'] },
   'run.gate': { required: ['ownerToken', 'stepId', 'command', 'args', 'exitCode', 'diagnostics', 'attempt'], optional: ['operation'] },
-  'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['operation'] },
+  'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['basis', 'commit', 'operation'] },
   'run.halted': { required: ['reason', 'resumable', 'ownerToken'], optional: ['atStep', 'operation'] },
   'run.resumed': { required: ['ownerToken', 'fromStep'], optional: ['grantedAttempts', 'reason'] },
   'run.takeover': { required: ['ownerToken', 'previousClientId', 'previousOwnerToken', 'previousOwnerHeadEventId', 'basis'], optional: ['reason'] },
@@ -303,6 +303,18 @@ function normalizeRunEvent(event) {
     normalized.ownerToken = owner();
     if (!STEP_ID.test(event.stepId || '')) throw new Error('run.forced.stepId is invalid');
     normalized.stepId = event.stepId; normalized.reason = normalizeText(event.reason, 'reason', 1000, false);
+    // 사람의 승인과 운영자의 우회는 둘 다 스텝을 지나가게 하지만 같은 일이 아니다.
+    // 구분이 없으면 "사람이 승인했다"는 원장에서 읽어 낼 수 없고, 공유를 물을 때
+    // 답할 근거가 사라진다. human-approval은 무엇을 승인했는지도 함께 말한다.
+    if (event.basis !== undefined) {
+      if (!['human-approval', 'operator-override'].includes(event.basis)) throw new Error('run.forced.basis is invalid');
+      normalized.basis = event.basis;
+    }
+    if (event.commit !== undefined) {
+      if (!REVISION.test(String(event.commit))) throw new Error('run.forced.commit must be a lowercase Git revision');
+      normalized.commit = event.commit;
+    }
+    if (normalized.basis === 'human-approval' && !normalized.commit) throw new Error('human-approval must name the commit it approves');
     if (!normalized.reason) throw new Error('run.forced.reason is required');
     if (event.operation !== undefined) normalized.operation = normalizeOperation(event.operation);
   } else if (event.type === 'run.halted') {
@@ -783,7 +795,7 @@ function foldProgress(events, ownership) {
         }
       } else invalid('gate exit 2 is an invocation failure and cannot advance or count as a verdict');
     } else if (event.type === 'run.forced') {
-      completed.add(event.stepId); forcedSteps.push({ stepId: event.stepId, reason: event.reason || null });
+      completed.add(event.stepId); forcedSteps.push({ stepId: event.stepId, reason: event.reason || null, basis: event.basis || 'operator-override', commit: event.commit || null });
     } else if (event.type === 'run.halted') {
       status = 'halted'; haltReason = HALT_REASONS.has(event.reason) ? event.reason : 'manual';
     } else if (event.type === 'run.resumed') {
@@ -830,6 +842,24 @@ function foldProgress(events, ownership) {
     for (const event of ignoredSynced) diagnostics.push({ code: 'RDL-RUN-026', severity: 'warning', eventId: event.eventId, message: 'run.synced does not match a visible run.completed_local of its epoch (commit·ownerToken) and was ignored' });
   }
   for (const step of steps) if (step.onFail && !completed.has(step.id) && (attempts[step.id] || 0) >= step.onFail.maxAttempts && status === 'running') { status = 'halted'; haltReason = 'attempt-limit'; }
+  // 검증이 결박된 커밋. 이것이 이 런이 "봤다"고 말할 수 있는 유일한 상태다.
+  let verifiedCommit = null;
+  for (const step of steps) {
+    const pin = step.verify && step.verify.revisionPin;
+    if (!pin) continue;
+    if (pin.strategy === 'step-output-commit') verifiedCommit = stepCommits[pin.step] || null;
+    else if (pin.strategy === 'git-commit') verifiedCommit = pin.reviewedRevision || null;
+  }
+  const humanSteps = forcedSteps.filter((item) => { const step = byId.get(item.stepId); return Boolean(step && step.human === true); });
+  const humanApprovals = humanSteps.filter((item) => item.basis === 'human-approval').map((item) => ({ stepId: item.stepId, commit: item.commit }));
+  // 사람이 승인한 커밋과 검증이 본 커밋이 다르면, 승인은 검증되지 않은 상태에 붙은
+  // 것이다. 검증 통과 뒤에 HEAD가 움직였다는 뜻이고, 공유되는 것은 판정된 적 없는
+  // 내용이 된다. 이것을 말하지 않으면 원장은 "검증하고 승인했다"고 읽힌다.
+  for (const approval of humanApprovals) {
+    if (verifiedCommit && approval.commit && approval.commit !== verifiedCommit) {
+      diagnostics.push({ code: 'RDL-RUN-028', severity: 'error', message: `사람이 승인한 커밋이 검증이 본 커밋과 다릅니다: ${approval.stepId} 승인 ${approval.commit} vs 검증 ${verifiedCommit}` });
+    }
+  }
   const current = status === 'completed_local' || status === 'synced' ? null : cursor();
   // 충돌 상태 덮어쓰기는 진행 계산이 끝난 뒤다 — completed·cursor는 보존된다.
   if (ownership && ownership.status === 'CONFLICT') { status = 'ownership-conflict'; haltReason = 'ownership-conflict'; }
@@ -839,9 +869,10 @@ function foldProgress(events, ownership) {
     status, cursor: current, cursorStep: current ? byId.get(current) || null : null,
     completedSteps: order.filter((identifier) => completed.has(identifier)), attempts, forcedSteps, artifactIds, lastGate, haltReason,
     stepCommits, producedCommits: producedCommits.slice(),
-    // 사람 게이트를 --force로 지나간 런. 승인 자체는 원장에 남지만, 그것이 사람의
-    // 승인이었는지는 원장이 답할 수 없다 — 그래서 공유 단계에서 다시 묻는다.
-    forcedHumanSteps: forcedSteps.filter((item) => { const step = byId.get(item.stepId); return Boolean(step && step.human === true); }).map((item) => item.stepId),
+    verifiedCommit, humanApprovals, humanGateSteps: steps.filter((step) => step.human === true).map((step) => step.id),
+    // 사람 게이트를 사람의 승인이 아닌 방법으로 지나간 런. 지나가긴 했으나 누가
+    // 무엇을 승인했는지 원장이 답하지 못하므로, 공유 단계에서 다시 묻는다.
+    unapprovedHumanSteps: humanSteps.filter((item) => item.basis !== 'human-approval').map((item) => item.stepId),
     ownerToken: ownership ? ownership.ownerToken : null, owner: ownership ? ownership.ownerClientId : null,
     ownershipConflict: ownership ? ownership.conflict : null,
     staleEventIds: ownership ? ownership.staleEvents.map((event) => event.eventId).filter(Boolean).sort() : [], diagnostics

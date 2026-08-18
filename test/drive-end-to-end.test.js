@@ -131,18 +131,36 @@ try {
   assert.match(`${selfApproved.stdout}${selfApproved.stderr}`, /스스로 승인할 수 없습니다/u,
     `${selfApproved.stdout}${selfApproved.stderr}`);
 
-  // --force로 지나간 사람 게이트는 통과가 아니다. 런이 로컬 완료가 되어도 공유는
-  // 여전히 막힌다 — 사람이 승인했다는 근거가 원장에 없기 때문이다.
-  rdl(['run', 'step', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', '시험 픽스처의 사람 승인']);
+  // 승인은 상태에 붙는다. 검증이 본 커밋과 지금 HEAD가 다르면 승인할 수 없다 —
+  // 그 상태는 판정된 적이 없기 때문이다. 이것이 없으면 "검증 A가 통과한 뒤 HEAD가
+  // B로 바뀌어도 완료와 공유는 B를 내보낸다"가 성립한다.
+  git(['commit', '--allow-empty', '-m', '런과 무관한 커밋'], projectRoot);
+  const drifted = rdlRaw(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--reason', '내용을 읽고 승인한다']);
+  assert.notStrictEqual(drifted.status, 0, 'HEAD가 움직인 뒤의 승인이 허용됐습니다');
+  assert.match(`${drifted.stdout}${drifted.stderr}`, /판정된 적이 없으므로/u, `${drifted.stdout}${drifted.stderr}`);
+  git(['reset', '--hard', 'HEAD~1'], projectRoot);
+
+  // 사람이 승인하면 공유된다. 우회 없이. 이것이 정상 경로이고, 정상 경로가
+  // --share-unverified를 요구한다면 그 우회는 이미 우회가 아니다.
+  const approved = rdl(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--reason', '내용을 읽고 승인한다']);
+  assert.strictEqual(approved.commit, saveEvent.commit, '승인이 검증된 커밋에 붙지 않았습니다');
   rdl(['run', 'complete', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a']);
+  const shared = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a']);
+  assert.strictEqual(shared.status, 0, `사람이 승인한 런의 공유가 막혔습니다: ${shared.stdout}${shared.stderr}`);
+
+  // --force는 운영자의 우회이지 사람의 승인이 아니다. 지나가긴 하지만 원장은
+  // 누가 무엇을 승인했는지 답하지 못하고, 그래서 공유는 여전히 막힌다.
+  const overrideRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', document.id]);
+  rdlRaw(['run', 'drive', '--run', overrideRun.runId, '--project', 'crm', '--client-id', 'agent-a']);
+  rdl(['run', 'step', '--run', overrideRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', '운영자 우회']);
+  rdl(['run', 'complete', '--run', overrideRun.runId, '--project', 'crm', '--client-id', 'agent-a']);
   const stillBlocked = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a']);
   assert.notStrictEqual(stillBlocked.status, 0, 'forced 사람 게이트의 런이 공유를 막지 않았습니다');
   assert.match(`${stillBlocked.stdout}${stillBlocked.stderr}`, /RDL-SYNC-030/u,
     `${stillBlocked.stdout}${stillBlocked.stderr}`);
 
-  // 우회는 있지만 사유를 말해야 하고, 매번 다시 말해야 한다. 여기서는 원격이
-  // 없으므로 뒤에서 실패하지만, 그 실패가 RDL-SYNC-030이 아니어야 한다.
-  const forcedShare = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '시험이라 원격 없이 공유를 시도한다']);
+  // 우회는 있지만 사유를 말해야 하고, 저장되지 않으므로 매번 다시 말해야 한다.
+  const forcedShare = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '운영자 우회로 지난 런을 그대로 공유한다']);
   assert.doesNotMatch(`${forcedShare.stdout}${forcedShare.stderr}`, /RDL-SYNC-030/u,
     `--share-unverified가 예선 검사를 지나지 못했습니다: ${forcedShare.stdout}${forcedShare.stderr}`);
 
