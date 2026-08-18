@@ -532,7 +532,14 @@ async function runAdapterOnce(invocation, executionOptions) {
       return { ...responseBase, exitCode: category === 'child-failure' ? 1 : 2, status: category, receipt, diagnosticCodes: mutated ? [diagnosticCode, 'ADAPTER_VERIFIER_MUTATED'] : [diagnosticCode] };
     }
     if (!fs.existsSync(resultFile)) throw new Error('Adapter exited successfully without result.json.');
-    revalidateTrustedFile(projectRoot, target, 'targetPath');
+    // 실행 뒤 대상 파일 재검증은 검증 모드에만 건다. 저작 어댑터는 그 파일을
+    // 고치는 것이 일이므로, 바뀌지 않았는지 확인하면 저작이 성공할 때마다
+    // 무효 출력으로 거부된다 — 저작 어댑터가 자기가 써야 할 문서를 쓸 수 없다.
+    //
+    // 스폰 직전 재검증(위)은 두 모드 모두에 남긴다. 그것은 스냅숏과 실행 사이의
+    // 교체를 막는 것이고 저작 여부와 무관하다. 근거 파일(context)도 두 모드에서
+    // 그대로 검증한다 — 읽기 입력이지 저작 대상이 아니다.
+    if (invocation.mode === 'verify') revalidateTrustedFile(projectRoot, target, 'targetPath');
     for (const context of contextSnapshots) revalidateTrustedFile(projectRoot, context, `context ${context.relative}`);
     const resultBytes = readStableResult(resultFile, directory);
     const resultHash = sha256(resultBytes);
@@ -543,7 +550,7 @@ async function runAdapterOnce(invocation, executionOptions) {
       contained(directory, real, path.basename(file));
       if (hashFile(real) !== expected) throw new Error(`${path.basename(file)} changed during adapter execution.`);
     }
-    revalidateTrustedFile(projectRoot, target, 'targetPath');
+    if (invocation.mode === 'verify') revalidateTrustedFile(projectRoot, target, 'targetPath');
     for (const context of contextSnapshots) revalidateTrustedFile(projectRoot, context, `context ${context.relative}`);
     const afterGit = gitSnapshot(projectRoot);
     if (invocation.mode === 'verify' && canonicalJson(afterGit) !== canonicalJson(beforeGit)) throw new Error('Verifier modified the project worktree.');

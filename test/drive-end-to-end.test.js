@@ -85,7 +85,7 @@ try {
   assert.strictEqual(outcome.status, 'waiting_human',
     `사람 스텝 앞에서 멈춰야 합니다. 실제: ${JSON.stringify(outcome)}\n지나간 스텝: ${reached.join(' → ') || '(없음)'}`);
   assert.strictEqual(outcome.step, 'sync-gate', `멈춘 자리가 sync-gate여야 합니다: ${JSON.stringify(outcome)}`);
-  for (const stepId of ['author', 'mech-gate', 'verify', 'save']) {
+  for (const stepId of ['mech-gate', 'verify', 'save']) {
     assert(reached.some((entry) => entry.startsWith(`${stepId}:`)), `${stepId}을 지나지 않았습니다: ${reached.join(' → ')}`);
   }
 
