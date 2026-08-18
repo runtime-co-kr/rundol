@@ -1428,6 +1428,48 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZ98JOW4B3FD1A93C7DC29C": {
+      "title": "[기능] 검증 판정의 독립성 — 어댑터 배분과 만족 가능성 검사",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-042"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "어댑터 둘·정족수 2·다양성 요구로 통과에 도달한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "어댑터 하나로 같은 정책을 선언하면 절차 로드가 거부된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "재개한 검증에서 각 slot의 어댑터가 처음과 같다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "선택 렌즈 미실행 시 검증이 완료되고 미실행으로 기록된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "모델 없는 판정자가 다양성 계산에 어댑터로 셈해진다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:49:06.991Z",
+      "updatedAt": "2026-08-18T22:49:06.991Z",
+      "statusChangedAt": "2026-08-18T22:49:06.991Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
