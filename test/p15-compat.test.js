@@ -71,7 +71,11 @@ try {
 
   const verdictRoot = path.join(temporary, 'projects', 'workspace', 'events', 'verdict');
   fs.mkdirSync(verdictRoot, { recursive: true });
-  const valid = verdictEnvelope(event()).shared;
+  // 판정이 지목한 리비전은 이 저장소에서 풀려야 한다. 아무 sha나 쓰면 이 픽스처는
+  // "깨끗한 판정"이 아니라 "확인할 수 없는 판정"이 되고, 그것은 RDL-VERDICT-015가
+  // 잡는 상태다 — 뒤에서 무진단을 주장할 수 없다.
+  const projectHead = command('git', ['rev-parse', 'HEAD'], path.join(temporary, 'projects', 'crm'));
+  const valid = verdictEnvelope(event({ reviewedRevision: projectHead })).shared;
   fs.writeFileSync(path.join(verdictRoot, 'verdict-crm-agent-a-000001.jsonl'), `${JSON.stringify(valid)}\n`, 'utf8');
 
   // 신형 v2 run 원장과 driver lease 샤드 — 0.29 클라이언트가 쓰고 pull로 들어온

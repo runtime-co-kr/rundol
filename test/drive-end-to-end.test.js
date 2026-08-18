@@ -163,6 +163,24 @@ try {
   assert.strictEqual(git(['log', '-1', '--name-only', '--format='], projectRoot).includes('STRAY.md'), false,
     '대상 밖 파일이 커밋됐습니다');
 
+  // 다른 클라이언트의 판정은 git 병합으로 들어온다. 그 클라이언트의 프로젝트 커밋이
+  // 함께 오지 않으면, 여기에는 풀 수 없는 리비전을 지목한 판정만 남는다. 쓰기 경로로는
+  // 막을 수 없으므로 — 병합은 CLI를 지나오지 않는다 — 읽을 때 판정해야 한다.
+  const verdictDirectory = path.join(temporary, 'projects', 'workspace', 'events', 'verdict');
+  const verdictFile = fs.readdirSync(verdictDirectory).find((name) => name.startsWith('verdict-crm-'));
+  assert(verdictFile, `verdict 샤드를 찾지 못했습니다: ${fs.readdirSync(verdictDirectory).join(', ')}`);
+  const sample = JSON.parse(fs.readFileSync(path.join(verdictDirectory, verdictFile), 'utf8').split(/\r?\n/u).filter(Boolean)[0]);
+  const unreachable = 'a'.repeat(40);
+  const foreign = Object.assign({}, sample, { reviewedRevision: unreachable });
+  delete foreign.canonicalDigest;
+  fs.appendFileSync(path.join(verdictDirectory, verdictFile), `${JSON.stringify(require(path.join(repository, 'src', 'verify')).verdictEnvelope(foreign).shared)}\n`, 'utf8');
+  const audited = rdlRaw(['check', '--strict', '--json']);
+  const codes = JSON.parse(audited.stdout).diagnostics.filter((item) => item.code.startsWith('RDL-VERDICT-')).map((item) => item.code);
+  assert(codes.includes('RDL-VERDICT-015'), `풀 수 없는 리비전을 지목한 판정이 진단되지 않았습니다: ${codes.join(', ') || '(없음)'}`);
+  // 스키마·봉투는 멀쩡하다. 잡힌 것이 형식 오류가 아니라 "여기서 확인할 수 없는
+  // 판정"이어야 이 진단이 자기 몫을 한 것이다.
+  assert(!codes.includes('RDL-VERDICT-014'), `형식 오류로 잡혔습니다: ${codes.join(', ')}`);
+
   process.stdout.write('drive end-to-end tests passed\n');
 } finally {
   if (PREVIOUS_WINDOWS_ADAPTER === undefined) delete process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;

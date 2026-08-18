@@ -11,6 +11,7 @@ const { validateBoundaryMetadata } = require('./document-boundary');
 const { validateDocumentDiagram } = require('./document-diagram');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
+const { runGit } = require('./git');
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
@@ -706,6 +707,23 @@ function checkWorkspaceStore(diagnostics, layout) {
       }
     }
   }
+  // 판정이 지목한 커밋이 이 저장소에서 풀리는가. 풀리지 않으면 그 판정은 여기서
+  // 증거가 아니다 — 무엇을 보고 내린 판정인지 확인할 방법이 없기 때문이다.
+  //
+  // 쓰기 경로로는 막을 수 없다. 다른 클라이언트의 verdict 샤드는 git 병합으로
+  // 들어오고, 그 클라이언트의 프로젝트 커밋이 함께 오지 않을 수 있다. 그래서
+  // 이것은 기록할 때가 아니라 읽을 때 판정한다.
+  const resolvable = new Map();
+  const revisionResolves = (projectId, revision) => {
+    const key = `${projectId} ${revision}`;
+    if (!resolvable.has(key)) {
+      const root = path.join(layout.root, 'projects', projectId);
+      resolvable.set(key, fs.existsSync(path.join(root, '.git')) || fs.existsSync(root)
+        ? runGit(['cat-file', '-e', `${revision}^{commit}`], { cwd: root, allowFailure: true }).status === 0
+        : true);
+    }
+    return resolvable.get(key);
+  };
   const verdictRoot = path.join(eventsRoot, 'verdict');
   if (fs.existsSync(verdictRoot)) for (const entry of fs.readdirSync(verdictRoot, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
@@ -731,6 +749,9 @@ function checkWorkspaceStore(diagnostics, layout) {
         if (!/^[a-f0-9]{64}$/u.test(event.canonicalDigest || '') || event.canonicalDigest !== expected) throw new Error('canonicalDigest가 canonical verdict projection과 일치하지 않습니다.');
       } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-VERDICT-014', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `verdict schema/envelope가 유효하지 않습니다: ${error.message}` });
+      }
+      if (event.projectId && event.reviewedRevision && !revisionResolves(event.projectId, event.reviewedRevision)) {
+        diagnostic(diagnostics, { code: 'RDL-VERDICT-015', category: 'workspace', severity: 'warning', file: relative(layout.root, file), line: index + 1, message: `판정이 지목한 리비전을 이 저장소에서 풀 수 없습니다. 판정을 내린 클라이언트가 아직 커밋을 공유하지 않았거나 이력에서 사라진 것이며, 그때까지 이 판정은 여기서 증거가 아닙니다: ${event.reviewedRevision}` });
       }
     }
   }
