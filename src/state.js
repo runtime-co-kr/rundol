@@ -777,11 +777,17 @@ function unclearedRunCommits(config) {
     // human-approval이라고 적었다"뿐이고, 그 clientId가 실제로 human 유형 활성
     // Client인지는 registry가 답한다. 이 대조가 없으면 에이전트가 이벤트를 직접
     // 써 넣는 것만으로 사람 승인이 된다 — git 병합으로 들어온 이벤트도 마찬가지다.
+    //
+    // 유형과 상태만으로는 부족하다. human Client는 어느 프로젝트에나 등록될 수 있고,
+    // 이 프로젝트의 활성 멤버가 소유한 자격이 아니면 여기서는 승인 권한이 없다 —
+    // 옆 프로젝트의 검토자가 병합으로 들어와 이 프로젝트를 승인하는 길을 닫는다.
+    const members = new Set(readCollaboration(config.root, config.project).members
+      .filter((member) => member.fields['상태'] === 'active').map((member) => member.id));
     const approvals = (fold.humanApprovals || []).filter((item) => {
       if (!item.clientId) return false;
       try {
         const client = getClient(config.root, item.clientId);
-        return client && client.type === 'human' && client.status === 'active';
+        return Boolean(client) && client.type === 'human' && client.status === 'active' && members.has(client.owner);
       } catch (_) {
         return false;
       }
@@ -794,10 +800,15 @@ function unclearedRunCommits(config) {
       // 완료가 기록한 커밋도 승인된 그것이어야 한다. 승인 시점만 대조하고 완료
       // 시점을 묻지 않으면, 승인 뒤 HEAD를 옮겨 다른 커밋으로 완료할 수 있다.
       && (!approvals.length || approvals.every((item) => item.commit === fold.completedCommit))
-      // 그리고 지금 나가려는 것이 그 커밋이어야 한다. 완료 뒤에 쌓은 커밋은 아무도
-      // 승인한 적이 없는데, 승인된 런의 커밋이 조상이라는 이유로 함께 나간다.
-      // 런의 통과는 그 런의 커밋에 대한 것이지 그 위에 쌓인 것에 대한 것이 아니다.
-      && fold.completedCommit === headCommit;
+      // 그리고 아직 나가지 않은 런이라면, 지금 나가려는 것이 그 커밋이어야 한다.
+      // 완료 뒤에 쌓은 커밋은 아무도 승인한 적이 없는데, 승인된 런의 커밋이 조상
+      // 이라는 이유로 함께 나간다. 런의 통과는 그 런의 커밋에 대한 것이지 그 위에
+      // 쌓인 것에 대한 것이 아니다.
+      //
+      // 이미 synced인 런에는 걸지 않는다. 그 커밋은 이미 원격에 있고, 뒤에 새 런이
+      // HEAD를 옮겼다는 이유로 지난 런이 다시 차단 대상이 되면 — 아무것도 되돌릴 수
+      // 없는데 영원히 막힌다. 통과의 조건은 그 런이 나갈 때의 것이지 그 뒤의 것이 아니다.
+      && (fold.status === 'synced' || fold.completedCommit === headCommit);
     if (cleared) continue;
     for (const commit of commits) {
       // 조상이 아닌 커밋은 이번 push에 실리지 않는다. 실리지 않는 것을 막으면

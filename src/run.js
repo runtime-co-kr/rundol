@@ -6,7 +6,7 @@ const { spawnSync } = require('child_process');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { runGit } = require('./git');
 const ledger = require('./run-ledger');
-const { loadProcedures, substituteArgs, pinProcedureVerificationRevision, validateClosedDriveGate } = require('./procedure');
+const { loadProcedures, substituteArgs, pinProcedureVerificationRevision, validateClosedDriveGate, COMMIT_PRODUCING_COMMANDS } = require('./procedure');
 const { getClient } = require('./collaboration-store');
 const { loadHarnessSettings } = require('./harness-settings');
 const { runtimeWorkspace } = require('./runtime');
@@ -672,6 +672,11 @@ function preflightDriveProcedure(procedure) {
   return procedure;
 }
 
+// 커밋을 만들기로 선언된 스텝인가. 절차의 닫힌 목록이 정하고, 이름으로 추측하지 않는다.
+function commitProducingStep(step) {
+  return Boolean(step) && step.executor === 'cli' && COMMIT_PRODUCING_COMMANDS.has(step.command);
+}
+
 function driveSubstitution(context, operationId) {
   // {head}는 이 스텝을 실행하는 시점에 하네스가 본 커밋이다. 커밋을 만드는 명령에
   // 넘겨 "내가 본 것 위에서만 쌓아라"를 말하게 한다 — 그 사이 HEAD가 움직였다면
@@ -1106,6 +1111,12 @@ async function tickRun(start, options, dependencies) {
     const diagnosticCodes = Array.from(new Set(result.diagnosticCodes || [])).sort();
     const kind = result.exitCode === 0 ? 'step-completed' : 'step-failed';
     const commit = typeof result.commit === 'string' && /^[a-f0-9]{40,64}$/u.test(result.commit) ? result.commit : null;
+    // 커밋을 만드는 스텝이 커밋 없이 성공을 보고하면, 뒤따르는 검증은 결박될 곳이
+    // 없는 채로 통과한다. 그런 런은 "무엇을 검증했는가"에 답하지 못하므로 성공으로
+    // 받아들이지 않는다. 여기서 막지 않으면 빈 결박을 가진 런이 만들어진다.
+    if (result.exitCode === 0 && commitProducingStep(step) && !commit) {
+      return { exitCode: 2, status: 'error', code: 'executor-environment', operationId, detail: `커밋을 만드는 스텝이 커밋을 보고하지 않았습니다: ${step.id}` };
+    }
     const boundedResultDecision = kind === 'step-completed' ? { artifactIds, ...(commit ? { commit } : {}) } : { failureCode: result.failureCode || 'DRIVE_STEP_FAILED' };
     const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt, outcomeKind: kind, exitCode: result.exitCode, sortedArtifactIds: artifactIds, sortedDiagnosticCodes: diagnosticCodes, boundedResultDecision });
     await record({ type: 'run.step', stepId: step.id, executor: step.executor, exitCode: result.exitCode, artifactIds, ...(commit && result.exitCode === 0 ? { commit } : {}), clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));

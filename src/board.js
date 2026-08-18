@@ -27,6 +27,52 @@ function stripSources(presentation) {
 const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'];
 const UI_ROOT = path.join(__dirname, 'board-ui');
 
+// 문서에 넣은 그림을 보드가 서빙한다. 지금까지 정적 경로는 UI 자산과 라이브러리뿐
+// 이었고, 그래서 화면설계 문서에 캡처를 넣어도 404였다. 런돌은 에이전트 저작을
+// 전제로 만든 도구인데 에이전트가 캡처를 넣어도 볼 수 없다는 것은 전제와 어긋난다.
+//
+// 파일을 디스크에서 읽어 내보내는 경로이므로 범위를 좁게 잡는다: 프로젝트 루트
+// 안이어야 하고, 심링크로 밖을 가리켜서는 안 되고, 그림 확장자여야 하고, 크기
+// 상한이 있다. 확장자로 Content-Type을 정하되 nosniff를 함께 보낸다.
+const IMAGE_TYPES = Object.freeze({
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.bmp': 'image/bmp', '.ico': 'image/x-icon'
+});
+const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
+
+function projectAsset(response, projectRoot, relative) {
+  let decoded;
+  try { decoded = decodeURIComponent(relative); } catch (_) { return json(response, 400, { error: '경로를 해석할 수 없습니다.' }); }
+  if (!decoded || decoded.includes('\0') || path.isAbsolute(decoded) || decoded.split(/[\\/]/u).includes('..')) {
+    return json(response, 400, { error: '프로젝트 밖을 가리키는 경로입니다.' });
+  }
+  const extension = path.extname(decoded).toLowerCase();
+  const type = IMAGE_TYPES[extension];
+  if (!type) return json(response, 415, { error: `보드가 서빙하지 않는 형식입니다: ${extension || '(없음)'}` });
+  const root = fs.realpathSync.native(projectRoot);
+  const target = path.resolve(root, decoded);
+  let real;
+  try { real = fs.realpathSync.native(target); } catch (_) { return json(response, 404, { error: '파일을 찾지 못했습니다.' }); }
+  // 심링크를 따라간 뒤에 다시 확인한다. 따라가기 전에만 보면 링크가 밖을 가리켜도 통과한다.
+  const inside = path.relative(root, real);
+  if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) return json(response, 403, { error: '프로젝트 밖의 파일입니다.' });
+  const stat = fs.statSync(real);
+  if (!stat.isFile()) return json(response, 404, { error: '파일이 아닙니다.' });
+  if (stat.size > MAX_IMAGE_BYTES) return json(response, 413, { error: '이미지가 너무 큽니다.' });
+  const body = fs.readFileSync(real);
+  response.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    // svg는 그 자체가 스크립트를 담을 수 있다. 문서로 열리는 경로가 아니라 <img>로만
+    // 쓰이지만, 주소를 직접 열었을 때를 대비해 실행을 막는다.
+    'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY'
+  });
+  response.end(body);
+}
+
 function boardConfig(start, projectKey) {
   const root = findWorkspaceRoot(start);
   const layout = workspaceLayout(root);
@@ -425,6 +471,11 @@ function createBoardServer(start, options) {
       if (request.method === 'GET' && url.pathname === '/api/overview') return json(response, 200, overview(config.root));
       if (request.method === 'GET' && url.pathname === '/api/projects') return json(response, 200, overview(config.root).projects);
       if (request.method === 'GET' && url.pathname === '/api/clients') return json(response, 200, listClients(config.root));
+      const projectAssetMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/assets\/(.+)$/u);
+      if (request.method === 'GET' && projectAssetMatch) {
+        const assetProject = selectProject(workspaceLayout(config.root), projectAssetMatch[1], true);
+        return projectAsset(response, assetProject.root, projectAssetMatch[2]);
+      }
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/u);
       const projectTasksMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks$/u);
       const projectTaskMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks\/(TASK-[A-Za-z0-9-]+)$/u);

@@ -2318,8 +2318,12 @@ dialog label textarea {
   color: var(--secondary-TextColor);
 }
 
+/* 문서 본문의 그림. 폭을 넘지 않게 하고, 어두운 배경에서도 경계가 보이게 한다. */
 .markdown-body img {
   max-width: 100%;
+  height: auto;
+  border-radius: var(--small-BorderRadius);
+  border: 1px solid var(--surface-01-BorderColor);
 }
 
 .markdown-body table {
@@ -2566,4 +2570,31 @@ dialog label textarea {
   .main-content {
     padding: var(--spacing-3) var(--spacing-2) var(--spacing-4);
   }
+}
+
+/* 문서 목록 제어. 검색 범위와 정렬은 목적이 달라 나란히 둔다. */
+.document-controls {
+  display: flex;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+/* 둥근 모서리를 가진 목록의 첫 행과 마지막 행에 hover 배경이 모서리 밖으로 나오던
+   것을 막는다. 같은 구조인 .settings-panel에는 이미 있었고 한쪽만 빠져 있었다. */
+.document-list,
+.task-table {
+  overflow: hidden;
+}
+
+.document-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  margin-left: auto;
+}
+
+.document-row-meta time {
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
 }

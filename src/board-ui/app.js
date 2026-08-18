@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null, documentSearchScope: 'name', documentSort: 'id' };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
 const TERMINAL_STATUSES = ['done', 'cancelled'];
@@ -20,6 +20,8 @@ function el(id) { return document.getElementById(id); }
 function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
 function message(value, error) { el('message').textContent = value || ''; el('message').style.color = error ? 'var(--red)' : ''; if (value) setTimeout(() => { if (el('message').textContent === value) el('message').textContent = ''; }, 5000); }
 async function api(path, options) { const response = await fetch(path, options); const value = await response.json(); if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`); return value; }
+// 목록에서 훑을 때 쓰는 짧은 날짜. 값이 없으면 자리만 비운다.
+function shortDate(value) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 function projectPath(path) { return `/api/projects/${encodeURIComponent(state.project)}${path}`; }
 function presentationLabel(group, value, fallback) { const configured = state.snapshot && state.snapshot.presentation && state.snapshot.presentation[group] && state.snapshot.presentation[group][value]; return configured && (configured.label || configured) || fallback; }
 function documentTypeLabel(item) { const value = item && (item.kind || item.type); return presentationLabel('documentTypes', value, typeLabels[value] || value || '문서'); }
@@ -33,6 +35,28 @@ function taskStatusLabel(value) { return presentationLabel('taskStatuses', value
 function priorityLabel(value) { return presentationLabel('priorities', value, value); }
 function presentationHint(group, value) { const configured = state.snapshot && state.snapshot.presentation && state.snapshot.presentation[group] && state.snapshot.presentation[group][value]; return (configured && configured.description) || ''; }
 function labelledEntries(group, keys) { return keys.map((key) => [key, presentationLabel(group, key, key)]); }
+
+// 문서 안의 상대 경로 그림을 보드가 서빙하는 주소로 옮긴다. 문서마다 자기 파일
+// 위치가 다르므로 기준은 그 문서가 놓인 폴더다 — 프로젝트 루트를 기준으로 삼으면
+// docs/ 아래의 문서가 쓴 ./images/a.png가 엉뚱한 곳을 가리킨다.
+//
+// 절대 URL(http, data 등)은 그대로 둔다. 문서가 바깥 그림을 가리키는 것은 그 문서의
+// 선택이고, 여기서 조용히 바꾸면 무엇을 보고 있는지가 달라진다.
+function resolveDocumentImages(container, documentFile, projectKey) {
+  const base = String(documentFile || '').replace(/\\/gu, '/').split('/').slice(0, -1);
+  for (const image of container.querySelectorAll('img')) {
+    const source = image.getAttribute('src') || '';
+    if (!source || /^[a-z][a-z0-9+.-]*:/iu.test(source) || source.startsWith('//') || source.startsWith('/')) continue;
+    const segments = base.slice();
+    for (const part of source.split('/')) {
+      if (!part || part === '.') continue;
+      if (part === '..') segments.pop();
+      else segments.push(part);
+    }
+    image.setAttribute('src', `/api/projects/${encodeURIComponent(projectKey)}/assets/${segments.map(encodeURIComponent).join('/')}`);
+    image.setAttribute('loading', 'lazy');
+  }
+}
 
 function markdown(source) {
   if (!window.marked || !window.DOMPurify) return `<pre>${escapeHtml(source || '')}</pre>`;
@@ -334,10 +358,43 @@ function renderNavigation() {
   el('recent-documents').innerHTML = documents.slice().sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)).slice(0, 5).map((item) => `<button data-document="${escapeHtml(item.id)}"><span>${escapeHtml(item.title)}</span><small>${escapeHtml(documentTypeLabel(item))}</small></button>`).join('');
 }
 
+// 본문에만 있는 용어는 지금까지 검색되지 않았다. 대상이 ID·제목·설명·파일 경로
+// 넷뿐이었기 때문이다. 본문은 이미 스냅숏에 있으므로 새로 계산할 것이 없다.
+//
+// 범위를 나누는 이유는 목적이 둘이기 때문이다 — 아는 문서로 이동하는 것과, 어떤
+// 용어를 어디에 어떻게 썼는지 추적하는 것. 후자에서는 제목만 봐서는 답이 안 나오고,
+// 전자에서는 본문까지 뒤지면 결과가 넘친다.
+function documentMatches(item, query, scope) {
+  if (!query) return true;
+  const name = `${item.id} ${item.title} ${item.description || ''} ${item.file}`.toLowerCase();
+  if (scope === 'body') return name.includes(query) || String(item.body || '').toLowerCase().includes(query);
+  return name.includes(query);
+}
+
+// 본문에서 맞은 자리를 한 줄 보여 준다. 어느 문서인지만 알려 주면 결국 하나씩 열어
+// 확인해야 하고, 그러면 검색이 목록 필터에 그친다.
+function bodyExcerpt(item, query) {
+  if (!query) return '';
+  const body = String(item.body || '');
+  const at = body.toLowerCase().indexOf(query);
+  if (at < 0) return '';
+  const start = Math.max(0, at - 40);
+  const raw = body.slice(start, at + query.length + 60).replace(/\s+/gu, ' ').trim();
+  return `${start > 0 ? '… ' : ''}${raw}${at + query.length + 60 < body.length ? ' …' : ''}`;
+}
+
 function renderDocuments() {
   const query = state.query.toLowerCase();
-  const documents = state.snapshot.documents.filter((item) => (!state.documentFilter || (item.kind || item.type) === state.documentFilter) && (!query || `${item.id} ${item.title} ${item.description} ${item.file}`.toLowerCase().includes(query)));
-  el('documents-list').innerHTML = documents.length ? documents.map((item) => `<button class="document-row" data-document="${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description || item.file)}</small><span class="chip">${escapeHtml(documentTypeLabel(item))} · ${escapeHtml(documentStateLabel(item.state))}</span></button>`).join('') : '<p class="empty-state">조건에 맞는 문서가 없습니다.</p>';
+  const scope = state.documentSearchScope || 'name';
+  const documents = state.snapshot.documents
+    .filter((item) => (!state.documentFilter || (item.kind || item.type) === state.documentFilter) && documentMatches(item, query, scope))
+    .sort((left, right) => (state.documentSort === 'modified'
+      ? String(right.modifiedAt || '').localeCompare(String(left.modifiedAt || ''))
+      : String(left.id).localeCompare(String(right.id))));
+  el('documents-list').innerHTML = documents.length ? documents.map((item) => {
+    const excerpt = scope === 'body' ? bodyExcerpt(item, query) : '';
+    return `<button class="document-row" data-document="${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(excerpt || item.description || item.file)}</small><span class="document-row-meta"><time datetime="${escapeHtml(item.modifiedAt || '')}">${escapeHtml(shortDate(item.modifiedAt))}</time><span class="chip">${escapeHtml(documentTypeLabel(item))}</span><span class="chip">${escapeHtml(documentStateLabel(item.state))}</span></span></button>`;
+  }).join('') : '<p class="empty-state">조건에 맞는 문서가 없습니다.</p>';
 }
 
 function ownerName(reference) { const match = /\|([^\]]+)\]\]/.exec(reference || ''); return match ? match[1] : reference || '미지정'; }
@@ -397,7 +454,7 @@ function renderContext(item, kind) {
   }
 }
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
-  renderLeaseBanner(item.id); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+  renderLeaseBanner(item.id); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 // 무엇이 막혀 있는지가 목록에서 가장 먼저 읽혀야 한다. 사람 대기(blocker)는 값으로 있었지만
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
@@ -619,7 +676,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', markVisit);
 
-document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
+document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } if (button.dataset.documentScope) { state.documentSearchScope = button.dataset.documentScope; return setView('documents'); } if (button.dataset.documentSort) { state.documentSort = button.dataset.documentSort; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
   // 목록 맥락을 잃지 않고 항목 사이를 옮겨 다닐 수 있다.
   if (button.dataset.person) {
     const [group, id] = button.dataset.person.split(':');

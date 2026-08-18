@@ -384,4 +384,4 @@ function substituteArgs(args, context) {
   }));
 }
 
-module.exports = { BUILTIN, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision };
+module.exports = { BUILTIN, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };

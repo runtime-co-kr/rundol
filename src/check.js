@@ -640,6 +640,20 @@ function checkWorkspaceStore(diagnostics, layout) {
   const workspaceRoot = path.join(layout.root, 'projects', 'workspace');
   const clientsRoot = path.join(workspaceRoot, 'clients');
   const eventsRoot = path.join(workspaceRoot, 'events');
+  // 프로젝트별 활성 멤버. 승인 권한은 자격의 유형만이 아니라 그 자격이 이 프로젝트에
+  // 속하는지에도 달려 있다. 프로젝트마다 한 번만 읽는다.
+  const memberCache = new Map();
+  const activeProjectMembers = (currentLayout, projectKey) => {
+    if (!memberCache.has(projectKey)) {
+      let active = new Set();
+      try {
+        active = new Set(require('./collaboration').readCollaboration(currentLayout.root, projectKey).members
+          .filter((member) => member.fields['상태'] === 'active').map((member) => member.id));
+      } catch (_) { active = new Set(); }
+      memberCache.set(projectKey, active);
+    }
+    return memberCache.get(projectKey);
+  };
   const clients = new Map();
   if (fs.existsSync(clientsRoot)) for (const entry of fs.readdirSync(clientsRoot, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
@@ -706,10 +720,14 @@ function checkWorkspaceStore(diagnostics, layout) {
         // 사람 승인의 신원 인가. sync 전이(RDL-RUN-005)와 같은 자리이고 같은 이유다 —
         // 순수 fold는 레지스트리를 못 보므로 형태만 제한하고, 레지스트리를 가진 이
         // 계층이 "그 clientId가 정말 human 유형 활성 Client인가"를 답한다.
+        //
+        // 소유 멤버까지 본다. human 자격은 어느 프로젝트에나 등록될 수 있으므로,
+        // 유형과 상태만 맞으면 옆 프로젝트의 검토자가 이 프로젝트를 승인하게 된다.
         if (event.type === 'run.forced' && event.basis === 'human-approval') {
           const client = clients.get(event.clientId);
-          if (!client || client.status !== 'active' || client.type !== 'human') {
-            diagnostic(diagnostics, { code: 'RDL-RUN-031', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `사람 승인의 clientId가 활성 human Client가 아닙니다: ${event.clientId || '(없음)'}(${client ? client.type : '미등록'})` });
+          const member = client && event.projectId ? activeProjectMembers(layout, event.projectId).has(client.owner) : false;
+          if (!client || client.status !== 'active' || client.type !== 'human' || !member) {
+            diagnostic(diagnostics, { code: 'RDL-RUN-031', category: 'workspace', file: relative(layout.root, file), line: index + 1, message: `사람 승인의 clientId가 이 프로젝트의 활성 human Client가 아닙니다: ${event.clientId || '(없음)'}(${client ? `${client.type}, owner ${client.owner}` : '미등록'})` });
           }
         }
         // 사후 변조. 이미 기록된 이벤트의 값만 바꿔치기하면 승인은 자기가 본 적 없는
