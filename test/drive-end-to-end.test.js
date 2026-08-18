@@ -61,6 +61,9 @@ try {
   git(['remote', 'add', 'origin', remote]);
   rdl(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
   rdl(['client', 'register', 'agent-a', '--name', '저작 에이전트', '--type', 'agent', '--owner', 'MEMBER-001']);
+  // 승인은 실행 주체가 할 수 없다. 런을 모는 자격과 그것을 승인하는 자격이 같으면
+  // 사람 게이트는 이름만 남는다.
+  rdl(['client', 'register', 'reviewer-1', '--name', '검토자', '--type', 'human', '--owner', 'MEMBER-001']);
 
   // 무엇을 만들 것인가는 사람이 정한다. 절차는 이미 있는 문서를 다룬다.
   const document = rdl(['doc', 'create', 'PRD', '종단 검증 대상', '--project', 'crm', '--owner', 'MEMBER-001',
@@ -123,26 +126,31 @@ try {
   assert.match(`${blocked.stdout}${blocked.stderr}`, /RDL-SYNC-030/u,
     `사람 게이트 전 공유는 RDL-SYNC-030으로 막혀야 합니다: ${blocked.stdout}${blocked.stderr}`);
 
-  // 하네스가 띄운 자식은 사람 게이트를 스스로 지나갈 수 없다. 난간이지 경계는
-  // 아니다 — 표시를 지운 자식은 통과하고, 그것은 위의 공유 차단이 잡는다.
-  const selfApproved = rdlRaw(['run', 'step', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', '에이전트 자가 승인'],
-    { RUNDOL_HARNESS_CHILD: '1' });
-  assert.notStrictEqual(selfApproved.status, 0, '하네스 자식의 사람 게이트 자가 승인이 막히지 않았습니다');
-  assert.match(`${selfApproved.stdout}${selfApproved.stderr}`, /스스로 승인할 수 없습니다/u,
-    `${selfApproved.stdout}${selfApproved.stderr}`);
+  // 실행 주체는 승인할 수 없다. 환경 표시가 아니라 자격으로 막는다 — 환경 표시는
+  // 자식이 지울 수 있지만, agent 자격으로 승인 명령을 실행하는 것은 지울 수 없다.
+  const selfApproved = rdlRaw(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--reason', '에이전트 자가 승인']);
+  assert.notStrictEqual(selfApproved.status, 0, 'agent Client의 자가 승인이 막히지 않았습니다');
+  assert.match(`${selfApproved.stdout}${selfApproved.stderr}`, /유형\(agent\)/u, `${selfApproved.stdout}${selfApproved.stderr}`);
+
+  // 거꾸로도 막힌다. human 자격으로는 자동 실행 명령을 수행할 수 없다 — 그래야
+  // 하네스가 이 자격을 들고 자기를 승인하는 길이 닫힌다.
+  const humanDrive = rdlRaw(['run', 'drive', '--run', started.runId, '--project', 'crm', '--client-id', 'reviewer-1']);
+  assert.notStrictEqual(humanDrive.status, 0, 'human Client의 자동 실행이 막히지 않았습니다');
+  assert.match(`${humanDrive.stdout}${humanDrive.stderr}`, /실행 명령을 수행할 수 없습니다/u,
+    `${humanDrive.stdout}${humanDrive.stderr}`);
 
   // 승인은 상태에 붙는다. 검증이 본 커밋과 지금 HEAD가 다르면 승인할 수 없다 —
   // 그 상태는 판정된 적이 없기 때문이다. 이것이 없으면 "검증 A가 통과한 뒤 HEAD가
   // B로 바뀌어도 완료와 공유는 B를 내보낸다"가 성립한다.
   git(['commit', '--allow-empty', '-m', '런과 무관한 커밋'], projectRoot);
-  const drifted = rdlRaw(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--reason', '내용을 읽고 승인한다']);
+  const drifted = rdlRaw(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'reviewer-1', '--reason', '내용을 읽고 승인한다']);
   assert.notStrictEqual(drifted.status, 0, 'HEAD가 움직인 뒤의 승인이 허용됐습니다');
   assert.match(`${drifted.stdout}${drifted.stderr}`, /판정된 적이 없으므로/u, `${drifted.stdout}${drifted.stderr}`);
   git(['reset', '--hard', 'HEAD~1'], projectRoot);
 
   // 사람이 승인하면 공유된다. 우회 없이. 이것이 정상 경로이고, 정상 경로가
   // --share-unverified를 요구한다면 그 우회는 이미 우회가 아니다.
-  const approved = rdl(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a', '--reason', '내용을 읽고 승인한다']);
+  const approved = rdl(['run', 'approve', '--run', started.runId, '--project', 'crm', '--client-id', 'reviewer-1', '--reason', '내용을 읽고 승인한다']);
   assert.strictEqual(approved.commit, saveEvent.commit, '승인이 검증된 커밋에 붙지 않았습니다');
   rdl(['run', 'complete', '--run', started.runId, '--project', 'crm', '--client-id', 'agent-a']);
   const shared = rdlRaw(['sync', '--project', 'crm', '--client-id', 'agent-a']);

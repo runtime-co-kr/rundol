@@ -596,6 +596,18 @@ function ownershipState(events) {
         // 인가 매트릭스가 허용한 비소유자 forced 해소다. 정당성은 여기가 아니라
         // operationOutcomeState의 conflictId·후보 대조가 검증한다.
         visible.push(record);
+      } else if (record.canonical.type === 'run.forced' && record.canonical.basis === 'human-approval' && record.canonical.commit) {
+        // 사람의 승인은 소유자가 쓰지 않는다. 런을 모는 것과 그것을 승인하는 것은
+        // 다른 역할이고, 같은 자격이 둘 다 하면 게이트는 이름만 남는다. 그래서
+        // 승인은 인가된 외래 전이다.
+        //
+        // 순수한 fold는 형태만 제한한다 — 승인자가 실제로 human 유형 활성 Client인지는
+        // 원장만 보고 알 수 없고, 그 대조는 registry를 쥔 check가 한다(RDL-RUN-031).
+        //
+        // foreignTransitionEventIds에는 넣지 않는다. 그 집합은 진행 계산에서 빼고
+        // 우선순위로 따로 적용하는 전이(synced·halted)용이고, 승인은 커서를 전진
+        // 시켜야 하므로 본 루프가 그대로 처리해야 한다.
+        visible.push(record);
       } else {
         diagnostics.push({ code: 'RDL-RUN-023', severity: 'error', eventId: record.canonical.eventId, message: 'event clientId does not match the epoch owner' });
       }
@@ -751,6 +763,22 @@ function foldProgress(events, ownership) {
   // 안에 두면 절대 실행되지 않는 코드가 된다.
   const startedEvent = events.find((item) => item.type === 'run.started');
   if (startedEvent && startedEvent.targetArtifactId) artifactIds.push(startedEvent.targetArtifactId);
+  // 사람의 승인은 소유자가 아닌 클라이언트가 쓴다. 그래서 병합 배열에서의 위치가
+  // 소유자 이벤트와 어떤 순서로 놓일지는 시계 없이 정할 수 없다 — 외래 전이를
+  // 위치가 아니라 우선순위로 적용하는 것과 같은 이유다. 위치로 적용하면 같은
+  // 이벤트 집합이 읽는 순서에 따라 승인되기도, 안 되기도 한다.
+  //
+  // 순서에 기대지 않고도 안전한 이유는 결박이 시각이 아니라 커밋이기 때문이다.
+  // 승인이 지목한 커밋과 검증·완료의 커밋이 같은지는 순서와 무관하게 답할 수 있고,
+  // 그 대조가 이 승인이 무엇에 대한 것이었는지를 정한다.
+  const humanApprovalEvents = events.filter((item) => item.type === 'run.forced'
+    && item.basis === 'human-approval' && item.commit
+    && byId.get(item.stepId) && byId.get(item.stepId).human === true);
+  const humanApprovalIds = new Set(humanApprovalEvents.map((item) => item.eventId));
+  for (const event of humanApprovalEvents) {
+    completed.add(event.stepId);
+    forcedSteps.push({ stepId: event.stepId, reason: event.reason || null, basis: 'human-approval', commit: event.commit });
+  }
   const diagnostics = ownership ? ownership.diagnostics.slice() : [];
   let lastGate = null;
   // 소유권 충돌이어도 가시 이벤트까지의 진행(커서·완료)은 계산해 보존한다 —
@@ -765,6 +793,9 @@ function foldProgress(events, ownership) {
   let spareResumes = 0;
   for (const event of events.filter((item) => !['run.started', 'run.takeover', 'run.ownership_resolved'].includes(item.type))) {
     if (foreignSet.has(event.eventId)) { foreignTransitions.push(event); continue; }
+    // 사람의 승인은 루프 밖에서 이미 적용했다. 여기서 다시 보면 커서 검사에 걸려
+    // 무효로 기록된다 — 소유자 이벤트보다 뒤에 놓였다는 이유만으로.
+    if (humanApprovalIds.has(event.eventId)) continue;
     const current = cursor();
     const step = current ? byId.get(current) : null;
     const invalid = (message) => diagnostics.push({ code: 'RDL-RUN-022', severity: 'error', eventId: event.eventId, message });
@@ -870,6 +901,7 @@ function foldProgress(events, ownership) {
     completedSteps: order.filter((identifier) => completed.has(identifier)), attempts, forcedSteps, artifactIds, lastGate, haltReason,
     stepCommits, producedCommits: producedCommits.slice(),
     verifiedCommit, humanApprovals, humanGateSteps: steps.filter((step) => step.human === true).map((step) => step.id),
+    completedCommit: completedLocals.length ? completedLocals[completedLocals.length - 1].commit : null,
     // 사람 게이트를 사람의 승인이 아닌 방법으로 지나간 런. 지나가긴 했으나 누가
     // 무엇을 승인했는지 원장이 답하지 못하므로, 공유 단계에서 다시 묻는다.
     unapprovedHumanSteps: humanSteps.filter((item) => item.basis !== 'human-approval').map((item) => item.stepId),

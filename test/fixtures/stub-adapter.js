@@ -9,6 +9,7 @@
 //   verify 모드  {verdict, findings}
 
 const fs = require('fs');
+const path = require('path');
 
 const [instructionFile, contextFile, resultFile] = process.argv.slice(2);
 if (!instructionFile || !contextFile || !resultFile) {
@@ -20,13 +21,28 @@ const instruction = JSON.parse(fs.readFileSync(instructionFile, 'utf8'));
 const context = JSON.parse(fs.readFileSync(contextFile, 'utf8'));
 
 // 이 스텁의 행동은 파일로 정한다. 환경 변수로는 정할 수 없다 — 하네스는 자식에게
-// 닫힌 allowlist만 넘기므로 RUNDOL_STUB_* 는 여기까지 오지 않는다. 그것을 모르고
-// 환경으로 조종하려 들면 스텁은 조용히 기본값으로 돌고, 시험은 자기가 무엇을
-// 시켰는지 모르는 채 통과한다.
+// 닫힌 allowlist만 넘기므로 RUNDOL_STUB_* 는 여기까지 오지 않는다.
 //
-// .rundol/은 gitignore 대상이라 이 파일은 작업 트리를 더럽히지 않는다.
-const CONTROL = '.rundol/stub-control.json';
-const control = fs.existsSync(CONTROL) ? JSON.parse(fs.readFileSync(CONTROL, 'utf8')) : {};
+// 경로는 cwd 기준으로 찾을 수도 없다. 저작은 격리 worktree에서 도는데 .rundol/은
+// gitignore 대상이라 그 트리에 없기 때문이다. 대신 하네스가 절대 경로로 넘겨 준
+// context.json에서 거슬러 올라가 찾는다 — 그것은 언제나 본 트리의 .rundol 아래에 있다.
+//
+// 이 두 번의 실수는 같은 종류다. 시험이 무엇을 시켰는지 확인하지 않으면, 스텁은
+// 조용히 기본값으로 돌고 시험은 자기가 아무것도 시키지 않은 줄 모른 채 통과한다.
+function findControl(from) {
+  let current = path.resolve(from);
+  for (let depth = 0; depth < 12; depth += 1) {
+    if (path.basename(current) === '.rundol') {
+      const candidate = path.join(current, 'stub-control.json');
+      if (fs.existsSync(candidate)) return JSON.parse(fs.readFileSync(candidate, 'utf8'));
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return {};
+}
+const control = findControl(path.dirname(contextFile));
 
 // 모드는 지시문이 정한다. context에는 lensId가 검증일 때만 있다.
 const mode = instruction.allowedMode === 'verify' || context.lensId ? 'verify' : 'author';

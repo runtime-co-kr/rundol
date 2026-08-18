@@ -43,6 +43,13 @@ function authorizeClient(start, project, clientId, allowedTypes) {
   if (!requested) throw new Error('--client-id <id>가 필요합니다. 공유 이벤트 작성자는 명시해야 합니다.');
   const client = getClient(start, requested);
   if (client.status !== 'active') throw new Error(`비활성 Client는 런을 변경할 수 없습니다: ${requested}`);
+  // human 자격으로 할 수 있는 일은 그 자격을 명시적으로 허용한 명령뿐이다. 이것이
+  // 이 유형의 전부다 — 승인만 할 수 있고 실행은 할 수 없어야, 하네스가 이 자격을
+  // 들고 자기 자신을 승인하는 길이 막힌다. 허용 목록을 지정하지 않은 명령은
+  // 실행 명령이므로 여기서 거부한다.
+  if (client.type === 'human' && !(Array.isArray(allowedTypes) && allowedTypes.includes('human'))) {
+    throw new Error(`human 유형 Client는 실행 명령을 수행할 수 없습니다: ${requested}. 승인(rdl run approve)에만 쓰입니다.`);
+  }
   if (Array.isArray(allowedTypes) && !allowedTypes.includes(client.type)) throw new Error(`${requested}의 Client 유형(${client.type})은 이 명령을 실행할 수 없습니다.`);
   if (!projectMember(project, client.owner)) throw new Error(`${client.owner}은 ${project.key} 프로젝트의 활성 멤버가 아닙니다.`);
   return client;
@@ -268,8 +275,18 @@ function approveRun(start, options) {
   if (!definition || definition.human !== true) throw new Error(`사람 게이트가 아닌 스텝은 승인으로 지날 수 없습니다: ${stepId}`);
   const reason = String(options.reason || '').trim();
   if (!reason) throw new Error('--reason <사유>가 필요합니다. 무엇을 보고 승인했는지가 기록되어야 합니다.');
-  // 난간은 여기에도 둔다. 경계가 아니라는 것은 run step --force에서 적은 그대로다.
-  if (process.env.RUNDOL_HARNESS_CHILD === '1') throw new Error(`${stepId}은 사람 게이트입니다. 하네스가 실행한 프로세스는 스스로 승인할 수 없습니다.`);
+  // 승인의 주체는 human 유형 Client여야 한다. 이것은 인증이 아니라 귀속이다 —
+  // Rundol은 키보드 앞에 누가 있는지 모른다. 아는 것은 "이 자격으로는 자동 실행
+  // 명령이 거부된다"는 것뿐이고, 그래서 하네스는 이 자격을 들고 있을 수 없다.
+  // 환경 표시(RUNDOL_HARNESS_CHILD)는 지울 수 있으므로 그 위에 판정을 얹지 않는다.
+  //
+  // 승인자는 런의 소유자가 아니다. 런을 모는 것과 그것을 승인하는 것은 다른
+  // 역할이고, 같은 자격이 둘 다 하면 게이트는 이름만 남는다. 그래서 소유권 검사가
+  // 아니라 신원 검사를 건다 — 활성 human Client이고 이 프로젝트의 활성 멤버일 것.
+  const approver = authorizeClient(start, context.project, options.clientId, ['human']);
+  if (!context.ownership || context.ownership.status !== 'ACTIVE') {
+    throw new Error('런 소유권이 활성 상태가 아닙니다. 승인은 활성 epoch에만 기록할 수 있습니다.');
+  }
   // 승인은 상태에 붙는다. 무엇을 승인했는지 말하지 않는 승인은, 뒤에 무엇이
   // 공유되든 자기가 승인한 것이라고 주장하게 된다.
   const commit = runGit(['rev-parse', 'HEAD'], { cwd: context.project.root }).stdout.trim().toLowerCase();
@@ -277,9 +294,9 @@ function approveRun(start, options) {
   if (verified && commit !== verified) {
     throw new Error(`검증이 본 커밋과 현재 HEAD가 다릅니다. 검증 ${verified}, 현재 ${commit}. 이 상태는 판정된 적이 없으므로 승인할 수 없습니다.`);
   }
-  const event = Object.assign({ type: 'run.forced', stepId, reason, basis: 'human-approval', commit, clientId: actorClientId(context, start, options) }, ownershipFields(context));
+  const event = Object.assign({ type: 'run.forced', stepId, reason, basis: 'human-approval', commit, clientId: approver.id }, ownershipFields(context));
   const recorded = ledger.recordRunEvent(start, { project: options.project, runId: options.run, rootRequestId: options.requestId, event });
-  return { runId: options.run, stepId, approved: true, commit, reason, event: recorded.event };
+  return { runId: options.run, stepId, approved: true, approvedBy: approver.id, commit, reason, event: recorded.event };
 }
 
 function haltRun(start, options) {
@@ -298,7 +315,19 @@ function completeRun(start, options) {
   const steps = started.procedure.resolved.steps.map((step) => step.id);
   const incomplete = steps.filter((identifier) => !fold.completedSteps.includes(identifier));
   if (incomplete.length) throw new Error(`완료되지 않은 스텝이 있습니다: ${incomplete.join(', ')}`);
-  const commit = runGit(['rev-parse', 'HEAD'], { cwd: context.project.root }).stdout.trim();
+  const commit = runGit(['rev-parse', 'HEAD'], { cwd: context.project.root }).stdout.trim().toLowerCase();
+  // 완료는 승인된 상태에 붙는다. 승인 시점만 보고 완료 시점에 다시 묻지 않으면,
+  // 커밋 A를 승인해 놓고 HEAD를 B로 옮긴 뒤 완료·공유해서 B를 내보낼 수 있다.
+  // 승인이 지목한 커밋과 지금 HEAD가 같을 때만 이 런은 끝난다.
+  const approvals = fold.humanApprovals || [];
+  for (const approval of approvals) {
+    if (approval.commit && approval.commit !== commit) {
+      throw new Error(`승인된 커밋과 현재 HEAD가 다릅니다. 승인 ${approval.commit}(${approval.stepId}), 현재 ${commit}. 승인 이후 이동한 상태는 이 런의 결과가 아닙니다.`);
+    }
+  }
+  if (fold.verifiedCommit && commit !== fold.verifiedCommit) {
+    throw new Error(`검증된 커밋과 현재 HEAD가 다릅니다. 검증 ${fold.verifiedCommit}, 현재 ${commit}.`);
+  }
   const recorded = ledger.recordRunEvent(start, {
     project: options.project,
     runId: options.run,

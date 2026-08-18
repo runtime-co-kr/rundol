@@ -11,7 +11,11 @@ const eventStore = require('./event-store');
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const MEMBER = /^MEMBER-\d{3}$/u;
-const TYPES = new Set(['device', 'agent', 'service']);
+// human은 자동 실행의 주체가 아니라 책임의 주체다. 이 유형의 전부는 "하네스가
+// 쥘 수 없는 자격"이라는 것이고, 그것도 Rundol이 보장하는 게 아니라 등록한
+// 사람들이 지키기로 한 약속이다 — 사람을 탐지할 방법은 없으므로 이것은 인증이
+// 아니라 귀속이다. 대신 그 자격으로는 자동 실행 명령 자체가 거부된다.
+const TYPES = new Set(['device', 'agent', 'service', 'human']);
 const CLIENT_FILE = /^client-([a-z0-9]+(?:-[a-z0-9]+)*)\.yaml$/u;
 
 function atomicWrite(file, content) {
@@ -66,7 +70,7 @@ function registerClient(start, input) {
   const id = String(input.id || '').trim().toLowerCase();
   const type = String(input.type || '').trim().toLowerCase();
   const owner = String(input.owner || '').trim().toUpperCase();
-  if (!TYPES.has(type)) throw new Error('--type <device|agent|service>가 필요합니다.');
+  if (!TYPES.has(type)) throw new Error('--type <device|agent|service|human>가 필요합니다.');
   if (!MEMBER.test(owner)) throw new Error('--owner <MEMBER-ID>가 필요합니다.');
   if (!String(input.name || '').trim()) throw new Error('--name <Client 이름>이 필요합니다.');
   const file = clientFile(store, id);

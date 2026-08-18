@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { parseJsonWithDuplicateCheck, loadHarnessSettings } = require('./harness-settings');
@@ -303,21 +304,26 @@ function foreignChangedPaths(projectRoot, targetReal) {
 // 모르게 된다 — operation-id 재시도가 약속하는 "같은 시도는 같은 결과"도 깨진다.
 const AUTHOR_ROLLBACK_LIMIT = 16 * 1024 * 1024;
 
-function restoreAuthorTarget(snapshot, bytes) {
-  if (!bytes) return false;
-  try {
-    if (fs.existsSync(snapshot.real)) {
-      const stat = fs.lstatSync(snapshot.real);
-      // 자리가 심링크·디렉터리로 바뀌었으면 되돌리지 않는다. 그 위에 쓰는 것은
-      // 복구가 아니라 하네스가 알 수 없는 곳에 쓰는 일이다.
-      if (stat.isSymbolicLink() || !stat.isFile()) return false;
-      if (hashFile(snapshot.real) === snapshot.hash) return false;
-    }
-    fs.writeFileSync(snapshot.real, bytes);
-    return true;
-  } catch (_) {
-    return false;
-  }
+// 저작은 일회용 git worktree 안에서 돈다. 검사만으로는 부족하다는 것이 이유다 —
+// 대상 밖 변경을 발견해 실행을 거부해도, 그 변경은 이미 작업 트리에 있고 어댑터가
+// 스스로 만든 커밋은 이미 브랜치에 있다. 발견은 되돌림이 아니다.
+//
+// detached worktree 안에서는 어댑터가 무엇을 쓰든 무엇을 커밋하든 프로젝트 브랜치에
+// 닿지 않는다. 끝나면 대상 파일 하나만 본 트리로 옮기고 나머지는 worktree와 함께
+// 버린다. 이것은 OS 샌드박스가 아니다 — 어댑터는 절대 경로로 어디든 쓸 수 있다.
+// 다만 하네스가 받아들이는 것이 대상 하나로 좁혀지고, git을 통한 오염이 막힌다.
+function createAuthorSandbox(projectRoot, instanceId) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-author-'));
+  const tree = path.join(base, 'w');
+  runGit(['worktree', 'add', '--detach', tree, 'HEAD'], { cwd: projectRoot });
+  return { base, root: fs.realpathSync.native(tree) };
+}
+
+function removeAuthorSandbox(projectRoot, sandbox) {
+  if (!sandbox) return;
+  try { runGit(['worktree', 'remove', '--force', sandbox.root], { cwd: projectRoot, allowFailure: true }); } catch (_) {}
+  try { fs.rmSync(sandbox.base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch (_) {}
+  try { runGit(['worktree', 'prune'], { cwd: projectRoot, allowFailure: true }); } catch (_) {}
 }
 
 function writeExclusiveJson(file, value, readOnly) {
@@ -503,9 +509,14 @@ async function runAdapterOnce(invocation, executionOptions) {
   if (!fs.statSync(projectRoot).isDirectory()) throw new Error('Project root must be a directory.');
   const instruction = resolveInstructionPin(invocation.instruction, { mode: invocation.mode, lensId: invocation.lensId });
   const targetRelative = normalizedRelative(invocation.targetPath, 'targetPath');
-  const target = trustedFileSnapshot(projectRoot, targetRelative, 'targetPath');
-  const contexts = Array.from(new Set((invocation.allowedContextPaths || []).map((item) => normalizedRelative(item, 'allowedContextPaths')))).sort();
-  const contextSnapshots = contexts.map((context) => trustedFileSnapshot(projectRoot, context, `context ${context}`));
+  const mainTarget = trustedFileSnapshot(projectRoot, targetRelative, 'targetPath');
+  // 저작이 시작되는 시점에 본 트리가 대상 밖에서 더러우면 시작하지 않는다. 격리
+  // worktree를 쓰더라도 이 검사는 남는다 — 뒤따르는 save가 본 트리 전체를 커밋하므로,
+  // 저작과 무관한 변경이 떠 있으면 그것이 이 런의 결과에 섞인다.
+  if (invocation.mode === 'author') {
+    const foreign = foreignChangedPaths(projectRoot, mainTarget.real);
+    if (foreign.length) throw new Error(`Author adapters require a project worktree clean outside the target: ${foreign.slice(0, 5).join(', ')}`);
+  }
   const headings = boundedStringArray(invocation.contractHeadings || instruction.requiredContractHeadings, 'contractHeadings', 200);
   if (headings.length === 0 || headings.length > 32 || new Set(headings).size !== headings.length) throw new Error('contractHeadings must be 1-32 unique values.');
   const pin = safeMetadata(invocation.pin || {}, 'pin');
@@ -513,10 +524,18 @@ async function runAdapterOnce(invocation, executionOptions) {
   const timeoutSeconds = invocation.adapter.timeoutSeconds;
   if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 3600) throw new Error('Adapter timeoutSeconds is invalid.');
   if (!Array.isArray(invocation.adapter.argsTemplate) || invocation.adapter.argsTemplate.length > 64 || invocation.adapter.argsTemplate.some((item) => typeof item !== 'string' || item.length > 2048 || /\0/u.test(item))) throw new Error('Adapter argsTemplate is invalid.');
-  const beforeGit = gitSnapshot(projectRoot);
-  // 저작은 대상 문서를 고치는 일이므로, 되돌릴 수 있으려면 고치기 전 바이트가 필요하다.
-  if (invocation.mode === 'author' && target.size > AUTHOR_ROLLBACK_LIMIT) throw new Error('Author target is too large to keep the attempt reversible.');
-  const authorRollback = invocation.mode === 'author' ? fs.readFileSync(target.real) : null;
+  // 저작은 대상 문서를 고치는 일이므로, 옮겨 담으려면 지금 바이트가 필요하다.
+  if (invocation.mode === 'author' && mainTarget.size > AUTHOR_ROLLBACK_LIMIT) throw new Error('Author target is too large to sandbox.');
+  const authorBytes = invocation.mode === 'author' ? fs.readFileSync(mainTarget.real) : null;
+  const sandbox = invocation.mode === 'author' ? createAuthorSandbox(projectRoot) : null;
+  // 저작이 보고 쓰는 트리. 격리 worktree는 HEAD 상태이므로, 본 트리에서 아직 커밋되지
+  // 않은 대상 내용을 그대로 옮겨 놓는다 — 재시도가 이전 시도의 결과 위에서 이어져야 한다.
+  const workRoot = sandbox ? sandbox.root : projectRoot;
+  if (sandbox) fs.writeFileSync(path.resolve(workRoot, targetRelative), authorBytes);
+  const target = trustedFileSnapshot(workRoot, targetRelative, 'targetPath');
+  const contexts = Array.from(new Set((invocation.allowedContextPaths || []).map((item) => normalizedRelative(item, 'allowedContextPaths')))).sort();
+  const contextSnapshots = contexts.map((context) => trustedFileSnapshot(workRoot, context, `context ${context}`));
+  const beforeGit = gitSnapshot(workRoot);
   const location = invocationDirectory(projectRoot, invocation);
   inspectExistingComponents(projectRoot, location.parent, 'directory');
   const directory = makeDirectoriesExclusive(projectRoot, location.parent, location.instanceId);
@@ -554,13 +573,6 @@ async function runAdapterOnce(invocation, executionOptions) {
   const responseBase = { adapter: baseReceipt.adapter, instanceId: location.instanceId, invocationRoot: directory };
   try {
     if (invocation.mode === 'verify' && beforeGit.status) throw new Error('Verifier requires a clean project worktree.');
-    // 저작 어댑터는 자기 대상만 쓴다. 시작 시점에 이미 남의 변경이 떠 있으면 실행
-    // 뒤에 무엇이 저작의 결과인지 구분할 수 없고, 저장 스텝은 그 남의 변경까지 같은
-    // 커밋에 담는다 — 저작 권한이 조용히 프로젝트 전체 쓰기로 넓어진다. 시작을 막는다.
-    if (invocation.mode === 'author') {
-      const foreign = foreignChangedPaths(projectRoot, target.real);
-      if (foreign.length) throw new Error(`Author adapters require a project worktree clean outside the target: ${foreign.slice(0, 5).join(', ')}`);
-    }
     for (const [file, expected] of [[instructionFile, instructionHash], [contextFile, contextHash]]) {
       inspectExistingComponents(directory, file, 'file');
       if (hashFile(file) !== expected) throw new Error(`${path.basename(file)} changed before spawn.`);
@@ -575,10 +587,22 @@ async function runAdapterOnce(invocation, executionOptions) {
     // These are the last filesystem operations before spawn. Re-resolve every
     // trusted input so a symlink/file replacement between configuration and
     // execution cannot silently change the verifier's evidence set.
-    revalidateTrustedFile(projectRoot, target, 'targetPath');
-    for (const context of contextSnapshots) revalidateTrustedFile(projectRoot, context, `context ${context.relative}`);
+    revalidateTrustedFile(workRoot, target, 'targetPath');
+    for (const context of contextSnapshots) revalidateTrustedFile(workRoot, context, `context ${context.relative}`);
+    // 저작은 격리 worktree에서 돌지만 결과는 본 트리의 대상 파일로 돌아간다. 그 자리가
+    // 스냅숏 이후 바뀌었다면 지금 멈춘다 — 나중에 덮어쓰면 남의 편집이 조용히 사라지고,
+    // 어댑터를 한 번 돌린 값도 버려진다.
+    if (sandbox) {
+      revalidateTrustedFile(projectRoot, mainTarget, 'targetPath');
+      // 본 트리 청결 검사를 스폰 직전에 한 번 더 한다. 격리 worktree는 HEAD에서
+      // 만들어지므로 근거 파일(context)은 커밋된 내용이다. 본 트리가 대상 밖에서
+      // 더러우면 저작이 읽은 근거와 저장될 내용이 달라지고, 그 차이는 아무 데도
+      // 기록되지 않는다. 앞선 검사만으로는 그 사이에 생긴 변경을 못 본다.
+      const foreign = foreignChangedPaths(projectRoot, mainTarget.real);
+      if (foreign.length) throw new Error(`Author adapters require a project worktree clean outside the target: ${foreign.slice(0, 5).join(', ')}`);
+    }
     const signal = executionOptions && executionOptions.signal || invocation.signal;
-    const execution = await executeOnce(executable, args, { cwd: projectRoot, env: adapterEnvironment(process.env), timeoutSeconds, signal, onSpawn: executionOptions && executionOptions.onSpawn });
+    const execution = await executeOnce(executable, args, { cwd: workRoot, env: adapterEnvironment(process.env), timeoutSeconds, signal, onSpawn: executionOptions && executionOptions.onSpawn });
     if (execution.category !== 'success') {
       let resultHash;
       if (fs.existsSync(resultFile)) {
@@ -590,7 +614,8 @@ async function runAdapterOnce(invocation, executionOptions) {
       // 지키면 파일을 바꾼 뒤 실패·timeout으로 끝난 verifier의 위반이 조용히
       // 사라진다. 위반은 실패 사유에 더해 별도 진단으로 귀속을 남긴다.
       const mutated = invocation.mode === 'verify' && canonicalJson(gitSnapshot(projectRoot)) !== canonicalJson(beforeGit);
-      const rolledBack = restoreAuthorTarget(target, authorRollback);
+      // 저작이 실패하면 되돌릴 것이 없다. 저작은 격리 worktree에서만 썼고, 본 트리로
+      // 옮기는 것은 성공 경로에서만 하기 때문이다. worktree는 finally에서 통째로 버린다.
       const receipt = failureReceipt(directory, baseReceipt, category, resultHash);
       const diagnosticCode = category === 'child-failure'
         ? 'ADAPTER_CHILD_FAILED'
@@ -599,7 +624,6 @@ async function runAdapterOnce(invocation, executionOptions) {
           : category === 'cancelled' ? 'ADAPTER_CANCELLED' : 'ADAPTER_SPAWN_FAILED';
       const codes = [diagnosticCode];
       if (mutated) codes.push('ADAPTER_VERIFIER_MUTATED');
-      if (rolledBack) codes.push('ADAPTER_AUTHOR_ROLLED_BACK');
       return { ...responseBase, exitCode: category === 'child-failure' ? 1 : 2, status: category, receipt, diagnosticCodes: codes };
     }
     if (!fs.existsSync(resultFile)) throw new Error('Adapter exited successfully without result.json.');
@@ -610,34 +634,43 @@ async function runAdapterOnce(invocation, executionOptions) {
     // 스폰 직전 재검증(위)은 두 모드 모두에 남긴다. 그것은 스냅숏과 실행 사이의
     // 교체를 막는 것이고 저작 여부와 무관하다. 근거 파일(context)도 두 모드에서
     // 그대로 검증한다 — 읽기 입력이지 저작 대상이 아니다.
-    if (invocation.mode === 'verify') revalidateTrustedFile(projectRoot, target, 'targetPath');
+    if (invocation.mode === 'verify') revalidateTrustedFile(workRoot, target, 'targetPath');
     // 저작 모드에서 내용은 바뀌어도 된다 — 그게 저작이다. 그러나 그 자리가 여전히
-    // 프로젝트 안의 보통 파일이어야 한다. 해시 하나만 빼고 나머지 계약은 그대로다.
-    else regularRealFile(projectRoot, target.relative, 'targetPath');
-    for (const context of contextSnapshots) revalidateTrustedFile(projectRoot, context, `context ${context.relative}`);
+    // 트리 안의 보통 파일이어야 한다. 해시 하나만 빼고 나머지 계약은 그대로다.
+    else regularRealFile(workRoot, target.relative, 'targetPath');
+    for (const context of contextSnapshots) revalidateTrustedFile(workRoot, context, `context ${context.relative}`);
     const resultBytes = readStableResult(resultFile, directory);
     const resultHash = sha256(resultBytes);
-    const result = validateResult(invocation.mode, resultBytes.toString('utf8'), projectRoot);
+    const result = validateResult(invocation.mode, resultBytes.toString('utf8'), workRoot);
     for (const [file, expected] of [[instructionFile, instructionHash], [contextFile, contextHash]]) {
       inspectExistingComponents(directory, file, 'file');
       const real = fs.realpathSync.native(file);
       contained(directory, real, path.basename(file));
       if (hashFile(real) !== expected) throw new Error(`${path.basename(file)} changed during adapter execution.`);
     }
-    if (invocation.mode === 'verify') revalidateTrustedFile(projectRoot, target, 'targetPath');
-    else regularRealFile(projectRoot, target.relative, 'targetPath');
-    for (const context of contextSnapshots) revalidateTrustedFile(projectRoot, context, `context ${context.relative}`);
-    const afterGit = gitSnapshot(projectRoot);
+    if (invocation.mode === 'verify') revalidateTrustedFile(workRoot, target, 'targetPath');
+    else regularRealFile(workRoot, target.relative, 'targetPath');
+    for (const context of contextSnapshots) revalidateTrustedFile(workRoot, context, `context ${context.relative}`);
+    const afterGit = gitSnapshot(workRoot);
     if (invocation.mode === 'verify' && canonicalJson(afterGit) !== canonicalJson(beforeGit)) throw new Error('Verifier modified the project worktree.');
     // HEAD는 두 모드 모두에서 움직이면 안 된다. 어댑터가 스스로 커밋하면 절차의 저장
     // 스텝은 자기가 무엇을 커밋했는지 말할 수 없고, 검증이 결박될 커밋을 하네스가
-    // 정하지 못한다 — 무엇이 판정됐는지가 어댑터의 손에 넘어간다.
+    // 정하지 못한다 — 무엇이 판정됐는지가 어댑터의 손에 넘어간다. 저작의 커밋은
+    // 격리 worktree의 detached HEAD에 남으므로 프로젝트 브랜치에는 닿지 않는다.
     if (afterGit.head !== beforeGit.head) throw new Error('Adapter moved project HEAD.');
-    // 저작이 만질 수 있는 것은 자기 대상 하나다. 여기서 막지 않으면 저장이 그 변경을
-    // 함께 커밋하고, 어댑터는 문서 한 편을 쓰라는 권한으로 프로젝트 전체를 고친다.
+    // 저작이 만질 수 있는 것은 자기 대상 하나다. 대상 밖 변경은 격리 worktree와 함께
+    // 버려지지만, 버리는 것으로 끝내지 않고 거부한다 — 조용히 지워진 시도는 다음에
+    // 또 일어나고, 무엇이 왜 빠졌는지 아무도 모르게 된다.
     if (invocation.mode === 'author') {
-      const strayed = foreignChangedPaths(projectRoot, target.real);
+      const strayed = foreignChangedPaths(workRoot, target.real);
       if (strayed.length) throw new Error(`Author adapter changed files outside its target: ${strayed.slice(0, 5).join(', ')}`);
+    }
+    // 여기까지 온 저작만 본 트리에 닿는다. 옮기는 것은 대상 파일 하나뿐이다.
+    if (sandbox) {
+      const produced = fs.readFileSync(target.real);
+      const destination = regularRealFile(projectRoot, targetRelative, 'targetPath').file;
+      if (hashFile(destination) !== mainTarget.hash) throw new Error('targetPath changed in the project worktree during authoring.');
+      fs.writeFileSync(destination, produced);
     }
     const receipt = { ...baseReceipt, exitCategory: 'success', resultHash };
     writeExclusiveJson(path.join(directory, 'receipt.json'), receipt, false);
@@ -648,12 +681,13 @@ async function runAdapterOnce(invocation, executionOptions) {
       try { resultHash = sha256(readStableResult(resultFile, directory)); } catch (_) {}
       try { fs.unlinkSync(resultFile); } catch (_) {}
     }
-    // 계약 위반으로 끝난 저작도 흔적을 남기지 않는다 — 대상 밖을 고쳤다는 이유로
-    // 거부하면서 그 변경을 트리에 그대로 두면 막은 것이 아니다.
-    const rolledBack = restoreAuthorTarget(target, authorRollback);
+    // 계약 위반으로 끝난 저작은 본 트리에 아무것도 남기지 않는다. 되돌릴 일이 없는
+    // 것은 애초에 본 트리에 쓴 적이 없기 때문이다 — 옮기기는 성공 경로에만 있다.
     let receipt;
     if (!fs.existsSync(path.join(directory, 'receipt.json'))) receipt = failureReceipt(directory, baseReceipt, 'invalid-output', resultHash);
-    return { ...responseBase, exitCode: 2, status: 'invalid-output', receipt, error: error.message, ...(rolledBack ? { diagnosticCodes: ['ADAPTER_AUTHOR_ROLLED_BACK'] } : {}) };
+    return { ...responseBase, exitCode: 2, status: 'invalid-output', receipt, error: error.message };
+  } finally {
+    removeAuthorSandbox(projectRoot, sandbox);
   }
 }
 

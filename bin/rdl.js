@@ -36,7 +36,7 @@ Usage:
   rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl member set <MEMBER-ID|STAKEHOLDER-ID> [--name <이름>] [--role <ROLE-ID>] [--organization <소속>] [--account <계정>] [--responsibility <책임>] [--status <상태>] [--project <key>] [--json]
   rdl member list [--project <key>] [--json]
-  rdl client register <client-id> --name <name> --type <device|agent|service> --owner <MEMBER-ID> [--json]
+  rdl client register <client-id> --name <name> --type <device|agent|service|human> --owner <MEMBER-ID> [--json]
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
   rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
   rdl lease list --project <key> [--json]

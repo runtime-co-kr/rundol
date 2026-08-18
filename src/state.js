@@ -725,7 +725,10 @@ function unclearedRunCommits(config) {
     const cleared = ['completed_local', 'synced'].includes(fold.status)
       && !(fold.unapprovedHumanSteps || []).length
       && gates.every((stepId) => approvals.some((item) => item.stepId === stepId))
-      && approvals.every((item) => !fold.verifiedCommit || item.commit === fold.verifiedCommit);
+      && approvals.every((item) => !fold.verifiedCommit || item.commit === fold.verifiedCommit)
+      // 완료가 기록한 커밋도 승인된 그것이어야 한다. 승인 시점만 대조하고 완료
+      // 시점을 묻지 않으면, 승인 뒤 HEAD를 옮겨 다른 커밋으로 완료할 수 있다.
+      && (!approvals.length || approvals.every((item) => item.commit === fold.completedCommit));
     if (cleared) continue;
     for (const commit of commits) {
       // 조상이 아닌 커밋은 이번 push에 실리지 않는다. 실리지 않는 것을 막으면

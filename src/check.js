@@ -654,7 +654,7 @@ function checkWorkspaceStore(diagnostics, layout) {
     const owner = workspaceApi.yamlValue(source, 'owner');
     const status = workspaceApi.yamlValue(source, 'status');
     if (id !== match[1]) diagnostic(diagnostics, { code: 'RDL-CLIENT-002', category: 'workspace', file: relative(layout.root, file), message: 'Client 파일명과 id가 일치하지 않습니다.' });
-    if (!['device', 'agent', 'service'].includes(type)) diagnostic(diagnostics, { code: 'RDL-CLIENT-003', category: 'workspace', file: relative(layout.root, file), message: `지원하지 않는 Client type입니다: ${type || '(없음)'}` });
+    if (!['device', 'agent', 'service', 'human'].includes(type)) diagnostic(diagnostics, { code: 'RDL-CLIENT-003', category: 'workspace', file: relative(layout.root, file), message: `지원하지 않는 Client type입니다: ${type || '(없음)'}` });
     if (!/^MEMBER-\d{3}$/u.test(owner || '')) diagnostic(diagnostics, { code: 'RDL-CLIENT-004', category: 'workspace', file: relative(layout.root, file), message: 'Client owner는 MEMBER-ID여야 합니다.' });
     if (!['active', 'disabled', 'retired'].includes(status)) diagnostic(diagnostics, { code: 'RDL-CLIENT-005', category: 'workspace', file: relative(layout.root, file), message: `지원하지 않는 Client status입니다: ${status || '(없음)'}` });
     clients.set(id, { owner, status, type });
