@@ -1390,6 +1390,44 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZ98IDNA96865C566AF1B0C": {
+      "title": "[기능] 검증 실행 동시성 — 상한 있는 병렬과 재개 보존",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-043"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "기존 검증 시험이 변경 없이 통과한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "렌즈 셋 동시 실행의 총 소요가 순차 합이 아니라 최대치에 가깝다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "실패 후 재실행 시 성공했던 판정은 다시 호출되지 않는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "동시 실행과 순차 실행의 판정 결과가 같다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:49:05.290Z",
+      "updatedAt": "2026-08-18T22:49:05.290Z",
+      "statusChangedAt": "2026-08-18T22:49:05.290Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
