@@ -72,7 +72,7 @@ function actorClientId(context, start, options, allowedTypes) {
 
 function ownershipFields(context) {
   const started = context.events && context.events.find((event) => event.type === 'run.started');
-  return started && started.schemaVersion === 2 && context.ownership && context.ownership.ownerToken
+  return started && started.schemaVersion >= 2 && context.ownership && context.ownership.ownerToken
     ? { ownerToken: context.ownership.ownerToken }
     : {};
 }
@@ -671,11 +671,18 @@ function preflightDriveProcedure(procedure) {
 }
 
 function driveSubstitution(context, operationId) {
-  return { ...substitutionContext(context), operationId };
+  // {head}는 이 스텝을 실행하는 시점에 하네스가 본 커밋이다. 커밋을 만드는 명령에
+  // 넘겨 "내가 본 것 위에서만 쌓아라"를 말하게 한다 — 그 사이 HEAD가 움직였다면
+  // 결과 커밋이 무엇 위에 있는지 하네스가 알던 것과 달라진다.
+  return {
+    ...substitutionContext(context),
+    operationId,
+    head: runGit(['rev-parse', 'HEAD'], { cwd: context.project.root }).stdout.trim().toLowerCase()
+  };
 }
 
 function substituteDriveArgs(args, values) {
-  return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact|operationId)\}/gu, (whole, key) => {
+  return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact|operationId|head)\}/gu, (whole, key) => {
     if (values[key] === undefined || values[key] === null) throw new Error(`missing drive placeholder value: ${whole}`);
     return String(values[key]);
   }));

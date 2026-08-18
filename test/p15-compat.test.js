@@ -130,6 +130,56 @@ try {
   command('git', ['worktree', 'remove', '--force', oldTree], root);
   oldTree = null;
 
+  // ── 혼합 판 경계 ────────────────────────────────────────────────────────
+  //
+  // 0.31.0은 run.step.commit·run.forced.basis·run.resumed.grantedAttempts를 더하며
+  // 스키마를 v3으로 올렸다. 이 경계를 주장이 아니라 실제 판독기로 증명한다 —
+  // 배포된 v0.30.2를 꺼내 v3 원장을 읽히고, 조용히 흘려 버리지 않는지 본다.
+  //
+  // 조용히 흘려 버리면 같은 원장이 판에 따라 다른 사실을 말한다: 승인이 없는 런,
+  // 커밋을 모르는 저장. 그래서 옳은 행동은 "모르는 판은 읽지 못한다"이지
+  // "모르는 필드는 무시한다"가 아니다.
+  const v3RunId = 'RUN-00000000000000000D01';
+  const v3Owner = 'EVT-00000000000000000D11';
+  const v3Base = { schemaVersion: 3, rootRequestId: 'REQ-00000000000000000D01', clientId: 'agent-a', projectId: 'crm', runId: v3RunId };
+  for (const runEvent of [
+    { ...v3Base, eventId: v3Owner, requestId: 'REQ-00000000000000000D11', type: 'run.started', ownerToken: v3Owner, goal: 'v3 픽스처',
+      procedure: { name: 'compat-author', revision: 1, schemaVersion: 1, contentHash, resolved: resolvedProcedure },
+      settings: { schemaVersion: 1, contentHash, safeResolved: {} } },
+    { ...v3Base, eventId: 'EVT-00000000000000000D12', requestId: 'REQ-00000000000000000D12', type: 'run.step', ownerToken: v3Owner, stepId: 'save', executor: 'cli', exitCode: 0, artifactIds: [], commit: 'd'.repeat(40) }
+  ]) {
+    eventStore.appendEvent(eventsRoot, 'run', 'crm', runEvent.clientId, ledger.createEventEnvelope(runEvent).shared, { runId: v3RunId, lockDirectory });
+  }
+
+  // 이 판은 v3을 읽는다.
+  const v3Current = currentCheck();
+  assert(!v3Current.stdout.includes('RDL-RUN-017'), `현재 판이 자기 스키마를 거부했습니다: ${v3Current.stdout}`);
+
+  // 배포된 0.30.2는 이 런을 읽지 못한다고 말해야 한다.
+  //
+  // 물어야 할 곳은 check가 아니라 fold다. 0.30.2의 check는 run 이벤트의 스키마를
+  // 검사하지 않으므로 조용하지만, 조용한 것 자체는 해가 아니다. 해는 "다른 사실을
+  // 말하는 것"이고, 사실을 만드는 것은 fold다. 그래서 fold에 직접 묻는다.
+  const deployed = command('git', ['rev-parse', 'v0.30.2^{commit}'], root);
+  oldTree = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-0302-'));
+  fs.rmSync(oldTree, { recursive: true, force: true });
+  command('git', ['worktree', 'add', '--detach', oldTree, deployed], root);
+  const deployedLedger = require(path.join(oldTree, 'src', 'run-ledger.js'));
+  const v3Events = ledger.readSharedRunEvents(require('../src/workspace').workspaceLayout(temporary), 'crm', v3RunId);
+  assert(v3Events.length >= 2, `v3 픽스처를 읽지 못했습니다: ${v3Events.length}`);
+  const deployedFold = deployedLedger.foldSharedRun(v3Events);
+  assert.strictEqual(deployedFold.status, 'missing',
+    `배포된 0.30.2가 v3 런을 읽어 냈습니다. 같은 원장이 판에 따라 다른 사실을 말합니다: ${JSON.stringify(deployedFold.status)}`);
+  assert((deployedFold.diagnostics || []).some((item) => item.code === 'RDL-RUN-021'),
+    `읽지 못한 이유가 기록되지 않았습니다: ${JSON.stringify(deployedFold.diagnostics)}`);
+  command('git', ['worktree', 'remove', '--force', oldTree], root);
+  oldTree = null;
+
+  // 거꾸로도 막힌다. v3 필드를 단 v2 이벤트는 알 수 없는 필드로 거부된다 —
+  // 판만 낮춰 새 사실을 옛 이벤트에 실어 넣는 길이 없어야 한다.
+  assert.throws(() => ledger.createEventEnvelope({ ...runBase, schemaVersion: 2, eventId: 'EVT-00000000000000000D21', requestId: 'REQ-00000000000000000D21', type: 'run.step', ownerToken, stepId: 'save', executor: 'cli', exitCode: 0, artifactIds: [], commit: 'e'.repeat(40) }),
+    /unknown fields: commit/u);
+
   fs.writeFileSync(path.join(verdictRoot, 'not-a-verdict.jsonl'), '{}\n', 'utf8');
   fs.writeFileSync(path.join(verdictRoot, 'verdict-crm-agent-a-000002.jsonl'), [
     '{broken',

@@ -22,17 +22,30 @@ const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'r
 const HALT_REASONS = new Set(['gate-failed', 'step-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual', 'settings-drift', 'ownership-conflict', 'operation-conflict', 'legacy-conflict', 'verification-required']);
 const TYPE_FIELDS = {
   'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId'] },
-  'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['commit', 'operation'] },
+  'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
   'run.gate': { required: ['ownerToken', 'stepId', 'command', 'args', 'exitCode', 'diagnostics', 'attempt'], optional: ['operation'] },
-  'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['basis', 'commit', 'operation'] },
+  'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['operation'] },
   'run.halted': { required: ['reason', 'resumable', 'ownerToken'], optional: ['atStep', 'operation'] },
-  'run.resumed': { required: ['ownerToken', 'fromStep'], optional: ['grantedAttempts', 'reason'] },
+  'run.resumed': { required: ['ownerToken', 'fromStep'], optional: [] },
   'run.takeover': { required: ['ownerToken', 'previousClientId', 'previousOwnerToken', 'previousOwnerHeadEventId', 'basis'], optional: ['reason'] },
   'run.ownership_resolved': { required: ['conflictId', 'candidates', 'selectedDecisionEventId', 'selectedOwnerToken', 'resolverMemberId', 'reason', 'forced'], optional: [] },
   'run.operation_resolved': { required: ['ownerToken', 'operationId', 'conflictId', 'candidates', 'selectedDecisionEventId', 'selectedOutcomeDigest', 'resolverMemberId', 'reason', 'forced'], optional: [] },
   'run.completed_local': { required: ['ownerToken', 'commit', 'artifactIds'], optional: [] },
   'run.synced': { required: ['ownerToken', 'commit', 'remoteRef'], optional: [] }
 };
+// 이 판에서 더해진 필드들. v2 이벤트에 나타나면 알 수 없는 필드로 거부된다.
+//
+// 옛 판독기가 새 필드를 조용히 흘려 버리면 같은 원장이 다른 사실을 말하게 된다 —
+// 승인이 없는 런, 커밋을 모르는 저장, 예산을 다시 연 적 없는 재개로. 원장의 사실은
+// 읽는 쪽의 판에 따라 달라지지 않아야 하므로, 모르는 판은 읽지 못한다고 말한다.
+// 배포된 v2 판독기는 schemaVersion 3을 만나면 RDL-RUN-017로 거부한다.
+const V3_ONLY = {
+  'run.step': ['commit'],
+  'run.forced': ['basis', 'commit'],
+  'run.resumed': ['grantedAttempts', 'reason']
+};
+const SCHEMA_VERSION = 3;
+const SUPPORTED_SCHEMA = new Set([2, 3]);
 const BASE_FIELDS = ['schemaVersion', 'eventId', 'type', 'rootRequestId', 'requestId', 'clientId', 'projectId', 'runId'];
 const OUTCOME_KINDS = new Set(['step-completed', 'gate-passed', 'gate-failed', 'verification-passed', 'verification-refuted', 'verification-abstained', 'forced', 'step-failed']);
 
@@ -248,12 +261,19 @@ function normalizeSettings(value) {
   return result;
 }
 
+// "정본 스키마인가"를 판이 아니라 집합으로 묻는다. 판마다 === 비교를 흩어 놓으면
+// 판을 올릴 때마다 한 곳을 빠뜨리고, 그 자리에서 v3 이벤트가 조용히 legacy로 읽힌다.
+function isCanonicalRun(event) {
+  return Boolean(event) && SUPPORTED_SCHEMA.has(event.schemaVersion);
+}
+
 function normalizeRunEvent(event) {
   assertObject(event, 'run event');
-  if (event.schemaVersion !== 2) throw new Error('canonical run events require schemaVersion 2');
+  if (!SUPPORTED_SCHEMA.has(event.schemaVersion)) throw new Error(`canonical run events require schemaVersion ${Array.from(SUPPORTED_SCHEMA).join(' or ')}`);
   const definition = TYPE_FIELDS[event.type];
   if (!definition) throw new Error(`unknown canonical run event type: ${event.type || '(missing)'}`);
-  const allowed = BASE_FIELDS.concat(definition.required, definition.optional, ['canonicalDigest', 'occurredAt', 'localDetail']);
+  const versioned = event.schemaVersion >= 3 ? (V3_ONLY[event.type] || []) : [];
+  const allowed = BASE_FIELDS.concat(definition.required, definition.optional, versioned, ['canonicalDigest', 'occurredAt', 'localDetail']);
   assertExactKeys(event, allowed, event.type);
   // 토큰 없는 v2 halted는 어느 epoch에도 속하지 못해 조용히 소멸하던 형태다 —
   // 스키마가 거부하고 전용 코드로 진단한다.
@@ -409,12 +429,12 @@ function normalizeRecords(events) {
   const groups = new Map();
   for (const event of events) {
     let record;
-    try { record = event.schemaVersion === 2 ? canonicalRecord(event) : legacyRecord(event); }
+    try { record = isCanonicalRun(event) ? canonicalRecord(event) : legacyRecord(event); }
     catch (error) {
       // v2 레코드의 canonical 손상은 legacy-malformed(021)가 아니라 자기 계열(017)로
       // 진단한다 — digest 정의는 정규화 하나뿐이고, 그에 어긋난 v2 레코드를 legacy로
       // 낙인하면 혼합 버전 조사가 엉뚱한 곳을 파게 된다.
-      diagnostics.push({ code: error.rdlCode || (event && event.schemaVersion === 2 ? 'RDL-RUN-017' : 'RDL-RUN-021'), severity: 'error', eventId: event && event.eventId, message: error.message });
+      diagnostics.push({ code: error.rdlCode || (event && isCanonicalRun(event) ? 'RDL-RUN-017' : 'RDL-RUN-021'), severity: 'error', eventId: event && event.eventId, message: error.message });
       continue;
     }
     if (!groups.has(record.canonical.eventId)) groups.set(record.canonical.eventId, []);
@@ -484,15 +504,15 @@ function appendRunEvent(directory, event) {
   const file = path.join(directory, 'events.jsonl');
   repairTail(file);
   let safe;
-  if (event.schemaVersion === 2) safe = createEventEnvelope(event).local;
+  if (isCanonicalRun(event)) safe = createEventEnvelope(event).local;
   else {
     safe = Object.assign({ schemaVersion: 1, eventId: `EVT-${crypto.randomBytes(10).toString('hex').toUpperCase()}`, occurredAt: new Date().toISOString() }, event);
     delete safe.prompt; delete safe.content;
   }
   for (const current of readRunEvents(directory)) {
     if (current.eventId !== safe.eventId) continue;
-    const currentRecord = current.schemaVersion === 2 ? canonicalRecord(current) : legacyRecord(current);
-    const safeRecord = safe.schemaVersion === 2 ? canonicalRecord(safe) : legacyRecord(safe);
+    const currentRecord = isCanonicalRun(current) ? canonicalRecord(current) : legacyRecord(current);
+    const safeRecord = isCanonicalRun(safe) ? canonicalRecord(safe) : legacyRecord(safe);
     if (currentRecord.digest !== safeRecord.digest) throw new Error(`eventId corruption: ${safe.eventId}`);
     if (current.localDetail === undefined && safe.localDetail !== undefined) {
       fs.appendFileSync(file, `${JSON.stringify(safe)}\n`, 'utf8');
@@ -801,7 +821,7 @@ function foldProgress(events, ownership) {
     const invalid = (message) => diagnostics.push({ code: 'RDL-RUN-022', severity: 'error', eventId: event.eventId, message });
     // strict는 런이 아니라 이벤트의 스키마를 따른다 — legacy로 시작한 런이라도
     // v2 이벤트에는 v2 커서·종류 검증이 적용된다.
-    if (['run.step', 'run.gate', 'run.forced'].includes(event.type) && event.schemaVersion === 2) {
+    if (['run.step', 'run.gate', 'run.forced'].includes(event.type) && isCanonicalRun(event)) {
       if (status !== 'running' || event.stepId !== current) { invalid('progress event does not target the active cursor'); continue; }
       const kind = transitionKind(step);
       if (event.type === 'run.step' && kind !== 'step') { invalid(`run.step cannot complete a ${kind} step`); continue; }
@@ -817,7 +837,7 @@ function foldProgress(events, ownership) {
     } else if (event.type === 'run.gate') {
       lastGate = { stepId: event.stepId, exitCode: event.exitCode, diagnostics: event.diagnostics || [] };
       if (event.exitCode === 0) completed.add(event.stepId);
-      else if (event.exitCode === 1 || event.schemaVersion !== 2) {
+      else if (event.exitCode === 1 || !isCanonicalRun(event)) {
         attempts[event.stepId] = (attempts[event.stepId] || 0) + 1;
         const definition = byId.get(event.stepId);
         if (definition && definition.onFail) {
@@ -1055,7 +1075,7 @@ function mirrorRunEvent(layout, projectKey, event) {
   const eventsRoot = workspaceEventsRoot(layout);
   if (!eventsRoot) return null;
   if (!event.clientId) throw new Error('shared run event requires clientId');
-  const shared = event.schemaVersion === 2 ? createEventEnvelope(event).shared : event;
+  const shared = isCanonicalRun(event) ? createEventEnvelope(event).shared : event;
   const file = eventStore.appendEvent(eventsRoot, 'run', projectKey, event.clientId, shared, { runId: event.runId, lockDirectory: runtimeWorkspace(layout.root).locks, fsync: CHECKPOINT_TYPES.has(event.type) });
   if (CHECKPOINT_TYPES.has(event.type)) saveSettings(layout.root);
   return file;
@@ -1150,7 +1170,7 @@ function prepareV2Event(start, project, runId, input) {
   const childKey = input.childKey || `event:${input.event.type}:${runId}`;
   const requestId = requestJournal.childRequestId(rootRequestId, childKey);
   const eventId = input.event.eventId || requestJournal.eventIdForRequest(requestId);
-  const base = Object.assign({}, input.event, { schemaVersion: 2, rootRequestId, requestId, eventId, runId, projectId: project.key });
+  const base = Object.assign({}, input.event, { schemaVersion: SCHEMA_VERSION, rootRequestId, requestId, eventId, runId, projectId: project.key });
   let state = null;
   let fold = null;
   if ((!base.ownerToken && !['run.started', 'run.ownership_resolved'].includes(base.type)) || base.type === 'run.gate') {
@@ -1178,7 +1198,7 @@ function recordRunEvent(start, input) {
   const project = selectProject(layout, input.project, true);
   if (!RUN_ID.test(input.runId || '')) throw new Error(`invalid run ID: ${input.runId || '(missing)'}`);
   const existingShared = readSharedRunEvents(layout, project.key, input.runId);
-  const v2 = input.event.schemaVersion === 2 || input.rootRequestId || input.event.rootRequestId || existingShared.some((event) => event.schemaVersion === 2);
+  const v2 = isCanonicalRun(input.event) || input.rootRequestId || input.event.rootRequestId || existingShared.some((event) => isCanonicalRun(event));
   if (!v2) {
     const legacy = Object.assign({ runId: input.runId, projectId: project.key }, input.event);
     const appended = appendRunEvent(runDirectory(project.root, input.runId), legacy);

@@ -546,21 +546,72 @@ function commitShardedMerge(config, remoteCommit) {
   return runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout;
 }
 
+// 런이 시키는 저장은 자기 대상에만 닿는다. 무엇을 담을지 정하는 것이 add -A라면,
+// 저작과 저장 사이에 생긴 어떤 변경도 이 런의 결과 커밋에 흡수된다 — 그리고 그
+// 커밋이 곧 검증 대상이므로, 판정된 적 없는 내용이 판정을 지나온 것이 된다.
+//
+// scope는 스테이징 범위이자 거부 조건이다. 대상 밖이 더러우면 담지 않는 것으로
+// 끝내지 않고 멈춘다. 조용히 남겨 두면 그 변경은 다음 저장에 섞이고, 그때는
+// 어느 런의 것인지 아무도 모른다.
+function stageScoped(config, scope) {
+  const dirty = runGit(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', scope], { cwd: config.worktree }).stdout;
+  const all = runGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: config.worktree }).stdout;
+  if (String(all || '').split('\0').filter(Boolean).length !== String(dirty || '').split('\0').filter(Boolean).length) {
+    throw new Error(`RDL-SAVE-010: 런의 저장 범위(${scope}) 밖에 변경이 있습니다. 런이 만들지 않은 변경은 런의 커밋에 담기지 않습니다.`);
+  }
+  runGit(['add', '-A', '--', scope], { cwd: config.worktree });
+  return Boolean(dirty);
+}
+
 function saveProjectState(config, settings) {
   if (!refExists(config.root, config.ref)) initProjectState(config);
   ensureWorkspaceWorktree(config);
+  const head = () => runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout.trim().toLowerCase();
+  // 범위와 기대 커밋은 문서 검증보다 먼저 묻는다. 런의 저장이 자기 범위 밖의 내용
+  // 때문에 실패하면, 막힌 이유가 이 런과 무관한데도 이 런의 실패로 기록된다.
+  if (settings.expectHead) {
+    const expected = String(settings.expectHead).trim().toLowerCase();
+    const actual = head();
+    if (expected !== actual) throw new Error(`RDL-SAVE-011: 기대한 HEAD와 다릅니다. 기대 ${expected}, 실제 ${actual}.`);
+  }
+  const scope = settings.scope || null;
+  if (scope) {
+    const changed = stageScoped(config, scope);
+    validateProjection(config);
+    if (!changed) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
+    runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
+    return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() };
+  }
   validateProjection(config);
   const status = runGit(['status', '--porcelain'], { cwd: config.worktree }).stdout;
-  if (!status) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout };
+  if (!status) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
   runGit(['add', '-A', '--', '.'], { cwd: config.worktree });
   runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
-  return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout };
+  return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() };
+}
+
+// 런이 시킨 저장의 범위는 그 런이 고정한 대상 문서 하나다. 범위를 부르는 쪽이
+// 인수로 정하게 두면 그것도 결국 어댑터가 정하는 값이 된다 — 원장이 정해야 한다.
+function runSaveScope(start, config, runId) {
+  const ledger = require('./run-ledger');
+  const reconciled = ledger.reconcileRun(start, { project: config.project, runId });
+  const events = reconciled ? reconciled.events : [];
+  if (!events.length) throw new Error(`런을 찾지 못했습니다: ${runId}`);
+  const fold = ledger.foldSharedRun(events);
+  const targetId = (fold.artifactIds || [])[fold.artifactIds.length - 1];
+  if (!targetId) throw new Error(`런에 고정된 대상 문서가 없습니다: ${runId}`);
+  const { workspaceLayout, selectProject } = require('./workspace');
+  const project = selectProject(workspaceLayout(start), config.project, true);
+  const artifact = require('./document-contract').projectArtifacts(project).find((item) => item.id === targetId);
+  if (!artifact) throw new Error(`런의 대상 문서를 찾지 못했습니다: ${targetId}`);
+  return path.relative(config.worktree, artifact.file).split(path.sep).join('/');
 }
 
 function saveState(start, options) {
   const settings = options || {};
   const settingsResult = saveSettings(start);
-  const results = workspaceStateConfigs(start, settings.project).map((config) => saveProjectState(config, settings));
+  const results = workspaceStateConfigs(start, settings.project).map((config) => saveProjectState(config,
+    settings.run ? Object.assign({}, settings, { scope: runSaveScope(start, config, settings.run) }) : settings));
   return results.length === 1 ? Object.assign(results[0], { settings: settingsResult }) : { root: results[0].root, settings: settingsResult, changed: results.some((item) => item.changed) || Boolean(settingsResult && settingsResult.changed), projects: results };
 }
 
@@ -669,11 +720,11 @@ function transitionRuns(config, apply, settings) {
     // 전이는 잘린 epoch에 떨어져 보이지 않게 된다.
     const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId }) : null;
     const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, runId));
-    const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion === 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
+    const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion >= 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const event = apply(fold);
     if (!event) continue;
     let ownerToken = null;
-    if (events.some((item) => item && item.schemaVersion === 2)) {
+    if (events.some((item) => item && item.schemaVersion >= 2)) {
       const ownership = ledger.ownershipState(events);
       if (ownership.status !== 'ACTIVE') {
         transitions.push({ runId, type: event.type, skipped: 'ownership-not-active' });
@@ -714,7 +765,7 @@ function unclearedRunCommits(config) {
     const reconciled = typeof ledger.reconcileRun === 'function' ? ledger.reconcileRun(config.root, { project: config.project, runId }) : null;
     const events = reconciled ? reconciled.events : ledger.readRunEvents(ledger.runDirectory(config.worktree, runId));
     if (!events.length) continue;
-    const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion === 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
+    const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion >= 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const commits = (fold.producedCommits || []).filter((commit) => /^[a-f0-9]{40,64}$/u.test(String(commit)));
     if (!commits.length) continue;
     // 통과의 조건은 셋이다. 런이 로컬 완료에 닿았을 것, 사람 게이트를 사람의 승인

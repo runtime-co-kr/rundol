@@ -189,6 +189,21 @@ try {
   assert.strictEqual(git(['log', '-1', '--name-only', '--format='], projectRoot).includes('STRAY.md'), false,
     '대상 밖 파일이 커밋됐습니다');
 
+  // 런이 시킨 저장은 그 런의 대상 하나에만 닿는다. 대상 밖이 더러우면 담지 않는
+  // 것으로 끝내지 않고 멈춘다 — 조용히 남겨 두면 다음 저장에 섞이고, 그때는 어느
+  // 런의 것인지 아무도 모른다.
+  fs.writeFileSync(path.join(projectRoot, 'UNRELATED.txt'), '런과 무관한 파일\n', 'utf8');
+  const scoped = rdlRaw(['save', '--project', 'crm', '--run', strayRun.runId]);
+  assert.notStrictEqual(scoped.status, 0, '런 범위 밖 변경이 있는데 저장이 통과했습니다');
+  assert.match(`${scoped.stdout}${scoped.stderr}`, /RDL-SAVE-010/u, `${scoped.stdout}${scoped.stderr}`);
+  fs.rmSync(path.join(projectRoot, 'UNRELATED.txt'));
+
+  // 기대한 커밋 위에서만 쌓는다. 그 사이 HEAD가 움직였다면 결과 커밋이 무엇 위에
+  // 있는지 하네스가 알던 것과 달라진다.
+  const staleHead = rdlRaw(['save', '--project', 'crm', '--run', strayRun.runId, '--expect-head', 'b'.repeat(40)]);
+  assert.notStrictEqual(staleHead.status, 0, '기대 HEAD가 달라도 저장이 통과했습니다');
+  assert.match(`${staleHead.stdout}${staleHead.stderr}`, /RDL-SAVE-011/u, `${staleHead.stdout}${staleHead.stderr}`);
+
   // 다른 클라이언트의 판정은 git 병합으로 들어온다. 그 클라이언트의 프로젝트 커밋이
   // 함께 오지 않으면, 여기에는 풀 수 없는 리비전을 지목한 판정만 남는다. 쓰기 경로로는
   // 막을 수 없으므로 — 병합은 CLI를 지나오지 않는다 — 읽을 때 판정해야 한다.

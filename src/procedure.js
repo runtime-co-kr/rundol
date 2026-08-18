@@ -69,7 +69,10 @@ const BUILTIN = {
       // save는 본래 되풀이해도 같은 곳에 도착한다 — 바뀐 것이 없으면 커밋하지
       // 않는다. gate-recheck를 붙이면 문서 검사 통과를 저장 완료로 읽어, 저장되지
       // 않은 작업이 저장된 것으로 기록될 수 있다.
-      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'], retrySafety: { mode: 'converging' } },
+      // 저장은 이 런의 대상 하나에만 닿고, 하네스가 본 커밋 위에서만 쌓는다.
+      // 범위는 인수가 아니라 원장이 정한다 — {runId}가 대상을 지목하고, save가
+      // 그 문서 밖의 변경을 발견하면 담지 않고 멈춘다.
+      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}', '--run', '{runId}', '--expect-head', '{head}'], retrySafety: { mode: 'converging' } },
       {
         id: 'verify',
         executor: 'adapter',

@@ -1,6 +1,6 @@
 {
   "name": "@rundol/core",
-  "version": "0.30.2",
+  "version": "0.31.0",
   "description": "Rundol common domain contracts",
   "license": "Apache-2.0",
   "repository": {

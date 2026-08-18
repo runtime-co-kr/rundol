@@ -22,7 +22,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl check --tasks [--root <path>]
   rdl git init|boundary [--root <path>] [--project <key>] [--json]
   rdl refresh [--root <path>] [--project <key>] [--json]
-  rdl save [--root <path>] [--project <key>] [--json]
+  rdl save [--root <path>] [--project <key>] [--run <RUN-ID>] [--expect-head <sha>] [--json]
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
   rdl check --structure [--root <path>] [--project <key>] [--json]
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
