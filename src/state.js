@@ -826,8 +826,8 @@ function syncProjectStateWithRuns(config, settings) {
       settings.shareApprovedBy = approver;
     }
     if (!reason) {
-      const shown = uncleared.slice(0, 3).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status}${item.unapprovedHumanSteps.length ? `, 승인 없이 지난 게이트: ${item.unapprovedHumanSteps.join(',')}` : ''})`).join(', ');
-      throw new Error(`RDL-SYNC-030: 사람 게이트를 통과하지 못한 런의 커밋이 push 대상에 있습니다: ${shown}${uncleared.length > 3 ? ` 외 ${uncleared.length - 3}건` : ''}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유>로 공유하세요.`);
+      const shown = uncleared.slice(0, 10).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status}${item.unapprovedHumanSteps.length ? `, 승인 없이 지난 게이트: ${item.unapprovedHumanSteps.join(',')}` : ''})`).join(', ');
+      throw new Error(`RDL-SYNC-030: 사람 게이트를 통과하지 못한 런의 커밋이 push 대상에 있습니다: ${shown}${uncleared.length > 10 ? ` 외 ${uncleared.length - 10}건` : ''}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유>로 공유하세요.`);
     }
     settings.sharedUnverified = uncleared.map((item) => Object.assign({}, item, { reason, approvedBy: settings.shareApprovedBy }));
   }

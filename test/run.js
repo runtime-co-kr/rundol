@@ -11,7 +11,6 @@ process.env.RUNDOL_HOME = path.join(os.tmpdir(), `rundol-test-runtime-${process.
 require('./check.test');
 require('./ledger-integrity.test');
 require('./adversarial.test');
-require('./windows-termination.test');
 require('./cli-doc.test');
 require('./init.test');
 require('./attach.test');
@@ -64,7 +63,7 @@ require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
 
-require('./watch.test').then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
+require('./windows-termination.test').then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),
   require('./board-workspace.test'),
   require('./event-store.test')

@@ -381,6 +381,13 @@ function terminateTree(child) {
     // taskkill이 접근 거부 등으로 실패했는데 성공한 것처럼 돌려주면, 취소는
     // 끝났다고 보고되고 자손은 살아 있다. 실패했으면 남은 수단을 쓰고, 그래도
     // 안 되면 그 사실이 드러나야 한다.
+    // 자식이 스스로 먼저 끝났으면 taskkill은 "그런 프로세스 없음"으로 실패한다.
+    // 그것은 실패가 아니라 이미 이룬 상태다. 여기서 경고를 내면 정상 종료마다
+    // 거짓 경고가 쌓이고, 그러면 진짜 경고 — 자손이 살아남았다는 그 한 줄 — 도
+    // 같이 무시된다. 경고를 지키려면 경고를 아껴야 한다.
+    let stillThere = true;
+    try { process.kill(child.pid, 0); } catch (error) { stillThere = error.code === 'EPERM'; }
+    if (!stillThere) return Promise.resolve();
     const reason = String(killed.stderr || killed.stdout || '').trim() || `exit ${killed.status}`;
     process.stderr.write(`rundol: 프로세스 트리 종료가 실패했습니다 (pid ${child.pid}): ${reason}\n`);
     try { child.kill('SIGKILL'); } catch (_) { try { child.kill(); } catch (_) {} }

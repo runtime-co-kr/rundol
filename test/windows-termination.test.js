@@ -14,9 +14,14 @@
 
 const assert = require('assert');
 const { unguaranteedTermination, driveStepClass } = require('../src/run');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const adapter = require('../src/adapter');
 
 const previous = process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
 
+async function main() {
 try {
   // 분류는 플랫폼과 무관하다 — 게이트는 분류 뒤에 붙는다.
   assert.strictEqual(driveStepClass({ id: 'a', executor: 'adapter', adapter: 'fixture' }), 'adapter');
@@ -71,8 +76,61 @@ try {
     assert.strictEqual(opted.status, 0, '옵트인한 프로세스에서는 열려야 합니다.');
   }
 
+
+  // ── 고아 손자는 실제로 살아남는가 ────────────────────────────────────────
+  //
+  // 이 파일의 머리말은 "taskkill /T는 스냅숏이라 고아 손자가 빠진다"고 단정하지만,
+  // 지금까지 그것을 잰 시험은 없었다. 주장과 측정은 다르고, 이 게이트 전체가 그
+  // 주장 위에 서 있다. 재 본다.
+  //
+  // POSIX에서는 프로세스 그룹에 신호가 가므로 커널이 트리를 소유한다 — 손자가
+  // 고아가 되어도 그룹은 그대로다. 그래서 여기서는 죽어야 하고, 그것이
+  // "POSIX는 최선 노력이 아니다"라는 이 파일의 다른 주장을 처음으로 확인한다.
+  const alive = (pid) => {
+    try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+  };
+  const pidFile = path.join(os.tmpdir(), `rundol-orphan-${process.pid}-${Date.now()}.pid`);
+  let orphanPid = null;
+  try {
+    const previousOptIn = process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
+    process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = '1';
+    const controller = new AbortController();
+    const execution = adapter.executeOnce(process.execPath,
+      [path.join(__dirname, 'fixtures', 'orphan-spawner.js'), pidFile],
+      { cwd: path.join(__dirname, '..'), env: process.env, timeoutSeconds: 30, signal: controller.signal });
+    // 손자가 자기 pid를 남길 때까지 기다린다. 남기지 못했다면 이 시험은 아무것도
+    // 재지 못한 것이므로, 조용히 통과시키지 않는다.
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline && !fs.existsSync(pidFile)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    assert(fs.existsSync(pidFile), '손자가 뜨지 않았다면 이 시험은 종료에 대해 아무것도 말하지 못합니다.');
+    orphanPid = Number.parseInt(fs.readFileSync(pidFile, 'utf8'), 10);
+    assert(Number.isInteger(orphanPid) && orphanPid > 0, `손자 pid를 읽지 못했습니다: ${orphanPid}`);
+    controller.abort();
+    await execution;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+    if (previousOptIn === undefined) delete process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
+    else process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = previousOptIn;
+
+    const survived = alive(orphanPid);
+    // 살아 있는 자손 트리는 두 플랫폼 모두에서 죽어야 한다. POSIX는 프로세스 그룹이,
+    // Windows는 taskkill /T의 스냅숏이 이 경우를 덮는다.
+    //
+    // 덮지 못하는 경우 — 자식이 먼저 끝나 손자가 고아가 되는 경우 — 는 여기서
+    // 단언하지 않는다. 그것은 성질이 아니라 경쟁이고, Windows에서 종료를 보장할 수
+    // 없다는 말의 내용이 바로 그 경쟁을 이길 수 없다는 것이다. 이길 수 없는 경쟁을
+    // 단언으로 적으면 시험이 비결정적이 되고, 비결정적 시험은 게이트가 아니다.
+    // 그 경우를 실제로 닫으려면 Job Object가 필요하고, 그때까지 기본 차단이 답이다.
+    assert.strictEqual(survived, false,
+      `${process.platform}에서 살아 있는 자손 트리가 종료되지 않았습니다 (pid ${orphanPid}).`);
+  } finally {
+    if (orphanPid && alive(orphanPid)) { try { process.kill(orphanPid, 'SIGKILL'); } catch (_) {} }
+    try { fs.rmSync(pidFile, { force: true }); } catch (_) {}
+  }
   process.stdout.write('windows termination tests passed\n');
 } finally {
   if (previous === undefined) delete process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER;
   else process.env.RUNDOL_ALLOW_WINDOWS_ADAPTER = previous;
 }
+}
+
+module.exports = main();
