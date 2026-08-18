@@ -71,9 +71,10 @@ const BUILTIN = {
         verify: {
           lenses: ['satisfaction-v1', 'omission-v1', 'boundary-v1'],
           instructions: pinnedLensInstructions(['satisfaction-v1', 'omission-v1', 'boundary-v1']),
-          // 저작이 만든 커밋을 검증한다. run 시작 시점으로 굳히면 저작 결과를
-          // 볼 수 없고, 그러면 이 절차는 저작을 포함한 채 완주할 수 없다.
-          revisionPin: { strategy: 'step-head' },
+          // 저장이 만든 커밋을 검증한다. run 시작 시점으로 굳히면 저작 결과를 볼 수
+          // 없고, "지금 HEAD"로 두면 그 사이 다른 프로세스가 만든 커밋을 저작 결과로
+          // 판정한다. 원장이 기록한 저장의 산출 커밋만이 둘 다 아니다.
+          revisionPin: { strategy: 'step-output-commit', step: 'save' },
           policy: { validators: 1, quorum: 1, maxRefuted: 0, maxAbstain: 0, requireAdapterDiversity: false }
         },
         // 반박되면 저작으로 돌아간다. 다시 쓰고 다시 저장하고 다시 검증한다 —
@@ -219,10 +220,26 @@ function validateClosedDriveGate(step, origin) {
 // 선언하면 거부한다 — 검사할 수 없는 안전 주장을 받지 않는다.
 const CONVERGING_COMMANDS = new Set(['save']);
 
+// 커밋을 만들고 그 커밋을 --json으로 답하는 명령의 닫힌 목록. step-output-commit은
+// 이 목록의 스텝만 지목할 수 있다 — 커밋을 만들지 않는 스텝을 가리키면 검증은
+// 결박될 곳이 없고, 그 자리는 조용히 "지금 HEAD"로 채워진다.
+const COMMIT_PRODUCING_COMMANDS = new Set(['save']);
+
 function validateDriveSafety(procedure, source) {
   const origin = source || procedure.name || 'procedure';
   const steps = new Map(procedure.steps.map((step) => [step.id, step]));
+  const order = procedure.steps.map((step) => step.id);
   for (const step of procedure.steps) {
+    const pin = step.verify && step.verify.revisionPin;
+    if (pin !== undefined && !validRevisionPin(pin)) throw new Error(`${origin}: ${step.id}.verify.revisionPin은 run-start-head이거나, 산출 스텝을 지목한 step-output-commit이어야 합니다.`);
+    if (pin && pin.strategy === 'step-output-commit') {
+      const producer = steps.get(pin.step);
+      // 지목된 스텝은 이 검증보다 먼저 돌아야 하고, 커밋을 만들 수 있는 스텝이어야
+      // 한다. 뒤에 있거나 커밋을 만들지 않는 스텝을 가리키면 검증은 결박될 곳이 없다.
+      if (!producer) throw new Error(`${origin}: ${step.id}.verify.revisionPin이 없는 스텝을 지목합니다: ${pin.step}`);
+      if (order.indexOf(pin.step) >= order.indexOf(step.id)) throw new Error(`${origin}: ${step.id}.verify.revisionPin은 앞선 스텝만 지목할 수 있습니다: ${pin.step}`);
+      if (producer.executor !== 'cli' || !COMMIT_PRODUCING_COMMANDS.has(producer.command)) throw new Error(`${origin}: ${step.id}.verify.revisionPin이 커밋을 만드는 스텝이 아닙니다: ${pin.step}`);
+    }
     if (step.retrySafety !== undefined) {
       if (!step.retrySafety || typeof step.retrySafety !== 'object' || Array.isArray(step.retrySafety)) throw new Error(`${origin}: ${step.id}.retrySafety는 객체여야 합니다.`);
       const keys = Object.keys(step.retrySafety).sort();
@@ -282,19 +299,30 @@ function pinProcedureInstructions(procedure, source) {
   return copy;
 }
 
+// 검증이 무엇을 판정할지 정하는 방법은 둘뿐이다. run 시작 시점의 커밋을 굳히거나
+// (저작 없는 절차), 절차 안의 어느 스텝이 만든 커밋을 지목하거나(저작 있는 절차).
+// "지금 HEAD"는 방법이 아니다 — 그것은 하네스가 아니라 주변이 정하는 값이고,
+// 런 도중 다른 프로세스가 커밋하면 저작 결과가 아닌 것이 판정 대상이 된다.
+function validRevisionPin(pin) {
+  if (!pin || typeof pin !== 'object') return false;
+  const keys = Object.keys(pin).sort();
+  if (pin.strategy === 'run-start-head') return canonicalJson(keys) === canonicalJson(['strategy']);
+  if (pin.strategy === 'step-output-commit') return canonicalJson(keys) === canonicalJson(['step', 'strategy']) && NAME.test(String(pin.step || ''));
+  return false;
+}
+
 function pinProcedureVerificationRevision(procedure, reviewedRevision) {
   if (!/^[a-f0-9]{40,64}$/u.test(reviewedRevision || '')) throw new Error('verification revision pin must be a lowercase Git revision');
   const copy = JSON.parse(JSON.stringify(procedure));
   for (const step of copy.steps) {
     if (!step.verify && !Array.isArray(step.lenses)) continue;
     const verify = step.verify || (step.verify = {});
-    if (verify.revisionPin !== undefined && (
-      !verify.revisionPin || !['run-start-head', 'step-head'].includes(verify.revisionPin.strategy) ||
-      Object.keys(verify.revisionPin).some((key) => key !== 'strategy')
-    )) throw new Error(`${step.id}.verify.revisionPin must declare run-start-head or step-head`);
-    // step-head는 검증 스텝이 도는 시점에 풀린다. 여기서 굳히면 저작이 만든
-    // 커밋을 볼 수 없다.
-    if (verify.revisionPin && verify.revisionPin.strategy === 'step-head') continue;
+    if (verify.revisionPin !== undefined && !validRevisionPin(verify.revisionPin)) {
+      throw new Error(`${step.id}.verify.revisionPin must declare run-start-head, or step-output-commit with a producing step`);
+    }
+    // step-output-commit은 run 시작 시점에 풀 수 없다 — 그 커밋은 아직 없다.
+    // 검증 스텝이 도는 시점에 원장이 "그 스텝이 만든 커밋"으로 답한다.
+    if (verify.revisionPin && verify.revisionPin.strategy === 'step-output-commit') continue;
     verify.revisionPin = { strategy: 'git-commit', reviewedRevision };
   }
   return copy;

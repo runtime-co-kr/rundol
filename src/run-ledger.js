@@ -22,11 +22,11 @@ const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'r
 const HALT_REASONS = new Set(['gate-failed', 'step-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual', 'settings-drift', 'ownership-conflict', 'operation-conflict', 'legacy-conflict', 'verification-required']);
 const TYPE_FIELDS = {
   'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId'] },
-  'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
+  'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['commit', 'operation'] },
   'run.gate': { required: ['ownerToken', 'stepId', 'command', 'args', 'exitCode', 'diagnostics', 'attempt'], optional: ['operation'] },
   'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['operation'] },
   'run.halted': { required: ['reason', 'resumable', 'ownerToken'], optional: ['atStep', 'operation'] },
-  'run.resumed': { required: ['ownerToken', 'fromStep'], optional: [] },
+  'run.resumed': { required: ['ownerToken', 'fromStep'], optional: ['grantedAttempts', 'reason'] },
   'run.takeover': { required: ['ownerToken', 'previousClientId', 'previousOwnerToken', 'previousOwnerHeadEventId', 'basis'], optional: ['reason'] },
   'run.ownership_resolved': { required: ['conflictId', 'candidates', 'selectedDecisionEventId', 'selectedOwnerToken', 'resolverMemberId', 'reason', 'forced'], optional: [] },
   'run.operation_resolved': { required: ['ownerToken', 'operationId', 'conflictId', 'candidates', 'selectedDecisionEventId', 'selectedOutcomeDigest', 'resolverMemberId', 'reason', 'forced'], optional: [] },
@@ -135,8 +135,16 @@ function normalizeOperationDecision(kind, value) {
     if (canonicalJson(actual) !== canonicalJson(keys.slice().sort())) throw new Error(`boundedResultDecision is invalid for ${kind}`);
   };
   if (kind === 'step-completed') {
-    exact(['artifactIds']);
-    return { artifactIds: normalizeStringArray(value.artifactIds, 'boundedResultDecision.artifactIds', true) };
+    // 커밋을 만든 스텝은 그 커밋도 결정의 일부다. 결정에서 빠지면 재시도가 되풀이한
+    // 결과에 커밋이 없고, 검증은 무엇을 판정할지 다시 주변에서 주워 와야 한다.
+    const keys = canonicalJson(Object.keys(value).sort());
+    if (keys !== canonicalJson(['artifactIds']) && keys !== canonicalJson(['artifactIds', 'commit'])) throw new Error(`boundedResultDecision is invalid for ${kind}`);
+    const decision = { artifactIds: normalizeStringArray(value.artifactIds, 'boundedResultDecision.artifactIds', true) };
+    if (value.commit !== undefined) {
+      if (!/^[a-f0-9]{40,64}$/u.test(String(value.commit))) throw new Error('boundedResultDecision.commit must be a lowercase Git revision');
+      decision.commit = value.commit;
+    }
+    return decision;
   }
   if (['gate-passed', 'gate-failed'].includes(kind)) {
     exact(['diagnostics']);
@@ -278,6 +286,12 @@ function normalizeRunEvent(event) {
     if (!STEP_ID.test(event.stepId || '') || !['cli', 'adapter', 'client'].includes(event.executor) || !Number.isSafeInteger(event.exitCode) || event.exitCode < 0) throw new Error('run.step fields are invalid');
     normalized.stepId = event.stepId; normalized.executor = event.executor; normalized.exitCode = event.exitCode;
     normalized.artifactIds = normalizeStringArray(event.artifactIds, 'artifactIds', true);
+    // 이 스텝이 만든 커밋. 검증이 결박될 대상이자, sync가 "아직 공유하면 안 되는
+    // 커밋"을 알아보는 근거다. 없으면 그 스텝은 커밋을 만들지 않은 것이다.
+    if (event.commit !== undefined) {
+      if (!/^[a-f0-9]{40,64}$/u.test(String(event.commit))) throw new Error('run.step.commit must be a lowercase Git revision');
+      normalized.commit = event.commit;
+    }
     if (event.operation !== undefined) normalized.operation = normalizeOperation(event.operation);
   } else if (event.type === 'run.gate') {
     normalized.ownerToken = owner();
@@ -305,6 +319,14 @@ function normalizeRunEvent(event) {
     normalized.ownerToken = owner();
     if (!STEP_ID.test(event.fromStep || '')) throw new Error('run.resumed.fromStep is invalid');
     normalized.fromStep = event.fromStep;
+    // 시도 예산을 다시 여는 것은 재개의 부수 효과가 아니라 그 자체로 하나의 결정이다.
+    // 어느 스텝의 예산을 왜 열었는지가 함께 기록되지 않으면, 예산은 halt·resume을
+    // 되풀이하는 것만으로 무한이 되고 절차가 선언한 상한은 사문이 된다.
+    if (event.grantedAttempts !== undefined) {
+      normalized.grantedAttempts = normalizeStringArray(event.grantedAttempts, 'grantedAttempts', true);
+      if (!normalized.grantedAttempts.length || normalized.grantedAttempts.some((item) => !STEP_ID.test(item))) throw new Error('run.resumed.grantedAttempts must name procedure steps');
+      normalized.reason = normalizeText(event.reason, 'reason', 1000, false);
+    } else if (event.reason !== undefined) throw new Error('run.resumed.reason is only recorded with grantedAttempts');
   } else if (event.type === 'run.takeover') {
     if (owner() !== event.eventId || !SIMPLE_ID.test(event.previousClientId || '') || !EVENT_ID.test(event.previousOwnerToken || '') || !EVENT_ID.test(event.previousOwnerHeadEventId || '') || !['halted', 'forced'].includes(event.basis)) throw new Error('run.takeover fields are invalid');
     normalized.ownerToken = event.ownerToken; normalized.previousClientId = event.previousClientId; normalized.previousOwnerToken = event.previousOwnerToken; normalized.previousOwnerHeadEventId = event.previousOwnerHeadEventId; normalized.basis = event.basis;
@@ -708,6 +730,8 @@ function foldProgress(events, ownership) {
   const completed = new Set();
   let attempts = {};
   const forcedSteps = [];
+  const stepCommits = {};
+  const producedCommits = [];
   // 런 시작 시 고정한 대상 문서가 있으면 그것이 첫 산출물이다. 절차가 문서를
   // 만들지 않고 이미 있는 것을 다루기 때문이다.
   const artifactIds = [];
@@ -742,6 +766,10 @@ function foldProgress(events, ownership) {
     }
     if (event.type === 'run.step' && event.exitCode === 0) {
       completed.add(event.stepId);
+      // 어느 스텝이 어느 커밋을 만들었는지는 fold가 쥔다. 검증은 이것으로 "저장이
+      // 방금 만든 커밋"을 지목하고, sync는 이것으로 "아직 사람이 승인하지 않은
+      // 커밋"을 알아본다. 주변의 현재 HEAD를 믿으면 둘 다 할 수 없다.
+      if (event.commit) { stepCommits[event.stepId] = event.commit; if (!producedCommits.includes(event.commit)) producedCommits.push(event.commit); }
       for (const artifactId of event.artifactIds || []) if (!artifactIds.includes(artifactId)) artifactIds.push(artifactId);
     } else if (event.type === 'run.gate') {
       lastGate = { stepId: event.stepId, exitCode: event.exitCode, diagnostics: event.diagnostics || [] };
@@ -760,7 +788,17 @@ function foldProgress(events, ownership) {
       status = 'halted'; haltReason = HALT_REASONS.has(event.reason) ? event.reason : 'manual';
     } else if (event.type === 'run.resumed') {
       if (status !== 'halted') spareResumes += 1;
-      status = 'running'; haltReason = null; attempts = {};
+      // 시도 횟수는 그냥 재개한다고 지워지지 않는다. 지우면 halt → resume을 되풀이
+      // 하는 것만으로 maxAttempts가 무한이 된다 — 절차가 선언한 예산이 사문이 된다.
+      // 예산을 다시 여는 것은 명시적으로 그렇게 말한 재개만 할 수 있고, 그때도
+      // 지목된 스텝만 열리며 사유가 원장에 남는다.
+      status = 'running'; haltReason = null;
+      // 사유 없는 개방은 fold가 무시한다. CLI에서 막는 것만으로는 부족하다 —
+      // git으로 병합되어 들어온 이벤트는 쓰기 경로를 지나오지 않는다.
+      const granted = Array.isArray(event.grantedAttempts) ? event.grantedAttempts : [];
+      if (granted.length && !String(event.reason || '').trim()) {
+        diagnostics.push({ code: 'RDL-RUN-027', severity: 'error', eventId: event.eventId, message: 'run.resumed granted an attempt budget without a reason and was ignored' });
+      } else for (const stepId of granted) delete attempts[stepId];
     } else if (event.type === 'run.completed_local') { status = 'completed_local'; completedLocalSeen = true; completedLocals.push({ ownerToken: event.ownerToken || null, commit: event.commit || null }); }
     else if (event.type === 'run.synced') status = 'synced';
   }
@@ -800,6 +838,10 @@ function foldProgress(events, ownership) {
     procedure: { name: started.procedure.name, revision: started.procedure.revision, contentHash: started.procedure.contentHash },
     status, cursor: current, cursorStep: current ? byId.get(current) || null : null,
     completedSteps: order.filter((identifier) => completed.has(identifier)), attempts, forcedSteps, artifactIds, lastGate, haltReason,
+    stepCommits, producedCommits: producedCommits.slice(),
+    // 사람 게이트를 --force로 지나간 런. 승인 자체는 원장에 남지만, 그것이 사람의
+    // 승인이었는지는 원장이 답할 수 없다 — 그래서 공유 단계에서 다시 묻는다.
+    forcedHumanSteps: forcedSteps.filter((item) => { const step = byId.get(item.stepId); return Boolean(step && step.human === true); }).map((item) => item.stepId),
     ownerToken: ownership ? ownership.ownerToken : null, owner: ownership ? ownership.ownerClientId : null,
     ownershipConflict: ownership ? ownership.conflict : null,
     staleEventIds: ownership ? ownership.staleEvents.map((event) => event.eventId).filter(Boolean).sort() : [], diagnostics

@@ -243,7 +243,10 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
   });
   const replacedContextBeforeSpawn = await runAdapterOnce(racedContext);
   assert.strictEqual(replacedContextBeforeSpawn.exitCode, 2);
-  assert.match(replacedContextBeforeSpawn.error, /replaced or changed/u);
+  // 이 교체는 두 계약을 동시에 어긴다: 근거 파일이 스폰 직전에 바뀌었고, 저작이
+  // 시작되는 시점의 트리가 대상 밖에서 더럽다. 어느 쪽이 먼저 잡든 성질은 같다 —
+  // 스폰 전에 거부되고 어댑터는 돌지 않는다. 그것을 sentinel이 증명한다.
+  assert.match(replacedContextBeforeSpawn.error, /replaced or changed|clean outside the target/u);
   assert(!fs.existsSync(sentinel), 'replaced context must be rejected before spawn');
   write(path.join(project, 'docs', 'TST-001.md'), '# TST-001\n');
 

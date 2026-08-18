@@ -273,10 +273,35 @@ try {
   ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.resumed', fromStep: 'author', clientId: 'laptop-a' });
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/u).filter(Boolean)) JSON.parse(line);
 
-  // 재개는 시도 예산을 되살린다. 이후 통과한 스텝의 과거 실패는 소급되지 않는다.
+  // 그냥 재개하는 것만으로는 시도 예산이 돌아오지 않는다. 돌아온다면 halt→resume을
+  // 되풀이하는 것만으로 maxAttempts가 무한이 되고, 절차가 선언한 상한은 사문이 된다.
+  fold = ledger.foldRun(ledger.readRunEvents(unit));
+  assert.strictEqual(fold.status, 'halted');
+  assert.strictEqual(fold.haltReason, 'attempt-limit');
+  assert.strictEqual(fold.attempts['mech-gate'], 2);
+
+  // 예산을 다시 여는 것은 재개의 부수 효과가 아니라 별도의 결정이다 — 어느 스텝을
+  // 왜 여는지가 원장에 함께 남고, 지목되지 않은 스텝의 예산은 그대로다.
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.resumed', fromStep: 'author', grantedAttempts: ['mech-gate'], reason: '검사 규칙을 고쳐 다시 시도한다', clientId: 'laptop-a' });
   fold = ledger.foldRun(ledger.readRunEvents(unit));
   assert.strictEqual(fold.status, 'running');
   assert.strictEqual(fold.cursor, 'author');
+  assert.strictEqual(fold.attempts['mech-gate'], undefined);
+
+  // 사유 없는 예산 개방은 fold가 무시한다. CLI에서 막는 것만으로는 부족하다 —
+  // git으로 병합되어 들어온 이벤트는 쓰기 경로를 지나오지 않기 때문이다.
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: [], clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.gate', stepId: 'mech-gate', exitCode: 1, diagnostics: [], clientId: 'laptop-a' });
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.resumed', fromStep: 'author', grantedAttempts: ['mech-gate'], clientId: 'laptop-a' });
+  fold = ledger.foldRun(ledger.readRunEvents(unit));
+  assert.strictEqual(fold.attempts['mech-gate'], 2);
+  assert(fold.diagnostics.some((item) => item.code === 'RDL-RUN-027'), '사유 없는 예산 개방은 진단으로 남아야 합니다');
+
+  // 사유를 갖춘 개방만 예산을 연다.
+  ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.resumed', fromStep: 'author', grantedAttempts: ['mech-gate'], reason: '검사 규칙을 고쳤다', clientId: 'laptop-a' });
+  fold = ledger.foldRun(ledger.readRunEvents(unit));
+  assert.strictEqual(fold.attempts['mech-gate'], undefined);
+  assert.strictEqual(fold.status, 'running');
   ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.step', stepId: 'author', executor: 'adapter', exitCode: 0, clientId: 'laptop-a' });
   ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.gate', stepId: 'mech-gate', exitCode: 0, diagnostics: [], clientId: 'laptop-a' });
   ledger.appendRunEvent(unit, { runId: 'RUN-0123456789ABCDEF0123', projectId: 'crm', type: 'run.step', stepId: 'save', executor: 'cli', exitCode: 0, clientId: 'laptop-a' });

@@ -316,9 +316,9 @@ async function verifyArtifact(start, input) {
   if (client.status !== 'active' || !['agent', 'service'].includes(client.type) || !projectMember(project, client.owner)) throw new Error('verify client must be an active project-member agent/service');
   if (!ARTIFACT_ID.test(input.targetId || '')) throw new Error('invalid verification target ID');
   const artifact = projectArtifacts(project).find((item) => item.id === input.targetId); if (!artifact) throw new Error(`verification target not found: ${input.targetId}`);
-  const observed = cleanSnapshot(project); let ownerToken; let step; let runEvents;
+  const observed = cleanSnapshot(project); let ownerToken; let step; let runEvents; let runFold = null;
   if (input.runId) {
-    const reconciled = ledger.reconcileRun(start, { project: project.key, runId: input.runId }); const ownership = ledger.ownershipState(reconciled.events); const fold = ledger.foldSharedRun(reconciled.events);
+    const reconciled = ledger.reconcileRun(start, { project: project.key, runId: input.runId }); const ownership = ledger.ownershipState(reconciled.events); const fold = runFold = ledger.foldSharedRun(reconciled.events);
     if (ownership.status !== 'ACTIVE' || ownership.ownerClientId !== clientId) throw new Error('run-bound verify requires the active owner');
     if (!fold.cursorStep || !(fold.cursorStep.verify || fold.cursorStep.lenses)) throw new Error('run cursor is not a verification step');
     const target = fold.artifactIds[fold.artifactIds.length - 1]; if (!target || target !== input.targetId) throw new Error('run-bound verification target must equal the latest pinned artifact');
@@ -336,13 +336,16 @@ async function verifyArtifact(start, input) {
   if (!adapterName || (pinnedAdapter && input.adapter && input.adapter !== pinnedAdapter)) throw new Error('verification adapter is missing or differs from the pinned step');
   const adapterConfig = settings.runtimeResolved.adapters[adapterName]; if (!adapterConfig || adapterConfig.enabled !== true) throw new Error(`verification adapter is disabled or unknown: ${adapterName}`);
   const revisionPin = step && step.verify && step.verify.revisionPin;
-  // step-head는 이 스텝이 도는 시점의 HEAD를 판정 대상으로 삼는다. 저작과 검증을
-  // 한 런에 묶으려면 검증이 저장이 방금 만든 커밋을 봐야 한다. 어떤 커밋을 봤는지는
-  // verdict에 그대로 남으므로 사후 추적성은 그대로다.
-  const stepHead = revisionPin && revisionPin.strategy === 'step-head';
-  const reviewedRevision = input.runId && !stepHead
-    ? revisionPin && revisionPin.strategy === 'git-commit' && revisionPin.reviewedRevision
-    : observed.head;
+  // 판정 대상은 원장이 정한다. step-output-commit은 "지목된 스텝이 만들었다고
+  // 원장에 기록된 커밋"으로 풀린다 — 주변의 현재 HEAD가 아니다. 그래야 저장과
+  // 검증 사이에 다른 프로세스가 커밋해도 저작 결과가 아닌 것이 판정되지 않는다.
+  // 아래의 observed.head 일치 검사가 그 창을 실패로 바꾼다.
+  const stepOutput = revisionPin && revisionPin.strategy === 'step-output-commit';
+  const reviewedRevision = !input.runId
+    ? observed.head
+    : stepOutput
+      ? (runFold && runFold.stepCommits && runFold.stepCommits[revisionPin.step]) || null
+      : revisionPin && revisionPin.strategy === 'git-commit' && revisionPin.reviewedRevision;
   if (!REVISION.test(reviewedRevision || '')) throw new Error('run-bound verification is missing its procedure revision pin');
   if (observed.head !== reviewedRevision) throw new Error('project HEAD differs from the pinned verification revision');
   // 절차가 pin한 quorum·validator·diversity policy는 lenses·instructions·adapter와

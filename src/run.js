@@ -227,7 +227,16 @@ function runGate(start, options) {
 function resumeRun(start, options) {
   const context = runContext(start, options);
   if (context.fold.status !== 'halted') throw new Error(`정지 상태가 아닌 런은 재개할 수 없습니다: ${context.fold.status}`);
-  const event = Object.assign({ type: 'run.resumed', fromStep: context.fold.cursor, clientId: actorClientId(context, start, options) }, ownershipFields(context));
+  // 시도 예산을 다시 여는 재개는 별도 결정이다. 어느 스텝을 왜 여는지 말해야 하고,
+  // 그 사유는 원장에 남는다 — 상한에 걸린 런을 사유 없이 되살리는 길은 없다.
+  const granted = Array.from(new Set(String(options.grantAttempts || '').split(',').map((item) => item.trim()).filter(Boolean))).sort();
+  const reason = String(options.reason || '').trim();
+  if (granted.length && !reason) throw new Error('--grant-attempts에는 --reason <사유>가 필요합니다.');
+  if (!granted.length && reason) throw new Error('--reason은 --grant-attempts와 함께만 기록됩니다.');
+  const known = new Set(context.fold.procedure && context.events.find((item) => item.type === 'run.started').procedure.resolved.steps.map((step) => step.id));
+  for (const stepId of granted) if (!known.has(stepId)) throw new Error(`절차에 없는 스텝의 예산은 열 수 없습니다: ${stepId}`);
+  const event = Object.assign({ type: 'run.resumed', fromStep: context.fold.cursor, clientId: actorClientId(context, start, options) },
+    granted.length ? { grantedAttempts: granted, reason } : {}, ownershipFields(context));
   const recorded = ledger.recordRunEvent(start, { project: options.project, runId: options.run, rootRequestId: options.requestId, event });
   return { runId: options.run, fromStep: event.fromStep, event: recorded.event };
 }
@@ -625,7 +634,11 @@ async function executeDriveCli(context, step, operationId, options) {
   let parsed;
   try { parsed = JSON.parse(result.stdout || '{}'); } catch { return { exitCode: 2, diagnosticCodes: ['DRIVE_CLI_INVALID_OUTPUT'], artifactIds: [], stderr: (result.stderr || result.stdout || '').trim() || null }; }
   const artifactIds = Array.from(new Set([].concat(parsed.artifactIds || [], parsed.id || []).filter(Boolean).map(String))).sort();
-  return { exitCode, artifactIds, diagnosticCodes: [], ...(exitCode === 0 ? {} : { stderr: (result.stderr || '').trim() || null }) };
+  // 커밋을 만드는 명령은 자기가 만든 커밋을 말한다. 이것을 버리면 뒤따르는 검증이
+  // 판정 대상을 주변의 현재 HEAD에서 주워 오게 되고, 그 사이에 다른 프로세스가
+  // 커밋하면 저작 결과가 아닌 것을 저작 결과로 판정한다.
+  const commit = typeof parsed.commit === 'string' && /^[a-f0-9]{40,64}$/u.test(parsed.commit) ? parsed.commit : null;
+  return { exitCode, artifactIds, commit, diagnosticCodes: [], ...(exitCode === 0 ? {} : { stderr: (result.stderr || '').trim() || null }) };
 }
 
 function executeDriveGate(context, step) {
@@ -1013,9 +1026,10 @@ async function tickRun(start, options, dependencies) {
     const artifactIds = Array.from(new Set((result.result && result.result.artifactIds || result.artifactIds || []).map(String))).sort();
     const diagnosticCodes = Array.from(new Set(result.diagnosticCodes || [])).sort();
     const kind = result.exitCode === 0 ? 'step-completed' : 'step-failed';
-    const boundedResultDecision = kind === 'step-completed' ? { artifactIds } : { failureCode: result.failureCode || 'DRIVE_STEP_FAILED' };
+    const commit = typeof result.commit === 'string' && /^[a-f0-9]{40,64}$/u.test(result.commit) ? result.commit : null;
+    const boundedResultDecision = kind === 'step-completed' ? { artifactIds, ...(commit ? { commit } : {}) } : { failureCode: result.failureCode || 'DRIVE_STEP_FAILED' };
     const operation = ledger.createOperation({ operationId, stepId: step.id, logicalAttempt, outcomeKind: kind, exitCode: result.exitCode, sortedArtifactIds: artifactIds, sortedDiagnosticCodes: diagnosticCodes, boundedResultDecision });
-    await record({ type: 'run.step', stepId: step.id, executor: step.executor, exitCode: result.exitCode, artifactIds, clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
+    await record({ type: 'run.step', stepId: step.id, executor: step.executor, exitCode: result.exitCode, artifactIds, ...(commit && result.exitCode === 0 ? { commit } : {}), clientId: options.clientId, ownerToken: context.ownership.ownerToken, operation }, driveChildKey('outcome', operationId, kind));
     // 반환값이 halted라고 말하면 원장도 halted여야 한다. 실패 outcome만 남기면
     // fold는 running으로 남아, 다음 drive가 실패 스텝을 재개 절차 없이 다시
     // 실행한다 — 실패를 조용히 지나가는 런은 없어야 한다.

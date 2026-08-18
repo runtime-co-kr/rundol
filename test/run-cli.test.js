@@ -176,16 +176,18 @@ try {
   assert.deepStrictEqual(Object.keys(authorStep.instruction).sort(), ['id', 'instructionDigest', 'revision']);
   assert.deepStrictEqual(Object.keys(verifyStep.verify.instructions).sort(), ['boundary-v1', 'omission-v1', 'satisfaction-v1']);
   // 저작을 포함하는 절차의 검증은 저장이 만든 커밋을 본다. run 시작 시점으로
-  // 굳히면 저작 결과를 볼 수 없다.
-  assert.deepStrictEqual(verifyStep.verify.revisionPin, { strategy: 'step-head' });
+  // 굳히면 저작 결과를 볼 수 없고, "지금 HEAD"로 두면 그 사이 다른 프로세스가
+  // 만든 커밋을 저작 결과로 판정한다.
+  assert.deepStrictEqual(verifyStep.verify.revisionPin, { strategy: 'step-output-commit', step: 'save' });
 
   // Run-bound verification result is converted to a deterministic run.gate child under the same root request.
   // revision 2는 문서를 만들지 않는다. 대상 문서를 run 시작 시 고정하고, 절차는
   // 그것을 쓰고·검사하고·검증하고·저장한 뒤 사람 앞에서 멈춘다.
   const verificationRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', resumeArtifact.id]);
   const startedPin = rdl(['run', 'log', '--run', verificationRun.runId, '--project', 'crm']).events.find((item) => item.type === 'run.started').procedure.resolved.steps.find((item) => item.id === 'verify').verify.revisionPin;
-  // step-head는 run 시작 시점에 굳히지 않는다 — 검증 스텝이 도는 시점에 풀린다.
-  assert.strictEqual(startedPin.strategy, 'step-head');
+  // step-output-commit은 run 시작 시점에 굳힐 수 없다 — 그 커밋이 아직 없다.
+  assert.strictEqual(startedPin.strategy, 'step-output-commit');
+  assert.strictEqual(startedPin.step, 'save');
   assert.strictEqual(startedPin.reviewedRevision, undefined);
   // revision 2의 첫 스텝은 author다 — plan·create가 없다.
   rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture author bypass']);
