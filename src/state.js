@@ -691,6 +691,19 @@ function syncProjectState(config, settings) {
   let pushed = null;
   for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
     prepared = prepareProjectState(config, settings);
+    // 예선 검사와 push 사이에 prepareProjectState가 새 커밋을 만든다. 저장하지 않은
+    // 변경이 있으면 그것을 담고, 원격 병합도 커밋한다. 그래서 통과 판정을 받은 HEAD와
+    // 지금 나가려는 HEAD가 다를 수 있고, 그 차이가 곧 아무도 승인하지 않은 내용이다.
+    //
+    // 판정을 한 번만 하면 그 창을 못 본다. 나가기 직전에 다시 묻는다 — 검사와 행위
+    // 사이에 상태가 변하는 것이 이 경로의 성질이므로, 검사는 행위에 붙어 있어야 한다.
+    if (!settings.shareUnverified) {
+      const remaining = unclearedRunCommits(config);
+      if (remaining.length) {
+        const shown = remaining.slice(0, 10).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status})`).join(', ');
+        throw new Error(`RDL-SYNC-030: 저장 과정에서 승인되지 않은 커밋이 push 대상에 들어왔습니다: ${shown}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유> --approved-by <human-client-id>로 공유하세요.`);
+      }
+    }
     pushed = runGit(['push', prepared.remote, `${config.ref}:${config.ref}`], { cwd: config.root, allowFailure: true });
     if (pushed.status === 0) return Object.assign({}, prepared, { pushed: true, attempts: attempt, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout });
     if (!nonFastForward(pushed) || attempt === policy.maxAttempts) break;
@@ -770,6 +783,14 @@ function unclearedRunCommits(config) {
     const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion >= 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const commits = (fold.producedCommits || []).filter((commit) => /^[a-f0-9]{40,64}$/u.test(String(commit)));
     if (!commits.length) continue;
+    // 이미 공유된 런은 다시 판정하지 않는다. 그 커밋은 원격에 있고 되돌릴 수 없으므로
+    // 막을 대상이 아니며, 무엇보다 판정 기준이 지금의 Client 상태라는 것이 문제다 —
+    // 승인자가 나중에 퇴사해 비활성이 되면 과거의 정상 런이 오늘 다시 차단 대상이
+    // 된다. 그때 그 승인이 유효했는지는 그때의 사실이고, 오늘의 상태가 바꾸지 못한다.
+    //
+    // 사후에 그 승인이 잘못이었음을 알게 되는 경로는 차단이 아니라 감사다 —
+    // check의 RDL-RUN-031이 그 판정을 남긴다.
+    if (fold.status === 'synced') continue;
     // 통과의 조건은 셋이다. 런이 로컬 완료에 닿았을 것, 사람 게이트를 사람의 승인
     // 으로 지났을 것, 그리고 그 승인이 검증이 본 커밋에 붙어 있을 것. 셋 중 하나라도
     // 없으면 이 런의 커밋은 아직 나갈 수 없다.
@@ -777,21 +798,7 @@ function unclearedRunCommits(config) {
     // human-approval이라고 적었다"뿐이고, 그 clientId가 실제로 human 유형 활성
     // Client인지는 registry가 답한다. 이 대조가 없으면 에이전트가 이벤트를 직접
     // 써 넣는 것만으로 사람 승인이 된다 — git 병합으로 들어온 이벤트도 마찬가지다.
-    //
-    // 유형과 상태만으로는 부족하다. human Client는 어느 프로젝트에나 등록될 수 있고,
-    // 이 프로젝트의 활성 멤버가 소유한 자격이 아니면 여기서는 승인 권한이 없다 —
-    // 옆 프로젝트의 검토자가 병합으로 들어와 이 프로젝트를 승인하는 길을 닫는다.
-    const members = new Set(readCollaboration(config.root, config.project).members
-      .filter((member) => member.fields['상태'] === 'active').map((member) => member.id));
-    const approvals = (fold.humanApprovals || []).filter((item) => {
-      if (!item.clientId) return false;
-      try {
-        const client = getClient(config.root, item.clientId);
-        return Boolean(client) && client.type === 'human' && client.status === 'active' && members.has(client.owner);
-      } catch (_) {
-        return false;
-      }
-    });
+    const approvals = (fold.humanApprovals || []).filter((item) => approverIsProjectHuman(config, item.clientId));
     const gates = fold.humanGateSteps || [];
     const cleared = ['completed_local', 'synced'].includes(fold.status)
       && !(fold.unapprovedHumanSteps || []).length
@@ -820,6 +827,25 @@ function unclearedRunCommits(config) {
   return blocked;
 }
 
+// 승인 자격의 정의는 한 곳에만 둔다. 원장의 승인을 세는 곳과 --approved-by를 받는
+// 곳이 각자 판정하면 둘이 어긋나고, 실제로 어긋났다 — 앞 판에서 전자만 멤버십을
+// 보고 후자는 유형과 상태만 봐서, CHANGELOG가 약속한 계약과 코드가 달랐다.
+//
+// 자격의 조건은 셋이다: 등록된 human 유형일 것, 활성일 것, 그리고 그 자격을 가진
+// 멤버가 이 프로젝트의 활성 멤버일 것. human 자격은 어느 프로젝트에나 등록될 수
+// 있으므로 마지막 조건이 없으면 옆 프로젝트의 검토자가 이 프로젝트를 승인한다.
+function approverIsProjectHuman(config, clientId) {
+  if (!clientId) return false;
+  try {
+    const client = getClient(config.root, clientId);
+    if (!client || client.type !== 'human' || client.status !== 'active') return false;
+    return readCollaboration(config.root, config.project).members
+      .some((member) => member.id === client.owner && member.fields['상태'] === 'active');
+  } catch (_) {
+    return false;
+  }
+}
+
 function syncProjectStateWithRuns(config, settings) {
   const uncleared = settings.push === false ? [] : unclearedRunCommits(config);
   if (uncleared.length) {
@@ -830,9 +856,9 @@ function syncProjectStateWithRuns(config, settings) {
     if (reason) {
       const approver = String(settings.approvedBy || '').trim().toLowerCase();
       if (!approver) throw new Error('RDL-SYNC-031: --share-unverified에는 --approved-by <human-client-id>가 필요합니다. 검증되지 않은 내용의 공유는 사람의 판단이어야 합니다.');
-      const client = getClient(config.root, approver);
-      if (!client || client.type !== 'human' || client.status !== 'active') {
-        throw new Error(`RDL-SYNC-031: --approved-by는 활성 human Client여야 합니다: ${approver}(${client ? client.type : '없음'}).`);
+      if (!approverIsProjectHuman(config, approver)) {
+        const client = (() => { try { return getClient(config.root, approver); } catch (_) { return null; } })();
+        throw new Error(`RDL-SYNC-031: --approved-by는 이 프로젝트의 활성 human Client여야 합니다: ${approver}(${client ? `${client.type}, owner ${client.owner}` : '미등록'}).`);
       }
       settings.shareApprovedBy = approver;
     }

@@ -123,6 +123,7 @@ try {
   rdl(['contract', 'set', '--project', 'crm', '--profile', 'lean', '--enforcement', 'advisory']);
   rdl(['client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'device', '--owner', 'MEMBER-001']);
   rdl(['client', 'register', 'agent-a', '--name', '동기화 에이전트', '--type', 'agent', '--owner', 'MEMBER-001']);
+  rdl(['client', 'register', 'reviewer-a', '--name', '검토자', '--type', 'human', '--owner', 'MEMBER-001']);
 
   // 문서 1개 = 기능 1개 기본: REQ에 기능 2개는 --grouped로도 열리지 않는다.
   const resumeArtifact = rdl(['doc', 'create', 'PRD', '재개 검증', '--project', 'crm', '--owner', 'MEMBER-001', '--scope', '검증 요청 재개 흐름', '--exclude', '외부 시스템 연동']);
@@ -193,7 +194,9 @@ try {
   rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture author bypass']);
   rdl(['run', 'gate', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture mechanical gate bypass']);
   // 저장이 검증보다 앞이다 — 검증은 저장이 만든 커밋을 본다.
-  rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture save bypass']);
+  // 저장 스텝은 커밋을 만드는 스텝이므로, 사람이 대신 보고할 때도 어느 커밋인지
+  // 밝혀야 한다. 밝히지 않은 성공은 검증이 결박될 곳을 남기지 않는다.
+  rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture save bypass', '--commit', command('git', ['rev-parse', 'HEAD'], projectRoot)]);
   const verificationRootId = 'REQ-CCCCCCCCCCCCCCCCCCCC';
   const verificationDigest = 'c'.repeat(64);
   requestJournal.prepareRoot(runtimeWorkspace(temporary), { rootRequestId: verificationRootId, commandDigest: verificationDigest, clientId: 'agent-a' });
@@ -405,8 +408,12 @@ try {
   assert.notStrictEqual(blockedStep.status, 0);
   rdl(['run', 'resume', '--run', runId, '--project', 'crm', '--client-id', 'laptop-a']);
 
-  // save와 sync-gate(사람 게이트)를 보고하고 완료한다.
-  rdl(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'save', '--client-id', 'laptop-a']);
+  // save와 sync-gate(사람 게이트)를 보고하고 완료한다. 저장은 커밋을 만드는 스텝
+  // 이므로 어느 커밋인지 밝히지 않으면 성공으로 받아들이지 않는다.
+  const withoutCommit = rdlRaw(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'save', '--client-id', 'laptop-a']);
+  assert.notStrictEqual(withoutCommit.status, 0, '커밋 없는 저장 보고가 통과했습니다');
+  assert.match(`${withoutCommit.stdout}${withoutCommit.stderr}`, /커밋을 만드는 스텝/u, `${withoutCommit.stdout}${withoutCommit.stderr}`);
+  rdl(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'save', '--client-id', 'laptop-a', '--commit', command('git', ['rev-parse', 'HEAD'], path.join(temporary, 'projects', 'crm'))]);
   next = rdl(['run', 'next', '--run', runId, '--project', 'crm']);
   assert.strictEqual(next.step.human, true);
   const humanWithoutAcknowledgement = rdlRaw(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'sync-gate', '--client-id', 'laptop-a']);
@@ -422,7 +429,9 @@ try {
   assert(/완료되지 않은 스텝/u.test(incomplete.stderr));
 
   // sync가 성공하면 completed_local 런이 synced로 전이한다 — 두 번째 완료.
-  rdl(['sync', '--project', 'crm', '--client-id', 'agent-a']);
+  // 이 픽스처의 런들은 사람 승인을 거치지 않았다. 공유하려면 사람의 판단이 필요하고,
+  // 그것이 곧 --share-unverified가 --approved-by를 요구하는 이유다.
+  rdl(['sync', '--project', 'crm', '--client-id', 'agent-a', '--share-unverified', '픽스처 런을 그대로 공유한다', '--approved-by', 'reviewer-a']);
   const listed = rdl(['run', 'list', '--project', 'crm']);
   const syncedRun = listed.runs.find((item) => item.runId === runId);
   assert.strictEqual(syncedRun.status, 'synced');

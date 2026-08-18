@@ -195,11 +195,19 @@ function reportStep(start, options) {
   }
   const exitCode = options.exit === undefined ? 0 : Number.parseInt(options.exit, 10);
   if (!Number.isInteger(exitCode) || exitCode < 0) throw new Error('--exit는 0 이상의 정수여야 합니다.');
+  // 커밋을 만드는 스텝은 커밋 없이 성공을 보고할 수 없다. drive에만 이 검사를 두면
+  // 공개 명령이 그대로 우회로가 된다 — 막는 것과 자동 경로에서만 막는 것은 다르다.
+  // 그런 런은 검증이 결박될 곳이 없고 "무엇을 검증했는가"에 답하지 못한다.
+  const commit = String(options.commit || '').trim().toLowerCase();
+  if (commitProducingStep(definition) && exitCode === 0 && !/^[a-f0-9]{40,64}$/u.test(commit)) {
+    throw new Error(`${stepId}은 커밋을 만드는 스텝입니다. 성공을 보고하려면 --commit <sha>로 만든 커밋을 밝혀야 합니다.`);
+  }
   const event = Object.assign({
     type: 'run.step',
     stepId,
     executor: definition ? definition.executor || 'client' : 'client',
     exitCode,
+    ...(commit && exitCode === 0 ? { commit } : {}),
     clientId
   }, ownershipFields(context));
   if (options.artifactId) event.artifactIds = [options.artifactId];
