@@ -175,18 +175,23 @@ try {
   const verifyStep = verifiedDefinition.steps.find((step) => step.id === 'verify');
   assert.deepStrictEqual(Object.keys(authorStep.instruction).sort(), ['id', 'instructionDigest', 'revision']);
   assert.deepStrictEqual(Object.keys(verifyStep.verify.instructions).sort(), ['boundary-v1', 'omission-v1', 'satisfaction-v1']);
-  assert.deepStrictEqual(verifyStep.verify.revisionPin, { strategy: 'run-start-head' });
+  // 저작을 포함하는 절차의 검증은 저장이 만든 커밋을 본다. run 시작 시점으로
+  // 굳히면 저작 결과를 볼 수 없다.
+  assert.deepStrictEqual(verifyStep.verify.revisionPin, { strategy: 'step-head' });
 
   // Run-bound verification result is converted to a deterministic run.gate child under the same root request.
   // revision 2는 문서를 만들지 않는다. 대상 문서를 run 시작 시 고정하고, 절차는
   // 그것을 쓰고·검사하고·검증하고·저장한 뒤 사람 앞에서 멈춘다.
   const verificationRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', resumeArtifact.id]);
   const startedPin = rdl(['run', 'log', '--run', verificationRun.runId, '--project', 'crm']).events.find((item) => item.type === 'run.started').procedure.resolved.steps.find((item) => item.id === 'verify').verify.revisionPin;
-  assert.match(startedPin.reviewedRevision, /^[a-f0-9]{40}$/u);
-  assert.strictEqual(startedPin.strategy, 'git-commit');
+  // step-head는 run 시작 시점에 굳히지 않는다 — 검증 스텝이 도는 시점에 풀린다.
+  assert.strictEqual(startedPin.strategy, 'step-head');
+  assert.strictEqual(startedPin.reviewedRevision, undefined);
   // revision 2의 첫 스텝은 author다 — plan·create가 없다.
   rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture author bypass']);
   rdl(['run', 'gate', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture mechanical gate bypass']);
+  // 저장이 검증보다 앞이다 — 검증은 저장이 만든 커밋을 본다.
+  rdl(['run', 'step', '--run', verificationRun.runId, '--project', 'crm', '--client-id', 'agent-a', '--force', '--reason', 'fixture save bypass']);
   const verificationRootId = 'REQ-CCCCCCCCCCCCCCCCCCCC';
   const verificationDigest = 'c'.repeat(64);
   requestJournal.prepareRoot(runtimeWorkspace(temporary), { rootRequestId: verificationRootId, commandDigest: verificationDigest, clientId: 'agent-a' });
@@ -204,7 +209,8 @@ try {
     fold: { lenses: [{ lens: 'satisfaction-v1' }, { lens: 'omission-v1' }, { lens: 'boundary-v1' }] }
   });
   assert.strictEqual(repeatedTransition.transitionEventId, transition.transitionEventId, 'same verification root must reuse its run transition');
-  assert.strictEqual(rdl(['run', 'next', '--run', verificationRun.runId, '--project', 'crm']).step.id, 'save');
+  // 검증이 끝나면 남는 것은 사람 스텝뿐이다 — 저장은 그 앞에서 이미 지나갔다.
+  assert.strictEqual(rdl(['run', 'next', '--run', verificationRun.runId, '--project', 'crm']).step.id, 'sync-gate');
 
   // 게이트를 제거하는 프로젝트 오버라이드는 로드 시점에 거부된다.
   const proceduresFile = path.join(temporary, 'projects', 'crm', 'procedures.json');

@@ -336,7 +336,13 @@ async function verifyArtifact(start, input) {
   if (!adapterName || (pinnedAdapter && input.adapter && input.adapter !== pinnedAdapter)) throw new Error('verification adapter is missing or differs from the pinned step');
   const adapterConfig = settings.runtimeResolved.adapters[adapterName]; if (!adapterConfig || adapterConfig.enabled !== true) throw new Error(`verification adapter is disabled or unknown: ${adapterName}`);
   const revisionPin = step && step.verify && step.verify.revisionPin;
-  const reviewedRevision = input.runId ? revisionPin && revisionPin.strategy === 'git-commit' && revisionPin.reviewedRevision : observed.head;
+  // step-head는 이 스텝이 도는 시점의 HEAD를 판정 대상으로 삼는다. 저작과 검증을
+  // 한 런에 묶으려면 검증이 저장이 방금 만든 커밋을 봐야 한다. 어떤 커밋을 봤는지는
+  // verdict에 그대로 남으므로 사후 추적성은 그대로다.
+  const stepHead = revisionPin && revisionPin.strategy === 'step-head';
+  const reviewedRevision = input.runId && !stepHead
+    ? revisionPin && revisionPin.strategy === 'git-commit' && revisionPin.reviewedRevision
+    : observed.head;
   if (!REVISION.test(reviewedRevision || '')) throw new Error('run-bound verification is missing its procedure revision pin');
   if (observed.head !== reviewedRevision) throw new Error('project HEAD differs from the pinned verification revision');
   // 절차가 pin한 quorum·validator·diversity policy는 lenses·instructions·adapter와

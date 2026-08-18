@@ -618,13 +618,14 @@ async function executeDriveCli(context, step, operationId, options) {
     const diagnostic = result.category === 'timeout'
       ? 'DRIVE_CLI_TIMEOUT'
       : result.category === 'cancelled' ? 'DRIVE_CLI_CANCELLED' : 'DRIVE_SPAWN_FAILED';
-    return { exitCode: 2, diagnosticCodes: [diagnostic], artifactIds: [] };
+    // 왜 실패했는지를 함께 넘긴다. 코드만 남으면 설정을 고칠 근거가 없다.
+    return { exitCode: 2, diagnosticCodes: [diagnostic], artifactIds: [], stderr: (result.stderr || '').trim() || null };
   }
   const exitCode = Number.isSafeInteger(result.code) && [0, 1, 2].includes(result.code) ? result.code : 2;
   let parsed;
-  try { parsed = JSON.parse(result.stdout || '{}'); } catch { return { exitCode: 2, diagnosticCodes: ['DRIVE_CLI_INVALID_OUTPUT'], artifactIds: [] }; }
+  try { parsed = JSON.parse(result.stdout || '{}'); } catch { return { exitCode: 2, diagnosticCodes: ['DRIVE_CLI_INVALID_OUTPUT'], artifactIds: [], stderr: (result.stderr || result.stdout || '').trim() || null }; }
   const artifactIds = Array.from(new Set([].concat(parsed.artifactIds || [], parsed.id || []).filter(Boolean).map(String))).sort();
-  return { exitCode, artifactIds, diagnosticCodes: [] };
+  return { exitCode, artifactIds, diagnosticCodes: [], ...(exitCode === 0 ? {} : { stderr: (result.stderr || '').trim() || null }) };
 }
 
 function executeDriveGate(context, step) {

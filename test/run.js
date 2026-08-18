@@ -55,6 +55,7 @@ require('./verify.test');
 require('./watch-cli.test');
 require('./watch-runtime.test');
 require('./drive-cli.test');
+require('./drive-end-to-end.test');
 require('./driver-lease.test');
 require('./p15-compat.test');
 require('./packages.test');

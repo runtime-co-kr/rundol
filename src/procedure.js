@@ -55,22 +55,32 @@ const BUILTIN = {
     steps: [
       { id: 'author', executor: 'adapter', instruction: pinInstruction('author-v1'), retrySafety: { mode: 'operation-id' } },
       { id: 'mech-gate', gate: { command: 'check', args: ['{artifact}', '--strict', '--project', '{project}'] }, onFail: { goto: 'author', maxAttempts: 3 } },
+      // 저장이 검증보다 앞이다. 검증은 깨끗한 worktree를 요구하는데 — 판정이 불변
+      // 상태에 결박되어야 나중에 "그건 다른 버전이었다"가 통하지 않는다 — 저작은
+      // 문서를 고친다. 저장이 뒤에 있으면 검증 시점에 트리가 더럽고, 저작을 포함한
+      // 절차는 절대 완주하지 못한다. 이 순서에서 세 성질이 함께 선다: 저작이 고치고,
+      // 저장이 커밋으로 굳히고, 검증이 그 커밋을 판정한다.
+      //
+      // save는 본래 되풀이해도 같은 곳에 도착한다 — 바뀐 것이 없으면 커밋하지
+      // 않는다. gate-recheck를 붙이면 문서 검사 통과를 저장 완료로 읽어, 저장되지
+      // 않은 작업이 저장된 것으로 기록될 수 있다.
+      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'], retrySafety: { mode: 'converging' } },
       {
         id: 'verify',
         executor: 'adapter',
         verify: {
           lenses: ['satisfaction-v1', 'omission-v1', 'boundary-v1'],
           instructions: pinnedLensInstructions(['satisfaction-v1', 'omission-v1', 'boundary-v1']),
-          revisionPin: { strategy: 'run-start-head' },
+          // 저작이 만든 커밋을 검증한다. run 시작 시점으로 굳히면 저작 결과를
+          // 볼 수 없고, 그러면 이 절차는 저작을 포함한 채 완주할 수 없다.
+          revisionPin: { strategy: 'step-head' },
           policy: { validators: 1, quorum: 1, maxRefuted: 0, maxAbstain: 0, requireAdapterDiversity: false }
         },
+        // 반박되면 저작으로 돌아간다. 다시 쓰고 다시 저장하고 다시 검증한다 —
+        // 그 순환이 하네스 안에 남아야 사람이 매번 새 런을 시작하지 않는다.
         onFail: { goto: 'author', maxAttempts: 3 },
         retrySafety: { mode: 'operation-id' }
       },
-      // save는 본래 되풀이해도 같은 곳에 도착한다 — 바뀐 것이 없으면 커밋하지
-      // 않는다. gate-recheck를 붙이면 문서 검사 통과를 저장 완료로 읽어, 저장되지
-      // 않은 작업이 저장된 것으로 기록될 수 있다.
-      { id: 'save', executor: 'cli', command: 'save', args: ['--project', '{project}'], retrySafety: { mode: 'converging' } },
       { id: 'sync-gate', human: true }
     ]
   }
@@ -279,9 +289,12 @@ function pinProcedureVerificationRevision(procedure, reviewedRevision) {
     if (!step.verify && !Array.isArray(step.lenses)) continue;
     const verify = step.verify || (step.verify = {});
     if (verify.revisionPin !== undefined && (
-      !verify.revisionPin || verify.revisionPin.strategy !== 'run-start-head' ||
+      !verify.revisionPin || !['run-start-head', 'step-head'].includes(verify.revisionPin.strategy) ||
       Object.keys(verify.revisionPin).some((key) => key !== 'strategy')
-    )) throw new Error(`${step.id}.verify.revisionPin must declare run-start-head`);
+    )) throw new Error(`${step.id}.verify.revisionPin must declare run-start-head or step-head`);
+    // step-head는 검증 스텝이 도는 시점에 풀린다. 여기서 굳히면 저작이 만든
+    // 커밋을 볼 수 없다.
+    if (verify.revisionPin && verify.revisionPin.strategy === 'step-head') continue;
     verify.revisionPin = { strategy: 'git-commit', reviewedRevision };
   }
   return copy;

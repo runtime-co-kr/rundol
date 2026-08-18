@@ -60,6 +60,12 @@ try {
   const document = rdl(['doc', 'create', 'PRD', '종단 검증 대상', '--project', 'crm', '--owner', 'MEMBER-001',
     '--scope', '종단 경로가 도는지 보는 문서', '--exclude', '그 밖']);
 
+  // 프로필이 요구하는 문서를 갖춘다. save가 workspace 검증을 지나므로, 필수
+  // 문서가 없으면 저장 스텝에서 멈춘다 — 절차의 문제가 아니라 프로젝트의 문제다.
+  rdl(['doc', 'create', 'REQ', '종단 검증 요구', '--project', 'crm', '--owner', 'MEMBER-001',
+    '--scope', '종단 경로가 도는지에 대한 요구', '--exclude', '그 밖',
+    '--related', document.id, '--function-id', 'E2E-01']);
+
   const projectRoot = path.join(temporary, 'projects', 'crm');
   fs.writeFileSync(path.join(projectRoot, 'harness.json'), `${JSON.stringify({
     schemaVersion: 1,
