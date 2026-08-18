@@ -1470,6 +1470,44 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZ98L03756DAB91BF0A69B1": {
+      "title": "[기능] 저작 병렬 실행 — fan-out 스텝과 복귀 경로",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-044"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "형제 문서 셋 동시 저작의 총 소요가 순차 합보다 짧다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "한 대상이 실패해도 나머지 결과가 본 트리에 남는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "실행되지 못한 대상이 미실행으로 구분된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "선행 문서가 없는 대상은 준비 완료 집합에 들어가지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:49:08.690Z",
+      "updatedAt": "2026-08-18T22:49:08.690Z",
+      "statusChangedAt": "2026-08-18T22:49:08.690Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
