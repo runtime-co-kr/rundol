@@ -303,6 +303,7 @@ function pinProcedureInstructions(procedure, source) {
     const extras = Object.keys(instructions).filter((lensId) => !step.verify.lenses.includes(lensId));
     if (extras.length) throw new Error(`${source}: ${step.id}.verify.instructions에 선언되지 않은 lens가 있습니다: ${extras.join(', ')}`);
     step.verify.instructions = pinned;
+    assertDiversitySatisfiable(step, source);
   }
   return copy;
 }
@@ -311,6 +312,38 @@ function pinProcedureInstructions(procedure, source) {
 // (저작 없는 절차), 절차 안의 어느 스텝이 만든 커밋을 지목하거나(저작 있는 절차).
 // "지금 HEAD"는 방법이 아니다 — 그것은 하네스가 아니라 주변이 정하는 값이고,
 // 런 도중 다른 프로세스가 커밋하면 저작 결과가 아닌 것이 판정 대상이 된다.
+// 만족될 수 없는 다양성 요구는 절차를 읽을 때 거부한다. 런타임에 실패로 나타나게
+// 두면 오설정과 정상 판정이 같은 얼굴을 한다 — 결과가 계속 "사람 판단 필요"로
+// 나오는데, 켠 사람은 그것이 판정인지 자기 설정 실수인지 알 수 없다.
+//
+// 여기서 보는 것은 구조뿐이다. 어댑터가 실제로 활성인지는 설정이 답하므로 검증
+// 실행 시점에 다시 묻는다. 절차만으로 이미 틀린 것을 절차에서 잡는다.
+function declaredAdapters(step, lensId) {
+  const verify = step.verify || {};
+  const perLens = verify.lensAdapters && verify.lensAdapters[lensId];
+  const value = perLens !== undefined ? perLens : (verify.adapters !== undefined ? verify.adapters : (verify.adapter !== undefined ? verify.adapter : step.adapter));
+  if (value === undefined || value === null) return null;
+  const names = (Array.isArray(value) ? value : [value]).map((item) => String(item || "").trim()).filter(Boolean);
+  return names.length ? Array.from(new Set(names)) : null;
+}
+
+function assertDiversitySatisfiable(step, source) {
+  const policy = (step.verify && step.verify.policy) || null;
+  if (!policy) return;
+  for (const lensId of step.verify.lenses) {
+    const perLens = (policy.perLens && policy.perLens[lensId]) || (policy.lensPolicies && policy.lensPolicies[lensId]) || policy;
+    if (perLens.requireAdapterDiversity !== true) continue;
+    const quorum = perLens.quorum === undefined ? 1 : perLens.quorum;
+    const validators = perLens.validators === undefined ? 1 : perLens.validators;
+    if (validators < quorum) throw new Error(`${source}: ${step.id}.verify의 ${lensId}는 validators(${validators})가 quorum(${quorum})보다 적어 다양성을 만족시킬 수 없습니다.`);
+    const names = declaredAdapters(step, lensId);
+    // 어댑터를 고정하지 않은 절차는 설정의 기본 어댑터 하나로 돈다. 그 하나로는
+    // 다양성을 만족시킬 수 없으므로, 목록을 적지 않은 것도 여기서 거부한다.
+    const count = names ? names.length : 1;
+    if (count < quorum) throw new Error(`${source}: ${step.id}.verify의 ${lensId}는 requireAdapterDiversity에 quorum(${quorum}) 이상의 어댑터가 필요한데 ${count}개만 고정되어 있습니다.`);
+  }
+}
+
 function validRevisionPin(pin) {
   if (!pin || typeof pin !== 'object') return false;
   const keys = Object.keys(pin).sort();

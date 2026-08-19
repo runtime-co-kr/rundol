@@ -9,7 +9,7 @@ const { getClient } = require('./collaboration-store');
 const { runtimeWorkspace } = require('./runtime');
 const { runGit } = require('./git');
 const { loadHarnessSettings } = require('./harness-settings');
-const { getLens, pinInstruction } = require('./instruction-registry');
+const { getLens, pinInstruction, LENS_APPROACHES } = require('./instruction-registry');
 const eventStore = require('./event-store');
 const ledger = require('./run-ledger');
 const journal = require('./request-journal');
@@ -46,8 +46,11 @@ function relativeFile(value, label) {
   return normalized;
 }
 function normalizeFinding(value, index) {
-  exactObject(value, ['summary', 'location'], `findings[${index}]`);
+  exactObject(value, ['summary', 'location', 'reproduce'], `findings[${index}]`);
   const result = { summary: text(value.summary, `findings[${index}].summary`, 1000, false) };
+  // 발견을 확인하려면 판정자가 무엇을 했는지 알아야 한다. 요약만 있으면 읽는 사람은
+  // 그 판정을 믿거나 처음부터 다시 조사하는 두 길밖에 없다.
+  if (value.reproduce !== undefined) result.reproduce = text(value.reproduce, `findings[${index}].reproduce`, 1000, false);
   if (value.location !== undefined) {
     exactObject(value.location, ['file', 'heading', 'blockId'], `findings[${index}].location`);
     const location = { file: relativeFile(value.location.file, `findings[${index}].location.file`) };
@@ -77,12 +80,17 @@ function normalizeOperation(value) {
   return { operationId: value.operationId, logicalAttempt: value.logicalAttempt, outcomeKind: value.outcomeKind, outcomeDigest: value.outcomeDigest, boundedResultDecision: value.boundedResultDecision };
 }
 function normalizeVerdictEvent(input) {
-  exactObject(input, BASE_FIELDS.concat(['runId', 'ownerToken', 'operation', 'canonicalDigest', 'occurredAt']), 'verdict.recorded');
+  exactObject(input, BASE_FIELDS.concat(['approach', 'runId', 'ownerToken', 'operation', 'canonicalDigest', 'occurredAt']), 'verdict.recorded');
   if (input.schemaVersion !== 1 || input.type !== 'verdict.recorded' || !EVENT_ID.test(input.eventId || '') || !REQUEST_ID.test(input.rootRequestId || '') || !REQUEST_ID.test(input.requestId || '') || !CLIENT_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !ARTIFACT_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '') || !SIMPLE_ID.test(input.lens || '') || !VERDICTS.has(input.verdict) || !VALIDATOR_ID.test(input.validatorInstanceId || '')) throw new Error('verdict.recorded identity or enum is invalid');
   const result = {};
   for (const key of BASE_FIELDS) result[key] = input[key];
   result.findings = normalizeFindings(input.findings);
   result.adapter = normalizeAdapter(input.adapter);
+  // 선택 필드다. 필수로 두면 이 판 이전에 기록된 판정이 전부 무효가 된다.
+  if (input.approach !== undefined) {
+    if (!LENS_APPROACHES.includes(input.approach)) throw new Error(`verdict approach is invalid: ${input.approach}`);
+    result.approach = input.approach;
+  }
   const runBound = input.runId !== undefined || input.ownerToken !== undefined;
   if (runBound) {
     if (!RUN_ID.test(input.runId || '') || !EVENT_ID.test(input.ownerToken || '')) throw new Error('run-bound verdict requires runId and ownerToken');
@@ -278,16 +286,70 @@ function foldVerdicts(events, policy) {
       unique.push(list[0]);
     }
     const counts = { pass: unique.filter((event) => event.verdict === 'pass').length, refuted: unique.filter((event) => event.verdict === 'refuted').length, abstain: unique.filter((event) => event.verdict === 'abstain').length, valid: unique.length };
+    // 다양성은 통과 판정을 낸 어댑터 이름의 가짓수다. 반박과 기권은 기여하지 않는다 —
+    // 통과를 뒷받침하는 근거의 폭을 세는 값이기 때문이다. 한 어댑터를 여러 번 불러
+    // 부풀릴 수 없는 것은 중복 validator 인스턴스가 이미 위에서 제외되기 때문이다.
     const diversity = new Set(unique.filter((event) => event.verdict === 'pass').map((event) => event.adapter.name)).size;
+    // 판정자가 실행되지 못한 것과 실행되어 할 말이 없던 것은 다른 값이다. 앞은
+    // undispatched이고 뒤는 abstain이다. 둘을 한 값으로 접으면 "확인 못 함"이
+    // "이상 없음"과 같은 자리에 들어간다.
+    const descriptor = lensDescriptor(lens);
     let status = 'passed';
-    if (counts.refuted > required.maxRefuted) status = 'refuted';
+    if (!counts.valid && descriptor.required === false) status = 'undispatched';
+    else if (counts.refuted > required.maxRefuted) status = 'refuted';
     else if (counts.abstain > required.maxAbstain || counts.valid < required.validators || counts.pass < required.quorum || (required.requireAdapterDiversity && diversity < required.quorum)) status = 'human_required';
+    // 선택 렌즈의 미실행은 검증을 미완으로 만들지 않는다. 다만 결과에서 사라지지도
+    // 않는다 — 보고 없이 지나가면 그 렌즈는 켜 둔 적도 없는 것이 된다.
     if (status === 'refuted') overall = 'refuted'; else if (status === 'human_required' && overall === 'passed') overall = 'human_required';
     for (const event of unique.filter((item) => item.verdict === 'refuted')) allFindings.push(...event.findings);
-    lenses.push({ lens, status, counts, required });
+    lenses.push({ lens, status, counts, required, diversity, approach: descriptor.approach, lensRequired: descriptor.required });
   }
   return { status: overall, targetId: policy.targetId, reviewedRevision: revision, lenses, findings: normalizeFindings(allFindings), diagnostics };
 }
+// 등록되지 않은 렌즈 이름으로도 집계는 돌아야 한다. 정책이 부르는 이름과 registry가
+// 아는 이름이 어긋났다고 집계 전체가 멈추면, 이름 하나 때문에 이미 나온 판정을 읽지
+// 못한다. 모르는 렌즈는 필수로 본다 — 모르는 것을 선택으로 접으면 조용히 건너뛴다.
+function lensDescriptor(lens) {
+  try { const entry = getLens(lens); return { approach: entry.approach, required: entry.required }; }
+  catch (_) { return { approach: null, required: true }; }
+}
+
+// 어댑터는 하나로도 목록으로도 고정된다. 두 형태를 부르는 쪽마다 풀면 어느 쪽이
+// 정본인지가 자리마다 달라진다.
+function adapterList(value) {
+  if (value === undefined || value === null) return null;
+  const list = Array.isArray(value) ? value : [value];
+  const names = list.map((item) => String(item || '').trim()).filter(Boolean);
+  if (!names.length) return null;
+  if (new Set(names).size !== names.length) throw new Error('verification adapters must be unique');
+  return names;
+}
+
+// slot에서 어댑터로 가는 배분은 순수 함수다. 무작위로 고르면 재개했을 때 다른
+// 어댑터가 뽑히고, 그 순간 invocation 계약이 깨진다 — 같은 slot이 다른 판정자의
+// 결과를 재사용하게 된다.
+function adapterForSlot(names, slot) {
+  return names[(slot - 1) % names.length];
+}
+
+// 만족될 수 없는 정책은 선언 시점에 거부한다. 런타임에 실패로 나타나게 두면
+// 오설정과 정상 판정이 같은 얼굴을 한다 — 다양성을 켰는데 어댑터가 하나뿐이면
+// 결과가 계속 "사람 판단 필요"로 나오고, 켠 사람은 그것이 판정인지 설정 실수인지
+// 알 수 없다.
+function assertPolicySatisfiable(policy, lenses, adaptersFor, label) {
+  for (const lens of lenses) {
+    const required = lensPolicy(policy, lens);
+    if (!required.requireAdapterDiversity) continue;
+    const names = adaptersFor(lens) || [];
+    if (names.length < required.quorum) {
+      throw new Error(`${label}: ${lens}의 requireAdapterDiversity는 quorum(${required.quorum}) 이상의 어댑터를 요구하는데 ${names.length}개만 고정되어 있습니다.`);
+    }
+    if (required.validators < required.quorum) {
+      throw new Error(`${label}: ${lens}의 validators(${required.validators})가 quorum(${required.quorum})보다 적어 다양성을 만족시킬 수 없습니다.`);
+    }
+  }
+}
+
 // 상한이 있는 동시 실행. 실패를 모아서 받는 이유는, 하나가 실패했다고 나머지를
 // 중단하면 이미 끝난 판정까지 버려지고 다음 시도가 처음부터 다시 부르기 때문이다.
 // 성공한 판정은 이미 원장에 남았으므로, 다음 실행은 실패한 것만 다시 부른다.
@@ -355,9 +417,43 @@ async function verifyArtifact(start, input) {
   const lenses = Array.from(new Set((input.lenses && input.lenses.length ? input.lenses : pinnedLenses && pinnedLenses.length ? pinnedLenses : settings.runtimeResolved.verify.defaultLenses))).sort();
   if (!lenses.length || lenses.some((lens) => !SIMPLE_ID.test(lens))) throw new Error('at least one valid lens is required');
   if (pinnedLenses && input.lenses && eventStore.canonicalJson(lenses) !== eventStore.canonicalJson(Array.from(new Set(pinnedLenses)).sort())) throw new Error('run-bound lenses must match the pinned procedure step');
-  const pinnedAdapter = step && (step.adapter || step.verify && step.verify.adapter); const adapterName = input.adapter || pinnedAdapter || settings.runtimeResolved.verify.defaultAdapter;
-  if (!adapterName || (pinnedAdapter && input.adapter && input.adapter !== pinnedAdapter)) throw new Error('verification adapter is missing or differs from the pinned step');
-  const adapterConfig = settings.runtimeResolved.adapters[adapterName]; if (!adapterConfig || adapterConfig.enabled !== true) throw new Error(`verification adapter is disabled or unknown: ${adapterName}`);
+  // 검증 스텝은 어댑터를 하나가 아니라 목록으로 고정할 수 있다. 하나만 쓰면 판정이
+  // 아무리 여러 번 나와도 같은 판정자의 같은 편향을 여러 번 세는 것이고, 다양성은
+  // 셀 수 없다.
+  const pinnedAdapters = adapterList(step && step.verify && step.verify.adapters) || adapterList(step && (step.adapter || step.verify && step.verify.adapter));
+  const requestedAdapters = adapterList(input.adapters) || adapterList(input.adapter);
+  const adapterNames = requestedAdapters || pinnedAdapters || adapterList(settings.runtimeResolved.verify.defaultAdapter);
+  if (!adapterNames || !adapterNames.length) throw new Error('verification adapter is missing or differs from the pinned step');
+  if (pinnedAdapters && requestedAdapters && eventStore.canonicalJson(requestedAdapters) !== eventStore.canonicalJson(pinnedAdapters)) throw new Error('verification adapter is missing or differs from the pinned step');
+  const adapterConfigs = new Map();
+  for (const name of adapterNames) {
+    const config = settings.runtimeResolved.adapters[name];
+    if (config && config.enabled === true) adapterConfigs.set(name, config);
+  }
+  // 렌즈마다 다른 판정자를 쓸 수 있다. 재현 렌즈는 스크립트 실행기가, 누락 렌즈는
+  // 읽는 판정자가 답한다 — 하나의 목록으로 묶으면 둘 중 하나는 자기가 할 수 없는
+  // 물음을 받는다.
+  const lensAdapterOverrides = (step && step.verify && step.verify.lensAdapters) || input.lensAdapters || {};
+  const usableAdapters = new Map();
+  const undispatched = [];
+  for (const lens of lenses) {
+    const declared = adapterList(lensAdapterOverrides[lens]) || adapterNames;
+    for (const name of declared) {
+      if (adapterConfigs.has(name)) continue;
+      const config = settings.runtimeResolved.adapters[name];
+      if (config && config.enabled === true) adapterConfigs.set(name, config);
+    }
+    const usable = declared.filter((name) => adapterConfigs.has(name));
+    // 필수 렌즈가 실행되지 못하면 검증은 완료되지 않는다. 선택 렌즈는 완료하되
+    // 미실행으로 보고한다 — 보고 없이 지나가면 켜 둔 적도 없는 것이 된다.
+    if (!usable.length) {
+      if (lensDescriptor(lens).required !== false) throw new Error(`verification adapter is disabled or unknown: ${declared.join(', ')}`);
+      undispatched.push(lens);
+      continue;
+    }
+    usableAdapters.set(lens, usable);
+  }
+  const adapterName = adapterNames[0];
   const revisionPin = step && step.verify && step.verify.revisionPin;
   // 판정 대상은 원장이 정한다. step-output-commit은 "지목된 스텝이 만들었다고
   // 원장에 기록된 커밋"으로 풀린다 — 주변의 현재 HEAD가 아니다. 그래야 저장과
@@ -375,8 +471,11 @@ async function verifyArtifact(start, input) {
   // 같은 지위다 — 병합하지 않으면 pin이 사문이 되어 기본값으로 검증된다.
   const pinnedPolicy = step && step.verify && step.verify.policy || null;
   if (pinnedPolicy && input.policy && eventStore.canonicalJson(input.policy) !== eventStore.canonicalJson(pinnedPolicy)) throw new Error('run-bound verification policy must match the pinned procedure step');
-  const rootRequestId = input.rootRequestId || ledger.newRequestId(); const policy = Object.assign({}, pinnedPolicy || input.policy || {}, { rootRequestId, targetId: input.targetId, reviewedRevision, lenses, allowedAdapters: [adapterName] }, input.runId ? { runId: input.runId, ownerToken } : {});
-  const commandDigest = verifyCommandDigest({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: adapterName, lenses, runId: input.runId });
+  const rootRequestId = input.rootRequestId || ledger.newRequestId(); const policy = Object.assign({}, pinnedPolicy || input.policy || {}, { rootRequestId, targetId: input.targetId, reviewedRevision, lenses, allowedAdapters: adapterNames.slice() }, input.runId ? { runId: input.runId, ownerToken } : {});
+  // 허용 집합은 고정된 목록 전체다. 하나로 좁히면 다른 어댑터가 낸 판정이 집계에서
+  // 조용히 버려지고, 다양성은 영원히 1이 된다.
+  assertPolicySatisfiable(policy, Array.from(usableAdapters.keys()), (lens) => usableAdapters.get(lens), '검증 정책');
+  const commandDigest = verifyCommandDigest({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: adapterNames.length === 1 ? adapterName : adapterNames.slice(), lenses, runId: input.runId });
   let root = journal.prepareRoot(runtimeWorkspace(layout.root), { rootRequestId, commandDigest, clientId });
   const runner = input.runAdapterOnce || require('./adapter').runAdapterOnce; const recorded = [];
   // 판정 호출은 서로의 결과를 읽지 않는다. 순차로 짜여 있던 것은 설계가 아니라 루프
@@ -390,6 +489,7 @@ async function verifyArtifact(start, input) {
   const currentRoot = () => root;
   const work = [];
   for (const lens of lenses) {
+    if (!usableAdapters.has(lens)) continue;
     const required = lensPolicy(policy, lens);
     for (let slot = 1; slot <= required.validators; slot += 1) work.push({ lens, slot });
   }
@@ -407,13 +507,15 @@ async function verifyArtifact(start, input) {
       }
       const validator = validatorInstanceId(rootRequestId, input.targetId, reviewedRevision, lens, slot);
       const lensEntry = getLens(lens);
+      const slotAdapter = adapterForSlot(usableAdapters.get(lens), slot);
+      const slotAdapterConfig = adapterConfigs.get(slotAdapter);
       const pinnedInstruction = step && step.verify && step.verify.instructions && step.verify.instructions[lens] || pinInstruction(lensEntry.instructionId);
       const relativeTarget = path.relative(project.root, artifact.file).replace(/\\/gu, '/');
-      const expectedAdapter = { name: adapterName, instructionId: pinnedInstruction.id, instructionRevision: pinnedInstruction.revision, instructionDigest: pinnedInstruction.instructionDigest };
+      const expectedAdapter = { name: slotAdapter, instructionId: pinnedInstruction.id, instructionRevision: pinnedInstruction.revision, instructionDigest: pinnedInstruction.instructionDigest };
       const descriptor = invocationDescriptor({
         childKey, invocationId: invocationId(validator), validatorInstanceId: validator, lens, slot, targetPath: relativeTarget,
         instruction: pinnedInstruction, adapter: expectedAdapter,
-        command: Object.assign({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: adapterName, lenses }, input.runId ? { runId: input.runId, stepId: step.id } : {})
+        command: Object.assign({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: slotAdapter, lenses }, input.runId ? { runId: input.runId, stepId: step.id } : {})
       });
       let invocation = journal.prepareInvocation(currentRoot(), { invocationKey: childKey, descriptor });
       let outcome;
@@ -437,7 +539,7 @@ async function verifyArtifact(start, input) {
       if (!outcome) {
         journal.updateInvocation(currentRoot(), childKey, 'running', { pid: process.pid });
         try {
-          outcome = await runner({ projectRoot: project.root, projectId: project.key, mode: 'verify', adapter: Object.assign({ name: adapterName }, adapterConfig), instruction: pinnedInstruction, targetPath: relativeTarget, allowedContextPaths: [relativeTarget], pin: { targetId: input.targetId, reviewedRevision }, instanceId: descriptor.invocationId, validatorInstanceId: validator, rootRequestId, runId: input.runId, stepId: step && step.id, lensId: lens }, {
+          outcome = await runner({ projectRoot: project.root, projectId: project.key, mode: 'verify', adapter: Object.assign({ name: slotAdapter }, slotAdapterConfig), instruction: pinnedInstruction, targetPath: relativeTarget, allowedContextPaths: [relativeTarget], pin: { targetId: input.targetId, reviewedRevision }, instanceId: descriptor.invocationId, validatorInstanceId: validator, rootRequestId, runId: input.runId, stepId: step && step.id, lensId: lens }, {
             onSpawn(pid) { journal.updateInvocation(currentRoot(), childKey, 'running', { pid }); }
           });
         } catch (error) {
@@ -452,7 +554,7 @@ async function verifyArtifact(start, input) {
       }
       const after = cleanSnapshot(project); if (after.head !== reviewedRevision) throw new Error('verifier changed project HEAD');
       assertVerificationGuard(start, project, { settingsHash: settings.contentHash, runId: input.runId, clientId, ownerToken });
-      const event = { verdict: outcome.result.verdict, findings: outcome.result.findings, adapter: outcome.adapter };
+      const event = { verdict: outcome.result.verdict, findings: outcome.result.findings, adapter: outcome.adapter, approach: lensEntry.approach };
       if (input.runId) { event.runId = input.runId; event.ownerToken = ownerToken; }
       recorded.push(Object.assign({ lens, slot }, recordVerdict(start, { project: project.key, rootRequestId, commandDigest, clientId, targetId: input.targetId, reviewedRevision, lens, validatorSlot: slot, event })));
       root = journal.loadJournal(runtimeWorkspace(layout.root), rootRequestId);
@@ -463,7 +565,7 @@ async function verifyArtifact(start, input) {
   // 다시 세운다 — 판정 내용은 원장이 정하지만, 돌려주는 목록의 순서도 결과다.
   recorded.sort((left, right) => String(left.lens).localeCompare(String(right.lens)) || left.slot - right.slot);
   const fold = foldVerdicts(readVerdicts(start, { project: project.key, targetId: input.targetId, runId: input.runId }), policy);
-  return { exitCode: fold.status === 'passed' ? 0 : 1, status: fold.status, targetId: input.targetId, reviewedRevision, rootRequestId, commandDigest, verdicts: recorded.map((item) => item.event), fold };
+  return { exitCode: fold.status === 'passed' ? 0 : 1, status: fold.status, targetId: input.targetId, reviewedRevision, rootRequestId, commandDigest, adapters: adapterNames.slice(), undispatchedLenses: undispatched.slice(), verdicts: recorded.map((item) => item.event), fold };
 }
 
 async function resumeVerificationRequest(start, loaded) {

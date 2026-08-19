@@ -64,7 +64,7 @@ require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
 
-require('./verify-concurrency.test').then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
+require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),
   require('./board-workspace.test'),
   require('./event-store.test')
