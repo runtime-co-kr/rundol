@@ -525,12 +525,12 @@
         },
         "AC-006": {
           "text": "회귀 시험이 네 진단을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:16:01.519Z",
-      "updatedAt": "2026-08-19T04:27:36.600Z",
+      "updatedAt": "2026-08-19T04:27:37.648Z",
       "statusChangedAt": "2026-08-19T04:16:09.002Z",
       "externalRefs": [],
       "project": "rundol",
