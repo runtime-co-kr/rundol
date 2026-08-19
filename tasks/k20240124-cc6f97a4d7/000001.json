@@ -1494,7 +1494,7 @@
         },
         "AC-002": {
           "text": "한 대상이 실패해도 나머지 결과가 본 트리에 남는다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "실행되지 못한 대상이 미실행으로 구분된다",
@@ -1507,7 +1507,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:08.690Z",
-      "updatedAt": "2026-08-19T02:01:38.919Z",
+      "updatedAt": "2026-08-19T02:01:40.558Z",
       "statusChangedAt": "2026-08-18T22:49:08.690Z",
       "externalRefs": [],
       "project": "rundol",
