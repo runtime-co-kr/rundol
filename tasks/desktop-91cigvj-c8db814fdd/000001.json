@@ -444,6 +444,50 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZFGSDX81A2B0FE7F4A67C5": {
+      "title": "[계약] TST의 화면 정본 참조 규칙과 ui trait SCR 승격",
+      "summary": "웹 프로젝트의 테스트 문서가 화면을 기준으로 서게 하되, 화면 없는 기능이 검증에서 빠지지 않도록 TST의 필수 관계를 교체하지 않고 조건부 규칙으로 강제한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-034",
+        "REQ-036",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "기능 ID를 구현하는 SCR이 있는데 그 기능을 검증하는 TST가 해당 SCR을 참조하지 않으면 RDL-IMPL-018로 진단한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "화면이 없는 기능을 검증하는 TST는 REQ 관계만으로 새 진단이 발생하지 않는다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "ui trait를 가진 프로필 프리셋이 SCR을 recommended가 아니라 required로 올린다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "네 동작을 회귀 시험이 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T01:43:29.204Z",
+      "updatedAt": "2026-08-19T01:43:29.204Z",
+      "statusChangedAt": "2026-08-19T01:43:29.204Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
