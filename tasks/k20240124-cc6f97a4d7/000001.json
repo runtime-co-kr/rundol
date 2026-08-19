@@ -1161,7 +1161,7 @@
         },
         "AC-002": {
           "text": "만료된 위임은 자동으로 효력을 잃고 갱신이 명시적 행위다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "위임 불가 결정 종류가 정의되고 위임 시도가 거부된다",
@@ -1174,7 +1174,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:20.418Z",
-      "updatedAt": "2026-08-19T13:25:21.784Z",
+      "updatedAt": "2026-08-19T13:25:23.523Z",
       "statusChangedAt": "2026-08-17T00:18:20.418Z",
       "externalRefs": [],
       "project": "rundol",
