@@ -292,11 +292,48 @@ function statusPaths(projectRoot, pathspec) {
 
 // 대상 밖에서 변한 경로. git이 내는 경로는 저장소 최상위 기준이고 프로젝트 루트
 // 기준이 아니다 — 둘을 손으로 환산하면 Windows의 짧은 경로·심링크에서 어긋난다.
-// 그래서 같은 git에게 두 번 물어 차집합을 구한다: 전체와, 대상 하나로 좁힌 것.
-function foreignChangedPaths(projectRoot, targetReal) {
+// 그래서 같은 git에게 두 번 물어 차집합을 구한다: 전체와, 대상으로 좁힌 것.
+//
+// 대상이 여럿일 수 있다. 형제 문서를 동시에 저작하면 먼저 끝난 저작의 결과가 본
+// 트리에 떠 있고, 그것을 남의 변경으로 읽으면 나머지 저작이 시작하지 못한다 —
+// 격리는 이미 있는데 복귀가 직렬이라 병렬이 되지 않던 자리가 여기다. 같은 fan-out에
+// 속한 형제의 변경은 남의 변경이 아니다.
+function foreignChangedPaths(projectRoot, targetReals) {
+  const targets = Array.isArray(targetReals) ? targetReals : [targetReals];
   const all = statusPaths(projectRoot, null);
-  for (const item of statusPaths(projectRoot, targetReal)) all.delete(item);
+  for (const target of targets) {
+    if (!target) continue;
+    for (const item of statusPaths(projectRoot, target)) all.delete(item);
+  }
   return Array.from(all).sort();
+}
+
+// 같은 fan-out에 속한 대상들의 실제 경로. 선언하지 않으면 자기 대상 하나이고,
+// 그때의 동작은 fan-out이 없던 때와 같다.
+//
+// 형제 목록에 없는 파일이 떠 있으면 여전히 거부한다. 병렬이 저작의 경계를 넓히지는
+// 않는다 — 넓어지는 것은 "무엇이 남의 변경인가"의 기준뿐이다.
+function fanOutSiblings(projectRoot, invocation, targetRelative, targetReal) {
+  const declared = Array.isArray(invocation.fanOutTargets) ? invocation.fanOutTargets : null;
+  if (!declared || !declared.length) return [targetReal];
+  if (declared.length > MAX_COLLECTION) throw new Error('fanOutTargets is too large.');
+  const reals = new Set([targetReal]);
+  let found = false;
+  for (const item of declared) {
+    const relative = normalizedRelative(item, 'fanOutTargets');
+    if (relative === targetRelative) { found = true; continue; }
+    // 형제가 아직 없을 수 있다. 아직 만들어지지 않은 대상은 청결 기준에 넣을 것이
+    // 없으므로 건너뛴다 — 없는 파일을 근거로 남의 변경을 눈감아 주지는 않는다.
+    const resolved = path.resolve(projectRoot, relative);
+    if (!fs.existsSync(resolved)) continue;
+    reals.add(regularRealFile(projectRoot, relative, 'fanOutTargets').file);
+  }
+  if (!found) throw new Error('fanOutTargets must contain targetPath.');
+  return Array.from(reals);
+}
+
+function withoutSiblings(paths, siblingPaths) {
+  return paths.filter((item) => !siblingPaths.has(item));
 }
 
 // 저작 시도는 성공하거나 흔적을 남기지 않아야 한다. 실패한 시도가 반쯤 쓴 문서를
@@ -517,11 +554,15 @@ async function runAdapterOnce(invocation, executionOptions) {
   const instruction = resolveInstructionPin(invocation.instruction, { mode: invocation.mode, lensId: invocation.lensId });
   const targetRelative = normalizedRelative(invocation.targetPath, 'targetPath');
   const mainTarget = trustedFileSnapshot(projectRoot, targetRelative, 'targetPath');
-  // 저작이 시작되는 시점에 본 트리가 대상 밖에서 더러우면 시작하지 않는다. 격리
-  // worktree를 쓰더라도 이 검사는 남는다 — 뒤따르는 save가 본 트리 전체를 커밋하므로,
+  // 청결 검사의 기준은 이 저작의 대상 하나가 아니라 같은 fan-out에 속한 대상 전체다.
+  // 형제가 먼저 끝나 본 트리에 결과를 올려 두었을 수 있고, 그것은 남의 변경이 아니다.
+  // 선언하지 않으면 자기 대상 하나이므로 지금까지의 동작이 그대로 남는다.
+  const siblingReals = fanOutSiblings(projectRoot, invocation, targetRelative, mainTarget.real);
+  // 저작이 시작되는 시점에 본 트리가 fan-out 대상 밖에서 더러우면 시작하지 않는다.
+  // 격리 worktree를 쓰더라도 이 검사는 남는다 — 뒤따르는 save가 대상 전체를 커밋하므로,
   // 저작과 무관한 변경이 떠 있으면 그것이 이 런의 결과에 섞인다.
   if (invocation.mode === 'author') {
-    const foreign = foreignChangedPaths(projectRoot, mainTarget.real);
+    const foreign = foreignChangedPaths(projectRoot, siblingReals);
     if (foreign.length) throw new Error(`Author adapters require a project worktree clean outside the target: ${foreign.slice(0, 5).join(', ')}`);
   }
   const headings = boundedStringArray(invocation.contractHeadings || instruction.requiredContractHeadings, 'contractHeadings', 200);
@@ -548,6 +589,9 @@ async function runAdapterOnce(invocation, executionOptions) {
   // 못하지만 알아차리지 못한 채 성공으로 보고하는 것은 다른 문제다. 본 저장소의
   // 상태도 함께 스냅숏해서, 탈출한 저작은 실패로 끝나게 한다.
   const mainBefore = sandbox ? { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() } : null;
+  // 형제가 복귀시킨 파일은 이 저작이 만든 변경이 아니지만 탈출도 아니다. 빼지 않으면
+  // 병렬을 켠 순간 모든 저작이 서로를 탈출로 고발한다.
+  const siblingPaths = new Set(siblingReals.flatMap((real) => Array.from(statusPaths(projectRoot, real))));
   const location = invocationDirectory(projectRoot, invocation);
   inspectExistingComponents(projectRoot, location.parent, 'directory');
   const directory = makeDirectoriesExclusive(projectRoot, location.parent, location.instanceId);
@@ -610,7 +654,7 @@ async function runAdapterOnce(invocation, executionOptions) {
       // 만들어지므로 근거 파일(context)은 커밋된 내용이다. 본 트리가 대상 밖에서
       // 더러우면 저작이 읽은 근거와 저장될 내용이 달라지고, 그 차이는 아무 데도
       // 기록되지 않는다. 앞선 검사만으로는 그 사이에 생긴 변경을 못 본다.
-      const foreign = foreignChangedPaths(projectRoot, mainTarget.real);
+      const foreign = foreignChangedPaths(projectRoot, siblingReals);
       if (foreign.length) throw new Error(`Author adapters require a project worktree clean outside the target: ${foreign.slice(0, 5).join(', ')}`);
     }
     const signal = executionOptions && executionOptions.signal || invocation.signal;
@@ -682,22 +726,27 @@ async function runAdapterOnce(invocation, executionOptions) {
     // 하네스는 자기가 무엇을 승인했는지 모른 채 다음 스텝으로 넘어간다.
     if (sandbox) {
       const mainAfter = { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() };
-      if (mainAfter.git.head !== mainBefore.git.head || canonicalJson(mainAfter.paths) !== canonicalJson(mainBefore.paths)) {
+      if (mainAfter.git.head !== mainBefore.git.head || canonicalJson(withoutSiblings(mainAfter.paths, siblingPaths)) !== canonicalJson(withoutSiblings(mainBefore.paths, siblingPaths))) {
         const error = new Error('Author adapter modified the main project repository from outside its sandbox.');
         error.rdlCode = 'ADAPTER_ESCAPED_SANDBOX';
         throw error;
       }
     }
     // 여기까지 온 저작만 본 트리에 닿는다. 옮기는 것은 대상 파일 하나뿐이다.
+    //
+    // 돌았는데 쓸 것이 없던 저작과 아예 돌지 못한 저작은 다른 값이다. 구분하지 않으면
+    // 아무것도 하지 않고 "변경 없음"이라 말하는 것이 완료로 가는 가장 싼 길이 된다.
+    let changed = null;
     if (sandbox) {
       const produced = fs.readFileSync(target.real);
       const destination = regularRealFile(projectRoot, targetRelative, 'targetPath').file;
       if (hashFile(destination) !== mainTarget.hash) throw new Error('targetPath changed in the project worktree during authoring.');
-      fs.writeFileSync(destination, produced);
+      changed = sha256(produced) !== mainTarget.hash;
+      if (changed) fs.writeFileSync(destination, produced);
     }
     const receipt = { ...baseReceipt, exitCategory: 'success', resultHash };
     writeExclusiveJson(path.join(directory, 'receipt.json'), receipt, false);
-    return { ...responseBase, exitCode: 0, status: 'success', result, receipt };
+    return { ...responseBase, exitCode: 0, status: 'success', result, receipt, ...(changed === null ? {} : { changed }) };
   } catch (error) {
     let resultHash;
     if (fs.existsSync(resultFile)) {
@@ -712,6 +761,52 @@ async function runAdapterOnce(invocation, executionOptions) {
   } finally {
     removeAuthorSandbox(projectRoot, sandbox);
   }
+}
+
+// 형제 문서를 동시에 저작한다. 격리는 이미 있었다 — 저작은 일회용 detached worktree
+// 에서 돌고 끝나면 대상 파일 하나만 본 트리로 옮긴다. 병렬이 되지 않던 이유는 격리가
+// 아니라 복귀였고, 그 자리는 위의 청결·탈출 검사가 fan-out 대상 전체를 기준으로
+// 삼으면서 열렸다.
+//
+// 실행되지 못한 대상과 실행되었으나 변경이 없던 대상을 구분해 남긴다. 구분하지
+// 않으면 결과를 지어내는 것이 완료로 가는 가장 싼 길이 된다 — 아무것도 하지 않고도
+// "변경 없음"이라고 말하면 통과이기 때문이다.
+async function runAuthorFanOut(targets, options) {
+  const settings = options || {};
+  const list = Array.isArray(targets) ? targets.slice() : [];
+  if (list.length > MAX_COLLECTION) throw new Error('Author fan-out target set is too large.');
+  const limit = Math.min(Math.max(1, settings.maxConcurrency || 1), Math.max(1, list.length));
+  const runner = settings.runAdapterOnce || runAdapterOnce;
+  const fanOutTargets = list.map((item) => item.targetPath);
+  const results = new Array(list.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (next < list.length) {
+      const index = next; next += 1;
+      const target = list[index];
+      try {
+        const outcome = await runner(Object.assign({}, target.invocation, { targetPath: target.targetPath, fanOutTargets }), settings.executionOptions);
+        results[index] = { targetPath: target.targetPath, dispatched: true, outcome, error: null };
+      } catch (error) {
+        // 하나가 실패해도 나머지를 중단하지 않는다. 이미 복귀한 결과는 본 트리에
+        // 남아 있고, 그것을 버리면 다음 시도가 처음부터 다시 저작한다.
+        results[index] = { targetPath: target.targetPath, dispatched: true, outcome: null, error: error.message };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, worker));
+  // 준비 완료 집합이 비면 아무 것도 하지 않는다. 빈 집합은 실패가 아니다.
+  const undispatched = list.filter((item, index) => results[index] === null).map((item) => item.targetPath);
+  const settled = results.filter(Boolean);
+  return {
+    targets: fanOutTargets,
+    // 실행되었으나 변경이 없던 대상. 어댑터가 성공했는데 대상 파일이 그대로면 그것은
+    // 실패가 아니라 "쓸 것이 없었다"이고, 실행되지 못한 것과 같은 값이 아니다.
+    unchanged: settled.filter((item) => item.outcome && item.outcome.exitCode === 0 && item.outcome.changed === false).map((item) => item.targetPath),
+    undispatched,
+    failed: settled.filter((item) => item.error || !item.outcome || item.outcome.exitCode !== 0).map((item) => ({ targetPath: item.targetPath, reason: item.error || (item.outcome && item.outcome.status) || 'unknown' })),
+    results: settled
+  };
 }
 
 function generateInvocationId() {
@@ -801,6 +896,7 @@ module.exports = {
   validateResult,
   executeOnce,
   runAdapterOnce,
+  runAuthorFanOut,
   runAdapterCommand,
   probeAdapter,
   generateInvocationId

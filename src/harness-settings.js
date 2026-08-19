@@ -16,7 +16,7 @@ const SINGLETON_KEYS = {
   sync: new Set(['retryBackoffSeconds', 'maxAttempts']),
   watch: new Set(['scanIntervalSeconds', 'remoteIntervalSeconds']),
   lease: new Set(['ttlSeconds', 'renewFactor']),
-  adapter: new Set(['timeoutSeconds']),
+  adapter: new Set(['timeoutSeconds', 'authorConcurrency']),
   verify: new Set(['defaultAdapter', 'defaultLenses', 'maxConcurrency']),
   drive: new Set(['schedulerClientId'])
 };
@@ -26,7 +26,9 @@ const DEFAULT_HARNESS_SETTINGS = Object.freeze({
   sync: Object.freeze({ retryBackoffSeconds: Object.freeze([1, 2, 4]), maxAttempts: 3 }),
   watch: Object.freeze({ scanIntervalSeconds: 5, remoteIntervalSeconds: null }),
   lease: Object.freeze({ ttlSeconds: 300, renewFactor: 0.5 }),
-  adapter: Object.freeze({ timeoutSeconds: 600 }),
+  // 저작 병렬의 상한. 기본값이 보수적인 이유는 어댑터 하나가 격리 worktree 하나를
+  // 쓰기 때문이다 — 상한을 올리면 디스크와 프로세스가 함께 늘어난다.
+  adapter: Object.freeze({ timeoutSeconds: 600, authorConcurrency: 2 }),
   adapters: Object.freeze({}),
   // 기본값은 보수적으로 둔다. 빠르게 만드는 것보다 판정자 제공자의 호출 한도를
   // 넘지 않는 것이 우선이다 — 한도를 넘으면 빨라지는 것이 아니라 실패한다.
@@ -179,6 +181,7 @@ function validateLayer(value, label) {
     if (own(value.lease, 'renewFactor') && (typeof value.lease.renewFactor !== 'number' || value.lease.renewFactor < 0.1 || value.lease.renewFactor > 0.9)) throw new Error(`${label}.lease.renewFactor는 0.1-0.9여야 합니다.`);
   }
   if (own(value, 'adapter') && own(value.adapter, 'timeoutSeconds')) integer(value.adapter.timeoutSeconds, 1, 3600, `${label}.adapter.timeoutSeconds`);
+  if (own(value, 'adapter') && own(value.adapter, 'authorConcurrency')) integer(value.adapter.authorConcurrency, 1, 8, `${label}.adapter.authorConcurrency`);
   if (own(value, 'adapters')) {
     assertObject(value.adapters, `${label}.adapters`);
     if (Object.keys(value.adapters).length > 32) throw new Error(`${label}.adapters는 최대 32개입니다.`);
@@ -265,7 +268,7 @@ function resolveHarnessSettings(input) {
     sync: { retryBackoffSeconds: 'built-in', maxAttempts: 'built-in' },
     watch: { scanIntervalSeconds: 'built-in', remoteIntervalSeconds: 'built-in' },
     lease: { ttlSeconds: 'built-in', renewFactor: 'built-in' },
-    adapter: { timeoutSeconds: 'built-in' },
+    adapter: { timeoutSeconds: 'built-in', authorConcurrency: 'built-in' },
     adapters: {},
     verify: { defaultAdapter: 'built-in', defaultLenses: 'built-in', maxConcurrency: 'built-in' },
     drive: { schedulerClientId: 'built-in' }
