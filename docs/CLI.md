@@ -565,7 +565,7 @@ rdl board --project memo --no-open
 
 - `127.0.0.1`에만 bind한다.
 - 기본값은 사용 가능한 임의 포트이며 브라우저를 자동 실행한다.
-- 문서 중심 3패널 Workspace, Markdown 읽기·검증 편집, Needs Attention, 태스크 목록·Board와 People·Operations·Settings 분리 화면을 제공한다.
+- 문서 중심 3패널 Workspace, Markdown 읽기·검증 편집, 조치 필요, 태스크 목록·Board와 People·Operations·Settings 분리 화면을 제공한다.
 - 태스크 쓰기는 검증 후 즉시 프로젝트 브랜치에 커밋한다.
 - 문서 편집은 base revision을 요구하고 strict 검증 실패 시 원본을 복구한다.
 - Refresh는 로컬 검증, Sync는 선택 프로젝트의 원격 동기화를 실행한다.

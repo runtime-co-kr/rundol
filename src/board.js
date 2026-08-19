@@ -231,7 +231,10 @@ function attentionItems(tasks, documents, sync) {
     for (const dependency of task.deps || []) if (taskIds.has(dependency) && !TERMINAL_TASK_STATES.includes(tasks.find((item) => item.id === dependency).status)) items.push({ severity: 'info', kind: 'task', id: task.id, title: task.title, reason: `선행 태스크 미완료: ${dependency}` });
     for (const link of task.links || []) if (!documentIds.has(link)) items.push({ severity: 'error', kind: 'task', id: task.id, title: task.title, reason: `깨진 문서 연결: ${link}` });
   }
-  if (sync.state !== 'clean') items.push({ severity: sync.state === 'conflict' ? 'error' : 'warning', kind: 'operation', id: 'sync', title: 'Git 동기화', reason: sync.state });
+  // 동기화는 여기 들어오지 않는다. 이 목록은 "봐야 할 문제"이고 동기화는 "누르면
+  // 커밋하고 원격으로 올리는 실행"이라 성격이 다르다. 게다가 이 항목은 늘 맨 뒤에
+  // 붙어 화면의 앞 12건에 들지 못했고, 헤더가 같은 사실을 이미 글자로 말하고 있어
+  // 숫자만 1 늘리는 역할을 했다. 동기화 상태는 헤더가 갖는다.
   return items;
 }
 

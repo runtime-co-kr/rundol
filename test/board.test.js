@@ -42,7 +42,8 @@ async function testBoard() {
     assert(page.body.includes('Rundol Workspace'));
     assert(page.body.includes('새 태스크'));
     assert(page.body.includes('프로젝트 문서'));
-    assert(page.body.includes('Needs Attention'));
+    // 헤더 라벨과 목록 제목은 같은 것을 가리키므로 이름도 같아야 한다.
+    assert(page.body.includes('조치 필요'));
     // 운영 상태 화면은 없앴다. 동기화와 조치 필요는 헤더가, 그 목록은 홈이 갖는다.
     assert(page.body.includes('동기화 상태'));
     assert(page.body.includes('설정'));

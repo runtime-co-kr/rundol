@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null, documentSearchScope: 'name', documentSort: 'id' };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id' };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
 const TERMINAL_STATUSES = ['done', 'cancelled'];
@@ -287,11 +287,48 @@ function setView(view, selected) {
 function documentCard(documentValue) {
   return `<button class="document-card" data-document="${escapeHtml(documentValue.id)}"><span class="eyebrow">${escapeHtml(documentValue.id)}</span><strong>${escapeHtml(documentValue.title)}</strong><small>${escapeHtml(documentValue.description || documentValue.file)}</small><span class="chip-row"><span class="chip">${escapeHtml(documentTypeLabel(documentValue))}</span><span class="chip">${escapeHtml(documentStateLabel(documentValue.state))}</span></span></button>`;
 }
+// 문제 하나가 한 줄이면 같은 태스크가 세 번 네 번 반복된다. 사람은 문제가 아니라
+// 태스크 단위로 일하므로 태스크로 묶고, 무엇이 걸렸는지는 태그로 늘어놓는다.
+// 등급은 서버가 이미 붙여 보내므로(error·warning·info) 여기서 다시 판단하지 않는다.
+const ATTENTION_LABELS = { '깨진 문서 연결': '깨진 연결', '선행 태스크 미완료': '선행 대기' };
+const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
+function attentionGroups(attention) {
+  const groups = new Map();
+  for (const item of attention) {
+    const group = groups.get(item.id) || { id: item.id, title: item.title, tags: new Map(), severity: 'info' };
+    const head = String(item.reason || '').split(':')[0].trim();
+    const label = ATTENTION_LABELS[head] || head;
+    const tag = group.tags.get(label) || { label, severity: item.severity, count: 0 };
+    tag.count += 1;
+    group.tags.set(label, tag);
+    if (SEVERITY_RANK[item.severity] < SEVERITY_RANK[group.severity]) group.severity = item.severity;
+    groups.set(item.id, group);
+  }
+  // 급한 것이 위로 온다. 지금까지는 태스크 순서 그대로라 깨진 연결이 아래에 묻혔다.
+  return [...groups.values()]
+    .map((group) => ({ ...group, tags: [...group.tags.values()].sort((left, right) => SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity]) }))
+    .sort((left, right) => SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] || right.tags.length - left.tags.length || left.title.localeCompare(right.title));
+}
+
+function renderAttention(attention) {
+  const groups = attentionGroups(attention);
+  const counts = { all: groups.length, error: 0, warning: 0, info: 0 };
+  for (const group of groups) for (const severity of new Set(group.tags.map((tag) => tag.severity))) counts[severity] += 1;
+  const filter = counts[state.attentionFilter] ? state.attentionFilter : 'all';
+  state.attentionFilter = filter;
+  const labels = [['all', '전체'], ['error', '오류'], ['warning', '경고'], ['info', '정보']];
+  // 개수를 달아 두면 누르기 전에 규모를 안다. 0건인 등급은 고를 이유가 없으므로 숨긴다.
+  el('attention-filter').innerHTML = labels.filter(([key]) => counts[key]).map(([key, label]) =>
+    `<button type="button" data-attention-severity="${key}"${key === filter ? ' class="active"' : ''}>${label} ${counts[key]}</button>`).join('');
+  const visible = filter === 'all' ? groups : groups.filter((group) => group.tags.some((tag) => tag.severity === filter));
+  el('attention-list').innerHTML = visible.length ? visible.map((group) =>
+    `<button class="attention-item" data-task="${escapeHtml(group.id)}"><span><strong>${escapeHtml(group.title)}</strong>    <span class="tagline">${group.tags.map((tag) => `<span class="tag ${tag.severity}">${escapeHtml(tag.label)}${tag.count > 1 ? ` ${tag.count}` : ''}</span>`).join('')}</span>    </span><span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`).join('') : '<p class="empty-state">이 등급에는 조치할 항목이 없습니다.</p>';
+}
+
 function renderHome() {
   const data = state.snapshot; const tasks = data.tasks.tasks; const documents = data.documents; const attention = data.attention;
   // 숫자를 보고 그 목록으로 갈 수 없으면 요약이 막다른 길이 된다. 지금까지 div였고
   // 눌러도 아무 일이 없었다. 각 지표를 그 수를 만든 화면으로 보낸다.
-  el('attention-count').textContent = attention.length;
   const metrics = [
     [tasks.length, '전체 태스크', 'data-view="tasks"'],
     [documents.length, '프로젝트 문서', 'data-view="documents"'],
@@ -301,7 +338,7 @@ function renderHome() {
   el('metrics').innerHTML = metrics.map(([value, label, action]) => `<button type="button" class="metric" ${action}><strong>${value}</strong><span>${label}</span></button>`).join('');
   // 태스크는 그 태스크로 가고 동기화 항목은 동기화를 실행한다. 예전에는 둘 다 운영 상태
   // 화면으로 보냈는데 그 화면은 헤더와 이 목록의 중복이라 없앴다.
-  el('attention-list').innerHTML = attention.length ? attention.slice(0, 12).map((item) => `<button class="attention-item" ${item.kind === 'task' ? `data-task="${escapeHtml(item.id)}"` : 'data-run-sync="1"'}><span class="severity ${item.severity}"></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.reason)}</small></span><span>›</span></button>`).join('') : '<p class="empty-state">현재 조치가 필요한 항목이 없습니다.</p>';
+  renderAttention(attention);
   el('home-documents').innerHTML = documents.slice().sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)).slice(0, 6).map(documentCard).join('');
   renderMyQueue(tasks);
   renderRecentChanges(tasks, documents);
@@ -629,7 +666,7 @@ function populateControls() { const members = state.snapshot.people.members; el(
   el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); // 새로 만드는 태스크는 아직 끝나지도, 접히지도 않았다. 종료 상태를 고르게 두면
 // 완료는 수용조건과 TST를, 반려는 사유를 요구해 생성이 그대로 거부된다.
 el('task-status').replaceChildren(...labelledEntries('taskStatuses', Object.keys(statusLabels).filter((value) => !TERMINAL_STATUSES.includes(value))).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
-function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? `조치 필요 ${count}` : '정상'; el('operation-count').textContent = count || ''; renderSyncStatus(); }
+function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? '조치 필요' : '정상'; el('operation-count').textContent = count || ''; renderSyncStatus(); }
 
 // 동기화는 값을 바꾸는 설정이 아니라 되돌리기 어려운 동작이다. 설정 화면이 아니라
 // 상태 옆에 두어, 무엇이 원격으로 나가는지 보고 나서 누르게 한다.
@@ -987,10 +1024,18 @@ async function runSync() {
   }
 }
 el('sync-status').addEventListener('click', runSync);
-document.addEventListener('click', (event) => { if (event.target.closest('[data-run-sync]')) runSync(); });
+// 동기화는 이제 목록에 없다. 헤더의 동기화 버튼이 그 일을 갖는다.
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-attention-severity]');
+  if (!button) return;
+  state.attentionFilter = button.dataset.attentionSeverity;
+  renderAttention(state.snapshot.attention);
+});
 // 조치 필요는 옮겨 갈 화면이 따로 없다. 같은 화면 아래 목록이 그 내역이므로 그리로 데려간다.
 document.addEventListener('click', (event) => {
   if (!event.target.closest('[data-focus-attention]')) return;
+  // 목록은 홈 화면 안에 있다. 다른 화면에서 눌렀다면 먼저 홈으로 옮겨야 스크롤이 먹는다.
+  if (state.view !== 'home') setView('home');
   const list = el('attention-list');
   list.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const first = list.querySelector('.attention-item');

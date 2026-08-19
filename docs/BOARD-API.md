@@ -6,7 +6,7 @@
 
 - `GET /api/overview`: Workspace 전체 프로젝트와 상태 집계
 - `GET /api/projects`: 프로젝트 목록
-- `GET /api/projects/:key/board-snapshot`: 영역별 revision, 프로젝트, 문서 본문, 태스크, Needs Attention, 책임구조, Client, 임대와 Git 상태 통합 조회
+- `GET /api/projects/:key/board-snapshot`: 영역별 revision, 프로젝트, 문서 본문, 태스크, 조치 필요, 책임구조, Client, 임대와 Git 상태 통합 조회
 - `GET /api/projects/:key/tasks`: 검색·필터 가능한 태스크 목록
 - `GET /api/projects/:key/documents`: 정본 Markdown 문서와 연결 메타데이터
 - `GET /api/projects/:key/leases`: 유효한 문서 소프트 임대
@@ -32,7 +32,8 @@
 - 기본 내비게이션은 홈, 내 작업, 문서, 태스크와 검토를 제공한다.
 - 문서는 목록·유형·검색으로 탐색하고 Markdown 읽기 화면과 typed metadata Context를 제공한다.
 - 문서 편집은 명시적인 편집 모드에서만 시작하며 저장 시 base revision을 검사한다.
-- Home은 검토자·담당자·완료조건·연결·선행 태스크와 Git 상태에서 파생한 Needs Attention을 우선 표시한다.
+- Home은 검토자·담당자·완료조건·연결·선행 태스크에서 파생한 조치 필요를 우선 표시한다. 태스크 단위로 묶고 등급(error·warning·info)을 태그로 보여주며 등급으로 걸러 볼 수 있다.
+- Git 상태는 조치 필요에 넣지 않는다. 목록은 봐야 할 문제이고 동기화는 누르면 커밋과 push가 일어나는 실행이므로, 헤더의 동기화가 그 일을 갖는다.
 - Member·Role·Stakeholder는 People, Sync·Lease 상태는 Operations, Client와 정책은 Settings로 분리한다.
 - 720px 이하에서는 Navigation과 Context를 별도 drawer로 연다.
 

@@ -1276,6 +1276,12 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   margin-top: var(--spacing-1_5);
 }
 
+/* 셀 수가 0이면 app.js가 빈 문자열을 넣는다. 그대로 두면 뜻 없는 빈 알약이 남아
+   조치가 있는 것처럼 보인다. 비면 자리도 비운다. */
+.badge:empty {
+  display: none;
+}
+
 .badge {
   display: inline-grid;
   place-items: center;
@@ -1547,19 +1553,47 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   white-space: nowrap;
 }
 
-.severity {
-  width: 8px;
-  height: 8px;
+/* 무엇이 걸렸는지는 태그가 말한다. 색은 등급이고 글자는 종류다. 바탕을 옅게 깔면
+   여러 개가 한 줄에 서도 서로 잡아먹지 않는다. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--round-BorderRadius);
+  padding: 1px var(--spacing-1);
+  font-size: var(--caption-FontSize);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag::before {
+  content: '';
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--warning-Color);
+  background: currentColor;
 }
 
-.severity.error {
-  background: var(--danger-Color);
+.tag.error {
+  color: var(--danger-Color);
+  background: color-mix(in srgb, var(--danger-Color) 12%, transparent);
 }
 
-.severity.info {
-  background: var(--info-Color);
+.tag.warning {
+  color: var(--warning-Color);
+  background: color-mix(in srgb, var(--warning-Color) 14%, transparent);
+}
+
+.tag.info {
+  color: var(--info-Color);
+  background: color-mix(in srgb, var(--info-Color) 12%, transparent);
+}
+
+.tagline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-0_5);
+  margin-top: var(--spacing-0_5);
 }
 
 /* ── 목록: 태스크 ─────────────────────────────────────── */
