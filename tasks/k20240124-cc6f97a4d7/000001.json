@@ -1204,12 +1204,12 @@
         },
         "AC-003": {
           "text": "질문셋을 JSON으로 제공해 에이전트가 사람의 답을 받아 재호출할 수 있다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:23.533Z",
-      "updatedAt": "2026-08-19T13:27:15.085Z",
+      "updatedAt": "2026-08-19T13:27:16.777Z",
       "statusChangedAt": "2026-08-17T00:18:23.533Z",
       "externalRefs": [],
       "project": "rundol",
