@@ -819,7 +819,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "cancelled",
       "priority": "high",
       "links": [
         "PRD-001"
@@ -849,10 +849,15 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:27.551Z",
-      "updatedAt": "2026-08-17T12:37:39.230Z",
-      "statusChangedAt": "2026-08-17T12:37:39.230Z",
+      "updatedAt": "2026-08-19T12:54:27.014Z",
+      "statusChangedAt": "2026-08-19T12:54:27.014Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "cancellation": {
+        "reason": "ADR-010이 조회 인덱스를 공개 명령에서 내렸고 ADR-014가 첫 조각을 SQLite 인덱스가 아니라 읽기 전용 Work Item 투영으로 정했다. 이 태스크의 수용 기준(SQLite 스키마·index revision 계약)은 그 결정으로 대체되었다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-19T12:54:26.906Z"
+      }
     },
     "TASK-926MKBEC": {
       "title": "[설계] run 원장 v2 작성자 시퀀스 번호 채택 결정",
