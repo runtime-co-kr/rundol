@@ -555,6 +555,24 @@ const groupers = {
   // "이번 회차가 어디까지 왔나"가 한눈에 보인다. 차수 없는 일반 태스크는 한 통에 모은다.
   round: { order: null, key: (task) => (Number.isInteger(task.round) ? String(task.round) : ''), label: (key) => (key ? `${key}차` : '차수 없음') }
 };
+// 실무에서는 한 묶음이 백 줄을 넘는다. 다 그리면 아래 묶음들이 화면 밖으로 밀려나서
+// "검토가 몇 건인가"를 알려면 스크롤을 한참 내려야 한다. 묶음마다 앞의 몇 줄만 두면
+// 전체 모양이 한 화면에 들어온다. 행은 우선순위 순으로 서 있으므로 앞의 몇 줄이
+// 곧 급한 것들이다. 아홉 줄까지는 그대로 둔다 - "2개 더 보기"는 누를 이유가 없다.
+const TASK_PREVIEW = 6;
+const TASK_PREVIEW_MIN = 9;
+
+function groupExpanded(groupBy, key) {
+  return viewOption(`expand.${groupBy}.${key}`, '') === '1';
+}
+
+function previewRows(groupBy, key, items) {
+  if (groupExpanded(groupBy, key) || items.length <= TASK_PREVIEW_MIN) return items.map(taskRow).join('');
+  const rest = items.length - TASK_PREVIEW;
+  return items.slice(0, TASK_PREVIEW).map(taskRow).join('')
+    + `<button class="task-group-more" data-group-expand="${escapeHtml(`${groupBy}.${key}`)}">${rest}개 더 보기</button>`;
+}
+
 function groupCollapsed(groupBy, key) {
   const saved = viewOption(`collapse.${groupBy}.${key}`, null);
   if (saved !== null) return saved === '1';
@@ -569,7 +587,7 @@ function taskGroups(tasks) {
     .filter(([, items]) => items.length)
     .map(([key, items]) => {
       const collapsed = groupCollapsed(groupBy, key);
-      return `<section class="task-group${collapsed ? ' collapsed' : ''}"><button class="task-group-head" data-group-toggle="${escapeHtml(`${groupBy}.${key}`)}" aria-expanded="${!collapsed}"><span class="group-caret" aria-hidden="true">${CHEVRON_ICON}</span><span class="chip">${escapeHtml(grouper.label(key))}</span><span class="badge">${items.length}</span></button>${collapsed ? '' : items.map(taskRow).join('')}</section>`;
+      return `<section class="task-group${collapsed ? ' collapsed' : ''}"><button class="task-group-head" data-group-toggle="${escapeHtml(`${groupBy}.${key}`)}" aria-expanded="${!collapsed}"><span class="group-caret" aria-hidden="true">${CHEVRON_ICON}</span><span class="chip">${escapeHtml(grouper.label(key))}</span><span class="badge">${items.length}</span></button>${collapsed ? '' : previewRows(groupBy, key, items)}</section>`;
     })
     .join('');
 }
@@ -682,13 +700,19 @@ function personDetailHtml(entry, group) {
     + '<p class="control-hint">project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></article>';
 }
 
-function syncRoundField(available) {
-  const count = available === undefined ? el('task-round').options.length - 1 : available;
-  el('task-round-field').hidden = count === 0 || el('task-kind').value === 'normal';
-  if (el('task-round-field').hidden) el('task-round').value = '';
+// 거르개는 이름표를 칸 안에 넣었다. 고른 값이 있으면 이름표가 값으로 바뀌어 사라지므로,
+// 지금 걸러져 있다는 것을 칸의 생김새로 남긴다. 그러지 않으면 목록이 짧은 이유를 알 수 없다.
+function markFilters() {
+  for (const id of ['owner', 'priority', 'task-kind', 'task-round']) el(id).toggleAttribute('data-on', Boolean(el(id).value));
 }
 
-function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모두', ''), ...members.map((item) => new Option(item.name, item.id)));
+function syncRoundField(available) {
+  const count = available === undefined ? el('task-round').options.length - 1 : available;
+  el('task-round').hidden = count === 0 || el('task-kind').value === 'normal';
+  if (el('task-round').hidden) el('task-round').value = '';
+}
+
+function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('담당자', ''), ...members.map((item) => new Option(item.name, item.id)));
   // 저장해 둔 표시 옵션을 컨트롤에 되돌린다. 값이 사라진 담당자를 가리키면 무시한다.
   const savedOwner = viewOption('owner', '');
   el('owner').value = members.some((item) => item.id === savedOwner) ? savedOwner : '';
@@ -696,11 +720,12 @@ function populateControls() { const members = state.snapshot.people.members; el(
   // 차수는 테스트 태스크만 갖는다. 테스트가 없는 프로젝트에서는 늘 비어 있는 칸이므로
   // 아예 감춘다. 일반만 보고 있을 때도 차수는 고를 것이 없어 같이 감춘다.
   const rounds = Array.from(new Set(state.snapshot.tasks.tasks.map((task) => task.round).filter((round) => Number.isInteger(round)))).sort((left, right) => left - right);
-  el('task-round').replaceChildren(new Option('모두', ''), ...rounds.map((round) => new Option(`${round}차`, String(round))));
+  el('task-round').replaceChildren(new Option('차수', ''), ...rounds.map((round) => new Option(`${round}차`, String(round))));
   el('task-kind').value = viewOption('taskKind', '');
   const savedRound = viewOption('taskRound', '');
   el('task-round').value = rounds.some((round) => String(round) === savedRound) ? savedRound : '';
   syncRoundField(rounds.length);
+  markFilters();
   el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
   el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); // 새로 만드는 태스크는 아직 끝나지도, 접히지도 않았다. 종료 상태를 고르게 두면
 // 완료는 수용조건과 TST를, 반려는 사유를 요구해 생성이 그대로 거부된다.
@@ -723,8 +748,15 @@ function renderSyncStatus() {
   const summary = syncSummary(sync);
   el('sync-status').className = `sync-status ${summary.tone}`;
   el('sync-label').textContent = summary.text;
-  el('sync-status').disabled = !sync || (!sync.ahead && !sync.behind && !sync.changedFiles && !(sync.conflicts || []).length);
-  el('sync-status').title = sync ? `${sync.remoteRef || '원격 없음'} · ${sync.state}` : '';
+  // 충돌은 이 단추로 풀 수 없다. 누르면 서버까지 갔다가 실패하고, 그 전에 뜨는 확인창은
+  // "먼저 해결해야 합니다"와 "계속할까요?"를 한 화면에서 같이 묻는다. 할 수 없는 일을
+  // 물어보지 않는다. 무엇을 해야 하는지는 제목이 말한다.
+  const conflicts = (sync && sync.conflicts) || [];
+  const nothingToDo = !sync || (!sync.ahead && !sync.behind && !sync.changedFiles);
+  el('sync-status').disabled = nothingToDo || conflicts.length > 0;
+  el('sync-status').title = conflicts.length
+    ? `충돌은 보드에서 풀 수 없습니다. 작업 폴더에서 해결한 뒤 다시 시도하세요.\n${conflicts.join('\n')}`
+    : (sync ? `${sync.remoteRef || '원격 없음'} · ${sync.state}` : '');
 }
 // 편집 중에는 화면을 다시 그리지 않는다. setView가 renderDocument를 거쳐 편집기를 닫으므로
 // 폴링이 3초마다 입력 중인 내용을 지워버린다. 스냅샷은 계속 받되 렌더링만 미룬다.
@@ -866,6 +898,7 @@ for (const [id, option] of [['owner', 'owner'], ['priority', 'priority'], ['grou
   el(id).addEventListener('change', () => {
     setViewOption(option, el(id).value);
     if (id === 'task-kind') { syncRoundField(); setViewOption('taskRound', el('task-round').value); }
+    markFilters();
     renderTasks();
   });
 }
@@ -876,6 +909,17 @@ document.addEventListener('click', (event) => {
   if (!toggle) return;
   const [groupBy, key] = toggle.dataset.groupToggle.split('.');
   setViewOption(`collapse.${groupBy}.${key}`, groupCollapsed(groupBy, key) ? '0' : '1');
+  renderTasks();
+});
+
+// 더 보기는 그 묶음만 끝까지 편다. 여섯 줄씩 또 나누면 찾는 것을 만날 때까지 몇 번을
+// 눌러야 하고, 몇 번 눌렀는지도 남지 않는다. 편 상태는 접기와 같은 곳에 기억해 두어
+// 화면을 옮겼다 돌아와도 그대로다.
+document.addEventListener('click', (event) => {
+  const more = event.target.closest('[data-group-expand]');
+  if (!more) return;
+  const [groupBy, key] = more.dataset.groupExpand.split('.');
+  setViewOption(`expand.${groupBy}.${key}`, '1');
   renderTasks();
 });
 const taskModes = { list: 'task-list-mode', board: 'task-board-mode', graph: 'task-graph-mode' };
@@ -1054,7 +1098,9 @@ async function runSync() {
   if (sync.changedFiles) lines.push(`로컬 변경 ${sync.changedFiles}건을 커밋합니다.`);
   if (sync.ahead) lines.push(`커밋 ${sync.ahead}건을 ${sync.remoteRef || '원격'}으로 올립니다.`);
   if (sync.behind) lines.push(`원격의 커밋 ${sync.behind}건을 받습니다.`);
-  if ((sync.conflicts || []).length) lines.push(`충돌 ${sync.conflicts.length}건을 먼저 해결해야 합니다.`);
+  // 충돌이면 단추가 꺼져 있어 여기까지 오지 않는다. 폴링과 클릭 사이의 틈으로
+  // 들어오더라도, 풀 수 없는 일을 두고 계속할지 묻지 않는다.
+  if ((sync.conflicts || []).length) return;
   if (!lines.length) return;
   if (!confirm(`${lines.join('\n')}\n\n계속할까요?`)) return;
   try {

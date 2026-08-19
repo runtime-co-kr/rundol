@@ -18,7 +18,7 @@
     <header class="app-header">
       <label class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
       <div class="app-header-right">
-        <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
+        <button id="sync-status" class="sync-status"><span class="when-syncable" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg></span><span class="when-conflict" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span><span id="sync-label">동기화 상태</span></button>
         <button id="health" class="health" data-focus-attention="1"><span class="health-dot"></span><span id="health-label">상태 확인</span><span id="operation-count" class="badge"></span></button>
         <span class="header-divider" aria-hidden="true"></span>
         <label class="sr-only" for="current-member">보기 기준</label>
@@ -73,15 +73,23 @@
 
       <section id="tasks-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">TASKS</p><h1 id="tasks-heading">전체 태스크</h1><p id="tasks-description">프로젝트의 모든 작업을 목록과 Board로 확인합니다.</p></div><div class="page-actions"><div class="segmented" aria-label="보기 방식"><button id="task-list-mode" class="active">목록</button><button id="task-board-mode">Board</button><button id="task-graph-mode">의존</button></div><button id="new-task" class="primary">새 태스크</button></div></header>
+        <!-- 성격이 다른 셋이 한 줄에 같은 무게로 섰다. 범위는 무엇을 보는지를 바꾸고 제목까지
+             바꾸며, 거르기는 그 안에서 줄이고, 보기는 줄이지 않고 늘어놓는 방식만 바꾼다.
+             묶어서 사이를 끊어야 어느 것이 목록을 바꾸는 건지 눌러보기 전에 알 수 있다. -->
         <div class="toolbar">
           <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
-          <label class="toolbar-field"><span>담당자</span><select id="owner"><option value="">모두</option></select></label>
-          <label class="toolbar-field"><span>우선순위</span><select id="priority"><option value="">모두</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label>
-          <label class="toolbar-field"><span>종류</span><select id="task-kind"><option value="">모두</option><option value="normal">일반</option><option value="test">테스트</option></select></label>
-          <label class="toolbar-field" id="task-round-field" hidden><span>차수</span><select id="task-round"><option value="">모두</option></select></label>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div class="toolbar-group">
+            <select id="owner" class="filter-select" aria-label="담당자로 거르기"><option value="">담당자</option></select>
+            <select id="priority" class="filter-select" aria-label="우선순위로 거르기"><option value="">우선순위</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select>
+            <select id="task-kind" class="filter-select" aria-label="종류로 거르기"><option value="">종류</option><option value="normal">일반</option><option value="test">테스트</option></select>
+            <select id="task-round" class="filter-select" aria-label="차수로 거르기" hidden><option value="">차수</option></select>
+          </div>
           <div class="toolbar-spacer"></div>
-          <label class="toolbar-field"><span>묶음</span><select id="group-by"><option value="status">상태</option><option value="owner">담당자</option><option value="priority">우선순위</option><option value="round">차수</option></select></label>
-          <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
+          <div class="toolbar-group toolbar-display">
+            <select id="group-by" aria-label="묶는 기준"><option value="status">상태별</option><option value="owner">담당자별</option><option value="priority">우선순위별</option><option value="round">차수별</option></select>
+            <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
+          </div>
         </div>
         <div id="task-list" class="task-table"></div><div id="board" hidden></div><div id="task-graph" class="task-graph" hidden></div>
       </section>

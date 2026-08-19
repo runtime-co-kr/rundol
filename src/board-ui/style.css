@@ -367,17 +367,88 @@ button:disabled:hover {
   margin-bottom: var(--spacing-1_5);
 }
 
+/* 툴바에는 성격이 다른 셋이 있다. 범위는 무엇을 보는지를 바꾸고 제목까지 바꾸며,
+   거르기는 그 안에서 줄이고, 보기는 줄이지 않고 늘어놓는 방식만 바꾼다. 묶고 사이를
+   끊어야 어느 것이 목록을 바꾸는 건지 눌러보기 전에 알 수 있다. 줄바꿈은 묶음 단위로
+   일어나야 하므로 묶음 안은 접지 않는다. */
+.toolbar-group {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+/* 헤더의 구분선과 같은 굵기와 높이를 쓴다. 화면 안에서 같은 일을 하는 선이다. */
+.toolbar-divider {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--divider-BorderColor);
+}
+
+/* 이름표를 칸 밖에 두면 거르개 넷이 여덟 덩어리가 되어 훑기 어렵다. 이름표를 빈 값의
+   선택지로 넣어 하나의 덩어리로 만든다. 아무것도 고르지 않은 칸은 이름만 있는 안내이므로
+   본문보다 약하게 두고, 고른 칸은 목록을 줄이고 있는 것이므로 진하게 남긴다. */
+.filter-select {
+  max-width: 150px;
+  color: var(--secondary-TextColor);
+}
+
+.filter-select[data-on] {
+  border-color: var(--accent-BorderColor);
+  color: var(--primary-TextColor);
+  font-weight: 600;
+}
+
+/* 보기 방식은 목록을 줄이지 않으므로 거르개와 같은 줄에 붙어 있을 이유가 없다.
+   폭이 남으면 오른쪽 끝에, 모자라 줄이 바뀌어도 오른쪽 끝에 선다. 왼쪽으로 떨어지면
+   거르개가 하나 더 생긴 것처럼 보인다. */
+.toolbar-display {
+  margin-left: auto;
+  gap: 0;
+}
+
+/* 보기 방식은 목록을 줄이지 않는다. 헤더에서 상태를 알리는 것이 상자를 벗고 있듯,
+   여기서도 상자는 목록을 바꾸는 거르개만 갖는다. 셋이 다 상자를 두르면 어느 것이
+   목록을 줄이는 건지 눌러보기 전에는 알 수 없다. 이름표는 선택지가 대신 말한다
+   - 상태별·담당자별. 상태만 적어 두면 상태로 거르는 것으로 읽힌다. */
+/* select의 화살표는 background-image로 그린다. background를 통째로 덮으면 화살표까지
+   지워져 누를 수 있는 칸으로 보이지 않는다. 바탕색만 갈아 끼운다. */
+.toolbar-display select,
+.toolbar-display .toolbar-toggle {
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--secondary-TextColor);
+}
+
+/* select의 폭은 가장 긴 선택지가 정한다. 상자가 없으면 짧은 값을 골랐을 때 글자와
+   화살표 사이가 빈 채로 남아 둘이 한 컨트롤로 읽히지 않는다. 값을 오른쪽으로 붙인다. */
+.toolbar-display select {
+  text-align-last: right;
+  padding-right: var(--spacing-3);
+}
+
+.toolbar-display select:hover,
+.toolbar-display .toolbar-toggle:hover {
+  background-color: var(--ui-hover-OverlayColor);
+  color: var(--primary-TextColor);
+}
+
 .toolbar-spacer {
   flex: 1;
   min-width: 0;
 }
 
 /* 제목 옆의 주 동작. 보기 전환과 붙어 있어야 태스크 화면의 조작이 한곳에 모인다. */
+/* 보기 전환은 같은 것을 다르게 보는 일이고 새 태스크는 없던 것을 만드는 일이다.
+   8px로 붙여 두면 넷이 한 줄의 단추 묶음으로 읽혀 무엇이 만드는 단추인지 눌러봐야 안다. */
 .page-actions {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: var(--spacing-3);
 }
 
 .toolbar select {
@@ -643,7 +714,9 @@ button:disabled:hover {
   color: var(--primary-TextColor);
 }
 
-.sync-status.error:not(:disabled) {
+/* 충돌은 눌러서 풀 수 없어 비활성이지만, 가라앉으면 안 되는 유일한 상태다.
+   할 일이 없어 꺼진 것과 손을 못 대서 꺼진 것은 다르므로 색으로 가른다. */
+.sync-status.error {
   color: var(--danger-Color);
 }
 
@@ -653,12 +726,18 @@ button:disabled:hover {
   display: none;
 }
 
-/* 점은 글자색을 따라간다. 상태가 바뀌면 둘이 같이 움직여야 한 덩어리로 읽힌다. */
-.sync-status .health-dot,
-.health .health-dot {
-  flex: none;
-  background: currentColor;
+/* 이 단추는 상태에 따라 뜻이 뒤집힌다. 평소에는 원격으로 올리는 실행이고,
+   충돌일 때는 사람이 손으로 풀어야 한다는 알림이다. 두 뜻에 한 그림을 쓰면
+   붉은 올리기 화살표가 되어 눌러도 된다는 뜻으로 읽힌다. */
+.sync-status .when-conflict,
+.sync-status.error .when-syncable {
+  display: none;
 }
+
+.sync-status.error .when-conflict {
+  display: block;
+}
+
 
 /* 조작은 테두리 없이 보조색으로 물러나 있다가 가리키면 올라온다. 패널 손잡이와
    같은 언어를 쓴다. 값을 고르는 보기 기준만 입력다운 테두리를 유지한다. */
@@ -1671,20 +1750,31 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   font-weight: 500;
 }
 
+/* 행에 남은 마지막 알약이었다. 판정과 태그가 점과 글자로 말하는데 이것만 테두리를
+   두르고 있으면 더 급한 것으로 읽힌다. 같은 말을 쓰되 색으로 무게를 가른다. */
 .task-blocked {
+  display: inline-flex;
   flex: none;
-  padding: 0 var(--spacing-1);
-  border: 1px solid var(--warning-Color);
-  border-radius: var(--small-BorderRadius);
-  color: var(--warning-Color);
+  align-items: center;
+  gap: var(--spacing-0_5);
+  color: var(--secondary-TextColor);
   font-size: var(--caption-FontSize);
-  font-weight: 600;
-  line-height: 18px;
+  font-weight: 500;
 }
 
-.task-blocked[data-blocked='deps'] {
-  border-color: var(--divider-BorderColor);
-  color: var(--secondary-TextColor);
+.task-blocked::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warning-Color);
+}
+
+/* 선행 대기는 아직 차례가 아니라는 뜻이고 사람 대기는 누군가 붙잡고 있다는 뜻이다.
+   앞은 알림이고 뒤는 막힘이므로 색을 나눈다. */
+.task-blocked[data-blocked='deps']::before {
+  background: var(--tertiary-TextColor);
 }
 
 .task-row-meta {
@@ -1720,7 +1810,35 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   border-top: 1px solid var(--divider-BorderColor);
 }
 
+/* 전역 button은 글자를 가운데로 모은다. 묶음 머리글은 버튼이지만 목록의 머리이므로
+   행과 같은 왼쪽 줄에서 시작해야 한다. 가운데 있으면 어느 묶음인지 훑어 내려가며
+   읽을 수 없다. */
+/* 더 보기는 행이 아니라 행 다음의 안내다. 행처럼 생기면 태스크 하나로 보여서
+   눌렀을 때 상세가 열릴 것으로 읽힌다. 목록의 왼쪽 줄에 맞추되 글자만 둔다. */
+.task-group-more {
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  min-height: var(--row-MinHeight);
+  padding: var(--spacing-1) var(--spacing-2);
+  border: 0;
+  border-bottom: 1px solid var(--divider-BorderColor);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent-TextColor);
+  font-size: var(--small-FontSize);
+  font-weight: 600;
+}
+
+.task-group-more:hover {
+  border: 0;
+  border-bottom: 1px solid var(--divider-BorderColor);
+  background: var(--ui-hover-OverlayColor);
+}
+
 .task-group-head {
+  justify-content: flex-start;
   position: sticky;
   z-index: 2;
   top: 0;
