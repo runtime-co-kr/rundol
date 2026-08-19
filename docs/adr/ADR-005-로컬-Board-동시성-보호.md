@@ -1,5 +1,6 @@
 ---
 id: ADR-005
+uid: 2AP19E4D
 type: document
 kind: adr
 title: 로컬 보드 동시성 보호
@@ -51,9 +52,15 @@ Board는 한 로컬 계정의 파일과 Git 저장소를 직접 수정한다. �
 
 - 서버는 `127.0.0.1`에만 bind하고 실행마다 24-byte random hex token을 만든다. 모든 비-GET 요청은 `X-Rundol-Token`이 일치해야 한다.
 - 문서와 태스크는 조회 응답의 SHA-256 entity revision을 `baseRevision`으로 요구한다. 불일치는 `409 Conflict`와 현재 entity를 반환한다.
-- 문서 편집 의도는 Workspace branch의 append-only lease 이벤트로 공유한다. acquire와 renew는 5분 뒤 만료되며 release 또는 만료 뒤 다른 Client가 획득할 수 있다.
-- lease 변경은 active Client, 프로젝트 charter에 등록된 owner member, 존재하는 document를 요구한다. 보유 Client만 renew/release할 수 있다.
-- lease는 advisory 계층이다. 실제 저장은 revision 비교, strict 문서 검사, Git 경계를 계속 통과해야 한다.
+- ~~문서 편집 의도는 Workspace branch의 append-only lease 이벤트로 공유한다. acquire와 renew는 5분 뒤 만료되며 release 또는 만료 뒤 다른 Client가 획득할 수 있다.~~
+- ~~lease 변경은 active Client, 프로젝트 charter에 등록된 owner member, 존재하는 document를 요구한다. 보유 Client만 renew/release할 수 있다.~~
+- ~~lease는 advisory 계층이다. 실제 저장은 revision 비교, strict 문서 검사, Git 경계를 계속 통과해야 한다.~~
+
+> **2026-08-20 개정.** 위 세 줄의 문서 소프트 리스 계층은 [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]가 폐기했다. 만료 시각에 기대는 배타는 공통 시계·즉시 관측 가능한 공유 상태·만료를 판정하는 단일 권위 셋을 요구하는데, 중앙 서버 없는 Git 기반 구조에는 셋 다 없다. 실사용 이벤트도 한 건에 그쳤다.
+>
+> 이 기록의 나머지 두 계층은 그대로 유효하다. 루프백 bind와 세션 token은 무단 로컬 요청을 막고, 낙관적 revision 비교는 stale write를 막는다. 둘 다 시계에 의존하지 않으므로 폐기 근거가 적용되지 않는다.
+>
+> 문서 동시 편집의 조정은 이제 Git 병합이 맡는다. 문서 하나가 파일 하나이므로 서로 다른 문서를 고치는 편집은 충돌하지 않고, 같은 문서 같은 줄을 동시에 고쳤을 때만 사람이 병합한다. 같은 장치의 프로세스 사이 이벤트 원장 직렬화를 담당하는 로컬 append 락은 이 폐기의 대상이 아니며 계속 쓴다.
 
 ## 결과
 

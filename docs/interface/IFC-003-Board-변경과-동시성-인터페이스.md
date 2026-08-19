@@ -1,5 +1,6 @@
 ---
 id: IFC-003
+uid: ZJXB14PS
 type: document
 kind: interface
 title: 보드 변경과 동시성 인터페이스
@@ -65,6 +66,8 @@ related:
 서버는 document ID를 프로젝트 내부 실제 경로로 해석하고 표준 frontmatter가 있는지 확인한다. frontmatter는 변경하지 않고 body만 임시 파일로 쓴 뒤 rename한다. `checkWorkspace(... strict, skipProfilePolicy)`가 실패하면 원본 전체를 복구한다. 프로젝트 경로 밖의 파일, 512KB 초과 body, frontmatter 없는 파일은 거절한다.
 
 ## lease와 sync 규칙
+
+> **2026-08-20 개정.** lease endpoint는 [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]로 폐기 대상이 되었다. 아래 규칙은 구현 제거 전까지의 현재 동작 기록이며 새 사용처를 만들지 않는다. 문서 동시 편집은 Git 병합이 판정하고, 남는 보호 계층은 루프백 bind와 세션 token, 그리고 낙관적 revision 비교다.
 
 lease endpoint는 active Client, 프로젝트 member인 owner, 존재하는 document를 요구한다. acquire는 기존 active lease가 없어야 하고 renew/release는 같은 Client가 보유해야 한다. acquire/renew TTL은 5분이다. sync는 remote를 `origin`, push를 `true`로 고정하고 Git 충돌은 성공 응답으로 가장하지 않는다.
 

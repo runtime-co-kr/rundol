@@ -1,5 +1,6 @@
 ---
 id: IFC-002
+uid: KY9721FA
 type: document
 kind: interface
 title: 보드 조회와 스냅샷 인터페이스

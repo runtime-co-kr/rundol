@@ -1,5 +1,6 @@
 ---
 id: MOD-002
+uid: NAGQ8DHT
 type: document
 kind: model
 title: 작업공간 클라이언트 데이터 모델
@@ -79,7 +80,7 @@ erDiagram
 - `type`, `owner`, `name` 검증이 끝나기 전 파일을 만들지 않는다.
 - 상태 변경은 기존 manifest의 `revision`과 `status`만 바꾸며 등록 메타데이터를 보존한다.
 - 현재 상태와 같은 enable/disable 요청은 `changed: false`이고 revision과 commit을 만들지 않는다.
-- disabled Client는 새 lease 이벤트를 만들 수 없다.
+- disabled Client는 새 lease 이벤트를 만들 수 없다. lease 이벤트 자체는 [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]로 폐기 대상이 되었으며, 이 불변식은 구현 제거 전까지의 기록이다. 기존 이벤트는 지우지 않고 보존한다.
 
 ## 인덱스와 조회
 

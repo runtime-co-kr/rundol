@@ -1,5 +1,6 @@
 ---
 id: REQ-029
+uid: 6932H6E9
 type: document
 kind: requirement
 title: 계약 리비전 변경

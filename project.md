@@ -1,5 +1,6 @@
 ---
 id: project:rundol
+uid: FXEJWWQS
 type: project
 kind: charter
 title: Rundol
@@ -17,16 +18,16 @@ related:
   - "[[PRD-001-Rundol-제품-요구사항|PRD-001]]"
 documentProfile:
   schemaVersion: 2
-  revision: 7
-  name: lean
+  revision: 8
+  name: assured
   enforcement: checkpoint
   traits: []
-  history: [lean, lean, lean, lean, lean, lean, lean]
+  history: [lean, lean, lean, lean, lean, lean, lean, assured]
   policy:
-    required: [PRD, REQ, TST]
-    recommended: [ARC, ADR]
-    onDemand: [MOD, IFC, RUN, STD, GLS]
-    disabled: [SCR]
+    required: [PRD, REQ, ARC, SCR, MOD, IFC, ADR, TST, RUN, STD, GLS]
+    recommended: []
+    onDemand: []
+    disabled: []
 ---
 
 # Rundol

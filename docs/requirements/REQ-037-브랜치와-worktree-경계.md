@@ -1,5 +1,6 @@
 ---
 id: REQ-037
+uid: AERKR4P4
 type: document
 kind: requirement
 title: 브랜치와 워크트리 경계

@@ -1,5 +1,6 @@
 ---
 id: ARC-003
+uid: FG9DNM3T
 type: document
 kind: architecture
 title: 깃 작업공간과 동기화 아키텍처

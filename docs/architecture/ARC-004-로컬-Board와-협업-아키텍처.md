@@ -1,5 +1,6 @@
 ---
 id: ARC-004
+uid: QMS6JNGP
 type: document
 kind: architecture
 title: 로컬 보드와 협업 아키텍처
@@ -35,7 +36,9 @@ related:
 
 ## 컨텍스트와 경계
 
-Board는 `127.0.0.1`에만 bind되는 단일 Node.js 프로세스다. 별도 데이터베이스를 두지 않고 프로젝트 worktree와 Workspace worktree를 읽어 응답 시점의 snapshot을 계산한다. 변경 API는 실행 때 생성한 세션 token을 요구하며, 문서와 태스크 변경은 조회된 entity revision을 비교해 stale write를 거절한다. lease는 충돌 방지를 돕는 5분 소프트 잠금이고 Git이나 revision 검사를 대체하지 않는다.
+Board는 `127.0.0.1`에만 bind되는 단일 Node.js 프로세스다. 별도 데이터베이스를 두지 않고 프로젝트 worktree와 Workspace worktree를 읽어 응답 시점의 snapshot을 계산한다. 변경 API는 실행 때 생성한 세션 token을 요구하며, 문서와 태스크 변경은 조회된 entity revision을 비교해 stale write를 거절한다.
+
+문서 동시 편집을 조정하던 5분 소프트 리스는 [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]로 폐기했다. 중앙 서버가 없으면 만료 시각에 기대는 배타를 보장할 수 없고, 보장하지 못하는 것을 보장하는 것처럼 다루면 복잡도만 남는다. 지금 문서 동시 편집의 판정자는 Git 병합이며, 문서 하나가 파일 하나라 충돌 면적은 이미 작다. 태스크는 원격 ref 갱신의 성패로 판정하는 push 경합을 그대로 쓴다.
 
 ```mermaid
 flowchart LR

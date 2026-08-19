@@ -1,5 +1,6 @@
 ---
 id: REQ-038
+uid: 7Q5Z3GX7
 type: document
 kind: requirement
 title: 인공지능 스킬 작업 흐름
