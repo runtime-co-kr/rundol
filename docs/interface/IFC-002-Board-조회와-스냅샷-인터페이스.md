@@ -15,7 +15,7 @@ owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
   - rundol/artifact
-  - artifact/api
+  - artifact/interface
   - domain/rundol
   - feature/board-read-api
 aliases:
