@@ -687,7 +687,7 @@
         },
         "AC-006": {
           "text": "기존 테스트 태스크에 차수를 부여하고 인덱스 경로와 정본 경로가 같은 답을 낸다.",
-          "done": false
+          "done": true
         },
         "AC-007": {
           "text": "회귀 시험이 이 동작들을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
@@ -696,7 +696,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T05:23:46.323Z",
-      "updatedAt": "2026-08-19T05:38:11.546Z",
+      "updatedAt": "2026-08-19T05:38:12.606Z",
       "statusChangedAt": "2026-08-19T05:23:54.636Z",
       "externalRefs": [],
       "project": "rundol",
