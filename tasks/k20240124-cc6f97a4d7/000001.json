@@ -1760,12 +1760,12 @@
         },
         "AC-003": {
           "text": "다음 조각의 순서가 기록된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:30.249Z",
-      "updatedAt": "2026-08-19T02:23:56.829Z",
+      "updatedAt": "2026-08-19T02:23:58.527Z",
       "statusChangedAt": "2026-08-19T02:22:30.249Z",
       "externalRefs": [],
       "project": "rundol",
