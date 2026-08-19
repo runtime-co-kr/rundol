@@ -470,7 +470,7 @@
         },
         "AC-003": {
           "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "ui trait를 가진 프로필 프리셋이 SCR을 recommended가 아니라 required로 올린다.",
@@ -483,7 +483,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:43:29.204Z",
-      "updatedAt": "2026-08-19T02:33:32.018Z",
+      "updatedAt": "2026-08-19T02:33:33.079Z",
       "statusChangedAt": "2026-08-19T01:43:35.621Z",
       "externalRefs": [],
       "project": "rundol",
