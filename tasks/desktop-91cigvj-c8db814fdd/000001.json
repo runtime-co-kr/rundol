@@ -521,7 +521,7 @@
         },
         "AC-005": {
           "text": "기존 TST 17개가 새 계약을 충족하도록 이전하고, 체크박스가 주장하던 상태를 버리기 전에 근거를 남긴다.",
-          "done": false
+          "done": true
         },
         "AC-006": {
           "text": "회귀 시험이 네 진단을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
@@ -530,7 +530,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:16:01.519Z",
-      "updatedAt": "2026-08-19T04:27:35.490Z",
+      "updatedAt": "2026-08-19T04:27:36.600Z",
       "statusChangedAt": "2026-08-19T04:16:09.002Z",
       "externalRefs": [],
       "project": "rundol",
