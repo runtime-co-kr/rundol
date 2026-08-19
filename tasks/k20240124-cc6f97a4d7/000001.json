@@ -1130,12 +1130,12 @@
         },
         "AC-004": {
           "text": "절차의 human 스텝과 태스크 waiting 상태가 같은 결정 기록을 사용한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:17.189Z",
-      "updatedAt": "2026-08-19T13:26:51.321Z",
+      "updatedAt": "2026-08-19T13:26:53.111Z",
       "statusChangedAt": "2026-08-17T00:18:17.189Z",
       "externalRefs": [],
       "project": "rundol",
