@@ -478,12 +478,12 @@
         },
         "AC-005": {
           "text": "네 동작을 회귀 시험이 검증하고 rdl check --strict가 오류 0으로 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:43:29.204Z",
-      "updatedAt": "2026-08-19T02:33:34.083Z",
+      "updatedAt": "2026-08-19T02:33:35.102Z",
       "statusChangedAt": "2026-08-19T01:43:35.621Z",
       "externalRefs": [],
       "project": "rundol",
