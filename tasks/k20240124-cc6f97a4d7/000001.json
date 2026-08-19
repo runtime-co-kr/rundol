@@ -1455,7 +1455,7 @@
         },
         "AC-003": {
           "text": "재개한 검증에서 각 slot의 어댑터가 처음과 같다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "선택 렌즈 미실행 시 검증이 완료되고 미실행으로 기록된다",
@@ -1468,7 +1468,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:06.991Z",
-      "updatedAt": "2026-08-19T01:48:23.867Z",
+      "updatedAt": "2026-08-19T01:48:25.390Z",
       "statusChangedAt": "2026-08-18T22:49:06.991Z",
       "externalRefs": [],
       "project": "rundol",
