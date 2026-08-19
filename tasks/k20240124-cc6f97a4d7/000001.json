@@ -1530,7 +1530,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "태스크를 밝힌 런이 저장하면 인수 없이 그 태스크로 결박된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "현재 브랜치의 작업 묶음에 태스크가 하나면 인수 없이 그것으로 결박된다",
@@ -1547,7 +1547,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:48:46.626Z",
-      "updatedAt": "2026-08-19T01:48:46.626Z",
+      "updatedAt": "2026-08-19T11:24:54.061Z",
       "statusChangedAt": "2026-08-19T01:48:46.626Z",
       "externalRefs": [],
       "project": "rundol",
