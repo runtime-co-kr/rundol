@@ -444,6 +444,263 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZFGSDX81A2B0FE7F4A67C5": {
+      "title": "[계약] TST의 화면 정본 참조 규칙과 ui trait SCR 승격",
+      "summary": "웹 프로젝트의 테스트 문서가 화면을 기준으로 서게 하되, 화면 없는 기능이 검증에서 빠지지 않도록 TST의 필수 관계를 교체하지 않고 조건부 규칙으로 강제한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "links": [
+        "REQ-034",
+        "REQ-036",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "기능 ID를 구현하는 SCR이 있는데 그 기능을 검증하는 TST가 해당 SCR을 참조하지 않으면 RDL-IMPL-018로 진단한다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "화면이 없는 기능을 검증하는 TST는 REQ 관계만으로 새 진단이 발생하지 않는다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
+          "done": true
+        },
+        "AC-004": {
+          "text": "ui trait를 가진 프로필 프리셋이 SCR을 recommended가 아니라 required로 올린다.",
+          "done": true
+        },
+        "AC-005": {
+          "text": "네 동작을 회귀 시험이 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T01:43:29.204Z",
+      "updatedAt": "2026-08-19T02:33:35.102Z",
+      "statusChangedAt": "2026-08-19T01:43:35.621Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZKWYCVC0941FB7EDBD3FD7": {
+      "title": "[계약] 시나리오 안정 ID와 검증 문서의 실행 결과 분리",
+      "summary": "TST가 명세만 갖고 실행 결과는 갖지 않도록 계약을 세우고, 시나리오에 문서 밖에서 참조 가능한 안정 ID를 요구한다. 태스크 타입과 실행 기록 층의 전제다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "links": [
+        "REQ-034",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "TST의 시나리오 절은 첫 열이 ID인 표여야 하며, 표가 없으면 RDL-SCENARIO-001로 진단한다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "시나리오 ID는 공백과 구분자 없는 토큰이어야 하고(RDL-SCENARIO-002) 문서 안에서 유일해야 한다(RDL-SCENARIO-003).",
+          "done": true
+        },
+        "AC-003": {
+          "text": "통과 기준 절에 체크박스가 있으면 RDL-SCENARIO-004로 진단한다. 실행 결과는 문서가 아니라 실행 기록이 갖는다.",
+          "done": true
+        },
+        "AC-004": {
+          "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
+          "done": true
+        },
+        "AC-005": {
+          "text": "기존 TST 17개가 새 계약을 충족하도록 이전하고, 체크박스가 주장하던 상태를 버리기 전에 근거를 남긴다.",
+          "done": true
+        },
+        "AC-006": {
+          "text": "회귀 시험이 네 진단을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T04:16:01.519Z",
+      "updatedAt": "2026-08-19T04:27:37.648Z",
+      "statusChangedAt": "2026-08-19T04:16:09.002Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZLLBVP5BD5CE27D22B6857": {
+      "title": "[기능] 태스크 종류와 테스트 판정 축",
+      "summary": "태스크에 종류를 부여해 테스트 실행을 일반 작업과 구분하고, 진행 상태와 별개인 판정 축을 둔다. 실패한 테스트도 수행은 완료이므로 두 축을 한 필드에 섞지 않는다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "links": [
+        "REQ-018",
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "태스크가 normal 또는 test 종류를 갖고, 값이 없으면 normal로 읽힌다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "테스트 태스크만 pass·fail·blocked·skipped 판정을 가질 수 있고, 일반 태스크에 판정을 두면 거부된다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "완료한 테스트 태스크에는 판정이 필요하다. 반려한 테스트 태스크에는 요구하지 않는다.",
+          "done": true
+        },
+        "AC-004": {
+          "text": "테스트 태스크는 TST 문서를 연결해야 한다.",
+          "done": true
+        },
+        "AC-005": {
+          "text": "rdl task add --kind test, rdl task set --result <판정>, rdl task list --kind test가 동작하고 목록이 판정별 집계를 함께 낸다.",
+          "done": true
+        },
+        "AC-006": {
+          "text": "인덱스 경로와 정본 경로가 종류 필터와 판정에 대해 같은 답을 낸다.",
+          "done": true
+        },
+        "AC-007": {
+          "text": "회귀 시험이 이 동작들을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T04:34:58.788Z",
+      "updatedAt": "2026-08-19T04:50:40.539Z",
+      "statusChangedAt": "2026-08-19T04:35:05.720Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZLP9T85D3543D9FC4B5E64": {
+      "title": "[검증] 태스크 종류와 판정 축 회귀 실행",
+      "summary": "TST-008이 정한 태스크 상태·완료 전환 시나리오를 이번 회차에 수행한 기록.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "cancelled",
+      "priority": "mid",
+      "kind": "test",
+      "result": null,
+      "links": [
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "TST-008의 시나리오를 수행하고 판정을 남긴다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T04:38:02.732Z",
+      "updatedAt": "2026-08-19T04:39:00.197Z",
+      "statusChangedAt": "2026-08-19T04:39:00.197Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1",
+      "cancellation": {
+        "reason": "구현 준비도 게이트 확인 중 만든 중복 항목",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-19T04:39:00.079Z"
+      },
+      "round": 1
+    },
+    "TASK-00MSZLQ8JO805493CB4F8BB2D9": {
+      "title": "[검증] 태스크 종류와 판정 축 회귀 실행",
+      "summary": "TST-008이 정한 태스크 상태·완료 전환 시나리오를 이번 회차에 수행한 기록.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "mid",
+      "kind": "test",
+      "result": "pass",
+      "links": [
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "TST-008의 시나리오를 수행하고 판정을 남긴다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T04:38:47.747Z",
+      "updatedAt": "2026-08-19T04:38:59.212Z",
+      "statusChangedAt": "2026-08-19T04:38:59.212Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "round": 1
+    },
+    "TASK-00MSZNC2S4BD2195BA82F7DA31": {
+      "title": "[기능] 테스트 차수와 차수별 범위 조회",
+      "summary": "테스트 태스크에 차수를 부여해 회차별로 모아 보고, 그 차수에서 빠진 TST를 계산으로 드러낸다. 차수 대상 목록을 따로 저장하지 않는 것이 요점이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "links": [
+        "REQ-018",
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "테스트 태스크는 1 이상의 정수 차수를 가지며 일반 태스크는 차수를 가질 수 없다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "같은 TST 문서를 같은 차수에 검증하는 태스크는 하나만 존재할 수 있고, 저장과 검사가 함께 막는다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "rdl task list --kind test --round <n>이 그 차수의 태스크와 판정 집계를 낸다.",
+          "done": true
+        },
+        "AC-004": {
+          "text": "rdl test rounds가 차수 목록과 차수별 요약을, --round <n>이 그 차수에서 태스크가 없는 TST 목록을 낸다.",
+          "done": true
+        },
+        "AC-005": {
+          "text": "차수 대상 목록을 저장하는 산출물을 만들지 않고 문서와 태스크를 대조해 계산한다.",
+          "done": true
+        },
+        "AC-006": {
+          "text": "기존 테스트 태스크에 차수를 부여하고 인덱스 경로와 정본 경로가 같은 답을 낸다.",
+          "done": true
+        },
+        "AC-007": {
+          "text": "회귀 시험이 이 동작들을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T05:23:46.323Z",
+      "updatedAt": "2026-08-19T05:38:13.683Z",
+      "statusChangedAt": "2026-08-19T05:23:54.636Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
