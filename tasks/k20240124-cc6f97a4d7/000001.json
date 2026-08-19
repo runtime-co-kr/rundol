@@ -1611,12 +1611,12 @@
         },
         "AC-004": {
           "text": "혼합 버전 시험이 선언된 파기만 허용한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:23.666Z",
-      "updatedAt": "2026-08-19T02:22:46.822Z",
+      "updatedAt": "2026-08-19T02:22:48.353Z",
       "statusChangedAt": "2026-08-19T02:22:23.666Z",
       "externalRefs": [],
       "project": "rundol",
