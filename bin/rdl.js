@@ -37,38 +37,15 @@ Usage:
   rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl member set <MEMBER-ID|STAKEHOLDER-ID> [--name <이름>] [--role <ROLE-ID>] [--organization <소속>] [--account <계정>] [--responsibility <책임>] [--status <상태>] [--project <key>] [--json]
   rdl member list [--project <key>] [--json]
-  rdl client register <client-id> --name <name> --type <device|agent|service|human> --owner <MEMBER-ID> [--json]
-  rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
-  rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
-  rdl lease list --project <key> [--json]
-  rdl run start <절차이름> --project <key> --client-id <id> [--artifact-id <ARTIFACT-ID>] [--task <TASK-ID>] [--goal <목표>]
-                [--request-id <REQ-ID>] [--json]
-  rdl run next --run <RUN-ID> --project <key> [--json]
-  rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--commit <sha>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
-  rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
-  rdl run approve --run <RUN-ID> --project <key> --client-id <id> --reason <사유> [--step <id>] [--request-id <REQ-ID>] [--json]
-  rdl run halt|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
-  rdl run resume --run <RUN-ID> --project <key> --client-id <id> [--grant-attempts <step[,step]> --reason <사유>] [--json]
-  rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
-  rdl run ownership resolve --run <RUN-ID> --project <key> --conflict <digest> --select <event-id> --client-id <id> --reason <사유> [--force] [--request-id <REQ-ID>] [--json]
-  rdl run drive --run <RUN-ID> --project <key> --client-id <id> [--scheduled] [--request-id <REQ-ID>] [--json]
-  rdl run operation resolve --run <RUN-ID> --project <key> --operation <operation-id> --conflict <digest> --select <event-id> --client-id <id> --reason <text> [--force] [--request-id <REQ-ID>] [--json]
-  rdl run requests [--pending] [--json]
-  rdl run request resume <REQ-ID> --client-id <id> [--json]
-  rdl run list --project <key> [--json]
-  rdl run log --run <RUN-ID> --project <key> [--json]
-  rdl run procedures [--project <key>] [--json]
-  rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
-  rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--adapters <name>]... [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
   rdl watch --project <key> [--remote] [--once] [--json]
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                    [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
                  [--result <pass|fail|blocked|skipped|none>]
+                 [--link <ARTIFACT-ID>] [--unlink <ARTIFACT-ID>]
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
-  rdl workset list [--project <key>] [--branch <name>] [--json]
   rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
@@ -77,20 +54,6 @@ Usage:
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
   rdl help [--json]
-  rdl decision list [--project <key>] [--open] [--json]
-  rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
-                       [--supersedes <EVENT-ID>]
-                       --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
-                       [--evidence <근거>] --client-id <id> [--project <key>] [--json]
-  rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
-                      --client-id <id> [--supersedes <EVENT-ID>] [--delegation <DLG-ID>]
-                      [--project <key>] [--json]
-  rdl decision kinds [--json]
-  rdl delegation list [--project <key>] [--active] [--json]
-  rdl delegation grant --kind <종류> --delegate <client-id> --member <MEMBER-ID> --reason <사유>
-                       [--days <n>] --client-id <id> [--project <key>] [--json]
-  rdl delegation revoke <DLG-ID> --member <MEMBER-ID> --reason <사유> --client-id <id>
-                        [--project <key>] [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
@@ -106,15 +69,12 @@ Usage:
   rdl conflict list [--project <key>] [--json]
   rdl conflict resolve --strategy <ours|theirs> [--project <key>] [--json]
   rdl conflict clear [--project <key>] [--json]
-  rdl action resolve <ACTION> [--json]
-  rdl action record <ACTION> --actual-executor <cli|llm|hybrid> [--planned-executor <executor>]
-                    [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
-  rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
-  rdl debug summary [--json]
   rdl doctor [--git-url <url>] [--json]
   rdl board [--root <path>] [--project <key>] [--port <number>] [--no-open] [--json]
   rdl --version
   rdl --help
+
+  rdl advanced [--json]   실행 원장, 임대, 어댑터, 검증, 결정, 위임 등 내부 명령을 나열합니다
 
 Options:
   --root <path>  Rundol Workspace root. Defaults to the current directory or its parent Workspace.
@@ -196,8 +156,69 @@ function parseRound(value) {
   return parsed;
 }
 
+// 고급 표면. 사람이 매일 쓰는 명령과 내부 실행 개념을 한 목록에 두면 사람은 제품이
+// 아니라 구현을 배워야 한다. 숨기는 기준은 취향이 아니라 개념 누출이다 — 이름이나
+// 인수에 실행 식별자, 임대, 클라이언트 식별자, 어댑터, 렌즈가 드러나는 명령군을 내린다.
+// 삭제가 아니라 은닉이므로 기존 자동화와 스크립트는 그대로 동작한다.
+function usageAdvanced() {
+  return `rdl ${VERSION} — 고급 명령
+
+Usage:
+  rdl client register <client-id> --name <name> --type <device|agent|service|human> --owner <MEMBER-ID> [--json]
+  rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
+  rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
+  rdl lease list --project <key> [--json]
+  rdl run start <절차이름> --project <key> --client-id <id> [--artifact-id <ARTIFACT-ID>] [--task <TASK-ID>] [--goal <목표>]
+                [--request-id <REQ-ID>] [--json]
+  rdl run next --run <RUN-ID> --project <key> [--json]
+  rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--commit <sha>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run approve --run <RUN-ID> --project <key> --client-id <id> --reason <사유> [--step <id>] [--request-id <REQ-ID>] [--json]
+  rdl run halt|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
+  rdl run resume --run <RUN-ID> --project <key> --client-id <id> [--grant-attempts <step[,step]> --reason <사유>] [--json]
+  rdl run takeover --run <RUN-ID> --project <key> --client-id <id> [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run ownership resolve --run <RUN-ID> --project <key> --conflict <digest> --select <event-id> --client-id <id> --reason <사유> [--force] [--request-id <REQ-ID>] [--json]
+  rdl run drive --run <RUN-ID> --project <key> --client-id <id> [--scheduled] [--request-id <REQ-ID>] [--json]
+  rdl run operation resolve --run <RUN-ID> --project <key> --operation <operation-id> --conflict <digest> --select <event-id> --client-id <id> --reason <text> [--force] [--request-id <REQ-ID>] [--json]
+  rdl run requests [--pending] [--json]
+  rdl run request resume <REQ-ID> --client-id <id> [--json]
+  rdl run list --project <key> [--json]
+  rdl run log --run <RUN-ID> --project <key> [--json]
+  rdl run procedures [--project <key>] [--json]
+  rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
+  rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--adapters <name>]... [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
+  rdl workset list [--project <key>] [--branch <name>] [--json]
+  rdl decision list [--project <key>] [--open] [--json]
+  rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
+                       [--supersedes <EVENT-ID>]
+                       --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
+                       [--evidence <근거>] --client-id <id> [--project <key>] [--json]
+  rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
+                      --client-id <id> [--supersedes <EVENT-ID>] [--delegation <DLG-ID>]
+                      [--project <key>] [--json]
+  rdl decision kinds [--json]
+  rdl delegation list [--project <key>] [--active] [--json]
+  rdl delegation grant --kind <종류> --delegate <client-id> --member <MEMBER-ID> --reason <사유>
+                       [--days <n>] --client-id <id> [--project <key>] [--json]
+  rdl delegation revoke <DLG-ID> --member <MEMBER-ID> --reason <사유> --client-id <id>
+                        [--project <key>] [--json]
+  rdl action resolve <ACTION> [--json]
+  rdl action record <ACTION> --actual-executor <cli|llm|hybrid> [--planned-executor <executor>]
+                    [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
+  rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
+  rdl debug summary [--json]
+
+
+Options:
+  옵션은 사람 표면과 같습니다. rdl --help의 Options를 따릅니다.
+
+이 명령들은 사람이 직접 쓰라고 만든 것이 아니다. 실행 원장과 임대, 어댑터 호출은
+절차와 에이전트가 쓰는 내부 표면이며 rdl help --json이 전체 목록을 함께 돌려준다.
+`;
+}
+
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -222,7 +243,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -264,6 +285,7 @@ function parseOperationArgs(argv) {
       else if (value === '--adapters') options.adapters.push(argv[i]);
       else if (value === '--option') options.decisionOptions.push(argv[i]);
       else if (value === '--evidence') options.evidence.push(argv[i]);
+      else if (value === '--unlink') options.unlinks.push(argv[i]);
       else if (value === '--external-ref') options.externalRefs.push(argv[i]);
       else if (value === '--basis') options.basis.push(argv[i]);
       else if (value === '--trait') options.traits.push(argv[i]);
@@ -389,7 +411,20 @@ async function main() {
     const options = parseOperationArgs(argv);
     if (options.positional.length) throw new Error('rdl help에는 위치 인수를 사용할 수 없습니다.');
     if (!options.json) { process.stdout.write(usage()); return 0; }
-    process.stdout.write(`${JSON.stringify(require('../src/agent-context').commandCatalog(usage()), null, 2)}\n`);
+    // 에이전트는 사람 표면과 고급 표면을 함께 받는다. 사람에게 숨기는 것과
+    // 에이전트에게 숨기는 것은 다른 판단이며, 여기서 숨기면 에이전트가 다시
+    // 소스를 뒤지게 된다 — 발견 표면이 존재하는 이유가 그것이었다.
+    const advancedLines = usageAdvanced().replace(/\r\n/gu, '\n').split('\n').filter((line) => /^\s+rdl\s/u.test(line));
+    const merged = usage().replace(/\r\n/gu, '\n').replace(/\n\nOptions:\n/u, `\n${advancedLines.join('\n')}\n\nOptions:\n`);
+    const catalog = require('../src/agent-context').commandCatalog(merged);
+    process.stdout.write(`${JSON.stringify(catalog, null, 2)}\n`);
+    return 0;
+  }
+  if (command === 'advanced') {
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl advanced에는 위치 인수를 사용할 수 없습니다.');
+    if (!options.json) { process.stdout.write(usageAdvanced()); return 0; }
+    process.stdout.write(`${JSON.stringify(require('../src/agent-context').commandCatalog(usageAdvanced()), null, 2)}\n`);
     return 0;
   }
   if (command === 'context') {
@@ -1129,13 +1164,31 @@ async function main() {
       const merged = existing.filter((reference) => !added.some((entry) => entry.kind === reference.kind)).concat(added);
       changes.externalRefs = merged;
     }
+    // 문서 링크는 생성 시점에만 정할 수 있었다. 그래서 링크 없이 만든 태스크는
+    // done 게이트(RDL-TASK-019)를 영원히 통과하지 못했고, 가리키던 문서가 폐기되면
+    // 그 참조를 지울 방법도 없었다. 수명주기에 막다른 길이 있었던 셈이다.
+    if (options.links.length || options.unlinks.length) {
+      const { readTaskStore } = require('../src/tasks');
+      const { stateConfig } = require('../src/state');
+      const config = stateConfig(options.root, options.project);
+      const current = readTaskStore(path.join(config.worktree, config.taskRelative)).tasks[options.positional[0]];
+      if (!current) throw new Error(`태스크를 찾지 못했습니다: ${options.positional[0]}`);
+      const removed = new Set(options.unlinks.map((value) => String(value).trim()));
+      const kept = (current.links || []).filter((link) => !removed.has(String(link)));
+      // 같은 링크를 두 번 붙여도 한 번만 남는다. 순서는 기존 것을 앞에 두어
+      // 다시 붙이는 것만으로 목록이 뒤집히지 않게 한다.
+      const added = options.links.map((value) => String(value).trim()).filter((link) => link && !kept.includes(link));
+      const missing = Array.from(removed).filter((link) => !(current.links || []).includes(link));
+      if (missing.length) throw new Error(`태스크에 없는 링크는 제거할 수 없습니다: ${missing.join(', ')}`);
+      changes.links = kept.concat(added);
+    }
     // 반려는 결정이므로 사유를 함께 받는다. 결정자를 생략하면 taskSet이 태스크 owner로 채운다.
     if (options.status === 'cancelled') {
       if (!options.reason) throw new Error('반려하려면 --reason이 필요합니다.');
       changes.cancellation = { reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }
     else if (options.reason) throw new Error('--reason은 --status cancelled에만 사용합니다.');
-    if (Object.keys(changes).length === 0) throw new Error('--status, --owner, --result, --round 또는 --external-ref 중 하나가 필요합니다.');
+    if (Object.keys(changes).length === 0) throw new Error('--status, --owner, --result, --round, --link, --unlink 또는 --external-ref 중 하나가 필요합니다.');
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);
     if (DEBUG_CONTEXT) recordAction(options.root, { action: 'task.update', actualExecutor: 'cli', taskId: options.positional[0] });

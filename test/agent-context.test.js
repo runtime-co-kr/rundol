@@ -46,8 +46,23 @@ try {
   assert(rootOption.description.length > 0);
   assert.throws(() => commandCatalog('사용법 없음'), /Usage\/Options/u);
 
+  // 에이전트 카탈로그는 사람 표면과 고급 표면을 합쳐 받는다. 사람에게 숨기는 것과
+  // 에이전트에게 숨기는 것은 다른 판단이며, 여기서 숨기면 에이전트가 명령을 찾으려고
+  // 다시 소스를 뒤진다 — 발견 표면이 존재하는 이유가 그것이었다.
+  const advancedHelp = spawnSync(process.execPath, [cli, 'advanced'], { cwd: repository, encoding: 'utf8' });
+  assert.strictEqual(advancedHelp.status, 0, advancedHelp.stderr || advancedHelp.stdout);
+  const advancedCatalog = commandCatalog(advancedHelp.stdout);
+  assert(advancedCatalog.commands.length > 0, '고급 카탈로그가 비었습니다.');
+  assert(advancedCatalog.commands.some((entry) => String(entry.command || '').startsWith('run ')), '고급 표면에 실행 명령이 있어야 합니다.');
+  assert(!catalog.commands.some((entry) => String(entry.command || '').startsWith('run ')), '사람 표면에 실행 명령이 남았습니다.');
+
   const helpJson = JSON.parse(command(process.execPath, [cli, 'help', '--json'], repository));
-  assert.strictEqual(helpJson.commands.length, catalog.commands.length, 'rdl help --json은 같은 카탈로그를 반환해야 합니다.');
+  assert.strictEqual(
+    helpJson.commands.length,
+    catalog.commands.length + advancedCatalog.commands.length,
+    'rdl help --json은 사람 표면과 고급 표면을 합친 카탈로그를 반환해야 합니다.'
+  );
+  assert(helpJson.commands.some((entry) => String(entry.command || '').startsWith('run ')), 'help --json에 고급 명령이 빠졌습니다.');
 
   command('git', ['init', '-b', 'main']);
   command('git', ['config', 'user.name', 'Rundol Test']);

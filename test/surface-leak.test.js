@@ -73,18 +73,33 @@ for (const declaration of ['assignment.d.ts', 'report.d.ts']) {
 // 2026-08-20 실측. 이 목록은 줄어들기만 해야 한다. 늘리려면 왜 새 개념을 사람에게
 // 보여야 하는지를 먼저 설명해야 하고, 대개 그 설명은 존재하지 않는다.
 const KNOWN_LEAKS = {
-  context: ['schemaVersion']
+  // 조회 결과가 아직 작업공간 판 번호를 그대로 내보낸다.
+  context: ['schemaVersion'],
+  // task migrate, doc approve, sync --approved-by 셋이 아직 클라이언트 식별자를 요구한다.
+  // 세 명령 모두 사람이 매일 칠 것이 아니므로 우선순위는 낮지만, 세 개에서 늘어나면 실패다.
+  help: ['client-id']
 };
+
+function ratchet(name, output) {
+  const found = leakedTokens(output);
+  const allowed = KNOWN_LEAKS[name];
+  const unexpected = found.filter((token) => !allowed.includes(token));
+  assert.deepStrictEqual(unexpected, [], `${name}에 새 개념 누출이 생겼습니다: ${unexpected.join(', ')}`);
+  // 래칫이 헐거워지지 않게 한다. 기준선에 적어 둔 누출이 이미 사라졌다면 기준선을
+  // 줄여야 하며, 줄이지 않으면 다음 누출이 그 자리에 숨는다.
+  const stale = allowed.filter((token) => !found.includes(token));
+  assert.deepStrictEqual(stale, [], `${name}의 기준선 항목이 이미 해소되었습니다. KNOWN_LEAKS에서 지우세요: ${stale.join(', ')}`);
+}
 
 const context = spawnSync(process.execPath, [cli, 'context', '--json'], { cwd: repository, encoding: 'utf8' });
 assert.strictEqual(context.status, 0, context.stderr || context.stdout);
-const contextLeaks = leakedTokens(context.stdout);
-const unexpected = contextLeaks.filter((token) => !KNOWN_LEAKS.context.includes(token));
-assert.deepStrictEqual(unexpected, [], `rdl context에 새 개념 누출이 생겼습니다: ${unexpected.join(', ')}`);
+ratchet('context', context.stdout);
 
-// 래칫이 헐거워지지 않게 한다. 기준선에 적어 둔 누출이 실제로는 이미 사라졌다면
-// 기준선을 줄여야 하며, 줄이지 않으면 다음 누출이 그 자리에 숨는다.
-const stale = KNOWN_LEAKS.context.filter((token) => !contextLeaks.includes(token));
-assert.deepStrictEqual(stale, [], `기준선에 남은 누출이 이미 해소되었습니다. KNOWN_LEAKS에서 지우세요: ${stale.join(', ')}`);
+// 사람이 보는 명령 목록. 내부 실행 개념이 여기 나오면 사람은 제품이 아니라 구현을
+// 배워야 한다. 실행 원장·임대·어댑터 명령군은 rdl advanced로 내렸으므로 이 목록에
+// 남은 누출은 옵션 이름뿐이어야 한다.
+const humanHelp = spawnSync(process.execPath, [cli, '--help'], { cwd: repository, encoding: 'utf8' });
+assert.strictEqual(humanHelp.status, 0, humanHelp.stderr || humanHelp.stdout);
+ratchet('help', humanHelp.stdout);
 
 process.stdout.write('surface leak tests passed\n');

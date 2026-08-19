@@ -7,9 +7,11 @@
 // 아니게 된다. 판정이 파일 읽기와 붙어 있는 한 각 표면은 자기 경로로 다시
 // 구현하게 되고, 다시 구현한 것들은 조금씩 달라진다.
 //
-// 그래서 여기에는 require가 없다. 값을 만드는 일은 check.js가 하고, 그 값을 보고
-// 옳고 그름을 말하는 일만 여기서 한다. worker-contract-purity.test.js가 전이
-// 의존까지 따라가며 이 경계를 지킨다.
+// 그래서 여기에는 파일에 닿는 require가 없다. 값을 만드는 일은 check.js가 하고, 그
+// 값을 보고 옳고 그름을 말하는 일만 여기서 한다. worker-contract-purity.test.js가
+// 전이 의존까지 따라가며 이 경계를 지킨다.
+
+const { ruleSource } = require('./diagnostic-rules');
 
 const GOVERNANCE_HEADINGS = ['미션', '목표', '범위', '역할', '프로젝트 팀원', '이해관계자', '책임 매트릭스', '의사결정과 에스컬레이션', '위험과 제약', '협업 리듬', '완료 정의'];
 const GOVERNANCE_BLOCK_FIELDS = {
@@ -35,7 +37,13 @@ function lineOf(source, needle) {
 }
 
 function diagnostic(list, values) {
-  list.push(Object.assign({ severity: 'error', category: 'metadata', file: null, line: 1, artifactId: null, target: null }, values));
+  const entry = Object.assign({ severity: 'error', category: 'metadata', file: null, line: 1, artifactId: null, target: null }, values);
+  // 진단이 자기 규칙의 정본 문서를 들고 다닌다. 없으면 사람도 에이전트도 이 코드가
+  // 왜 존재하는지 알려면 검사기 소스를 뒤져야 한다. 모르는 코드에는 붙이지 않는다 —
+  // 틀린 근거는 근거가 없는 것보다 나쁘다.
+  const rule = ruleSource(entry.code);
+  if (rule) entry.rule = rule;
+  list.push(entry);
 }
 
 function resolveArtifact(registry, id) {
