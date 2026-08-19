@@ -675,7 +675,7 @@
         },
         "AC-003": {
           "text": "rdl task list --kind test --round <n>이 그 차수의 태스크와 판정 집계를 낸다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "rdl test rounds가 차수 목록과 차수별 요약을, --round <n>이 그 차수에서 태스크가 없는 TST 목록을 낸다.",
@@ -696,7 +696,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T05:23:46.323Z",
-      "updatedAt": "2026-08-19T05:38:08.271Z",
+      "updatedAt": "2026-08-19T05:38:09.372Z",
       "statusChangedAt": "2026-08-19T05:23:54.636Z",
       "externalRefs": [],
       "project": "rundol",
