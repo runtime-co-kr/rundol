@@ -802,12 +802,12 @@
         },
         "AC-003": {
           "text": "preflight의 verify 거부가 제거되고 drive 테스트에 verify 스텝 시나리오가 추가된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:15.381Z",
-      "updatedAt": "2026-08-19T12:54:20.708Z",
+      "updatedAt": "2026-08-19T12:54:22.336Z",
       "statusChangedAt": "2026-08-16T23:43:15.381Z",
       "externalRefs": [],
       "project": "rundol",
