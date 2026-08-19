@@ -580,16 +580,34 @@ async function resumeVerificationRequest(start, loaded) {
   const invocations = Object.values(loaded.journal.invocations || {}).sort((left, right) => left.invocationKey.localeCompare(right.invocationKey));
   if (!invocations.length) throw new Error('verification request has no resumable invocation descriptor');
   const descriptors = invocations.map((entry) => journal.decodeInvocation(entry, loaded.journal.rootRequestId));
+  // 어댑터를 여럿 고정한 검증은 slot마다 다른 어댑터를 쓰므로 command.adapter가 다르다.
+  // 그것을 불일치로 읽으면 다양성을 켠 검증은 한 번 멈추면 다시 시작할 수 없다 —
+  // 재개 불가는 다양성을 켜지 않을 이유가 된다.
+  //
+  // 그래서 어댑터만 여러 값을 허용하고 나머지 신원(프로젝트·대상·리비전·렌즈·런)은
+  // 여전히 하나여야 한다. 그것들이 다르면 같은 요청이 아니다.
   const command = descriptors[0].command;
+  const identity = (value) => eventStore.canonicalJson(Object.assign({}, value, { adapter: null }));
   for (const descriptor of descriptors) {
-    if (eventStore.canonicalJson(descriptor.command) !== eventStore.canonicalJson(command)) throw new Error('verification request invocation commands disagree');
+    if (identity(descriptor.command) !== identity(command)) throw new Error('verification request invocation commands disagree');
+  }
+  // 목록의 순서가 곧 slot 배분이다. slot 순서로 읽고 처음 나온 것만 남기면 원래 목록이
+  // 그대로 복원된다 — 배분이 순수한 나머지 연산이라 slot 열이 목록의 반복이기 때문이다.
+  // 키 문자열로 정렬하면 slot 10이 slot 2보다 앞에 와서 자리가 어긋난다.
+  const adapters = [];
+  for (const descriptor of descriptors.slice().sort((left, right) => (left.slot || 0) - (right.slot || 0))) {
+    const name = descriptor.command.adapter;
+    if (name && !adapters.includes(name)) adapters.push(name);
   }
   if (command.clientId !== loaded.journal.clientId) throw new Error('verification request client identity mismatch');
   return verifyArtifact(start, {
     project: command.project,
     targetId: command.targetId,
     clientId: command.clientId,
-    adapter: command.adapter,
+    // 하나면 예전 그대로 단일 어댑터로, 여럿이면 목록으로 되돌린다. 목록의 순서는
+    // slot 배분이 순수 함수이므로 저장된 것과 같은 자리에 같은 어댑터를 놓는다.
+    adapter: adapters.length === 1 ? adapters[0] : undefined,
+    adapters: adapters.length > 1 ? adapters : undefined,
     lenses: command.lenses,
     runId: command.runId,
     rootRequestId: loaded.journal.rootRequestId

@@ -577,7 +577,17 @@ function createBoardServer(start, options) {
         return json(response, 200, appendLease(config.root, projectLeaseActionMatch[3], { project: projectLeaseActionMatch[1], documentId: decodeURIComponent(projectLeaseActionMatch[2]), clientId: body.clientId }));
       }
       if (request.method === 'POST' && projectRefreshMatch) return json(response, 200, refreshState(config.root, { project: projectRefreshMatch[1] }));
-      if (request.method === 'POST' && projectSyncMatch) return json(response, 200, syncState(config.root, { project: projectSyncMatch[1], remote: 'origin', push: true }));
+      if (request.method === 'POST' && projectSyncMatch) {
+        // sync는 공유 이벤트를 쓰므로 실행 주체를 밝혀야 한다. Board는 정체성을 지어낼
+        // 수 없으므로 이 기기의 등록된 Client를 쓴다 — lease와 태스크 샤딩이 이미 쓰는
+        // 그 값이다. 등록되지 않았거나 자격이 맞지 않으면 스키마 오류가 아니라 무엇을
+        // 해야 하는지를 말한다.
+        const project = selectProject(workspaceLayout(config.root), projectSyncMatch[1], true);
+        const identity = boardClient(config.root, project, listClients(config.root).clients);
+        if (!identity.id) inputError('이 기기의 Client ID가 없습니다. rdl git init으로 프로젝트를 준비하세요.');
+        if (!identity.registered) inputError(`등록되지 않은 Client입니다: ${identity.id}. rdl client register ${identity.id} --type agent --owner <MEMBER-ID>로 등록하세요.`);
+        return json(response, 200, syncState(config.root, { project: projectSyncMatch[1], remote: 'origin', push: true, clientId: identity.id }));
+      }
       if (request.method === 'POST' && url.pathname === '/api/tasks') {
         const body = await requestBody(request);
         const input = taskInput(body, true);
