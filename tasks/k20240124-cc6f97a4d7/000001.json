@@ -1420,12 +1420,12 @@
         },
         "AC-004": {
           "text": "동시 실행과 순차 실행의 판정 결과가 같다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:05.290Z",
-      "updatedAt": "2026-08-19T01:48:16.376Z",
+      "updatedAt": "2026-08-19T01:48:17.949Z",
       "statusChangedAt": "2026-08-18T22:49:05.290Z",
       "externalRefs": [],
       "project": "rundol",
