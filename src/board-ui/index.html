@@ -77,8 +77,10 @@
           <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
           <label class="toolbar-field"><span>담당자</span><select id="owner"><option value="">모두</option></select></label>
           <label class="toolbar-field"><span>우선순위</span><select id="priority"><option value="">모두</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label>
+          <label class="toolbar-field"><span>종류</span><select id="task-kind"><option value="">모두</option><option value="normal">일반</option><option value="test">테스트</option></select></label>
+          <label class="toolbar-field" id="task-round-field" hidden><span>차수</span><select id="task-round"><option value="">모두</option></select></label>
           <div class="toolbar-spacer"></div>
-          <label class="toolbar-field"><span>묶음</span><select id="group-by"><option value="status">상태</option><option value="owner">담당자</option><option value="priority">우선순위</option></select></label>
+          <label class="toolbar-field"><span>묶음</span><select id="group-by"><option value="status">상태</option><option value="owner">담당자</option><option value="priority">우선순위</option><option value="round">차수</option></select></label>
           <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
         </div>
         <div id="task-list" class="task-table"></div><div id="board" hidden></div><div id="task-graph" class="task-graph" hidden></div>

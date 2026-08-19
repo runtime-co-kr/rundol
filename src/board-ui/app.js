@@ -476,6 +476,15 @@ function taskDetailHtml(task, mode) {
     row('상태', contextSelect('status', task.status, labelledEntries('taskStatuses', Object.keys(statusLabels)))),
     row('우선순위', contextSelect('priority', task.priority, labelledEntries('priorities', ['high', 'mid', 'low']))),
     row('소유자', contextSelect('owner', task.owner, members)),
+    // 종류·차수·판정은 테스트 태스크만 갖는다. 일반 태스크에 "일반 / 차수 없음 / 판정 없음"을
+    // 세 줄이나 늘어놓으면 늘 비어 있는 칸이 속성 목록의 절반을 차지한다.
+    // 판정은 아직 화면에서 바꿀 수 없다. 보드 API가 쓰기를 받는 항목에 result가 없어
+    // 고르게 두면 눌러도 저장되지 않는다. 그래서 고르는 칸이 아니라 읽는 줄로 둔다.
+    (task.kind || 'normal') === 'test' ? row('종류', '테스트') : '',
+    (task.kind || 'normal') === 'test' && Number.isInteger(task.round) ? row('차수', `${task.round}차`) : '',
+    (task.kind || 'normal') === 'test'
+      ? row('판정', `<span class="tag ${escapeHtml(task.result || 'pending')}">${escapeHtml(TEST_RESULT_LABELS[task.result] || '미수행')}</span>`)
+      : '',
     row('검토자', escapeHtml((task.reviewers || []).map(personName).join(', ') || '미지정')),
     row('이해관계자', escapeHtml((task.stakeholders || []).map(personName).join(', ') || '미지정')),
     blockage ? row('막힘', `<span class="task-blocked" data-blocked="${blockage.kind}">${escapeHtml(blockage.label)}</span> ${escapeHtml(blockage.detail.split('\n')[0])}`) : '',
@@ -519,19 +528,32 @@ function taskBlockage(task) {
   if (!open.length) return null;
   return { kind: 'deps', label: `선행 ${open.length}건`, detail: open.map((item) => `${item.id} ${item.title}`).join('\n') };
 }
+// 진행(status)과 판정(result)은 다른 축이다. 완료+실패는 "돌렸는데 실패"이고 할일은
+// "아직 안 돌림"이다. 하나로 합치면 고칠 일과 할 일이 구분되지 않는다. 판정이 없는
+// 테스트는 아직 돌리지 않은 것이므로 빈칸이 아니라 미수행이라고 적는다.
+const TEST_RESULT_LABELS = { pass: '통과', fail: '실패', blocked: '막힘', skipped: '건너뜀' };
+
 function taskRow(task) {
   const completed = Object.values(task.acceptanceCriteria || {}).filter((item) => item.done).length;
   const total = Object.keys(task.acceptanceCriteria || {}).length;
   const blockage = taskBlockage(task);
   const badge = blockage ? `<span class="task-blocked" data-blocked="${blockage.kind}" title="${escapeHtml(blockage.detail)}">${escapeHtml(blockage.label)}</span>` : '';
-  return `<button class="task-row" data-task="${task.id}"><span class="task-row-main"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>${badge}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(priorityLabel(task.priority))}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))} · ${completed}/${total}</span></button>`;
+  // 테스트 태스크만 차수와 판정을 갖는다. 일반 태스크에 빈 자리를 만들면 목록이
+  // 성기게 뜨므로 제목 옆에 붙여 있는 것만 보이게 한다.
+  const test = (task.kind || 'normal') === 'test';
+  const round = test && Number.isInteger(task.round) ? `<span class="task-round">${task.round}차</span>` : '';
+  const verdict = test ? `<span class="tag ${escapeHtml(task.result || 'pending')}">${escapeHtml(TEST_RESULT_LABELS[task.result] || '미수행')}</span>` : '';
+  return `<button class="task-row" data-task="${task.id}"><span class="task-row-main"><span class="task-row-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>${round}${verdict}${badge}</span><span class="task-prio" data-prio="${escapeHtml(task.priority)}">${escapeHtml(priorityLabel(task.priority))}</span><span class="task-row-meta">${escapeHtml(personName(task.owner))} · ${completed}/${total}</span></button>`;
 }
 // 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
 // 상태로 묶으면 완료 묶음이 생기고 기본으로 접는다. 개수는 남으므로 진행감은 잃지 않는다.
 const groupers = {
   status: { order: () => Object.keys(statusLabels), key: (task) => task.status, label: (key) => taskStatusLabel(key) },
   owner: { order: null, key: (task) => task.owner || '', label: (key) => personName(key) || '미지정' },
-  priority: { order: () => ['high', 'mid', 'low'], key: (task) => task.priority, label: (key) => priorityLabel(key) }
+  priority: { order: () => ['high', 'mid', 'low'], key: (task) => task.priority, label: (key) => priorityLabel(key) },
+  // 테스트는 차수로 읽는다. 같은 TST가 1차·2차에 각각 태스크를 가지므로, 차수로 묶어야
+  // "이번 회차가 어디까지 왔나"가 한눈에 보인다. 차수 없는 일반 태스크는 한 통에 모은다.
+  round: { order: null, key: (task) => (Number.isInteger(task.round) ? String(task.round) : ''), label: (key) => (key ? `${key}차` : '차수 없음') }
 };
 function groupCollapsed(groupBy, key) {
   const saved = viewOption(`collapse.${groupBy}.${key}`, null);
@@ -551,7 +573,9 @@ function taskGroups(tasks) {
     })
     .join('');
 }
-function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value));
+function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)
+    && (!el('task-kind').value || (task.kind || 'normal') === el('task-kind').value)
+    && (!el('task-round').value || String(task.round) === el('task-round').value));
   // 완료 숨기기는 접기와 다른 일을 한다. 접기는 묶음 머리글을 남기고, 숨기기는 항목을 뺀다.
   // 담당자나 우선순위로 묶으면 완료 묶음이 없으므로 그때는 이 필터가 그 역할을 한다.
   if (el('hide-done').checked) tasks = tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status));
@@ -658,11 +682,25 @@ function personDetailHtml(entry, group) {
     + '<p class="control-hint">project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></article>';
 }
 
+function syncRoundField(available) {
+  const count = available === undefined ? el('task-round').options.length - 1 : available;
+  el('task-round-field').hidden = count === 0 || el('task-kind').value === 'normal';
+  if (el('task-round-field').hidden) el('task-round').value = '';
+}
+
 function populateControls() { const members = state.snapshot.people.members; el('owner').replaceChildren(new Option('모두', ''), ...members.map((item) => new Option(item.name, item.id)));
   // 저장해 둔 표시 옵션을 컨트롤에 되돌린다. 값이 사라진 담당자를 가리키면 무시한다.
   const savedOwner = viewOption('owner', '');
   el('owner').value = members.some((item) => item.id === savedOwner) ? savedOwner : '';
   el('priority').value = viewOption('priority', '');
+  // 차수는 테스트 태스크만 갖는다. 테스트가 없는 프로젝트에서는 늘 비어 있는 칸이므로
+  // 아예 감춘다. 일반만 보고 있을 때도 차수는 고를 것이 없어 같이 감춘다.
+  const rounds = Array.from(new Set(state.snapshot.tasks.tasks.map((task) => task.round).filter((round) => Number.isInteger(round)))).sort((left, right) => left - right);
+  el('task-round').replaceChildren(new Option('모두', ''), ...rounds.map((round) => new Option(`${round}차`, String(round))));
+  el('task-kind').value = viewOption('taskKind', '');
+  const savedRound = viewOption('taskRound', '');
+  el('task-round').value = rounds.some((round) => String(round) === savedRound) ? savedRound : '';
+  syncRoundField(rounds.length);
   el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
   el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); // 새로 만드는 태스크는 아직 끝나지도, 접히지도 않았다. 종료 상태를 고르게 두면
 // 완료는 수용조건과 TST를, 반려는 사유를 요구해 생성이 그대로 거부된다.
@@ -824,8 +862,12 @@ document.addEventListener('click', (event) => {
   if (button) showSettingsSection(button.dataset.settingsSection);
 });
 el('refresh').addEventListener('click', () => loadSnapshot(false));
-for (const [id, option] of [['owner', 'owner'], ['priority', 'priority'], ['group-by', 'groupBy']]) {
-  el(id).addEventListener('change', () => { setViewOption(option, el(id).value); renderTasks(); });
+for (const [id, option] of [['owner', 'owner'], ['priority', 'priority'], ['group-by', 'groupBy'], ['task-kind', 'taskKind'], ['task-round', 'taskRound']]) {
+  el(id).addEventListener('change', () => {
+    setViewOption(option, el(id).value);
+    if (id === 'task-kind') { syncRoundField(); setViewOption('taskRound', el('task-round').value); }
+    renderTasks();
+  });
 }
 el('hide-done').addEventListener('change', () => { setViewOption('hideDone', el('hide-done').checked ? '1' : ''); renderTasks(); });
 // 묶음 접기. 상태로 묶었을 때 완료는 기본으로 접히고, 사용자가 바꾸면 그 선택이 이긴다.
