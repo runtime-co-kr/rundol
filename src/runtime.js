@@ -83,6 +83,25 @@ function readProcessLock(file) {
   return value;
 }
 
+// 동기 경로에서 잠깐 물러선다. 잠금 획득은 비동기가 아니므로 await로 쉴 수 없다.
+function pause(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+// 만들어진 직후의 빈 잠금은 곧 읽힌다. 이만큼 다시 봐도 못 읽으면 경쟁이 아니다.
+const UNREADABLE_LOCK_RETRIES = 8;
+
+// 유효하지 않은 잠금을 치운다. 없어졌거나 남이 먼저 치운 경우는 실패가 아니다.
+function reclaim(file) {
+  const stale = `${file}.stale-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+  try {
+    fs.renameSync(file, stale);
+    try { fs.unlinkSync(stale); } catch {}
+  } catch (renameError) {
+    if (!['ENOENT', 'EEXIST', 'EPERM', 'EACCES'].includes(renameError.code)) throw renameError;
+  }
+}
+
 function acquireProcessLock(lockDirectory, input) {
   let settings = input || {};
   if (lockDirectory && typeof lockDirectory === 'object' && typeof input === 'string') {
@@ -121,10 +140,25 @@ function acquireProcessLock(lockDirectory, input) {
     } catch (error) {
       if (descriptor !== undefined) try { fs.closeSync(descriptor); } catch {}
       if (error.code !== 'EEXIST') throw error;
-      let current;
+      let current = null;
       try { current = readProcessLock(file); } catch (readError) {
         if (readError.code === 'ENOENT') continue;
-        throw readError;
+        // 잠금 파일은 만들어진 직후 잠깐 비어 있다. 여는 것과 쓰는 것이 한 동작이
+        // 아니기 때문이다. 그 틈에 읽으면 JSON이 아니고, 그것을 치명적 오류로 올리면
+        // "이미 돌고 있다"가 파싱 오류로 보고된다 — 경쟁이 결함으로 둔갑한다.
+        //
+        // 그래서 먼저 몇 번 다시 본다. 쓰기가 끝나면 읽히기 때문이다.
+        if (readError.code !== undefined) throw readError;
+        if (attempt <= UNREADABLE_LOCK_RETRIES) { pause(2); continue; }
+        // 그래도 못 읽으면 그것은 경쟁이 아니라 남은 쓰레기다. 잠금을 쥔 프로세스는
+        // 자기 잠금을 읽을 수 없게 두지 않는다. 죽은 pid의 잠금과 같이 회수한다 —
+        // 회수하지 않으면 읽을 수 없는 파일 하나가 이 도구를 영영 막고, 사람이
+        // 손으로 지우는 것 말고는 나갈 길이 없다.
+        current = null;
+      }
+      if (current === null) {
+        reclaim(file);
+        continue;
       }
       if (current.kind !== kind || current.workspaceId !== settings.workspaceId || current.projectId !== settings.projectId) throw new Error(`process lock identity mismatch: ${file}`);
       if (alive(current.pid)) {
@@ -133,13 +167,7 @@ function acquireProcessLock(lockDirectory, input) {
         locked.lock = current;
         throw locked;
       }
-      const stale = `${file}.stale-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
-      try {
-        fs.renameSync(file, stale);
-        try { fs.unlinkSync(stale); } catch {}
-      } catch (renameError) {
-        if (!['ENOENT', 'EEXIST', 'EPERM', 'EACCES'].includes(renameError.code)) throw renameError;
-      }
+      reclaim(file);
     }
   }
   if (!acquired) {
