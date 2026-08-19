@@ -1169,12 +1169,12 @@
         },
         "AC-004": {
           "text": "클라이언트 메모리는 로컬 전용이며 결정 권한을 담지 못한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:20.418Z",
-      "updatedAt": "2026-08-19T13:25:25.175Z",
+      "updatedAt": "2026-08-19T13:25:26.898Z",
       "statusChangedAt": "2026-08-17T00:18:20.418Z",
       "externalRefs": [],
       "project": "rundol",
