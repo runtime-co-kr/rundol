@@ -426,15 +426,30 @@ try {
   const runDiagnostics = JSON.stringify(checkOutput).match(/RDL-RUN-\d{3}/gu) || [];
   assert.strictEqual(runDiagnostics.length, 0, `예상 밖 run 진단: ${runDiagnostics.join(', ')}`);
 
-  // 혼합 버전 실측 (AC-P0c ②): 구버전(0.24.0) check가 events/run/을 보고도 오진 0.
+  // 혼합 버전 실측 (AC-P0c ②): 구버전(0.24.0) check가 events/run/을 보고도 오진하지 않는다.
+  //
+  // 이 단언의 대상은 run 원장이지 계약 스키마가 아니다. 0.25에서 더해진 문서 유형
+  // (IFC, STD)은 0.24.0이 알 수 없으므로 그 유형을 담은 project.md는 구버전에서
+  // RDL-PROFILE-001로 거부된다 — 이건 오진이 아니라 선언된 호환성 파기이고
+  // CHANGELOG와 마이그레이션 안내가 그것을 다룬다. 그래서 전체 종료코드를 0으로
+  // 묶는 대신, 구버전이 내는 오류가 그 선언된 파기 하나뿐인지를 본다. 파기가
+  // 넓어지면 이 단언이 깨진다.
   const oldCommit = command('git', ['log', '--all', '--format=%H', '--grep=chore: release 0.24.0', '-1'], root);
   if (oldCommit) {
     const oldTree = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-old-'));
     command('git', ['worktree', 'add', '--detach', oldTree, oldCommit], root);
     try {
       const result = spawnSync(process.execPath, [path.join(oldTree, 'bin', 'rdl.js'), 'check', '--root', temporary, '--json'], { encoding: 'utf8' });
-      assert.strictEqual(result.status, 0, `구버전 check 실패:\n${result.stdout}\n${result.stderr}`);
+      assert(result.stdout.trim().startsWith('{'), `구버전 check가 결과를 내지 못했습니다:\n${result.stdout}\n${result.stderr}`);
+      const oldOutput = JSON.parse(result.stdout);
+      const oldErrors = (oldOutput.diagnostics || []).filter((item) => item.severity === 'error');
+      // 파기는 두 방향이다: 구버전이 모르는 새 유형(IFC, STD)과, 신버전이 더 이상 쓰지
+      // 않는 옛 유형(API)이 계약에 없다는 불평.
+      const declared = /지원하지 않는 문서 유형입니다: (IFC|STD)|^API은 정확히 하나의 정책 상태에 있어야 합니다\.$/u;
+      const unexpected = oldErrors.filter((item) => !(item.code === 'RDL-PROFILE-001' && declared.test(item.message)));
+      assert.deepStrictEqual(unexpected, [], `구버전이 선언되지 않은 오류를 냈습니다:\n${JSON.stringify(unexpected, null, 2)}`);
       assert(!result.stdout.includes('RDL-LEASE-001'), `구버전이 run 샤드를 임대 파일로 오진:\n${result.stdout}`);
+      assert(!/RDL-RUN-\d{3}/u.test(result.stdout), `구버전이 run 샤드를 오진:\n${result.stdout}`);
     } finally {
       command('git', ['worktree', 'remove', '--force', oldTree], root);
     }

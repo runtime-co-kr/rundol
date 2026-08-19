@@ -7,7 +7,8 @@ const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', 
 const TERMINAL_STATUSES = ['done', 'cancelled'];
 const typeLabels = {
   project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
-  architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', api: 'API',
+  architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', interface: '인터페이스',
+  standard: '표준',
   adr: '의사결정 기록', decision: '의사결정 기록', test: '검증', runbook: '운영 가이드',
   glossary: '용어집', clipping: '수집 노트'
 };

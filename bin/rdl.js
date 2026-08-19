@@ -131,7 +131,7 @@ Options:
   --link         연결할 문서 또는 문서 섹션. 여러 번 지정할 수 있습니다.
   --scope        문서가 책임지는 하나의 독립 검토 단위입니다.
   --exclude      인접하지만 이 문서가 책임지지 않는 범위입니다. 여러 번 지정할 수 있습니다.
-  --function-id  REQ·SCR·MOD·API·TST가 추적하는 기능 ID입니다. 여러 번 지정할 수 있습니다.
+  --function-id  REQ·SCR·MOD·IFC·TST가 추적하는 기능 ID입니다. 여러 번 지정할 수 있습니다.
   --force        기존 개인 Obsidian 설정 또는 Rundol이 관리하지 않는 스킬도 덮어씁니다.
   --port <n>     Local board port. Defaults to an available random port.
   --no-open      Start the board without opening a browser.
@@ -950,7 +950,7 @@ async function main() {
   }
   if (command === 'task') {
     const subcommand = argv.shift();
-    if (!['add', 'set', 'list', 'acceptance', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, migrate입니다.');
+    if (!['add', 'set', 'list', 'acceptance', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, identity, migrate입니다.');
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
@@ -959,6 +959,18 @@ async function main() {
       // 없는 편이 낫다. 어느 경로였는지는 결과의 source에 남는다.
       const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open });
       printOperation(listed, options.json);
+      return 0;
+    }
+    // 식별자 이관은 저장 방식 이관과 다른 일이다. 하나는 태스크가 어디 저장되는지를
+    // 바꾸고, 다른 하나는 태스크를 무엇으로 부르는지를 바꾼다. 같은 명령에 묶으면
+    // 하나만 하고 싶을 때 다른 하나도 일어난다.
+    if (subcommand === 'identity') {
+      if (options.positional.length) throw new Error('rdl task identity에는 위치 인수를 사용할 수 없습니다.');
+      const { workspaceLayout, selectProject } = require('../src/workspace');
+      const { migrateTaskIds } = require('../src/task-identity');
+      const project = selectProject(workspaceLayout(options.root), options.project, true);
+      const result = migrateTaskIds(project.root, { dryRun: !options.apply });
+      printOperation(Object.assign({ project: project.key, applied: Boolean(options.apply) }, result), options.json);
       return 0;
     }
     if (subcommand === 'migrate') {

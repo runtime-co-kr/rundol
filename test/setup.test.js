@@ -40,7 +40,7 @@ try {
   assert.strictEqual(goals.length, 5);
   const service = goals.find((choice) => choice.id === 'service');
   assert(service.goal.length > 0 && service.summary.length > 0, '목표와 설명이 있어야 합니다.');
-  assert(service.required.includes('API'), '요구 유형은 정책에서 파생되어야 합니다.');
+  assert(service.required.includes('IFC'), '요구 유형은 정책에서 파생되어야 합니다.');
   assert.deepStrictEqual(goals.find((choice) => choice.id === 'assured').recommended, [], '정책이 그대로 반영되어야 합니다.');
 
   // 프로필은 판단이므로 선언하거나 기본값을 명시적으로 수용해야 한다.

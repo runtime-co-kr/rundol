@@ -32,7 +32,7 @@ assert.throws(() => profile.renderDocumentProfile({ name: 'unknown' }), /지원�
 // 아무 부가 설정도 들고 다니지 않는다. 제목만 보고 내용을 보지 않던 판정이 사라졌다.
 const withDisabled = profile.normalizeProfile({
   name: 'lean',
-  policy: { required: ['PRD', 'REQ'], recommended: [], onDemand: ['ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] }
+  policy: { required: ['PRD', 'REQ'], recommended: [], onDemand: ['ARC', 'MOD', 'IFC', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] }
 });
 assert.strictEqual(withDisabled.omissions, undefined, '프로필은 더 이상 흡수 설정을 갖지 않습니다');
 for (const type of profile.REGULAR_TYPES) assert(profile.DEFAULT_SECTIONS[type].length > 0, `${type}의 하부 요소가 정의되어야 합니다`);
@@ -80,7 +80,7 @@ try {
 {
   const withReason = profile.normalizeProfile({
     name: 'lean', enforcement: 'checkpoint',
-    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
+    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'IFC', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
     omissions: { SCR: { notApplicable: true, reason: '이 제품에는 화면이 없다' } }
   });
   assert.strictEqual(withReason.omissions.SCR.notApplicable, true, '기록된 결정은 남아야 합니다');
@@ -94,7 +94,7 @@ try {
   // 다르므로 남긴다. 옮길 자리는 rdl contract migrate가 안내한다.
   const absorbed = profile.normalizeProfile({
     name: 'lean',
-    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
+    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'IFC', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
     omissions: { SCR: { absorbedBy: 'REQ', sections: ['우리가 직접 적은 항목'] } },
     rules: { REQ: { after: ['ARC'] } }
   });
@@ -106,7 +106,7 @@ try {
   // 기본값 그대로인 작성 순서는 옮길 것도 알릴 것도 없으므로 남기지 않는다.
   const defaults = profile.normalizeProfile({
     name: 'lean',
-    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
+    policy: { required: ['REQ'], recommended: [], onDemand: ['PRD', 'ARC', 'MOD', 'IFC', 'ADR', 'TST', 'RUN', 'GLS'], disabled: ['SCR'] },
     rules: Object.fromEntries(profile.REGULAR_TYPES.map((type) => [type, { after: profile.DEFAULT_RULES[type] }]))
   });
   assert.strictEqual(defaults.rules, undefined, '기본값과 같은 작성 순서는 남기지 않습니다');

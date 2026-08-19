@@ -5,7 +5,7 @@ const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { REGULAR_TYPES, DEFAULT_POLICIES, DEFAULT_SECTIONS } = require('./document-profile');
 
-const DOCUMENT_TYPE_KEYS = ['charter', 'prd', 'requirement', 'architecture', 'screen', 'model', 'api', 'decision', 'test', 'runbook', 'glossary', 'clipping'];
+const DOCUMENT_TYPE_KEYS = ['charter', 'prd', 'requirement', 'architecture', 'screen', 'model', 'interface', 'decision', 'standard', 'test', 'runbook', 'glossary', 'clipping'];
 const DOCUMENT_STATE_KEYS = ['draft', 'proposed', 'active', 'review', 'approved', 'deprecated', 'archived', 'unread'];
 // 계약이 저장하는 값은 ASCII 식별자이고 화면에 보이는 말은 그 값의 라벨이다. 둘을 섞으면
 // 표기를 바꾸는 순간 저장된 계약이 깨진다. 여기 키는 언제나 저장값이고 label만 바뀐다.
@@ -15,6 +15,9 @@ const TASK_STATUS_KEYS = ['todo', 'doing', 'waiting', 'review', 'done', 'cancell
 const PRIORITY_KEYS = ['high', 'mid', 'low'];
 const PROFILE_KEYS = ['lean', 'product', 'service', 'platform', 'assured'];
 const ENTRY_FIELDS = ['label', 'description', 'order'];
+// 표시 키의 옛 이름. 유형 이름을 바꾸면서 이관 경로를 함께 내지 않으면, 이름을 바꾼 것만으로
+// 이미 저장된 board.json이 "지원하지 않는 키"로 거부되어 기존 Workspace가 멈춘다.
+const LEGACY_GROUP_KEYS = { documentTypes: { api: 'interface' } };
 const PRESENTATION_GROUPS = {
   documentTypes: DOCUMENT_TYPE_KEYS,
   documentStates: DOCUMENT_STATE_KEYS,
@@ -33,7 +36,8 @@ const DEFAULT_PRESENTATION = {
     architecture: { label: '아키텍처', description: '시스템 경계와 구조 결정', order: 30 },
     screen: { label: '화면 설계', description: '사용자 흐름, 화면 상태와 접근성', order: 40 },
     model: { label: '데이터 모델', description: '데이터 구조, 관계와 불변식', order: 50 },
-    api: { label: '인터페이스', description: '요청, 응답, 오류와 호환성 계약', order: 60 },
+    interface: { label: '인터페이스', description: '요청, 응답, 오류와 호환성 계약', order: 60 },
+    standard: { label: '표준', description: '팀이 지켜야 할 규칙과 준수 판정', order: 95 },
     decision: { label: '의사결정 기록', description: '중요 결정과 대안, 근거와 결과', order: 70 },
     test: { label: '검증', description: '테스트 전략, 시나리오와 통과 기준', order: 80 },
     runbook: { label: '운영 가이드', description: '배포, 관측, 장애 대응과 복구', order: 90 },
@@ -146,10 +150,17 @@ function readConfig(file) {
   for (const [group, keys] of Object.entries(PRESENTATION_GROUPS)) {
     const entries = value[group] || {};
     if (!entries || typeof entries !== 'object' || Array.isArray(entries)) throw new Error(`${file}: ${group}는 객체여야 합니다.`);
+    const aliases = LEGACY_GROUP_KEYS[group] || {};
+    const resolved = {};
     for (const [key, entry] of Object.entries(entries)) {
-      if (group !== 'profiles' && !keys.includes(key)) throw new Error(`${file}: 지원하지 않는 ${group} 키입니다: ${key}`);
-      validateEntry(group, key, entry, file);
+      const canonical = Object.prototype.hasOwnProperty.call(aliases, key) ? aliases[key] : key;
+      if (group !== 'profiles' && !keys.includes(canonical)) throw new Error(`${file}: 지원하지 않는 ${group} 키입니다: ${key}`);
+      validateEntry(group, canonical, entry, file);
+      // 옛 키와 새 키가 함께 있으면 새 키가 이긴다. 옛 키를 지우지 않은 파일에서
+      // 지운 줄 알았던 값이 되살아나면 안 된다.
+      if (canonical === key || !Object.prototype.hasOwnProperty.call(entries, canonical)) resolved[canonical] = entry;
     }
+    if (Object.keys(entries).length) value[group] = resolved;
   }
   return value;
 }
@@ -258,14 +269,21 @@ function savePresentation(start, projectKey, scope, input) {
   return { file, scope };
 }
 
-function renderWorkspaceBoardConfig() {
-  return `${JSON.stringify(DEFAULT_PRESENTATION, null, 2)}\n`;
-}
-
-function renderProjectBoardConfig() {
+// board.json은 덮어쓴 것만 갖는다. 기본값을 파일에 복사해두면 유형을 하나 더할 때마다
+// 공유 파일이 바뀌고, 같은 저장소를 보는 구버전이 모르는 키에서 멈춘다. 기본값은 코드가
+// 갖고 파일은 사람이 바꾼 것만 갖는다 — 그래야 무엇이 덮인 것인지도 파일에서 보인다.
+function renderEmptyBoardConfig() {
   const empty = { schemaVersion: 1 };
   for (const group of Object.keys(PRESENTATION_GROUPS)) empty[group] = {};
   return `${JSON.stringify(empty, null, 2)}\n`;
+}
+
+function renderWorkspaceBoardConfig() {
+  return renderEmptyBoardConfig();
+}
+
+function renderProjectBoardConfig() {
+  return renderEmptyBoardConfig();
 }
 
 module.exports = {

@@ -4,7 +4,27 @@ const fs = require('fs');
 const path = require('path');
 const { parseFrontmatter } = require('./frontmatter');
 const { CANONICAL_PATHS, canonicalDocumentPath } = require('./document-paths');
-const ID_RE = /\b(PRD|REQ|ARC|SCR|MOD|API|ADR|TST|RUN|GLS|NTE)-(\d{3,})\b/u;
+const ID_RE = /\b(PRD|REQ|ARC|SCR|MOD|IFC|STD|API|ADR|TST|RUN|GLS|NTE)-(\d{3,})\b/u;
+
+// 이름이 바뀐 유형 코드. 이름만 바꾸고 이관 경로를 내지 않으면, 올리는 것만으로 기존
+// 프로젝트의 문서가 알 수 없는 유형이 된다. 그래서 이관은 파일을 옮기는 데서 그치지 않고
+// ID, kind, 태그와 그 문서를 가리키는 모든 참조를 함께 옮긴다 — 문서만 옮기고 참조를
+// 남기면 링크가 없는 문서를 가리킨다.
+const RENAMED_TYPE_CODES = Object.freeze({ API: 'IFC' });
+const RENAMED_KINDS = Object.freeze({ api: 'interface' });
+const RENAMED_ID_RE = /\b(API)-(\d{3,})\b/gu;
+const RENAMED_KIND_RE = /^kind:[ \t]*(api)[ \t]*$/gmu;
+const RENAMED_TAG_RE = /^([ \t]*-[ \t]*)artifact\/(api)[ \t]*$/gmu;
+
+function renameIds(text) {
+  return String(text).replace(RENAMED_ID_RE, (whole, code, number) => `${RENAMED_TYPE_CODES[code]}-${number}`);
+}
+
+function renameContent(text) {
+  return renameIds(text)
+    .replace(RENAMED_KIND_RE, (whole, kind) => `kind: ${RENAMED_KINDS[kind]}`)
+    .replace(RENAMED_TAG_RE, (whole, prefix, kind) => `${prefix}artifact/${RENAMED_KINDS[kind]}`);
+}
 
 function files(root) {
   if (!fs.existsSync(root)) return [];
@@ -30,7 +50,9 @@ function atomicWrite(file, content) {
 }
 
 function rewrite(source, targets) {
-  let output = source;
+  // 옛 유형 코드를 먼저 새 코드로 바꾼다. 이 다음의 링크 대조는 새 이름 기준이고,
+  // targets도 새 이름으로 만들어져 있다.
+  let output = renameContent(source);
   output = output.replace(/\[\[([^|\]#]+)(#[^|\]]+)?(\|[^\]]+)?\]\]/gu, (whole, rawTarget, anchor, label) => {
     const normalized = rawTarget.replace(/\\/g, '/').replace(/\.md$/iu, '');
     const replacement = targets.get(normalized) || targets.get(path.posix.basename(normalized));
@@ -58,21 +80,24 @@ function planMigration(projectRoot) {
       conflicts.push({ id: id || (filenameMatch && `${filenameMatch[1]}-${filenameMatch[2]}`) || null, source: file, reason: 'filename-frontmatter-mismatch' });
       continue;
     }
-    if (ids.has(id)) conflicts.push({ id, source: file, target: ids.get(id) });
-    else ids.set(id, file);
-    documents.push({ file, source, id, type: filenameMatch[1] });
+    // 충돌 판정과 이후의 모든 이름은 새 코드 기준이다. 옛 이름으로 판정하면 옛
+    // API-001과 새 IFC-001이 같은 문서가 되려는 것을 놓친다.
+    const canonicalId = renameIds(id);
+    if (ids.has(canonicalId)) conflicts.push({ id: canonicalId, source: file, target: ids.get(canonicalId) });
+    else ids.set(canonicalId, file);
+    documents.push({ file, source, id: canonicalId, type: RENAMED_TYPE_CODES[filenameMatch[1]] || filenameMatch[1] });
   }
   for (const document of documents) {
     const { file, id, type } = document;
-    const target = path.join(canonicalDocumentPath(type, root), path.basename(file));
+    const target = path.join(canonicalDocumentPath(type, root), renameIds(path.basename(file)));
     if (path.resolve(file) === path.resolve(target)) continue;
     if (fs.existsSync(target) && path.resolve(target) !== path.resolve(file)) conflicts.push({ id, source: file, target });
     moves.push({ id, type, source: file, target, from: path.relative(root, file).replace(/\\/g, '/'), to: path.relative(root, target).replace(/\\/g, '/') });
   }
   const targets = new Map();
   for (const document of documents) {
-    const stem = path.basename(document.file, '.md');
-    const relativeStem = path.relative(root, document.file).replace(/\\/g, '/').replace(/\.md$/iu, '');
+    const stem = renameIds(path.basename(document.file, '.md'));
+    const relativeStem = renameIds(path.relative(root, document.file).replace(/\\/g, '/').replace(/\.md$/iu, ''));
     targets.set(document.id, stem);
     targets.set(relativeStem, stem);
     targets.set(path.posix.basename(relativeStem), stem);

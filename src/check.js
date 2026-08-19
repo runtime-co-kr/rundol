@@ -25,12 +25,20 @@ const { workspaceLayout, listProjects } = workspaceApi;
 const REQUIRED_FIELDS = ['id', 'type', 'kind', 'title', 'description', 'owner', 'state', 'tags', 'aliases', 'related'];
 const ID_PATTERN = /^[A-Z]{3}-\d{3,}$/;
 const FILE_PATTERN = /^[A-Z]{3}-\d{3,}-(?=.*[\uAC00-\uD7A3])[\uAC00-\uD7A3A-Za-z0-9]+(?:-[\uAC00-\uD7A3A-Za-z0-9]+)*\.md$/u;
-const TASK_ID_PATTERN = /^TASK-[A-Z0-9]{20,32}$/;
+// 새 식별자는 문서와 같은 8자 규칙이고, 옛 26자 식별자도 계속 읽는다 — 지난 기록을
+// 고쳐 쓰지 않는 것이 원칙이므로 이관 전 저장소도 그대로 동작해야 한다.
+const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/;
 // 완료와 반려는 둘 다 종료지만 게이트가 다르다. done은 수용조건과 TST 증거를,
 // cancelled는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
 // 아래 규칙들은 두 상태를 하나로 묶지 않는다.
 const ALLOWED_TASK_STATES = new Set(['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
-const LEGACY_DOCUMENT_CODES = new Map([['SPC', 'REQ']]);
+// 폐지된 유형과 이름만 바뀐 유형은 다르다. 폐지는 사람이 내용을 나눠 옮겨야 하므로
+// strict에서 막고, 이름 변경은 `rdl doc migrate`가 자동으로 옮기므로 막지 않는다.
+// 자동 경로가 있는데도 막으면, 버전을 올린 것만으로 기존 프로젝트가 멈춘다.
+const LEGACY_DOCUMENT_CODES = new Map([
+  ['SPC', { hint: 'REQ 또는 관점별 설계문서로 이전하세요.', blocking: true }],
+  ['API', { hint: '`rdl doc migrate --apply`가 IFC로 옮깁니다. 유형 이름만 바뀌었습니다.', blocking: false }]
+]);
 const NON_CANONICAL_CODES = new Set(['NTE']);
 const REQUIRED_TAG_NAMESPACES = ['rundol/', 'artifact/', 'domain/', 'feature/'];
 const NOTE_TAG_NAMESPACES = ['rundol/'];
@@ -466,15 +474,15 @@ function checkLegacyWorkspace(start, options, scope) {
       }
     }
     const relatedIds = (Array.isArray(meta.related) ? meta.related : []).map(wikiTarget).filter(Boolean).map((target) => fileRegistry.get(target.id)).filter(Boolean).map((targetDoc) => targetDoc.id.slice(0, 3));
-    const requirements = { SCR: ['REQ'], MOD: ['REQ', 'ARC'], API: ['REQ', 'ARC'], TST: ['REQ'], RUN: ['ARC', 'REQ'] };
+    const requirements = { SCR: ['REQ'], MOD: ['REQ', 'ARC'], IFC: ['REQ', 'ARC'], TST: ['REQ'], RUN: ['ARC', 'REQ'] };
     const code = doc.id ? doc.id.slice(0, 3) : '';
     if (LEGACY_DOCUMENT_CODES.has(code)) diagnostic(diagnostics, {
       code: 'RDL-DOC-010',
       category: 'metadata',
-      severity: options.strict ? 'error' : 'warning',
+      severity: options.strict && LEGACY_DOCUMENT_CODES.get(code).blocking ? 'error' : 'warning',
       file: doc.relativeFile,
       artifactId: doc.id,
-      message: `${code} 문서 유형은 더 이상 사용하지 않습니다. ${LEGACY_DOCUMENT_CODES.get(code)} 또는 관점별 설계문서로 이전하세요.`
+      message: `${code} 문서 유형은 더 이상 사용하지 않습니다. ${LEGACY_DOCUMENT_CODES.get(code).hint}`
     });
     if (requirements[code] && !requirements[code].some((required) => relatedIds.includes(required))) diagnostic(diagnostics, { code: 'RDL-META-003', category: 'metadata', file: doc.relativeFile, artifactId: doc.id, message: `${code} 문서는 ${requirements[code].join(' 또는 ')} 관계가 필요합니다.` });
     for (const issue of validateDocumentDiagram(code, doc.source, doc.id)) diagnostic(diagnostics, {

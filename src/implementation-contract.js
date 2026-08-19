@@ -4,12 +4,12 @@ const path = require('path');
 const { parseFrontmatter } = require('./frontmatter');
 
 const CONTRACT_VERSION = 'atomic-v1';
-const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'API', 'TST']);
+const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST']);
 // 문서 1개 = 기능 1개가 기본 계약이다. 합침은 groupingReason 선언이 있는 opt-in이며
 // 유형별 정책을 따른다. 근거는 실사용 정본 측정이다: TST가 기능 여럿을 검증하는 것은
 // 자연스럽고(TST-002=11), REQ가 기능 여럿을 요구하는 것은 과합침이다(REQ-010=5).
 // forbidden 유형은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다.
-const GROUPING_POLICY = Object.freeze({ REQ: 'forbidden', SCR: 'forbidden', TST: 'declared', MOD: 'declared', API: 'declared' });
+const GROUPING_POLICY = Object.freeze({ REQ: 'forbidden', SCR: 'forbidden', TST: 'declared', MOD: 'declared', IFC: 'declared' });
 const FUNCTION_ID_PATTERN = /^[A-Z][A-Z0-9]{1,7}-\d{2,4}$/u;
 const FUNCTION_ID_GLOBAL = /\b[A-Z][A-Z0-9]{1,7}-\d{2,4}\b/gu;
 const PLACEHOLDER_PATTERN = /(?:작성\s*필요|미정|추후[^\r\n]{0,40}확정|별도[^\r\n]{0,40}확정|원본(?:\s+문서)?\s*(?:기준|적용|참조)|todo|tbd|<[^>]+>)/iu;
@@ -18,7 +18,7 @@ const REQUIRED_FIELDS_BY_TYPE = Object.freeze({
   REQ: Object.freeze(['입력', '출력', '업무 규칙', '상태와 전이', '권한과 승인', '정상·오류·취소', '감사 기록', '수용 기준']),
   SCR: Object.freeze(['사용자와 진입 조건', '표시와 입력', '상호작용', '화면 상태와 전이', '검증·오류·취소', '권한과 접근성', '수용 기준']),
   MOD: Object.freeze(['책임과 소유 데이터', '필드와 타입', '키와 식별자', '관계와 카디널리티', '상태와 전이', '불변식과 계산식', '감사와 보존', '수용 기준']),
-  API: Object.freeze(['오퍼레이션과 경로', '권한', '요청', '응답', '업무 규칙', '오류·취소·멱등성', '감사와 보안', '수용 기준']),
+  IFC: Object.freeze(['오퍼레이션과 경로', '권한', '요청', '응답', '업무 규칙', '오류·취소·멱등성', '감사와 보안', '수용 기준']),
   TST: Object.freeze(['사전 조건', '입력과 데이터', '실행 절차', '기대 결과', '오류와 취소', '증거', '수용 기준'])
 });
 const REQUIRED_FUNCTION_FIELDS = REQUIRED_FIELDS_BY_TYPE.REQ;
@@ -114,7 +114,7 @@ function validateImplementationDocument(document, options) {
       const idSet = new Set(ids);
       const mismatch = groupingFunctions.length === 0 || groupingFunctions.some((id) => !idSet.has(id)) || ids.some((id) => !declared.has(id));
       if (mismatch) issues.push({ code: 'RDL-IMPL-015', severity: strictSeverity, message: 'groupingFunctions는 functionIds와 같은 집합이어야 합니다. 합친 범위를 정확히 선언하세요.' });
-      else if (type === 'MOD' || type === 'API') issues.push({ code: 'RDL-IMPL-017', severity: 'warning', message: `${type} 다기능 묶음입니다. 사유를 검토하세요: ${groupingReason}` });
+      else if (type === 'MOD' || type === 'IFC') issues.push({ code: 'RDL-IMPL-017', severity: 'warning', message: `${type} 다기능 묶음입니다. 사유를 검토하세요: ${groupingReason}` });
     }
   } else if (groupingReason || groupingFunctions.length) {
     issues.push({ code: 'RDL-IMPL-015', severity: strictSeverity, message: '단일 기능 문서에는 grouping 선언을 두지 않습니다.' });
@@ -171,7 +171,7 @@ function validateImplementationTrace(artifactInput, options) {
   }
   // 기능 정본 유일성: 한 기능이 같은 유형의 문서 여럿에 흩어지는 것을 막는다.
   // REQ는 009가 이미 상시 오류로 지키고 있고, 나머지 유형은 새 계약이므로 단계 도입한다.
-  for (const type of ['SCR', 'MOD', 'API', 'TST']) {
+  for (const type of ['SCR', 'MOD', 'IFC', 'TST']) {
     const owners = new Map();
     for (const artifact of artifacts.filter((item) => item.type === type)) for (const id of artifact.functionIds) {
       if (owners.has(id)) issues.push({ code: 'RDL-IMPL-016', severity: settings.implementation ? 'error' : 'warning', target: id, artifactId: artifact.id, message: `기능 ID가 여러 ${type} 문서에 중복 선언되었습니다: ${id} (${owners.get(id)}에 이미 있음)` });

@@ -13,6 +13,7 @@ const { initSettings, saveSettings, prepareSettings, finalizeSettings } = requir
 const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
 const { getClient } = require('./collaboration-store');
 const { readCollaboration } = require('./collaboration');
+const { newDocumentUid } = require('./document-identity');
 const { runtimeWorkspace } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
@@ -325,12 +326,17 @@ function validateProjection(config, options) {
   return result;
 }
 
+// 태스크 식별자는 문서 식별자와 같은 규칙을 쓴다. 두 체계가 다른 길이를 갖고 있을
+// 이유가 없고, 26자짜리는 사람이 옮겨 적을 수 없다. 저장하는 작업이 어느 태스크의
+// 일인지 밝히도록 요구하려면(REQ-046) 손으로 칠 수 있어야 하고, 칠 수 없는 식별자를
+// 요구하는 통제는 우회된다.
+//
+// 충돌은 생성 시점에 확인한다. 8자 32진이면 공간은 충분하지만, 확인을 생략하는
+// 것과 확인해서 없는 것은 다른 일이다.
 function taskId(tasks) {
   let id;
   do {
-    const time = Date.now().toString(36).toUpperCase().padStart(10, '0');
-    const random = crypto.randomBytes(8).toString('hex').toUpperCase();
-    id = `TASK-${time}${random}`;
+    id = `TASK-${newDocumentUid()}`;
   } while (Object.prototype.hasOwnProperty.call(tasks, id));
   return id;
 }

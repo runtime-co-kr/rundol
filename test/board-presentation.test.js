@@ -17,11 +17,13 @@ const merged = mergePresentation(JSON.parse(JSON.stringify(DEFAULT_PRESENTATION)
 assert.strictEqual(merged.documentTypes.prd.label, '프로젝트 제품 요구사항');
 assert.strictEqual(merged.documentTypes.prd.description, DEFAULT_PRESENTATION.documentTypes.prd.description);
 assert.strictEqual(merged.documentStates.draft.order, 99);
-assert.strictEqual(JSON.parse(renderWorkspaceBoardConfig()).documentTypes.requirement.label, '요구사항');
 // 그룹이 늘어날 때마다 이 목록을 손으로 고치면, 새 그룹을 빠뜨려도 테스트가 통과한다.
-const emptyProject = { schemaVersion: 1 };
-for (const group of Object.keys(PRESENTATION_GROUPS)) emptyProject[group] = {};
-assert.deepStrictEqual(JSON.parse(renderProjectBoardConfig()), emptyProject);
+const emptyConfig = { schemaVersion: 1 };
+for (const group of Object.keys(PRESENTATION_GROUPS)) emptyConfig[group] = {};
+assert.deepStrictEqual(JSON.parse(renderProjectBoardConfig()), emptyConfig);
+// 새로 만드는 board.json은 덮어쓴 것만 갖는다. 기본값을 파일에 복사해두면 유형을 하나
+// 더할 때마다 공유 파일이 바뀌고, 같은 저장소를 보는 구버전이 모르는 키에서 멈춘다.
+assert.deepStrictEqual(JSON.parse(renderWorkspaceBoardConfig()), emptyConfig);
 
 // 저장값은 ASCII 식별자이고 화면에 보이는 말은 라벨이다. 라벨을 바꿔도 계약과 태스크가
 // 저장한 값은 달라지지 않아야 하므로, 모든 그룹의 키가 실제 저장값과 같은지 묶는다.
@@ -51,6 +53,17 @@ try {
   const invalid = path.join(temporary, 'invalid.json');
   fs.writeFileSync(invalid, '{', 'utf8');
   assert.throws(() => readConfig(invalid), /올바른 JSON/u);
+  // 옛 키는 새 키로 읽힌다. 이름만 바꾸고 이관 경로를 내지 않으면 이미 저장된 board.json이
+  // 거부되어 기존 Workspace가 통째로 멈춘다.
+  const legacy = path.join(temporary, 'legacy.json');
+  fs.writeFileSync(legacy, JSON.stringify({ schemaVersion: 1, documentTypes: { api: { label: '규격' } } }), 'utf8');
+  const legacyRead = readConfig(legacy);
+  assert.strictEqual(legacyRead.documentTypes.interface.label, '규격');
+  assert.strictEqual(legacyRead.documentTypes.api, undefined);
+  // 옛 키와 새 키가 함께 있으면 새 키가 이긴다. 지운 줄 알았던 값이 되살아나면 안 된다.
+  const both = path.join(temporary, 'both.json');
+  fs.writeFileSync(both, JSON.stringify({ schemaVersion: 1, documentTypes: { api: { label: '옛 이름' }, interface: { label: '새 이름' } } }), 'utf8');
+  assert.strictEqual(readConfig(both).documentTypes.interface.label, '새 이름');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

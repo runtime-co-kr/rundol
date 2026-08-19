@@ -121,12 +121,22 @@ try {
   fs.rmSync(oldTree, { recursive: true, force: true });
   command('git', ['worktree', 'add', '--detach', oldTree, baseline], root);
   const oldCli = path.join(oldTree, 'bin', 'rdl.js');
+  //
+  // 0.25가 더한 문서 유형(IFC, STD)과 걷어낸 옛 유형(API)은 이전 판이 알 수 없다.
+  // 이건 오진이 아니라 선언된 계약 파기이므로, 종료코드를 0으로 묶는 대신 "그 파기
+  // 말고 다른 오류가 없는지"를 본다. 파기가 넓어지면 이 단언이 깨진다.
   const oldCheck = invoke(process.execPath, [oldCli, 'check', '--root', temporary, '--json'], root);
-  assert.strictEqual(oldCheck.status, 0, `0.28.1 check failed:\n${oldCheck.stdout}\n${oldCheck.stderr}`);
+  assert(oldCheck.stdout.trim().startsWith('{'), `0.28.1 check produced no result:\n${oldCheck.stdout}\n${oldCheck.stderr}`);
+  const oldErrors = (JSON.parse(oldCheck.stdout).diagnostics || []).filter((item) => item.severity === 'error');
+  const undeclared = oldErrors.filter((item) => item.code !== 'RDL-PROFILE-001');
+  assert.deepStrictEqual(undeclared, [], `0.28.1 check raised undeclared errors:\n${JSON.stringify(undeclared, null, 2)}`);
   assert(!oldCheck.stdout.includes('RDL-LEASE-001'), oldCheck.stdout);
   assert(!oldCheck.stdout.includes('RDL-RUN-'), oldCheck.stdout);
   const oldSync = invoke(process.execPath, [oldCli, 'sync', '--root', temporary, '--project', 'crm', '--no-push', '--json'], root);
-  assert.strictEqual(oldSync.status, 0, `0.28.1 sync failed:\n${oldSync.stdout}\n${oldSync.stderr}`);
+  const oldSyncOutput = `${oldSync.stdout}\n${oldSync.stderr}`;
+  // sync가 멈춘 이유도 같은 파기여야 한다. run·lease·driver 때문에 멈춘 것이면 오진이다.
+  if (oldSync.status !== 0) assert(oldSyncOutput.includes('RDL-PROFILE-001'), `0.28.1 sync failed for an undeclared reason:\n${oldSyncOutput}`);
+  assert(!/RDL-(RUN|LEASE|DRIVER|VERDICT)-/u.test(oldSyncOutput), `0.28.1 sync misread the new shards:\n${oldSyncOutput}`);
   command('git', ['worktree', 'remove', '--force', oldTree], root);
   oldTree = null;
 

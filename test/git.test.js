@@ -114,7 +114,7 @@ function testStateBranchAndRemoteMerge() {
     assert.strictEqual(git(first, ['rev-parse', 'refs/heads/rundol/tms']), initialCommit);
 
     const cliCreated = rdl(first, ['task', 'add', 'CLI', '태스크', '--summary', 'CLI 생성 흐름을 검증한다.', '--owner', 'MEMBER-001', '--reviewer', 'MEMBER-002', '--stakeholder', 'STAKEHOLDER-001', '--priority', 'high', '--link', 'TST-001', '--acceptance', 'CLI에서 태스크가 생성된다.']);
-    assert(/^TASK-[A-Z0-9]{20,32}$/.test(cliCreated.taskId));
+    assert(/^TASK-[0-9A-HJKMNP-TV-Z]{8}$/.test(cliCreated.taskId));
     assert.strictEqual(cliCreated.task.title, 'CLI 태스크');
     assert.strictEqual(cliCreated.task.owner, 'MEMBER-001');
     assert.deepStrictEqual(cliCreated.task.reviewers, ['MEMBER-002']);
@@ -134,7 +134,7 @@ function testStateBranchAndRemoteMerge() {
       blocker: null,
       externalRefs: []
     });
-    assert(/^TASK-[A-Z0-9]{20,32}$/.test(created.taskId));
+    assert(/^TASK-[0-9A-HJKMNP-TV-Z]{8}$/.test(created.taskId));
     const updated = taskUpdate(first, created.taskId, { title: '수정된 보드 태스크', priority: 'high' });
     assert.strictEqual(updated.changed, true);
     const projected = JSON.parse(fs.readFileSync(path.join(first, 'projects', 'tms', 'tasks.json'), 'utf8'));

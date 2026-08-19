@@ -1,22 +1,22 @@
 ---
-id: API-000
+id: IFC-000
 type: document
-kind: api
+kind: interface
 title: <인터페이스 제목>
 description: <호출자와 제공자 사이의 기능 및 호환성 계약을 한 문장으로 작성>
 granularity: bounded-v1
 scope: "<문서 책임 범위>"
 excludes:
   - "<인접하지만 이 문서가 책임지지 않는 범위>"
-owner: "[[project#^MEMBER-001|API Owner]]"
+owner: "[[project#^MEMBER-001|인터페이스 책임자]]"
 state: draft
 tags:
   - rundol/artifact
-  - artifact/api
+  - artifact/interface
   - domain/<domain>
   - feature/<feature>
 aliases:
-  - API-000
+  - IFC-000
 related:
   - "[[REQ-000-<요구사항명>|REQ-000]]"
   - "[[MOD-000-<데이터영역명>|MOD-000]]"

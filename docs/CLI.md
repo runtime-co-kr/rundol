@@ -387,7 +387,7 @@ rdl run log --run RUN-... --project memo --json
 
 ## 문서 생성
 
-문서 1개가 기능 1개를 나르는 것이 기본 계약이다. `--function-id`를 2개 이상 주려면 `--grouped --reason <합침 사유>`로 명시해야 하고, scaffold는 frontmatter에 `groupingReason`과 `groupingFunctions`를 기록한다. REQ와 SCR은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다. TST는 선언으로 허용되고, MOD와 API는 허용하되 검사가 사유를 경고로 항상 표면화한다. `rdl check`는 선언 없는 다기능(`RDL-IMPL-013`), 금지 유형의 다기능(`RDL-IMPL-014`), 선언 형식 위반(`RDL-IMPL-015`), 같은 기능 ID가 같은 유형 문서 여럿에 흩어진 것(`RDL-IMPL-016`)을 진단한다. 이 진단들은 일반 검사에서 경고이고 `--implementation` 준비도 게이트에서 오류다 — 기존 문서의 정리가 끝나면 상시 오류로 승격을 검토한다.
+문서 1개가 기능 1개를 나르는 것이 기본 계약이다. `--function-id`를 2개 이상 주려면 `--grouped --reason <합침 사유>`로 명시해야 하고, scaffold는 frontmatter에 `groupingReason`과 `groupingFunctions`를 기록한다. REQ와 SCR은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다. TST는 선언으로 허용되고, MOD와 IFC는 허용하되 검사가 사유를 경고로 항상 표면화한다. `rdl check`는 선언 없는 다기능(`RDL-IMPL-013`), 금지 유형의 다기능(`RDL-IMPL-014`), 선언 형식 위반(`RDL-IMPL-015`), 같은 기능 ID가 같은 유형 문서 여럿에 흩어진 것(`RDL-IMPL-016`)을 진단한다. 이 진단들은 일반 검사에서 경고이고 `--implementation` 준비도 게이트에서 오류다 — 기존 문서의 정리가 끝나면 상시 오류로 승격을 검토한다.
 
 `rdl init --guided`는 UI, data, API, component, operations, security/regulation, terminology 신호를 질문하고 최종 traits와 policy만 `project.md`에 저장한다. 같은 설정을 자동화할 때는 `--profile`과 반복 가능한 `--trait`를 사용한다. `rdl project profile --json` 결과에는 revision/history, 누락 required 유형과 다음 `rdl doc create` 명령이 포함된다. 정책을 직접 override할 때는 네 상태 옵션을 모두 지정하고 모든 정규 유형을 정확히 한 번 포함해야 한다.
 
@@ -396,9 +396,9 @@ rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-00
 rdl doc create REQ "메모 검색" --project memo --owner MEMBER-001 --scope "저장된 메모를 조건으로 검색하는 동작" --exclude "메모 작성과 삭제" --function-id MEM-01 --related PRD-001
 ```
 
-지원 유형은 PRD, GLS, ARC, REQ, SCR, MOD, API, ADR, TST, RUN, NTE다. CLI는 다음 3자리 번호, 한글 중심 파일명, 실제 등록 멤버 owner, 실제 파일명을 사용한 Wiki link와 필수 태그를 적용한다. NTE를 제외한 새 정규 문서는 `--scope`로 하나의 독립 검토 책임을, 반복 가능한 `--exclude`로 인접하지만 책임지지 않는 범위를 선언한다. 소유자·수용 기준·변경 주기·소비자가 달라지면 같은 유형이어도 별도 문서로 분리한다. REQ·SCR·MOD·API·TST·RUN은 `--related`가 필요하다. 본문에서 아직 결정하지 못한 값은 필드를 삭제하지 않고 `작성 필요`로 남긴다.
+지원 유형은 PRD, GLS, ARC, REQ, SCR, MOD, IFC, ADR, TST, RUN, NTE다. CLI는 다음 3자리 번호, 한글 중심 파일명, 실제 등록 멤버 owner, 실제 파일명을 사용한 Wiki link와 필수 태그를 적용한다. NTE를 제외한 새 정규 문서는 `--scope`로 하나의 독립 검토 책임을, 반복 가능한 `--exclude`로 인접하지만 책임지지 않는 범위를 선언한다. 소유자·수용 기준·변경 주기·소비자가 달라지면 같은 유형이어도 별도 문서로 분리한다. REQ·SCR·MOD·IFC·TST·RUN은 `--related`가 필요하다. 본문에서 아직 결정하지 못한 값은 필드를 삭제하지 않고 `작성 필요`로 남긴다.
 
-REQ·SCR·MOD·API·TST는 반복 가능한 `--function-id`로 구현 기능을 선언한다. 한 파일에 여러 기능을 둘 수는 있지만 명세를 묶을 수는 없다. `PAY-01~04`, `PAY-01, PAY-02` 같은 범위·통합 행은 오류이며, 모든 기능 ID가 단독 문서일 때와 같은 수준의 독립 섹션, 유형별 필수 구성요소, 수용 기준과 검증 증거를 가져야 한다. 미정 업무 규칙이나 `원본 문서 적용` 같은 위임 문구도 구현 준비 완료로 인정하지 않는다.
+REQ·SCR·MOD·IFC·TST는 반복 가능한 `--function-id`로 구현 기능을 선언한다. 한 파일에 여러 기능을 둘 수는 있지만 명세를 묶을 수는 없다. `PAY-01~04`, `PAY-01, PAY-02` 같은 범위·통합 행은 오류이며, 모든 기능 ID가 단독 문서일 때와 같은 수준의 독립 섹션, 유형별 필수 구성요소, 수용 기준과 검증 증거를 가져야 한다. 미정 업무 규칙이나 `원본 문서 적용` 같은 위임 문구도 구현 준비 완료로 인정하지 않는다.
 
 ```bash
 rdl check --project memo --strict --implementation

@@ -2,21 +2,31 @@
 
 const fs = require('fs');
 
-const REGULAR_TYPES = ['PRD', 'REQ', 'ARC', 'SCR', 'MOD', 'API', 'ADR', 'TST', 'RUN', 'GLS'];
+const REGULAR_TYPES = ['PRD', 'REQ', 'ARC', 'SCR', 'MOD', 'IFC', 'ADR', 'TST', 'RUN', 'STD', 'GLS'];
+
+// 옛 유형 이름. API는 HTTP만 연상시켜 CLI·이벤트·파일 계약을 담기에 좁았고 IFC로
+// 바뀌었다. 이미 저장된 계약에는 옛 이름이 남아 있으므로, 그것을 오류로 읽으면
+// 이름을 바꾼 것만으로 기존 프로젝트가 멈춘다. 읽을 때 옮겨 주고 저장할 때 새
+// 이름으로 굳힌다 — 이름 변경이 아니라 이관이어야 한다.
+const LEGACY_TYPE_ALIASES = Object.freeze({ API: 'IFC' });
+
+function canonicalType(value) {
+  return Object.prototype.hasOwnProperty.call(LEGACY_TYPE_ALIASES, value) ? LEGACY_TYPE_ALIASES[value] : value;
+}
 const PROFILE_NAMES = ['lean', 'product', 'service', 'platform', 'assured'];
 const POLICY_STATES = ['required', 'recommended', 'onDemand', 'disabled'];
 const ENFORCEMENTS = ['advisory', 'checkpoint'];
 const TRAITS = ['ui', 'data', 'api', 'component', 'operations', 'security-regulation', 'terminology'];
 const DEFAULT_POLICIES = {
-  lean: { required: ['PRD', 'REQ'], recommended: ['ARC', 'TST'], onDemand: ['API', 'ADR', 'RUN', 'GLS', 'SCR', 'MOD'], disabled: [] },
-  product: { required: ['PRD', 'REQ', 'SCR'], recommended: ['ARC', 'TST'], onDemand: ['MOD', 'ADR', 'API', 'RUN', 'GLS'], disabled: [] },
-  service: { required: ['PRD', 'REQ', 'API', 'RUN'], recommended: ['ARC', 'MOD', 'TST'], onDemand: ['SCR', 'ADR', 'GLS'], disabled: [] },
-  platform: { required: ['PRD', 'REQ', 'ARC', 'API', 'MOD'], recommended: ['ADR', 'TST', 'RUN'], onDemand: ['SCR', 'GLS'], disabled: [] },
+  lean: { required: ['PRD', 'REQ'], recommended: ['ARC', 'TST'], onDemand: ['IFC', 'ADR', 'RUN', 'GLS', 'SCR', 'MOD'], disabled: [] },
+  product: { required: ['PRD', 'REQ', 'SCR'], recommended: ['ARC', 'TST'], onDemand: ['MOD', 'ADR', 'IFC', 'RUN', 'GLS'], disabled: [] },
+  service: { required: ['PRD', 'REQ', 'IFC', 'RUN'], recommended: ['ARC', 'MOD', 'TST'], onDemand: ['SCR', 'ADR', 'GLS'], disabled: [] },
+  platform: { required: ['PRD', 'REQ', 'ARC', 'IFC', 'MOD'], recommended: ['ADR', 'TST', 'RUN'], onDemand: ['SCR', 'GLS'], disabled: [] },
   assured: { required: REGULAR_TYPES.slice(), recommended: [], onDemand: [], disabled: [] }
 };
 const DEFAULT_RULES = {
-  PRD: [], REQ: ['PRD'], ARC: ['REQ'], SCR: ['REQ'], MOD: ['REQ'], API: ['REQ'],
-  ADR: ['ARC'], TST: ['REQ'], RUN: ['REQ'], GLS: []
+  PRD: [], REQ: ['PRD'], ARC: ['REQ'], SCR: ['REQ'], MOD: ['REQ'], IFC: ['REQ'],
+  ADR: ['ARC'], TST: ['REQ'], RUN: ['REQ'], STD: [], GLS: []
 };
 const DOCUMENT_SECTION_CATALOG = {
   PRD: ['문제와 배경', '사용자', '목표와 성공 지표', '범위', '제약과 가정', '마일스톤'],
@@ -24,10 +34,11 @@ const DOCUMENT_SECTION_CATALOG = {
   ARC: ['컨텍스트와 경계', '컴포넌트', '데이터 흐름', '실행과 배포', '품질 속성', '보안과 개인정보', '알려진 제약'],
   SCR: ['진입', '사용자 흐름', '전이', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것'],
   MOD: ['엔티티', '관계', '불변식', '인덱스와 조회', '보존과 개인정보', '마이그레이션'],
-  API: ['엔드포인트', '오류 계약', '호환성과 버전', '제약'],
+  IFC: ['엔드포인트', '오류 계약', '호환성과 버전', '제약'],
   ADR: ['맥락', '결정 기준', '선택지', '결정', '결과'],
   TST: ['목적과 범위', '테스트 수준', '시나리오', '비기능 검증', '테스트 데이터와 환경', '통과 기준'],
   RUN: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구', '정기 작업'],
+  STD: ['적용 범위', '규칙과 근거', '예시', '예외와 승인'],
   GLS: ['용어', '식별자와 코드']
 };
 // 유형마다 그 문서가 채워야 하는 하부 요소. 템플릿이 제안하는 것이 아니라 실제로 쓰인
@@ -39,10 +50,11 @@ const DEFAULT_SECTIONS = {
   ARC: ['컨텍스트와 경계', '컴포넌트', '데이터 흐름', '실행과 배포', '품질 속성', '보안과 개인정보', '알려진 제약'],
   SCR: ['진입', '사용자 흐름', '바인딩', '상태', '접근성과 반응형', '디자인에 없는 것'],
   MOD: ['엔티티', '관계', '불변식', '인덱스와 조회', '보존과 개인정보', '마이그레이션'],
-  API: ['엔드포인트', '오류 계약', '호환성과 버전', '제약'],
+  IFC: ['엔드포인트', '오류 계약', '호환성과 버전', '제약'],
   ADR: ['맥락', '결정 기준', '선택지', '결정', '결과'],
   TST: ['목적과 범위', '테스트 수준', '시나리오', '비기능 검증', '테스트 데이터와 환경', '통과 기준'],
   RUN: ['대상과 책임', '배포', '관측', '장애 대응', '롤백과 복구', '정기 작업'],
+  STD: ['적용 범위', '규칙과 근거', '예시', '예외와 승인'],
   GLS: ['용어', '식별자와 코드']
 };
 function parseList(value) {
@@ -116,7 +128,9 @@ function normalizePolicy(name, supplied, traits, presets) {
   const policy = {};
   for (const state of POLICY_STATES) {
     const explicit = supplied && Object.prototype.hasOwnProperty.call(supplied, state);
-    policy[state] = ordered(explicit ? parseList(supplied[state]) : base[state]);
+    // 옛 이름은 여기서 새 이름으로 굳는다. 읽을 때 옮겨 주고 저장할 때 새 이름을
+    // 쓰므로, 다음 계약 저장에서 옛 이름이 자연스럽게 사라진다.
+    policy[state] = ordered((explicit ? parseList(supplied[state]) : base[state]).map(canonicalType));
   }
   const seen = new Set();
   for (const state of POLICY_STATES) policy[state] = policy[state].filter((type) => REGULAR_TYPES.includes(type) && !seen.has(type) && (seen.add(type), true));
@@ -128,8 +142,8 @@ function normalizePolicy(name, supplied, traits, presets) {
     };
     if (traits.includes('ui')) promote('SCR', 'recommended');
     if (traits.includes('data')) promote('MOD', 'recommended');
-    if (traits.includes('api')) promote('API', 'recommended');
-    if (traits.includes('component')) { promote('ARC', 'recommended'); promote('API', 'recommended'); }
+    if (traits.includes('api')) promote('IFC', 'recommended');
+    if (traits.includes('component')) { promote('ARC', 'recommended'); promote('IFC', 'recommended'); }
     if (traits.includes('operations')) promote('RUN', 'required');
     if (traits.includes('security-regulation')) { promote('ADR', 'required'); promote('TST', 'required'); }
     if (traits.includes('terminology')) promote('GLS', 'recommended');
@@ -235,12 +249,28 @@ function validateDocumentProfile(source, presets) {
   const occurrences = new Map();
   for (const state of POLICY_STATES) {
     if (!Object.prototype.hasOwnProperty.call(raw.policy, state)) { errors.push(`policy.${state}가 없습니다.`); continue; }
-    for (const type of raw.policy[state]) {
-      if (!REGULAR_TYPES.includes(type)) errors.push(`지원하지 않는 문서 유형입니다: ${type}`);
+    for (const declared of raw.policy[state]) {
+      // 옛 이름은 새 이름으로 읽는다. 그래야 이미 저장된 계약이 이름 변경만으로
+      // 무효가 되지 않고 migration-required로 남아 이관 경로를 탈 수 있다.
+      const type = canonicalType(declared);
+      if (!REGULAR_TYPES.includes(type)) errors.push(`지원하지 않는 문서 유형입니다: ${declared}`);
       occurrences.set(type, (occurrences.get(type) || []).concat(state));
     }
   }
-  for (const type of REGULAR_TYPES) if ((occurrences.get(type) || []).length !== 1) errors.push(`${type}은 정확히 하나의 정책 상태에 있어야 합니다.`);
+  // 어느 상태에도 없는 유형과, 두 상태에 걸친 유형은 다르다.
+  //
+  // 앞은 새 유형이 더해졌을 때 생긴다. 이미 저장된 계약은 그 유형을 모르므로, 없다고
+  // 무효로 읽으면 유형 하나를 더한 것만으로 모든 기존 프로젝트가 멈춘다. 그리고 그것은
+  // 정규화가 결정론적으로 고칠 수 있다 — 모르는 유형은 onDemand로 간다. 고칠 수 있는
+  // 것은 무효가 아니라 이관이다.
+  //
+  // 뒤는 사람이 같은 유형을 두 곳에 적은 것이고, 어느 쪽이 뜻인지 기계가 정할 수 없다.
+  const missing = [];
+  for (const type of REGULAR_TYPES) {
+    const states = occurrences.get(type) || [];
+    if (states.length === 0) missing.push(type);
+    else if (states.length > 1) errors.push(`${type}은 정확히 하나의 정책 상태에 있어야 합니다: ${states.join(', ')}`);
+  }
   if (schemaVersion === 2) {
     if (!ENFORCEMENTS.includes(raw.enforcement)) errors.push(`지원하지 않는 enforcement입니다: ${raw.enforcement || '(없음)'}`);
     for (const type of REGULAR_TYPES) {
@@ -255,7 +285,9 @@ function validateDocumentProfile(source, presets) {
     // 저장에서 블록을 다시 렌더할 때 자연스럽게 사라진다.
   }
   const profile = parseDocumentProfile(source, presets);
-  let status = errors.length ? 'invalid' : schemaVersion === 1 ? 'migration-required' : 'valid';
+  // 빠진 유형이 있으면 이관이 필요하다. 무효가 아니다 — 정규화가 고칠 수 있고,
+  // 다음 계약 저장에서 새 유형이 onDemand로 굳는다.
+  let status = errors.length ? 'invalid' : (schemaVersion === 1 || missing.length) ? 'migration-required' : 'valid';
   if (Number.isInteger(schemaVersion) && schemaVersion > 2) status = 'unsupported-schema';
   return { present: true, errors: Array.from(new Set(errors)), profile, status };
 }
@@ -385,7 +417,7 @@ function missingActions(profile, presentTypes) {
   const present = new Set(presentTypes || []);
   return profile.policy.required.filter((type) => !present.has(type)).map((type) => ({
     type,
-    command: `rdl doc create ${type} "<제목>" --project <key> --owner <MEMBER-ID> --scope "<단일 책임>" --exclude "<제외 범위>"${['REQ', 'SCR', 'MOD', 'API', 'TST'].includes(type) ? ' --function-id <기능-ID>' : ''}${['REQ', 'SCR', 'MOD', 'API', 'TST', 'RUN'].includes(type) ? ' --related <ARTIFACT-ID>' : ''}`
+    command: `rdl doc create ${type} "<제목>" --project <key> --owner <MEMBER-ID> --scope "<단일 책임>" --exclude "<제외 범위>"${['REQ', 'SCR', 'MOD', 'IFC', 'TST'].includes(type) ? ' --function-id <기능-ID>' : ''}${['REQ', 'SCR', 'MOD', 'IFC', 'TST', 'RUN'].includes(type) ? ' --related <ARTIFACT-ID>' : ''}`
   }));
 }
 
