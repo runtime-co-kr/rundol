@@ -1412,7 +1412,7 @@
         },
         "AC-002": {
           "text": "렌즈 셋 동시 실행의 총 소요가 순차 합이 아니라 최대치에 가깝다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "실패 후 재실행 시 성공했던 판정은 다시 호출되지 않는다",
@@ -1425,7 +1425,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:05.290Z",
-      "updatedAt": "2026-08-19T01:48:13.295Z",
+      "updatedAt": "2026-08-19T01:48:14.839Z",
       "statusChangedAt": "2026-08-18T22:49:05.290Z",
       "externalRefs": [],
       "project": "rundol",
