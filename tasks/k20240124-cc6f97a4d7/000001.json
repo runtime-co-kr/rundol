@@ -1747,7 +1747,7 @@
       "priority": "high",
       "links": [
         "REQ-047",
-        "TST-018"
+        "TST-019"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -1766,7 +1766,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:30.249Z",
-      "updatedAt": "2026-08-19T02:24:00.073Z",
+      "updatedAt": "2026-08-19T02:24:30.080Z",
       "statusChangedAt": "2026-08-19T02:22:30.249Z",
       "externalRefs": [],
       "project": "rundol",
