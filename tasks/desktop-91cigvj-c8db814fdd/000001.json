@@ -466,7 +466,7 @@
         },
         "AC-002": {
           "text": "화면이 없는 기능을 검증하는 TST는 REQ 관계만으로 새 진단이 발생하지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
@@ -483,7 +483,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:43:29.204Z",
-      "updatedAt": "2026-08-19T02:33:30.987Z",
+      "updatedAt": "2026-08-19T02:33:32.018Z",
       "statusChangedAt": "2026-08-19T01:43:35.621Z",
       "externalRefs": [],
       "project": "rundol",
