@@ -1538,7 +1538,7 @@
         },
         "AC-003": {
           "text": "두 근거가 다른 태스크를 가리키면 런이 이기고, 인수 지정은 둘 다 이긴다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "결과에 파생 근거가 남는다",
@@ -1547,7 +1547,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:48:46.626Z",
-      "updatedAt": "2026-08-19T11:24:55.691Z",
+      "updatedAt": "2026-08-19T11:24:57.278Z",
       "statusChangedAt": "2026-08-19T01:48:46.626Z",
       "externalRefs": [],
       "project": "rundol",
