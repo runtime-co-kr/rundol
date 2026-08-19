@@ -1118,7 +1118,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "결정 카탈로그가 비가역성 기준으로 정의되고 각 항목의 기본 동작과 답변 권한이 명시된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "결정 요청이 질문·선택지·권고안을 담은 상태로 기록되고 작업은 그 지점에서 정지한다",
@@ -1135,7 +1135,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:17.189Z",
-      "updatedAt": "2026-08-17T00:18:17.189Z",
+      "updatedAt": "2026-08-19T13:26:47.519Z",
       "statusChangedAt": "2026-08-17T00:18:17.189Z",
       "externalRefs": [],
       "project": "rundol",
