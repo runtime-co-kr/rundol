@@ -552,7 +552,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "태스크가 normal 또는 test 종류를 갖고, 값이 없으면 normal로 읽힌다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "테스트 태스크만 pass·fail·blocked·skipped 판정을 가질 수 있고, 일반 태스크에 판정을 두면 거부된다.",
@@ -581,7 +581,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:34:58.788Z",
-      "updatedAt": "2026-08-19T04:35:05.720Z",
+      "updatedAt": "2026-08-19T04:50:34.117Z",
       "statusChangedAt": "2026-08-19T04:35:05.720Z",
       "externalRefs": [],
       "project": "rundol",
