@@ -1776,6 +1776,48 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-EKTMMZ92": {
+      "title": "[설계] 제품 방향 재정의 — 이종 워커 오케스트레이션과 리스 폐기",
+      "summary": "대상을 사람·AI 동일계층 워커 운영으로 확정하고, 조정자가 있는 구조에서 불필요해진 리스를 폐기하며, 페이퍼웍·가이드·태스크 세 레이어 분리를 정본에 반영한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "PRD-001이 단일 1차 대상과 이종 워커 오케스트레이션 제품 정의를 담는다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "리스 폐기와 할당 시점 배타 결정이 ADR로 기록되고 ADR-007을 대체한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "페이퍼웍·가이드·태스크 세 레이어 분리가 ADR로 기록된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "작업 할당과 보고 계약이 기능 ID별 완전 계약을 갖는 REQ로 존재한다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl check --strict가 오류 없이 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T16:48:02.564Z",
+      "updatedAt": "2026-08-19T16:48:02.564Z",
+      "statusChangedAt": "2026-08-19T16:48:02.564Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
