@@ -1498,7 +1498,7 @@
         },
         "AC-003": {
           "text": "실행되지 못한 대상이 미실행으로 구분된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "선행 문서가 없는 대상은 준비 완료 집합에 들어가지 않는다",
@@ -1507,7 +1507,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:08.690Z",
-      "updatedAt": "2026-08-19T02:01:40.558Z",
+      "updatedAt": "2026-08-19T02:01:42.168Z",
       "statusChangedAt": "2026-08-18T22:49:08.690Z",
       "externalRefs": [],
       "project": "rundol",
