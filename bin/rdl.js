@@ -20,13 +20,13 @@ Usage:
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
   rdl contract show|next|check|trace --project <key> [--json]
   rdl contract diagram --project <key> [--write] [--json]
-  rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
+  rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--task-enforcement <advisory|checkpoint>] [--json]
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
   rdl git init|boundary [--root <path>] [--project <key>] [--json]
   rdl refresh [--root <path>] [--project <key>] [--json]
-  rdl save [--root <path>] [--project <key>] [--run <RUN-ID>] [--expect-head <sha>] [--json]
+  rdl save [--root <path>] [--project <key>] [--task <TASK-ID> | --no-task <reason>] [--run <RUN-ID>] [--expect-head <sha>] [--json]
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
   rdl check --structure [--root <path>] [--project <key>] [--json]
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
@@ -43,7 +43,7 @@ Usage:
   rdl run start <절차이름> --project <key> --client-id <id> [--artifact-id <ARTIFACT-ID>] [--goal <목표>]
                 [--request-id <REQ-ID>] [--json]
   rdl run next --run <RUN-ID> --project <key> [--json]
-  rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
+  rdl run step --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--exit <n>] [--artifact-id <ID>] [--commit <sha>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
   rdl run gate --run <RUN-ID> --project <key> --client-id <id> [--step <id>] [--force --reason <사유>] [--request-id <REQ-ID>] [--json]
   rdl run approve --run <RUN-ID> --project <key> --client-id <id> --reason <사유> [--step <id>] [--request-id <REQ-ID>] [--json]
   rdl run halt|complete --run <RUN-ID> --project <key> --client-id <id> [--request-id <REQ-ID>] [--json]
@@ -58,7 +58,7 @@ Usage:
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
-  rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
+  rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--adapters <name>]... [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
   rdl watch --project <key> [--remote] [--once] [--json]
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
@@ -69,6 +69,7 @@ Usage:
   rdl workset list [--project <key>] [--branch <name>] [--json]
   rdl task list [--project <key>] [--status <state>] [--open] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
+  rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
   rdl help [--json]
@@ -131,7 +132,7 @@ Options:
   --link         연결할 문서 또는 문서 섹션. 여러 번 지정할 수 있습니다.
   --scope        문서가 책임지는 하나의 독립 검토 단위입니다.
   --exclude      인접하지만 이 문서가 책임지지 않는 범위입니다. 여러 번 지정할 수 있습니다.
-  --function-id  REQ·SCR·MOD·API·TST가 추적하는 기능 ID입니다. 여러 번 지정할 수 있습니다.
+  --function-id  REQ·SCR·MOD·IFC·TST가 추적하는 기능 ID입니다. 여러 번 지정할 수 있습니다.
   --force        기존 개인 Obsidian 설정 또는 Rundol이 관리하지 않는 스킬도 덮어씁니다.
   --port <n>     Local board port. Defaults to an available random port.
   --no-open      Start the board without opening a browser.
@@ -181,7 +182,7 @@ function parseWatchArgs(argv) {
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -206,7 +207,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -214,6 +215,9 @@ function parseOperationArgs(argv) {
       else if (value === '--name') options.name = argv[i];
       else if (value === '--profile') options.profile = argv[i];
       else if (value === '--enforcement') options.enforcement = argv[i];
+      else if (value === '--task-enforcement') options.taskEnforcement = argv[i];
+      else if (value === '--task') options.task = argv[i];
+      else if (value === '--no-task') options.noTask = argv[i];
       else if (value === '--remote') options.remote = argv[i];
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
@@ -223,6 +227,7 @@ function parseOperationArgs(argv) {
       else if (value === '--share-unverified') options.shareUnverified = argv[i];
       else if (value === '--expect-head') options.expectHead = argv[i];
       else if (value === '--approved-by') options.approvedBy = argv[i];
+      else if (value === '--commit') options.commit = argv[i];
       else if (value === '--decided-by') options.decidedBy = argv[i];
       else if (value === '--scope') options.scope = argv[i];
       else if (value === '--exclude') options.excludes.push(argv[i]);
@@ -239,6 +244,7 @@ function parseOperationArgs(argv) {
       else if (value === '--acceptance') options.acceptance.push(argv[i]);
       else if (value === '--related') options.related.push(argv[i]);
       else if (value === '--lens') options.lenses.push(argv[i]);
+      else if (value === '--adapters') options.adapters.push(argv[i]);
       else if (value === '--option') options.decisionOptions.push(argv[i]);
       else if (value === '--evidence') options.evidence.push(argv[i]);
       else if (value === '--external-ref') options.externalRefs.push(argv[i]);
@@ -327,6 +333,19 @@ function printText(result) {
   process.stdout.write(
     `\n${marker} 문서 ${summary.documents}개, 태스크 ${summary.tasks}개, 오류 ${summary.errors}개, 경고 ${summary.warnings}개 (${summary.durationMs}ms)\n`
   );
+  // 결박은 우회를 허용하는 통제다. 허용하는 대신 세기로 했으므로, 그 수는 경고 목록
+  // 안이 아니라 요약에 있어야 한다 — 진단 수십 개 사이에 묻힌 숫자는 아무도 세지 않고,
+  // 세지 않는 우회는 예외가 아니라 그냥 다른 길이 된다.
+  const binding = summary.taskBinding;
+  if (binding && binding.scanned) {
+    const rate = Math.round(((binding.excused + binding.unbound) / binding.scanned) * 100);
+    const parts = [`결박 ${binding.bound}`, `우회 ${binding.excused}`, `미결박 ${binding.unbound}`];
+    if (binding.dangling) parts.push(`끊긴 결박 ${binding.dangling}`);
+    process.stdout.write(`  최근 커밋 ${binding.scanned}건: ${parts.join(' · ')} (결박 밖 ${rate}%)\n`);
+  }
+  if (binding && binding.unchecked.length) {
+    process.stdout.write(`  결박을 확인하지 못한 프로젝트: ${binding.unchecked.join(', ')}\n`);
+  }
 }
 
 async function main() {
@@ -648,8 +667,10 @@ async function main() {
       if (!available.includes(options.profile)) throw new Error(`--profile <${available.join('|')}>가 필요합니다.`);
     }
     if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
+    if (options.taskEnforcement && !ENFORCEMENTS.includes(options.taskEnforcement)) throw new Error('--task-enforcement는 advisory 또는 checkpoint여야 합니다.');
     const input = { name: options.profile };
     if (options.enforcement) input.enforcement = options.enforcement;
+    if (options.taskEnforcement) input.taskEnforcement = options.taskEnforcement;
     if (options.traits.length) input.traits = options.traits;
     if (options.policySpecified) input.policy = options.policy;
     if (subcommand === 'set') input.baseRevision = loadDocumentContract(options.root, options.project).revision;
@@ -863,7 +884,10 @@ async function main() {
         project: options.project,
         targetId: options.positional[0],
         clientId: options.clientId,
-        adapter: options.adapter,
+        // 어댑터를 여럿 고정하면 판정이 서로 다른 판정자에서 나온다. 하나만 쓰면
+        // 여러 번 부르더라도 같은 편향을 여러 번 세는 것이고, 다양성은 셀 수 없다.
+        adapter: options.adapters.length ? undefined : options.adapter,
+        adapters: options.adapters.length ? options.adapters : undefined,
         lenses: options.lenses.length ? options.lenses : undefined,
         runId: options.run,
         rootRequestId
@@ -949,7 +973,7 @@ async function main() {
   }
   if (command === 'task') {
     const subcommand = argv.shift();
-    if (!['add', 'set', 'list', 'acceptance', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, migrate입니다.');
+    if (!['add', 'set', 'list', 'acceptance', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, identity, migrate입니다.');
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
@@ -958,6 +982,18 @@ async function main() {
       // 없는 편이 낫다. 어느 경로였는지는 결과의 source에 남는다.
       const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open });
       printOperation(listed, options.json);
+      return 0;
+    }
+    // 식별자 이관은 저장 방식 이관과 다른 일이다. 하나는 태스크가 어디 저장되는지를
+    // 바꾸고, 다른 하나는 태스크를 무엇으로 부르는지를 바꾼다. 같은 명령에 묶으면
+    // 하나만 하고 싶을 때 다른 하나도 일어난다.
+    if (subcommand === 'identity') {
+      if (options.positional.length) throw new Error('rdl task identity에는 위치 인수를 사용할 수 없습니다.');
+      const { workspaceLayout, selectProject } = require('../src/workspace');
+      const { migrateTaskIds } = require('../src/task-identity');
+      const project = selectProject(workspaceLayout(options.root), options.project, true);
+      const result = migrateTaskIds(project.root, { dryRun: !options.apply });
+      printOperation(Object.assign({ project: project.key, applied: Boolean(options.apply) }, result), options.json);
       return 0;
     }
     if (subcommand === 'migrate') {

@@ -25,12 +25,20 @@ const { workspaceLayout, listProjects } = workspaceApi;
 const REQUIRED_FIELDS = ['id', 'type', 'kind', 'title', 'description', 'owner', 'state', 'tags', 'aliases', 'related'];
 const ID_PATTERN = /^[A-Z]{3}-\d{3,}$/;
 const FILE_PATTERN = /^[A-Z]{3}-\d{3,}-(?=.*[\uAC00-\uD7A3])[\uAC00-\uD7A3A-Za-z0-9]+(?:-[\uAC00-\uD7A3A-Za-z0-9]+)*\.md$/u;
-const TASK_ID_PATTERN = /^TASK-[A-Z0-9]{20,32}$/;
+// 새 식별자는 문서와 같은 8자 규칙이고, 옛 26자 식별자도 계속 읽는다 — 지난 기록을
+// 고쳐 쓰지 않는 것이 원칙이므로 이관 전 저장소도 그대로 동작해야 한다.
+const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/;
 // 완료와 반려는 둘 다 종료지만 게이트가 다르다. done은 수용조건과 TST 증거를,
 // cancelled는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
 // 아래 규칙들은 두 상태를 하나로 묶지 않는다.
 const ALLOWED_TASK_STATES = new Set(['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
-const LEGACY_DOCUMENT_CODES = new Map([['SPC', 'REQ']]);
+// 폐지된 유형과 이름만 바뀐 유형은 다르다. 폐지는 사람이 내용을 나눠 옮겨야 하므로
+// strict에서 막고, 이름 변경은 `rdl doc migrate`가 자동으로 옮기므로 막지 않는다.
+// 자동 경로가 있는데도 막으면, 버전을 올린 것만으로 기존 프로젝트가 멈춘다.
+const LEGACY_DOCUMENT_CODES = new Map([
+  ['SPC', { hint: 'REQ 또는 관점별 설계문서로 이전하세요.', blocking: true }],
+  ['API', { hint: '`rdl doc migrate --apply`가 IFC로 옮깁니다. 유형 이름만 바뀌었습니다.', blocking: false }]
+]);
 const NON_CANONICAL_CODES = new Set(['NTE']);
 const REQUIRED_TAG_NAMESPACES = ['rundol/', 'artifact/', 'domain/', 'feature/'];
 const NOTE_TAG_NAMESPACES = ['rundol/'];
@@ -466,15 +474,15 @@ function checkLegacyWorkspace(start, options, scope) {
       }
     }
     const relatedIds = (Array.isArray(meta.related) ? meta.related : []).map(wikiTarget).filter(Boolean).map((target) => fileRegistry.get(target.id)).filter(Boolean).map((targetDoc) => targetDoc.id.slice(0, 3));
-    const requirements = { SCR: ['REQ'], MOD: ['REQ', 'ARC'], API: ['REQ', 'ARC'], TST: ['REQ'], RUN: ['ARC', 'REQ'] };
+    const requirements = { SCR: ['REQ'], MOD: ['REQ', 'ARC'], IFC: ['REQ', 'ARC'], TST: ['REQ'], RUN: ['ARC', 'REQ'] };
     const code = doc.id ? doc.id.slice(0, 3) : '';
     if (LEGACY_DOCUMENT_CODES.has(code)) diagnostic(diagnostics, {
       code: 'RDL-DOC-010',
       category: 'metadata',
-      severity: options.strict ? 'error' : 'warning',
+      severity: options.strict && LEGACY_DOCUMENT_CODES.get(code).blocking ? 'error' : 'warning',
       file: doc.relativeFile,
       artifactId: doc.id,
-      message: `${code} 문서 유형은 더 이상 사용하지 않습니다. ${LEGACY_DOCUMENT_CODES.get(code)} 또는 관점별 설계문서로 이전하세요.`
+      message: `${code} 문서 유형은 더 이상 사용하지 않습니다. ${LEGACY_DOCUMENT_CODES.get(code).hint}`
     });
     if (requirements[code] && !requirements[code].some((required) => relatedIds.includes(required))) diagnostic(diagnostics, { code: 'RDL-META-003', category: 'metadata', file: doc.relativeFile, artifactId: doc.id, message: `${code} 문서는 ${requirements[code].join(' 또는 ')} 관계가 필요합니다.` });
     for (const issue of validateDocumentDiagram(code, doc.source, doc.id)) diagnostic(diagnostics, {
@@ -916,6 +924,75 @@ function checkCompositeViews(diagnostics, layout, project) {
   });
 }
 
+// 저장 게이트는 Rundol의 저장을 지나는 작업에만 걸린다. Git을 직접 써서 만든 커밋은
+// 그 게이트를 지나지 않으므로 결박을 요구할 방법이 없다. 그 한계를 없앨 수는 없지만
+// 감출 이유도 없다 — 사후 가시성은 검사가 맡는다.
+//
+// 창은 최근 커밋으로 한정한다. 전체 이력을 걷는 검사는 프로젝트가 자랄수록 느려지고,
+// 오래된 커밋은 어차피 되돌릴 수 없어 알려도 할 일이 없다. 병합은 일이 아니므로 세지
+// 않는다. 진단은 커밋마다가 아니라 한 건으로 모은다 — 올리자마자 옛 커밋 수십 건이
+// 경고로 쏟아지면, 그 경고는 읽히지 않고 꺼진다.
+const TASK_BINDING_WINDOW = 50;
+
+function checkTaskBinding(diagnostics, layout, project, tally) {
+  if (!project.ref || !project.root) return;
+  const log = runGit(['log', '--no-merges', `--max-count=${TASK_BINDING_WINDOW}`, '--format=%H%x1f%B%x1e', project.ref], { cwd: layout.root, allowFailure: true });
+  // 조회하지 못한 것과 위반이 없는 것은 다른 값이다. 조용히 돌아가면 이 검사가
+  // 한 번도 돈 적이 없는 저장소가 "결박 위반 없음"과 같은 얼굴을 한다.
+  if (log.status !== 0) {
+    if (tally) tally.unchecked.push(project.key);
+    diagnostic(diagnostics, {
+      code: 'RDL-TASK-038', category: 'task', severity: 'warning', file: null, project: project.key,
+      message: `태스크 결박을 확인하지 못했습니다. ${project.ref} 이력을 읽을 수 없습니다: ${String(log.stderr || '').split(/\r?\n/u)[0] || '알 수 없는 오류'}`
+    });
+    return;
+  }
+  if (!log.stdout) return;
+  // trailer가 있다는 것과 그것이 가리키는 태스크가 있다는 것은 다른 사실이다.
+  // 줄만 세면 Git으로 직접 만든 커밋에 아무 문자열이나 적어 이 검사를 지날 수 있고,
+  // 그러면 이 검사가 세는 것은 결박이 아니라 그 줄을 적을 줄 아는 사람의 수다.
+  let known = null;
+  try { known = new Set(Object.keys(readTaskStore(project.tasks).tasks || {})); }
+  catch (_) { known = null; }
+  const unbound = [];
+  const excused = [];
+  const dangling = [];
+  let scanned = 0;
+  for (const record of log.stdout.split('\x1e')) {
+    const [commit, body] = record.split('\x1f');
+    if (!commit || !commit.trim()) continue;
+    const short = commit.trim().slice(0, 12);
+    scanned += 1;
+    const trailer = /^Rundol-Task:[ \t]*(.+)$/mu.exec(body || '');
+    if (!trailer) { unbound.push(short); continue; }
+    const value = trailer[1].trim();
+    if (value === 'none') { excused.push(short); continue; }
+    // 태스크 저장소를 읽지 못했으면 판정하지 않는다. 읽지 못한 것을 근거로 "없는
+    // 태스크"라고 말하면 저장소 문제 하나가 모든 커밋을 위반으로 만든다.
+    if (known && !known.has(value)) dangling.push(`${short}→${value}`);
+  }
+  const sample = (list) => list.slice(0, 5).join(', ') + (list.length > 5 ? ` 외 ${list.length - 5}건` : '');
+  if (tally) {
+    tally.scanned += scanned;
+    tally.bound += scanned - unbound.length - excused.length;
+    tally.unbound += unbound.length;
+    tally.excused += excused.length;
+    tally.dangling += dangling.length;
+  }
+  if (unbound.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-034', category: 'task', severity: 'warning', file: null, project: project.key,
+    message: `최근 커밋 ${TASK_BINDING_WINDOW}건 중 ${unbound.length}건이 태스크 결박을 지나지 않았습니다: ${sample(unbound)}`
+  });
+  if (excused.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-035', category: 'task', severity: 'warning', file: null, project: project.key,
+    message: `최근 커밋 ${TASK_BINDING_WINDOW}건 중 ${excused.length}건이 태스크 없이 저장됐습니다: ${sample(excused)}`
+  });
+  if (dangling.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-039', category: 'task', severity: 'warning', file: null, project: project.key,
+    message: `커밋 ${dangling.length}건이 이 프로젝트에 없는 태스크를 가리킵니다: ${sample(dangling)}`
+  });
+}
+
 function checkDocumentProfile(diagnostics, layout, project, settings) {
   if (!project.charter || !fs.existsSync(project.charter)) return;
   const source = fs.readFileSync(project.charter, 'utf8');
@@ -1005,10 +1082,14 @@ function checkWorkspace(start, options) {
   if (!settings.project && allProjects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-007', category: 'governance', file: layout.mountRelative, message: 'project.md가 있는 프로젝트를 찾지 못했습니다.' });
   let documents = 0;
   let tasks = 0;
+  // 우회는 막지 않는 통제다. 막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수
+  // 있어야 하고, 세려면 보여야 한다 — 진단 목록에만 있으면 경고 수십 개 사이에 묻힌다.
+  const taskBinding = { scanned: 0, bound: 0, unbound: 0, excused: 0, dangling: 0, unchecked: [] };
   for (const project of projects) {
     checkProjectCharter(diagnostics, layout.root, project);
     checkDocumentProfile(diagnostics, layout, project, settings);
     checkCompositeViews(diagnostics, layout, project);
+    checkTaskBinding(diagnostics, layout, project, taskBinding);
     const result = checkLegacyWorkspace(layout.root, settings, project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
     documents += result.summary.documents + 1;
@@ -1041,6 +1122,7 @@ function checkWorkspace(start, options) {
       projects: projects.length,
       documents,
       tasks,
+      taskBinding,
       errors: diagnostics.filter((item) => item.severity === 'error').length,
       warnings: diagnostics.filter((item) => item.severity === 'warning').length,
       durationMs: Date.now() - startedAt

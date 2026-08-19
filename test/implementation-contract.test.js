@@ -93,7 +93,7 @@ function testUnresolvedRuleRejectedAtReadiness() {
 }
 
 function testEveryImplementationTypeRequiresStandaloneFields() {
-  for (const type of ['SCR', 'MOD', 'API', 'TST']) {
+  for (const type of ['SCR', 'MOD', 'IFC', 'TST']) {
     const id = `${type}-001`;
     const functionId = 'PAY-01';
     const complete = frontmatter(id, type, [functionId]) + `\n### ${functionId}\n\n${REQUIRED_FIELDS_BY_TYPE[type].map((field) => `#### ${field}\n\n- ${functionId}의 확정된 ${field} 내용`).join('\n\n')}\n`;
@@ -123,11 +123,11 @@ function testTaskReadinessChecksEveryLinkedImplementationType() {
   const req = completeImplementationArtifact('REQ', 'REQ-001', 'PAY-01');
   const tst = completeImplementationArtifact('TST', 'TST-001', 'PAY-01');
   const brokenApi = {
-    id: 'API-001', type: 'API', file: 'API-001.md',
-    source: frontmatter('API-001', 'API', ['PAY-01']) + `\n### PAY-01\n\n#### ${REQUIRED_FIELDS_BY_TYPE.API[0]}\n\n- complete\n`
+    id: 'IFC-001', type: 'IFC', file: 'IFC-001.md',
+    source: frontmatter('IFC-001', 'IFC', ['PAY-01']) + `\n### PAY-01\n\n#### ${REQUIRED_FIELDS_BY_TYPE.IFC[0]}\n\n- complete\n`
   };
   const issues = validateTaskImplementationReadiness([req, brokenApi, tst]);
-  assert(issues.some((item) => item.artifactId === 'API-001' && item.code === 'RDL-IMPL-006' && item.severity === 'error'));
+  assert(issues.some((item) => item.artifactId === 'IFC-001' && item.code === 'RDL-IMPL-006' && item.severity === 'error'));
   assert.deepStrictEqual(validateTaskImplementationReadiness([req, tst]), []);
 }
 

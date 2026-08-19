@@ -13,6 +13,8 @@ const { initSettings, saveSettings, prepareSettings, finalizeSettings } = requir
 const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
 const { getClient } = require('./collaboration-store');
 const { readCollaboration } = require('./collaboration');
+const { newDocumentUid } = require('./document-identity');
+const { taskEnforcementFrom } = require('./document-profile');
 const { runtimeWorkspace } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
@@ -325,12 +327,17 @@ function validateProjection(config, options) {
   return result;
 }
 
+// 태스크 식별자는 문서 식별자와 같은 규칙을 쓴다. 두 체계가 다른 길이를 갖고 있을
+// 이유가 없고, 26자짜리는 사람이 옮겨 적을 수 없다. 저장하는 작업이 어느 태스크의
+// 일인지 밝히도록 요구하려면(REQ-046) 손으로 칠 수 있어야 하고, 칠 수 없는 식별자를
+// 요구하는 통제는 우회된다.
+//
+// 충돌은 생성 시점에 확인한다. 8자 32진이면 공간은 충분하지만, 확인을 생략하는
+// 것과 확인해서 없는 것은 다른 일이다.
 function taskId(tasks) {
   let id;
   do {
-    const time = Date.now().toString(36).toUpperCase().padStart(10, '0');
-    const random = crypto.randomBytes(8).toString('hex').toUpperCase();
-    id = `TASK-${time}${random}`;
+    id = `TASK-${newDocumentUid()}`;
   } while (Object.prototype.hasOwnProperty.call(tasks, id));
   return id;
 }
@@ -369,7 +376,9 @@ function persistTaskChange(config, values) {
   }));
   const changedRelative = storeChange ? path.relative(config.worktree, storeChange.file).replace(/\\/g, '/') : config.taskRelative;
   runGit(['add', '--', changedRelative], { cwd: config.worktree });
-  runGit(['commit', '-m', values.message], { cwd: config.worktree });
+  // 태스크를 만들고 고치는 커밋도 어느 태스크의 일인지 답한다. 답이 자기 자신이라
+  // 당연해 보이지만, 적지 않으면 검사에서 결박을 지나지 않은 커밋으로 보인다.
+  runGit(['commit', '-m', commitMessageWith(values.message, { taskId: values.taskId })], { cwd: config.worktree });
   return runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout;
 }
 
@@ -553,14 +562,98 @@ function commitShardedMerge(config, remoteCommit) {
 // scope는 스테이징 범위이자 거부 조건이다. 대상 밖이 더러우면 담지 않는 것으로
 // 끝내지 않고 멈춘다. 조용히 남겨 두면 그 변경은 다음 저장에 섞이고, 그때는
 // 어느 런의 것인지 아무도 모른다.
-function stageScoped(config, scope) {
+// 범위 판정과 담기는 나눈다. 담은 뒤에 거부하면 그 저장은 실패했는데 index는 이미
+// 바뀌어 있고, 다음 저장이 그 결과를 자기 것으로 물려받는다 — 실패한 시도가 흔적을
+// 남기지 않는다는 계약이 여기서 깨진다.
+function assertScopeClean(config, scope) {
   const dirty = runGit(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', scope], { cwd: config.worktree }).stdout;
   const all = runGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: config.worktree }).stdout;
   if (String(all || '').split('\0').filter(Boolean).length !== String(dirty || '').split('\0').filter(Boolean).length) {
     throw new Error(`RDL-SAVE-010: 런의 저장 범위(${scope}) 밖에 변경이 있습니다. 런이 만들지 않은 변경은 런의 커밋에 담기지 않습니다.`);
   }
-  runGit(['add', '-A', '--', scope], { cwd: config.worktree });
   return Boolean(dirty);
+}
+
+function stageScoped(config, scope) {
+  runGit(['add', '-A', '--', scope], { cwd: config.worktree });
+}
+
+// 어느 태스크의 일이었는지는 커밋 자체가 답한다. 원장이나 설정에 적으면 커밋과
+// 그 사실이 따로 움직이고, 나중에 둘이 어긋났을 때 어느 쪽이 사실인지 알 수 없다.
+const TASK_TRAILER = 'Rundol-Task';
+// 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 그 뒤에 생긴 커밋은
+// 그 태스크의 일일 수 없다.
+const TERMINAL_TASK_STATUSES = ['done', 'cancelled'];
+const TASK_REASON_TRAILER = 'Rundol-Task-Reason';
+
+function taskTrailer(binding) {
+  if (!binding) return '';
+  const lines = binding.taskId
+    ? [`${TASK_TRAILER}: ${binding.taskId}`]
+    : [`${TASK_TRAILER}: none`, `${TASK_REASON_TRAILER}: ${binding.reason}`];
+  return `\n\n${lines.join('\n')}`;
+}
+
+function commitMessageWith(message, binding) {
+  return `${message}${taskTrailer(binding)}`;
+}
+
+function projectTaskEnforcement(config) {
+  if (!config.project) return 'advisory';
+  const charter = path.join(config.worktree, 'project.md');
+  if (!fs.existsSync(charter)) return 'advisory';
+  return taskEnforcementFrom(fs.readFileSync(charter, 'utf8'));
+}
+
+// 강제 지점은 저장 하나다. 여러 곳에 나누어 걸면 어디서 막혔는지가 흐려지고, 공유에
+// 걸면 늦다 — 작업이 로컬에 쌓인 뒤에는 어느 커밋이 무슨 일이었는지가 추측이 된다.
+// 저장은 일이 사실로 굳는 순간이고, 그때는 자기가 무엇을 했는지 안다.
+function resolveTaskBinding(config, settings) {
+  const level = projectTaskEnforcement(config);
+  const requested = settings.task ? String(settings.task).trim() : null;
+  const excuse = settings.noTask ? String(settings.noTask).trim() : null;
+  const notices = [];
+  if (requested && excuse) throw new Error('RDL-TASK-030: --task와 --no-task를 함께 쓸 수 없습니다. 태스크를 밝히거나 사유를 대거나 둘 중 하나입니다.');
+  // 우회는 거부 수준에서만 존재한다. 경고 수준에서는 경고가 나가므로 우회할 것이 없고,
+  // 그래도 받아 주면 아무것도 막지 않는 자리에 사유를 적는 습관만 남는다.
+  if (excuse && level !== 'checkpoint') throw new Error('RDL-TASK-031: 이 프로젝트의 태스크 강제는 경고 수준입니다. 우회할 것이 없습니다.');
+
+  const store = config.project ? readTaskStore(path.join(config.worktree, config.taskRelative)) : { tasks: {} };
+  const tasks = store.tasks || {};
+  if (requested) {
+    // 없는 태스크나 다른 프로젝트의 태스크로는 묶을 수 없다. 묶이지 않은 식별자를
+    // 커밋에 적으면, 결박이 있었다는 기록만 남고 가리키는 곳이 없다.
+    if (!Object.prototype.hasOwnProperty.call(tasks, requested)) throw new Error(`RDL-TASK-032: 이 프로젝트에 없는 태스크입니다: ${requested}`);
+    // 끝난 태스크에도 묶을 수 있으면, 결박이 증명하는 것은 "활성 작업에 속한다"가
+    // 아니라 "존재하는 문자열이다"가 된다. 완료·반려된 태스크를 가리키는 커밋은 그
+    // 태스크가 끝난 뒤에 생긴 일이므로 그 태스크의 일일 수 없다.
+    if (TERMINAL_TASK_STATUSES.includes(tasks[requested].status)) throw new Error(`RDL-TASK-037: 이미 끝난 태스크에는 묶을 수 없습니다: ${requested} (${tasks[requested].status}). 진행 중인 태스크를 지정하거나 새로 만드세요.`);
+    return { level, taskId: requested, inferred: false, reason: null, notices };
+  }
+  if (excuse) return { level, taskId: null, inferred: false, reason: excuse, notices };
+
+  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
+  if (doing.length === 1) {
+    notices.push(`태스크를 지정하지 않아 진행 중인 ${doing[0]}(으)로 기록합니다.`);
+    return { level, taskId: doing[0], inferred: true, reason: null, notices };
+  }
+  // 둘 이상이면 추론하지 않는다. 골라 주는 것이 편해 보이지만, 틀린 결박은 결박이
+  // 없는 것보다 나쁘다 — 없는 것은 비어 있고 틀린 것은 거짓이다.
+  const why = doing.length ? `진행 중인 태스크가 ${doing.length}건입니다: ${doing.join(', ')}` : '진행 중인 태스크가 없습니다';
+  if (level === 'checkpoint') throw new Error(`RDL-TASK-033: 이 저장이 어느 태스크의 일인지 밝혀야 합니다. ${why}. --task <ID>로 지정하거나 --no-task <사유>로 사유를 남기세요.`);
+  notices.push(`RDL-TASK-034: 이 저장은 태스크에 묶이지 않았습니다. ${why}.`);
+  return { level, taskId: null, inferred: false, reason: `태스크 강제가 경고 수준입니다 (${why})`, notices };
+}
+
+// 결과는 평평하게 싣는다. 중첩 객체는 사람이 읽는 출력에서 통째로 생략되므로,
+// 무엇을 골랐는지 알린다는 요구가 --json에서만 지켜지게 된다.
+function bindingReport(binding) {
+  return {
+    task: binding.taskId || null,
+    taskInferred: binding.taskId ? binding.inferred : null,
+    taskEnforcement: binding.level,
+    notices: binding.notices.length ? binding.notices : undefined
+  };
 }
 
 function saveProjectState(config, settings) {
@@ -575,19 +668,29 @@ function saveProjectState(config, settings) {
     if (expected !== actual) throw new Error(`RDL-SAVE-011: 기대한 HEAD와 다릅니다. 기대 ${expected}, 실제 ${actual}.`);
   }
   const scope = settings.scope || null;
+  const message = settings.message || 'rdl: update workspace';
   if (scope) {
-    const changed = stageScoped(config, scope);
+    const changed = assertScopeClean(config, scope);
     validateProjection(config);
     if (!changed) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
-    runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
-    return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() };
+    // 결박은 담을 것이 있다는 것을 확인한 뒤에, 그러나 담기 전에 묻는다. 바꾼 것이
+    // 없는데 태스크를 요구하면 아무 일도 하지 않은 호출이 막힌 이유가 태스크가 되고,
+    // 담은 뒤에 거부하면 실패한 저장이 index에 흔적을 남긴다.
+    //
+    // 두 축이 모두 걸리면 문서 경고가 먼저 나가고 태스크 거부가 뒤에 온다. 막은
+    // 이유가 마지막에 오는 편이 읽기 좋다 — 그래서 validateProjection 다음이다.
+    const binding = resolveTaskBinding(config, settings);
+    stageScoped(config, scope);
+    runGit(['commit', '-m', commitMessageWith(message, binding)], { cwd: config.worktree });
+    return Object.assign({ root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() }, bindingReport(binding));
   }
   validateProjection(config);
   const status = runGit(['status', '--porcelain'], { cwd: config.worktree }).stdout;
   if (!status) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
+  const binding = resolveTaskBinding(config, settings);
   runGit(['add', '-A', '--', '.'], { cwd: config.worktree });
-  runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
-  return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() };
+  runGit(['commit', '-m', commitMessageWith(message, binding)], { cwd: config.worktree });
+  return Object.assign({ root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() }, bindingReport(binding));
 }
 
 // 런이 시킨 저장의 범위는 그 런이 고정한 대상 문서 하나다. 범위를 부르는 쪽이
@@ -691,6 +794,19 @@ function syncProjectState(config, settings) {
   let pushed = null;
   for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
     prepared = prepareProjectState(config, settings);
+    // 예선 검사와 push 사이에 prepareProjectState가 새 커밋을 만든다. 저장하지 않은
+    // 변경이 있으면 그것을 담고, 원격 병합도 커밋한다. 그래서 통과 판정을 받은 HEAD와
+    // 지금 나가려는 HEAD가 다를 수 있고, 그 차이가 곧 아무도 승인하지 않은 내용이다.
+    //
+    // 판정을 한 번만 하면 그 창을 못 본다. 나가기 직전에 다시 묻는다 — 검사와 행위
+    // 사이에 상태가 변하는 것이 이 경로의 성질이므로, 검사는 행위에 붙어 있어야 한다.
+    if (!settings.shareUnverified) {
+      const remaining = unclearedRunCommits(config);
+      if (remaining.length) {
+        const shown = remaining.slice(0, 10).map((item) => `${item.runId}@${item.commit.slice(0, 12)}(${item.status})`).join(', ');
+        throw new Error(`RDL-SYNC-030: 저장 과정에서 승인되지 않은 커밋이 push 대상에 들어왔습니다: ${shown}. 런을 끝내거나, 사람의 판단이라면 --share-unverified <사유> --approved-by <human-client-id>로 공유하세요.`);
+      }
+    }
     pushed = runGit(['push', prepared.remote, `${config.ref}:${config.ref}`], { cwd: config.root, allowFailure: true });
     if (pushed.status === 0) return Object.assign({}, prepared, { pushed: true, attempts: attempt, commit: runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout });
     if (!nonFastForward(pushed) || attempt === policy.maxAttempts) break;
@@ -770,6 +886,14 @@ function unclearedRunCommits(config) {
     const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion >= 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const commits = (fold.producedCommits || []).filter((commit) => /^[a-f0-9]{40,64}$/u.test(String(commit)));
     if (!commits.length) continue;
+    // 이미 공유된 런은 다시 판정하지 않는다. 그 커밋은 원격에 있고 되돌릴 수 없으므로
+    // 막을 대상이 아니며, 무엇보다 판정 기준이 지금의 Client 상태라는 것이 문제다 —
+    // 승인자가 나중에 퇴사해 비활성이 되면 과거의 정상 런이 오늘 다시 차단 대상이
+    // 된다. 그때 그 승인이 유효했는지는 그때의 사실이고, 오늘의 상태가 바꾸지 못한다.
+    //
+    // 사후에 그 승인이 잘못이었음을 알게 되는 경로는 차단이 아니라 감사다 —
+    // check의 RDL-RUN-031이 그 판정을 남긴다.
+    if (fold.status === 'synced') continue;
     // 통과의 조건은 셋이다. 런이 로컬 완료에 닿았을 것, 사람 게이트를 사람의 승인
     // 으로 지났을 것, 그리고 그 승인이 검증이 본 커밋에 붙어 있을 것. 셋 중 하나라도
     // 없으면 이 런의 커밋은 아직 나갈 수 없다.
@@ -777,21 +901,7 @@ function unclearedRunCommits(config) {
     // human-approval이라고 적었다"뿐이고, 그 clientId가 실제로 human 유형 활성
     // Client인지는 registry가 답한다. 이 대조가 없으면 에이전트가 이벤트를 직접
     // 써 넣는 것만으로 사람 승인이 된다 — git 병합으로 들어온 이벤트도 마찬가지다.
-    //
-    // 유형과 상태만으로는 부족하다. human Client는 어느 프로젝트에나 등록될 수 있고,
-    // 이 프로젝트의 활성 멤버가 소유한 자격이 아니면 여기서는 승인 권한이 없다 —
-    // 옆 프로젝트의 검토자가 병합으로 들어와 이 프로젝트를 승인하는 길을 닫는다.
-    const members = new Set(readCollaboration(config.root, config.project).members
-      .filter((member) => member.fields['상태'] === 'active').map((member) => member.id));
-    const approvals = (fold.humanApprovals || []).filter((item) => {
-      if (!item.clientId) return false;
-      try {
-        const client = getClient(config.root, item.clientId);
-        return Boolean(client) && client.type === 'human' && client.status === 'active' && members.has(client.owner);
-      } catch (_) {
-        return false;
-      }
-    });
+    const approvals = (fold.humanApprovals || []).filter((item) => approverIsProjectHuman(config, item.clientId));
     const gates = fold.humanGateSteps || [];
     const cleared = ['completed_local', 'synced'].includes(fold.status)
       && !(fold.unapprovedHumanSteps || []).length
@@ -820,6 +930,25 @@ function unclearedRunCommits(config) {
   return blocked;
 }
 
+// 승인 자격의 정의는 한 곳에만 둔다. 원장의 승인을 세는 곳과 --approved-by를 받는
+// 곳이 각자 판정하면 둘이 어긋나고, 실제로 어긋났다 — 앞 판에서 전자만 멤버십을
+// 보고 후자는 유형과 상태만 봐서, CHANGELOG가 약속한 계약과 코드가 달랐다.
+//
+// 자격의 조건은 셋이다: 등록된 human 유형일 것, 활성일 것, 그리고 그 자격을 가진
+// 멤버가 이 프로젝트의 활성 멤버일 것. human 자격은 어느 프로젝트에나 등록될 수
+// 있으므로 마지막 조건이 없으면 옆 프로젝트의 검토자가 이 프로젝트를 승인한다.
+function approverIsProjectHuman(config, clientId) {
+  if (!clientId) return false;
+  try {
+    const client = getClient(config.root, clientId);
+    if (!client || client.type !== 'human' || client.status !== 'active') return false;
+    return readCollaboration(config.root, config.project).members
+      .some((member) => member.id === client.owner && member.fields['상태'] === 'active');
+  } catch (_) {
+    return false;
+  }
+}
+
 function syncProjectStateWithRuns(config, settings) {
   const uncleared = settings.push === false ? [] : unclearedRunCommits(config);
   if (uncleared.length) {
@@ -830,9 +959,9 @@ function syncProjectStateWithRuns(config, settings) {
     if (reason) {
       const approver = String(settings.approvedBy || '').trim().toLowerCase();
       if (!approver) throw new Error('RDL-SYNC-031: --share-unverified에는 --approved-by <human-client-id>가 필요합니다. 검증되지 않은 내용의 공유는 사람의 판단이어야 합니다.');
-      const client = getClient(config.root, approver);
-      if (!client || client.type !== 'human' || client.status !== 'active') {
-        throw new Error(`RDL-SYNC-031: --approved-by는 활성 human Client여야 합니다: ${approver}(${client ? client.type : '없음'}).`);
+      if (!approverIsProjectHuman(config, approver)) {
+        const client = (() => { try { return getClient(config.root, approver); } catch (_) { return null; } })();
+        throw new Error(`RDL-SYNC-031: --approved-by는 이 프로젝트의 활성 human Client여야 합니다: ${approver}(${client ? `${client.type}, owner ${client.owner}` : '미등록'}).`);
       }
       settings.shareApprovedBy = approver;
     }

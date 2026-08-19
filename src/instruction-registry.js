@@ -50,6 +50,13 @@ const DEFINITIONS = {
     evidenceStance: 'Judge whether the target preserves its declared responsibility boundary and avoids unsupported adjacent responsibilities.',
     requiredContractHeadings: ['scope', 'out of scope', 'related'],
     instruction: 'Inspect the pinned target and allowed context paths independently for boundary leaks, over-grouping, and conflicting ownership. Write result.json with exactly verdict and findings. Do not modify the worktree.'
+  },
+  'verify-reproduction-v1': {
+    revision: 1,
+    allowedMode: 'verify',
+    evidenceStance: 'Execute the reproduction steps the target declares and judge only what actually ran; a step that could not be executed is not a passing step.',
+    requiredContractHeadings: ['acceptance criteria'],
+    instruction: 'Run the reproduction or acceptance steps the pinned target declares, in the allowed context paths only. Report what ran and what it produced. Write result.json with exactly verdict and findings, and put the exact command in findings[].reproduce. Do not modify the worktree.'
   }
 };
 
@@ -61,11 +68,21 @@ for (const [id, definition] of Object.entries(DEFINITIONS)) {
 }
 
 const INSTRUCTIONS = deepFreeze(entries);
+// 렌즈는 자기가 무엇인지 선언한다.
+//
+// approach는 어댑터의 성질이 아니라 렌즈의 선언이다. 같은 물음을 읽어서 답할 수도
+// 있고 돌려 보고 답할 수도 있으며, 어느 쪽이었는지는 판정을 나중에 읽는 사람에게
+// 중요하다 — 읽고 통과시킨 것과 돌려 보고 통과시킨 것은 같은 무게가 아니다.
+//
+// required는 그 렌즈가 없을 때 검증이 미완인지를 정한다. 모든 렌즈를 필수로 두면
+// 판정자를 하나 붙일 때마다 검증이 막히고, 결국 렌즈를 늘리지 않게 된다.
 const LENSES = deepFreeze({
-  'satisfaction-v1': 'verify-satisfaction-v1',
-  'omission-v1': 'verify-omission-v1',
-  'boundary-v1': 'verify-boundary-v1'
+  'satisfaction-v1': { instructionId: 'verify-satisfaction-v1', approach: 'static', required: true },
+  'omission-v1': { instructionId: 'verify-omission-v1', approach: 'static', required: true },
+  'boundary-v1': { instructionId: 'verify-boundary-v1', approach: 'static', required: true },
+  'reproduction-v1': { instructionId: 'verify-reproduction-v1', approach: 'dynamic', required: false }
 });
+const LENS_APPROACHES = deepFreeze(['static', 'dynamic']);
 
 function getInstruction(id) {
   const entry = INSTRUCTIONS[id];
@@ -74,9 +91,9 @@ function getInstruction(id) {
 }
 
 function getLens(id) {
-  const instructionId = LENSES[id];
-  if (!instructionId) throw new Error(`Unknown immutable lens registry ID: ${id}`);
-  return deepFreeze({ id, instructionId, instruction: getInstruction(instructionId) });
+  const entry = LENSES[id];
+  if (!entry) throw new Error(`Unknown immutable lens registry ID: ${id}`);
+  return deepFreeze({ id, instructionId: entry.instructionId, approach: entry.approach, required: entry.required, instruction: getInstruction(entry.instructionId) });
 }
 
 function pinInstruction(id) {
@@ -103,6 +120,7 @@ function resolveInstructionPin(value, options) {
 module.exports = {
   INSTRUCTIONS,
   LENSES,
+  LENS_APPROACHES,
   getInstruction,
   getLens,
   pinInstruction,

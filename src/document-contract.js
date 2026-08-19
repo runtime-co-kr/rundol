@@ -107,6 +107,7 @@ function evaluateDocumentContract(profileInput, artifactInput) {
   ready.sort((left, right) => rank[left.state] - rank[right.state] || REGULAR_TYPES.indexOf(left.type) - REGULAR_TYPES.indexOf(right.type));
   return {
     enforcement: profile.enforcement,
+    taskEnforcement: profile.taskEnforcement || 'advisory',
     revision: profile.revision,
     present: Array.from(present).sort((left, right) => REGULAR_TYPES.indexOf(left) - REGULAR_TYPES.indexOf(right)),
     ready,
@@ -114,6 +115,40 @@ function evaluateDocumentContract(profileInput, artifactInput) {
     absorbed: [],
     violations
   };
+}
+
+// 동시에 저작할 수 있는 형제 문서. 절차가 목록을 적지 않고 여기서 계산하는 이유는,
+// 적어 둔 목록이 계약과 따로 늙기 때문이다.
+//
+// 형제의 조건은 둘이다. 그 유형이 지금 만들 수 있는 상태일 것, 그리고 선행으로
+// 권장되는 유형이 이미 있을 것. 선행이 없는 대상은 준비 완료 집합에 들어가지 않는다 —
+// 아직 근거가 없는 문서를 쓰는 것은 저작이 아니라 지어내는 것이다.
+function readyAuthoringTargets(start, projectKey) {
+  const contract = loadDocumentContract(start, projectKey);
+  if (!contract.evaluation) return { project: contract.project, ready: [], blocked: [], reason: contract.status };
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, projectKey, true);
+  const artifacts = projectArtifacts(project);
+  // 판정 규칙은 evaluation.ready와 같지만 대상이 다르다. evaluation.ready는 아직 만들지
+  // 않은 유형을 답하고, 여기서 묻는 것은 이미 있는 문서를 지금 다시 쓸 수 있는가다.
+  // 같은 규칙을 두 물음에 쓰되 결과를 섞지 않는다.
+  const present = new Set(contract.evaluation.present);
+  const disabled = new Set(contract.profile.policy.disabled);
+  const ready = [];
+  const blocked = [];
+  for (const artifact of artifacts) {
+    const type = String(artifact.id || '').slice(0, 3);
+    if (!REGULAR_TYPES.includes(type)) { blocked.push({ id: artifact.id, reason: 'not-a-regular-type' }); continue; }
+    if (disabled.has(type)) { blocked.push({ id: artifact.id, reason: 'type-disabled' }); continue; }
+    // 선행이 없는 대상은 준비 완료 집합에 들어가지 않는다. 아직 근거가 없는 문서를
+    // 쓰는 것은 저작이 아니라 지어내는 것이다.
+    const missing = (DEFAULT_RULES[type] || []).filter((dependency) => !present.has(dependency));
+    if (missing.length) { blocked.push({ id: artifact.id, reason: 'missing-context', missing }); continue; }
+    ready.push({ id: artifact.id, type, file: artifact.file });
+  }
+  ready.sort((left, right) => left.id.localeCompare(right.id));
+  blocked.sort((left, right) => left.id.localeCompare(right.id));
+  return { project: contract.project, ready, blocked, reason: null };
 }
 
 function loadDocumentContract(start, projectKey) {
@@ -126,13 +161,13 @@ function loadDocumentContract(start, projectKey) {
   const presets = resolveProfilePresets(presentation);
   const validation = validateDocumentProfile(source, presets);
   const catalog = Object.assign(documentContractCatalog(), { profiles: Object.keys(presets), profileChoices: profileChoices(presentation) });
-  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, evaluation: null, catalog };
-  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, errors: validation.errors, evaluation: null, catalog };
+  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, taskEnforcement: 'advisory', evaluation: null, catalog };
+  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, taskEnforcement: (validation.profile && validation.profile.taskEnforcement) || 'advisory', errors: validation.errors, evaluation: null, catalog };
   const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
   const artifacts = projectArtifacts(project);
   const evaluation = evaluateDocumentContract(profile, artifacts);
   const traceability = implementationTrace(artifacts);
-  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, evaluation, traceability, catalog };
+  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, taskEnforcement: profile.taskEnforcement || 'advisory', evaluation, traceability, catalog };
 }
 
 function assertDocumentCreationAllowed(start, projectKey, type) {
@@ -235,6 +270,6 @@ function updateDocumentContract(start, projectKey, input) {
 
 module.exports = {
   projectArtifacts, evaluateDocumentContract, loadDocumentContract,
-  documentContractCatalog, assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract,
+  documentContractCatalog, assertDocumentCreationAllowed, planDocumentContract, updateDocumentContract, readyAuthoringTargets,
   planContractMigration, applyContractMigration
 };

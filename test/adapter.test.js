@@ -111,7 +111,7 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
 
   assert(Object.isFrozen(INSTRUCTIONS));
   assert(Object.isFrozen(INSTRUCTIONS['author-v1']));
-  assert.strictEqual(LENSES['satisfaction-v1'], 'verify-satisfaction-v1');
+  assert.strictEqual(LENSES['satisfaction-v1'].instructionId, 'verify-satisfaction-v1');
   assert.strictEqual(getLens('boundary-v1').instructionId, 'verify-boundary-v1');
   assert.match(INSTRUCTIONS['author-v1'].instructionDigest, /^[0-9a-f]{64}$/u);
   assert.deepStrictEqual(resolveInstructionPin(pinInstruction('author-v1'), { mode: 'author' }), INSTRUCTIONS['author-v1']);

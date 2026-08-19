@@ -28,6 +28,8 @@ require('./document-grouping.test');
 require('./document-migration.test');
 require('./note-artifact.test');
 require('./git.test');
+require('./task-identity.test');
+require('./task-binding.test');
 require('./collaboration.test');
 require('./collaboration-store.test');
 require('./skill-install.test');
@@ -63,7 +65,7 @@ require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
 
-require('./windows-termination.test').then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
+require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./author-fanout.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),
   require('./board-workspace.test'),
   require('./event-store.test')

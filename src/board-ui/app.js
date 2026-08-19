@@ -7,7 +7,8 @@ const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', 
 const TERMINAL_STATUSES = ['done', 'cancelled'];
 const typeLabels = {
   project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
-  architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', api: 'API',
+  architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', interface: '인터페이스',
+  standard: '표준',
   adr: '의사결정 기록', decision: '의사결정 기록', test: '검증', runbook: '운영 가이드',
   glossary: '용어집', clipping: '수집 노트'
 };
@@ -391,6 +392,15 @@ function renderDocuments() {
     .sort((left, right) => (state.documentSort === 'modified'
       ? String(right.modifiedAt || '').localeCompare(String(left.modifiedAt || ''))
       : String(left.id).localeCompare(String(right.id))));
+  // 고른 것이 어느 쪽인지 화면이 말해야 한다. 동작만 바뀌고 표시가 그대로면 사용자는
+  // 자기가 무엇을 보고 있는지 모른다 — index.html의 active가 정적으로 박혀 있어서
+  // 첫 항목이 늘 선택된 것처럼 보였다.
+  for (const button of document.querySelectorAll('#document-scope [data-document-scope]')) {
+    button.classList.toggle('active', button.dataset.documentScope === scope);
+  }
+  for (const button of document.querySelectorAll('#document-sort [data-document-sort]')) {
+    button.classList.toggle('active', button.dataset.documentSort === (state.documentSort || 'id'));
+  }
   el('documents-list').innerHTML = documents.length ? documents.map((item) => {
     const excerpt = scope === 'body' ? bodyExcerpt(item, query) : '';
     return `<button class="document-row" data-document="${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(excerpt || item.description || item.file)}</small><span class="document-row-meta"><time datetime="${escapeHtml(item.modifiedAt || '')}">${escapeHtml(shortDate(item.modifiedAt))}</time><span class="chip">${escapeHtml(documentTypeLabel(item))}</span><span class="chip">${escapeHtml(documentStateLabel(item.state))}</span></span></button>`;
