@@ -1650,7 +1650,7 @@
         },
         "AC-004": {
           "text": "trailer가 가리키는 태스크의 존재를 검사가 확인한다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "이관이 옛 식별자를 태스크에 보존한다",
@@ -1659,7 +1659,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:25.276Z",
-      "updatedAt": "2026-08-19T02:23:31.477Z",
+      "updatedAt": "2026-08-19T02:23:33.089Z",
       "statusChangedAt": "2026-08-19T02:22:25.276Z",
       "externalRefs": [],
       "project": "rundol",
