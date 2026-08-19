@@ -556,7 +556,7 @@
         },
         "AC-002": {
           "text": "테스트 태스크만 pass·fail·blocked·skipped 판정을 가질 수 있고, 일반 태스크에 판정을 두면 거부된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "완료한 테스트 태스크에는 판정이 필요하다. 반려한 테스트 태스크에는 요구하지 않는다.",
@@ -581,7 +581,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:34:58.788Z",
-      "updatedAt": "2026-08-19T04:50:34.117Z",
+      "updatedAt": "2026-08-19T04:50:35.172Z",
       "statusChangedAt": "2026-08-19T04:35:05.720Z",
       "externalRefs": [],
       "project": "rundol",
