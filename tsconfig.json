@@ -1,0 +1,18 @@
+{
+  "//": "타입 검사기만 쓴다. noEmit이므로 빌드 산출물이 생기지 않고 배포 구조도 바뀌지 않는다. 패키지 다섯은 여전히 src를 그대로 게시한다. include를 계약 선언과 판정 모듈로 좁힌 이유는, 검사 대상을 넓히면 기존 17,000줄의 잡음이 새 계약의 실제 오류를 덮기 때문이다. 판정 계층이 커지면 여기에 하나씩 올린다.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "types/**/*.d.ts",
+    "src/worker-contract.js"
+  ]
+}

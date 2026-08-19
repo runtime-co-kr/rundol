@@ -1,0 +1,90 @@
+'use strict';
+
+// 개념 누출 금지. 사람에게 내보내는 표면에 내부 구현 개념이 새면, 사람은 제품이
+// 아니라 구현을 배워야 한다. 그리고 한번 샌 개념은 화면·문서·습관에 자리를 잡아
+// 나중에 걷어내기가 훨씬 비싸진다.
+//
+// 이 시험은 둘로 나뉜다.
+//
+// 하나는 새로 만드는 워커 계약 표면에 대한 엄격한 금지다. 새 표면에는 처음부터
+// 한 글자도 새면 안 되므로 예외를 두지 않는다.
+//
+// 다른 하나는 이미 새고 있는 기존 표면에 대한 래칫이다. 오늘의 누출을 기준선으로
+// 적어 두고, 줄어드는 것은 허용하되 늘어나는 것은 실패로 만든다. 기존 표면을 한
+// 번에 고칠 수 없다고 해서 더 나빠지는 것까지 허용할 이유는 없다.
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { verifyReport } = require('../src/worker-contract');
+
+const repository = path.resolve(__dirname, '..');
+const cli = path.join(repository, 'bin', 'rdl.js');
+
+// 사람 표면에 나오면 안 되는 내부 개념. 값이 아니라 어휘를 막는다.
+const FORBIDDEN = ['runId', 'run-id', 'leaseId', 'lease', 'clientId', 'client-id', 'worktree', 'schemaVersion', 'ownerToken', 'operationId', 'lens'];
+
+function leakedTokens(text) {
+  const haystack = String(text);
+  return FORBIDDEN.filter((token) => haystack.includes(token));
+}
+
+// ── 새 표면: 예외 없음 ───────────────────────────────────────────────────
+
+const assignment = {
+  id: 'ASG-001',
+  goal: '검색이 제목과 본문을 모두 찾는다',
+  acceptance: [{ id: 'AC-001', text: '제목으로 찾는다' }],
+  functionIds: ['WRK-01'],
+  allowedPaths: ['src/search/**'],
+  forbidden: [],
+  procedure: { name: 'impl', revision: 3, digest: 'a'.repeat(64) },
+  reportSchema: 'report-v1',
+  assignee: { kind: 'human', id: 'MEMBER-001' },
+  state: 'open'
+};
+const report = {
+  id: 'RPT-001',
+  assignmentId: 'ASG-001',
+  worker: { kind: 'human', id: 'MEMBER-001' },
+  outcome: 'done',
+  claims: [{ id: 'AC-001', met: false, evidence: '' }],
+  changed: ['src/board/ui.js'],
+  procedureDigest: 'b'.repeat(64)
+};
+
+for (const value of [assignment, report, verifyReport(assignment, report)]) {
+  const leaked = leakedTokens(JSON.stringify(value));
+  assert.deepStrictEqual(leaked, [], `워커 계약 표면에 내부 개념이 샜습니다: ${leaked.join(', ')}`);
+}
+
+// 계약 선언 자체에도 새면 안 된다. 타입에 남으면 구현이 따라 들어온다.
+for (const declaration of ['assignment.d.ts', 'report.d.ts']) {
+  const source = fs.readFileSync(path.join(repository, 'types', declaration), 'utf8');
+  // 주석에서 개념을 설명하는 것은 허용한다. 막으려는 것은 필드 이름이다.
+  const fields = source.split('\n').filter((line) => /^\s{2}[A-Za-z]/u.test(line)).join('\n');
+  const leaked = leakedTokens(fields);
+  assert.deepStrictEqual(leaked, [], `types/${declaration}의 필드 이름에 내부 개념이 샜습니다: ${leaked.join(', ')}`);
+}
+
+// ── 기존 표면: 래칫 ──────────────────────────────────────────────────────
+
+// 2026-08-20 실측. 이 목록은 줄어들기만 해야 한다. 늘리려면 왜 새 개념을 사람에게
+// 보여야 하는지를 먼저 설명해야 하고, 대개 그 설명은 존재하지 않는다.
+const KNOWN_LEAKS = {
+  context: ['schemaVersion']
+};
+
+const context = spawnSync(process.execPath, [cli, 'context', '--json'], { cwd: repository, encoding: 'utf8' });
+assert.strictEqual(context.status, 0, context.stderr || context.stdout);
+const contextLeaks = leakedTokens(context.stdout);
+const unexpected = contextLeaks.filter((token) => !KNOWN_LEAKS.context.includes(token));
+assert.deepStrictEqual(unexpected, [], `rdl context에 새 개념 누출이 생겼습니다: ${unexpected.join(', ')}`);
+
+// 래칫이 헐거워지지 않게 한다. 기준선에 적어 둔 누출이 실제로는 이미 사라졌다면
+// 기준선을 줄여야 하며, 줄이지 않으면 다음 누출이 그 자리에 숨는다.
+const stale = KNOWN_LEAKS.context.filter((token) => !contextLeaks.includes(token));
+assert.deepStrictEqual(stale, [], `기준선에 남은 누출이 이미 해소되었습니다. KNOWN_LEAKS에서 지우세요: ${stale.join(', ')}`);
+
+process.stdout.write('surface leak tests passed\n');

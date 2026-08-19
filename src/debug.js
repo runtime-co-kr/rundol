@@ -48,6 +48,42 @@ function recordTokens(start, input) {
   });
 }
 
+// 사람 개입 횟수 집계. PRD-001이 1차 편익으로 건 "할당부터 검수 통과까지 사람이
+// 개입한 횟수"의 계측 수단이다.
+//
+// 값만 받는 순수 함수로 둔 이유는 두 가지다. 하나는 파일 없이 시험할 수 있어야
+// 하기 때문이고, 다른 하나는 이 수치를 나중에 보드와 보고서가 각자 계산하지 않고
+// 같은 함수를 부르게 하기 위해서다. 편익 수치가 표면마다 다르면 그 수치로 아무것도
+// 판단할 수 없다.
+//
+// 사람 개입의 정의는 실행 주체가 cli 또는 hybrid인 행위다. hybrid를 사람으로 세는
+// 이유는 그 경우 사람이 실제로 손을 댔기 때문이며, 개입을 적게 세면 편익이 실제보다
+// 좋아 보인다. 계측은 자기에게 유리한 쪽으로 반올림하지 않는다.
+function humanInterventionSummary(events) {
+  const actions = (events || []).filter((event) => event && event.type === 'action');
+  const byTask = new Map();
+  for (const event of actions) {
+    if (!event.taskId) continue;
+    const entry = byTask.get(event.taskId) || { taskId: event.taskId, actions: 0, humanTurns: 0 };
+    entry.actions += 1;
+    if (event.actualExecutor === 'cli' || event.actualExecutor === 'hybrid') entry.humanTurns += 1;
+    byTask.set(event.taskId, entry);
+  }
+  const tasks = Array.from(byTask.values()).sort((left, right) => left.taskId.localeCompare(right.taskId));
+  const sorted = tasks.map((item) => item.humanTurns).sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  const median = sorted.length === 0 ? null
+    : (sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
+  return {
+    tasks,
+    taskCount: tasks.length,
+    medianHumanTurns: median,
+    // 태스크에 결박되지 않은 행위는 집계에서 빠진다. 그 수를 함께 내보내지 않으면
+    // 중앙값이 전체를 대표하는 것처럼 읽힌다.
+    unattributedActions: actions.filter((event) => !event.taskId).length
+  };
+}
+
 function debugSummary(start, project) {
   const file = logFile(start, project);
   const events = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)) : [];
@@ -73,8 +109,9 @@ function debugSummary(start, project) {
     actualExecutors: executorCounts('actualExecutor'),
     adoptedActions: adopted,
     fallbackActions: actions.filter((event) => event.fallbackReason).length,
-    adoptionRate: actions.length ? Number((adopted / actions.length).toFixed(4)) : null
+    adoptionRate: actions.length ? Number((adopted / actions.length).toFixed(4)) : null,
+    humanInterventions: humanInterventionSummary(events)
   };
 }
 
-module.exports = { appendDebug, recordTokens, debugSummary };
+module.exports = { appendDebug, recordTokens, debugSummary, humanInterventionSummary };
