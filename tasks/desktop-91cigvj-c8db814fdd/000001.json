@@ -671,7 +671,7 @@
         },
         "AC-002": {
           "text": "같은 TST 문서를 같은 차수에 검증하는 태스크는 하나만 존재할 수 있고, 저장과 검사가 함께 막는다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "rdl task list --kind test --round <n>이 그 차수의 태스크와 판정 집계를 낸다.",
@@ -696,7 +696,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T05:23:46.323Z",
-      "updatedAt": "2026-08-19T05:38:07.235Z",
+      "updatedAt": "2026-08-19T05:38:08.271Z",
       "statusChangedAt": "2026-08-19T05:23:54.636Z",
       "externalRefs": [],
       "project": "rundol",
