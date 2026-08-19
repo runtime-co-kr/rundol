@@ -679,7 +679,7 @@
         },
         "AC-004": {
           "text": "rdl test rounds가 차수 목록과 차수별 요약을, --round <n>이 그 차수에서 태스크가 없는 TST 목록을 낸다.",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "차수 대상 목록을 저장하는 산출물을 만들지 않고 문서와 태스크를 대조해 계산한다.",
@@ -696,7 +696,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T05:23:46.323Z",
-      "updatedAt": "2026-08-19T05:38:09.372Z",
+      "updatedAt": "2026-08-19T05:38:10.478Z",
       "statusChangedAt": "2026-08-19T05:23:54.636Z",
       "externalRefs": [],
       "project": "rundol",
