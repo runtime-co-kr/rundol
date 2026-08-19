@@ -1835,7 +1835,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "docs/screens/에 SCR 문서가 존재하고 기능 ID별 7슬롯 계약을 갖는다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "전이 섹션이 Mermaid flowchart를 포함하고 전이표가 정본이다.",
@@ -1848,7 +1848,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T17:11:48.132Z",
-      "updatedAt": "2026-08-19T17:11:48.132Z",
+      "updatedAt": "2026-08-19T22:10:19.515Z",
       "statusChangedAt": "2026-08-19T17:11:48.132Z",
       "externalRefs": [],
       "project": "rundol"
