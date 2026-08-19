@@ -1909,8 +1909,7 @@
       "result": null,
       "round": null,
       "links": [
-        "TST-020",
-        "REQ-018"
+        "TST-020"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -1929,7 +1928,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T22:37:30.505Z",
-      "updatedAt": "2026-08-19T23:09:37.267Z",
+      "updatedAt": "2026-08-19T23:18:32.510Z",
       "statusChangedAt": "2026-08-19T22:37:30.505Z",
       "externalRefs": [],
       "project": "rundol",
