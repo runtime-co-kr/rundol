@@ -175,14 +175,24 @@ try {
   assert.strictEqual(version.stdout.trim(), oldVersion, `설치된 tarball은 ${oldVersion}이어야 합니다: ${version.stdout}`);
 
   // 배포 산출물 그대로의 구버전 check/sync가 신형 데이터를 오진 없이 지나가야 한다.
+  //
+  // 대상은 신형 샤드(run·verdict·driver·lease)이지 계약 스키마가 아니다. 0.33이 더한
+  // 문서 유형(IFC, STD)과 걷어낸 옛 유형(API)은 이전 판이 알 수 없으므로 계약을
+  // 거부한다 — 이건 오진이 아니라 CHANGELOG가 선언한 파기다. 종료코드를 0으로 묶으면
+  // 파기가 넓어져도 이 시험이 같은 얼굴을 하므로, "그 파기 말고 다른 오류가 없는지"를
+  // 본다.
   const oldCheck = oldCli(['check', '--root', workspace, '--json']);
-  assert.strictEqual(oldCheck.status, 0, `${oldVersion} tarball check 실패:\n${oldCheck.stdout}\n${oldCheck.stderr}`);
+  assert(oldCheck.stdout.trim().startsWith('{'), `${oldVersion} tarball check가 결과를 내지 못했습니다:\n${oldCheck.stdout}\n${oldCheck.stderr}`);
   const oldReport = JSON.parse(oldCheck.stdout);
-  assert.strictEqual(oldReport.summary.errors, 0, oldCheck.stdout);
+  const undeclared = (oldReport.diagnostics || []).filter((item) => item.severity === 'error' && item.code !== 'RDL-PROFILE-001');
+  assert.deepStrictEqual(undeclared, [], `${oldVersion}이 선언되지 않은 오류를 냈습니다:\n${JSON.stringify(undeclared, null, 2)}`);
   assert(!oldCheck.stdout.includes('RDL-LEASE-001'), oldCheck.stdout);
   assert(!oldCheck.stdout.includes('RDL-RUN-'), oldCheck.stdout);
   const oldSync = oldCli(['sync', '--root', workspace, '--project', 'crm', '--no-push', '--json']);
-  assert.strictEqual(oldSync.status, 0, `${oldVersion} tarball sync 실패:\n${oldSync.stdout}\n${oldSync.stderr}`);
+  const oldSyncOutput = `${oldSync.stdout}\n${oldSync.stderr}`;
+  // sync가 멈춘 이유도 같은 파기여야 한다. 신형 샤드 때문에 멈춘 것이면 오진이다.
+  if (oldSync.status !== 0) assert(oldSyncOutput.includes('RDL-PROFILE-001'), `${oldVersion} tarball sync가 선언되지 않은 이유로 실패했습니다:\n${oldSyncOutput}`);
+  assert(!/RDL-(RUN|LEASE|DRIVER|VERDICT)-/u.test(oldSyncOutput), `${oldVersion} tarball sync가 신형 샤드를 오진했습니다:\n${oldSyncOutput}`);
 
   process.stdout.write('tarball cross-version compatibility tests passed\n');
 } finally {
