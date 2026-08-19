@@ -163,14 +163,28 @@ async function testBoard() {
     //
     // 디스크에서 파일을 읽어 내보내는 경로다. 열어 준 범위가 곧 공격면이므로,
     // "그림이 보인다"만이 아니라 "그 밖은 안 보인다"를 함께 시험한다.
-    const image = await request(port, '/api/projects/tms/assets/docs/sample.png');
-    assert.strictEqual(image.status, 200, `그림을 서빙하지 못했습니다: ${image.status}`);
-    assert.strictEqual(image.headers['content-type'], 'image/png');
-    assert.strictEqual(image.headers['x-content-type-options'], 'nosniff');
+    //
+    // 대상 파일은 이 시험이 만든다. 픽스처에 두면 안 되는 이유는 그 디렉터리가
+    // .gitignore의 /projects/에 걸려 커밋되지 않기 때문이다 — 로컬에는 있고 CI에는
+    // 없어서, 게이트가 초록인 채로 배포가 CI에서 깨진다. 실제로 그렇게 깨졌다.
+    const assetDirectory = path.join(root, 'test', 'fixtures', 'workspace', 'projects', 'tms', 'docs');
+    const imagePath = path.join(assetDirectory, 'sample.png');
+    const textPath = path.join(assetDirectory, 'secret.txt');
+    fs.writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    fs.writeFileSync(textPath, 'not an image\n', 'utf8');
+    try {
+      const image = await request(port, '/api/projects/tms/assets/docs/sample.png');
+      assert.strictEqual(image.status, 200, `그림을 서빙하지 못했습니다: ${image.status}`);
+      assert.strictEqual(image.headers['content-type'], 'image/png');
+      assert.strictEqual(image.headers['x-content-type-options'], 'nosniff');
 
-    // 그림이 아닌 파일은 확장자에서 막힌다. 이 경로로 문서·설정을 읽어 낼 수 없다.
-    const text = await request(port, '/api/projects/tms/assets/docs/secret.txt');
-    assert.strictEqual(text.status, 415, `그림이 아닌 파일이 서빙됐습니다: ${text.status}`);
+      // 그림이 아닌 파일은 확장자에서 막힌다. 이 경로로 문서·설정을 읽어 낼 수 없다.
+      const text = await request(port, '/api/projects/tms/assets/docs/secret.txt');
+      assert.strictEqual(text.status, 415, `그림이 아닌 파일이 서빙됐습니다: ${text.status}`);
+    } finally {
+      fs.rmSync(imagePath, { force: true });
+      fs.rmSync(textPath, { force: true });
+    }
 
     // 프로젝트 밖으로 올라가는 경로는 인코딩 여부와 무관하게 막힌다.
     for (const escape of ['../../../package.json', '..%2f..%2f..%2fpackage.json', '%2e%2e/%2e%2e/package.json']) {
