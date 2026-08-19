@@ -632,12 +632,12 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "TST-008의 시나리오를 수행하고 판정을 남긴다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:38:47.747Z",
-      "updatedAt": "2026-08-19T04:38:47.747Z",
+      "updatedAt": "2026-08-19T04:38:58.223Z",
       "statusChangedAt": "2026-08-19T04:38:47.747Z",
       "externalRefs": [],
       "project": "rundol"
