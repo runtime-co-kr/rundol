@@ -513,7 +513,7 @@
         },
         "AC-003": {
           "text": "통과 기준 절에 체크박스가 있으면 RDL-SCENARIO-004로 진단한다. 실행 결과는 문서가 아니라 실행 기록이 갖는다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
@@ -530,7 +530,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:16:01.519Z",
-      "updatedAt": "2026-08-19T04:27:32.277Z",
+      "updatedAt": "2026-08-19T04:27:34.274Z",
       "statusChangedAt": "2026-08-19T04:16:09.002Z",
       "externalRefs": [],
       "project": "rundol",
