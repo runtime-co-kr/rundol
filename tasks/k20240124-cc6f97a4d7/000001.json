@@ -798,7 +798,7 @@
         },
         "AC-002": {
           "text": "검증 quorum 판정이 run.gate(exit 0/1)로 기록되어 fold 커서가 전진하거나 onFail 재시도한다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "preflight의 verify 거부가 제거되고 drive 테스트에 verify 스텝 시나리오가 추가된다",
@@ -807,7 +807,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:15.381Z",
-      "updatedAt": "2026-08-19T12:54:19.016Z",
+      "updatedAt": "2026-08-19T12:54:20.708Z",
       "statusChangedAt": "2026-08-16T23:43:15.381Z",
       "externalRefs": [],
       "project": "rundol",
