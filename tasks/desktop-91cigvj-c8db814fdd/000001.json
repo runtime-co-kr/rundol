@@ -542,7 +542,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "links": [
         "REQ-018",
@@ -581,8 +581,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:34:58.788Z",
-      "updatedAt": "2026-08-19T04:34:58.788Z",
-      "statusChangedAt": "2026-08-19T04:34:58.788Z",
+      "updatedAt": "2026-08-19T04:35:05.720Z",
+      "statusChangedAt": "2026-08-19T04:35:05.720Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
