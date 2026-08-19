@@ -1447,7 +1447,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "어댑터 둘·정족수 2·다양성 요구로 통과에 도달한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "어댑터 하나로 같은 정책을 선언하면 절차 로드가 거부된다",
@@ -1468,7 +1468,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:06.991Z",
-      "updatedAt": "2026-08-18T22:49:06.991Z",
+      "updatedAt": "2026-08-19T01:48:22.344Z",
       "statusChangedAt": "2026-08-18T22:49:06.991Z",
       "externalRefs": [],
       "project": "rundol",
