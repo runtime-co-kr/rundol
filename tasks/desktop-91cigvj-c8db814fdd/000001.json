@@ -691,12 +691,12 @@
         },
         "AC-007": {
           "text": "회귀 시험이 이 동작들을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T05:23:46.323Z",
-      "updatedAt": "2026-08-19T05:38:12.606Z",
+      "updatedAt": "2026-08-19T05:38:13.683Z",
       "statusChangedAt": "2026-08-19T05:23:54.636Z",
       "externalRefs": [],
       "project": "rundol",
