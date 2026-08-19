@@ -1923,12 +1923,12 @@
         },
         "AC-003": {
           "text": "링크 변경이 태스크 커밋과 원장에 기록된다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T22:37:30.505Z",
-      "updatedAt": "2026-08-19T23:06:28.060Z",
+      "updatedAt": "2026-08-19T23:06:30.142Z",
       "statusChangedAt": "2026-08-19T22:37:30.505Z",
       "externalRefs": [],
       "project": "rundol",
