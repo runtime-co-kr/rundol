@@ -1646,7 +1646,7 @@
         },
         "AC-003": {
           "text": "잘못 적힌 taskEnforcement가 저장을 거부한다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "trailer가 가리키는 태스크의 존재를 검사가 확인한다",
@@ -1659,7 +1659,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:25.276Z",
-      "updatedAt": "2026-08-19T02:23:29.734Z",
+      "updatedAt": "2026-08-19T02:23:31.477Z",
       "statusChangedAt": "2026-08-19T02:22:25.276Z",
       "externalRefs": [],
       "project": "rundol",
