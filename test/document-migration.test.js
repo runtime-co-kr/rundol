@@ -66,4 +66,25 @@ assert.strictEqual(fs.readFileSync(validationFile, 'utf8'), validationSource);
 assert(!fs.existsSync(path.join(validationRoot, 'docs', 'prd')));
 assert.strictEqual(fs.readdirSync(path.join(validationRoot, 'docs')).filter((name) => name.endsWith('.tmp')).length, 0);
 fs.rmSync(validationRoot, { recursive: true, force: true });
+// 이름을 바꾸는 이관은 그 이름을 쓰는 모든 자리를 함께 옮겨야 한다. 문서만 고치고
+// 태스크의 문서 링크를 남기면, 이관이 끝난 뒤에 태스크가 없는 문서를 가리킨다 —
+// 절반만 옮기는 것은 이관이 아니라 연결을 끊는 일이다.
+{
+  const linkRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-migration-links-'));
+  fs.mkdirSync(path.join(linkRoot, 'docs'), { recursive: true });
+  fs.mkdirSync(path.join(linkRoot, 'tasks', 'desk-a'), { recursive: true });
+  fs.writeFileSync(path.join(linkRoot, 'docs', 'API-002-old.md'), '---\nid: API-002\nkind: api\ntags:\n  - artifact/api\n---\n', 'utf8');
+  const shard = path.join(linkRoot, 'tasks', 'desk-a', '000001.json');
+  fs.writeFileSync(shard, `${JSON.stringify({ schemaVersion: 3, tasks: { 'TASK-AAAAAAAA': { title: '링크 보유', links: ['API-002'] } } }, null, 2)}\n`, 'utf8');
+
+  migrateProject(linkRoot, { apply: true });
+
+  assert(fs.existsSync(path.join(linkRoot, 'docs', 'interface', 'IFC-002-old.md')), '문서가 옮겨지지 않았습니다');
+  const moved = fs.readFileSync(path.join(linkRoot, 'docs', 'interface', 'IFC-002-old.md'), 'utf8');
+  assert(moved.includes('id: IFC-002') && moved.includes('kind: interface') && moved.includes('artifact/interface'), moved);
+  const links = JSON.parse(fs.readFileSync(shard, 'utf8')).tasks['TASK-AAAAAAAA'].links;
+  assert.deepStrictEqual(links, ['IFC-002'], '태스크의 문서 링크가 옛 이름으로 남았습니다');
+  fs.rmSync(linkRoot, { recursive: true, force: true });
+}
+
 process.stdout.write('document migration tests passed\n');

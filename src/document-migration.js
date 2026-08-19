@@ -61,6 +61,26 @@ function rewrite(source, targets) {
   return output;
 }
 
+// 태스크 저장소. 단일 파일이거나 Client별 샤드 디렉터리다. 문서 이관이 여기까지
+// 닿아야 태스크의 문서 링크가 함께 옮겨진다.
+function taskStoreFiles(root) {
+  const directory = path.join(root, 'tasks');
+  if (fs.existsSync(directory) && fs.statSync(directory).isDirectory()) {
+    const found = [];
+    const walk = (current) => {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const file = path.join(current, entry.name);
+        if (entry.isDirectory()) walk(file);
+        else if (entry.isFile() && entry.name.endsWith('.json')) found.push(file);
+      }
+    };
+    walk(directory);
+    return found;
+  }
+  const single = path.join(root, 'tasks.json');
+  return fs.existsSync(single) ? [single] : [];
+}
+
 function planMigration(projectRoot) {
   const root = path.resolve(projectRoot);
   const moves = [];
@@ -104,7 +124,10 @@ function planMigration(projectRoot) {
   }
   const rewrites = [];
   const internalRewrites = [];
-  for (const file of markdown) {
+  // 문서만 고치면 절반이다. 태스크가 문서를 가리키는 링크에도 옛 유형 코드가 있고,
+  // 그것을 남기면 이관이 끝난 뒤에 태스크가 없는 문서를 가리킨다 — 이름을 바꾸는
+  // 변경은 그 이름을 쓰는 모든 자리를 함께 옮겨야 이관이다.
+  for (const file of markdown.concat(taskStoreFiles(root))) {
     const source = fs.readFileSync(file, 'utf8');
     const changed = rewrite(source, targets);
     if (changed !== source) {
