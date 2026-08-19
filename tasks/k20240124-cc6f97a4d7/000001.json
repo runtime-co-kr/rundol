@@ -1196,7 +1196,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "대화형 터미널에서 설정 플래그 없이 init하면 인터뷰가 실행된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "비대화형에서 결정이 없으면 조용한 기본값 대신 결정 요구 오류가 나고 생략은 명시적 플래그로만 가능하다",
@@ -1209,7 +1209,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:23.533Z",
-      "updatedAt": "2026-08-17T00:18:23.533Z",
+      "updatedAt": "2026-08-19T13:27:13.361Z",
       "statusChangedAt": "2026-08-17T00:18:23.533Z",
       "externalRefs": [],
       "project": "rundol",
