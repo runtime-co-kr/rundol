@@ -503,6 +503,15 @@ button:disabled:hover {
   padding: 0;
 }
 
+/* 버튼 안의 아이콘은 글자가 아니라 그림이다. 크기를 못박지 않으면 브라우저 기본값
+   300×150이 나와 헤더를 통째로 밀어낸다. */
+button svg,
+.search > span svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: block;
+}
 
 .brand {
   display: flex;
@@ -514,6 +523,11 @@ button:disabled:hover {
 
 .brand-mark {
   display: grid;
+/* 마크는 글자가 아니라 그림이다. 보드 서버는 UI 자산 경로를 index.html·app.js·
+   style.css·theme.css 넷만 허용하므로 파일을 따로 두는 대신 그림을 여기 심는다.
+   CSP가 img-src에 data:를 허용하고 있어 배경으로 뜬다. 원본 1024px PNG에서 투명
+   여백을 걷어내고 글리프만 남겨 3배(78px)로 넣었다. 여백을 남기면 상자와 그림이
+   어긋나 gap이 보이는 것보다 넓어진다. 26:19는 글리프 비율 0.730이다. */
   place-items: center;
   width: 32px;
   height: 32px;
@@ -559,9 +573,20 @@ button:disabled:hover {
   flex: none;
   width: 20px;
   text-align: center;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nav-label {
+/* 아이콘은 면 그림이다. 색은 버튼 글자색을 따라가 선택 상태를 그대로 물려받는다. */
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -894,7 +919,7 @@ body.peek-open .when-docked {
 }
 
 body.peek-open .when-peek {
-  display: inline;
+  display: inline-flex;
 }
 
 /* 크게 보기는 전체화면이 있는 대상에만 뜬다. 사람에게는 갈 곳이 없다. */

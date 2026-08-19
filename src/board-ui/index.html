@@ -19,14 +19,14 @@
     <div class="app-header-left">
       <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark">R</span><b>Rundol</b></a>
     </div>
-    <label class="search"><span>⌕</span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
+    <label class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
     <div class="app-header-right">
       <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
       <button id="health" class="health" data-view="home"><span class="health-dot"></span><span id="health-label">상태 확인</span><span id="operation-count" class="badge"></span></button>
-      <button id="refresh" class="icon-button" aria-label="로컬 새로고침">↻</button>
+      <button id="refresh" class="icon-button" aria-label="로컬 새로고침"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19.4 10.2A7.6 7.6 0 1 0 19.7 14"/><path d="M19.9 4.6v5.7h-5.7" stroke-linejoin="round"/></svg></button>
       <label class="sr-only" for="current-member">보기 기준</label>
       <select id="current-member" title="보기 기준"><option value="">사용자 선택</option></select>
-      <button id="settings-button" class="icon-button" data-view="settings" aria-label="설정">⚙</button>
+      <button id="settings-button" class="icon-button" data-view="settings" aria-label="설정"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="nonzero" clip-rule="nonzero"><path d="M21.78 9.9A10 10 0 0 1 21.78 14.1L19.09 13.53A7.25 7.25 0 0 1 18.09 15.93L20.4 17.42A10 10 0 0 1 17.42 20.4L15.93 18.09A7.25 7.25 0 0 1 13.53 19.09L14.1 21.78A10 10 0 0 1 9.9 21.78L10.47 19.09A7.25 7.25 0 0 1 8.07 18.09L6.58 20.4A10 10 0 0 1 3.6 17.42L5.91 15.93A7.25 7.25 0 0 1 4.91 13.53L2.22 14.1A10 10 0 0 1 2.22 9.9L4.91 10.47A7.25 7.25 0 0 1 5.91 8.07L3.6 6.58A10 10 0 0 1 6.58 3.6L8.07 5.91A7.25 7.25 0 0 1 10.47 4.91L9.9 2.22A10 10 0 0 1 14.1 2.22L13.53 4.91A7.25 7.25 0 0 1 15.93 5.91L17.42 3.6A10 10 0 0 1 20.4 6.58L18.09 8.07A7.25 7.25 0 0 1 19.09 10.47ZM15.05 12A3.05 3.05 0 1 0 8.95 12A3.05 3.05 0 1 0 15.05 12Z"/></svg></button>
     </div>
   </header>
 
@@ -35,17 +35,17 @@
       <div class="sidebar-head">
         <label class="sr-only" for="project-switcher">프로젝트</label>
         <select id="project-switcher"></select>
-        <button id="collapse-nav" class="icon-button" aria-label="탐색 접기">‹</button>
+        <button id="collapse-nav" class="icon-button" aria-label="탐색 접기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.25 6.5 8.75 12l5.5 5.5"/></svg></button>
       </div>
       <div class="sidebar-body">
       <nav class="primary-nav" aria-label="주요 화면">
-        <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">홈</span></button>
-        <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">문서</span></button>
-        <button data-view="tasks" class="nav-item" title="태스크"><span class="nav-icon" aria-hidden="true">☰</span><span class="nav-label">태스크</span></button>
+        <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M11.24 3.05a1.2 1.2 0 0 1 1.52 0l8.1 6.62c.29.24.45.6.45.97v9.36c0 .69-.56 1.25-1.25 1.25h-4.81v-5.6c0-.55-.45-1-1-1h-4.5c-.55 0-1 .45-1 1v5.6H3.94c-.69 0-1.25-.56-1.25-1.25V10.64c0-.37.16-.73.45-.97z"/></svg></span><span class="nav-label">홈</span></button>
+        <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M6.85 2.5h6.5l5.5 5.5v11.75a1.75 1.75 0 0 1-1.75 1.75H6.85A1.75 1.75 0 0 1 5.1 19.75V4.25c0-.97.78-1.75 1.75-1.75zM9.1 12a.75.75 0 0 0 0 1.5h7a.75.75 0 0 0 0-1.5zm0 3.75a.75.75 0 0 0 0 1.5h5a.75.75 0 0 0 0-1.5z"/></svg></span><span class="nav-label">문서</span></button>
+        <button data-view="tasks" class="nav-item" title="태스크"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M6.85 4.6h10.3c1.02 0 1.85.83 1.85 1.85v13.2c0 1.02-.83 1.85-1.85 1.85H6.85A1.85 1.85 0 0 1 5 19.65V6.45c0-1.02.83-1.85 1.85-1.85zM8.1 4.35h7.8a1.9 1.9 0 0 1 1.9 1.9 1.9 1.9 0 0 1-1.9 1.9H8.1a1.9 1.9 0 0 1-1.9-1.9 1.9 1.9 0 0 1 1.9-1.9zM16.16 11.06a1.15 1.15 0 0 0-1.62-.06l-4.5 4.23-1.46-1.53a1.15 1.15 0 1 0-1.67 1.58l2.24 2.36c.43.46 1.16.48 1.62.04l5.33-5a1.15 1.15 0 0 0 .06-1.62z"/><path d="M9.55 2.5h4.9c.6 0 1.1.5 1.1 1.1v2.4c0 .6-.5 1.1-1.1 1.1h-4.9c-.6 0-1.1-.5-1.1-1.1V3.6c0-.6.5-1.1 1.1-1.1z"/></svg></span><span class="nav-label">태스크</span></button>
       </nav>
       <section class="nav-section"><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
       <section class="nav-section"><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
-      <section class="utility-nav"><h2>참고</h2><button data-view="people" title="사람과 역할"><span class="nav-icon" aria-hidden="true">◍</span><span class="nav-label">사람과 역할</span></button></section>
+      <section class="utility-nav"><h2>참고</h2><button data-view="people" title="사람과 역할"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M9.4 11.63a3.95 3.95 0 1 0 0-7.9 3.95 3.95 0 0 0 0 7.9zM2.5 18.88c0-2.98 3.09-4.75 6.9-4.75s6.9 1.77 6.9 4.75c0 .77-.62 1.4-1.4 1.4H3.9c-.77 0-1.4-.63-1.4-1.4z"/><path d="M17.05 11.33a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2zM17.5 13.13c2.55.15 4 1.55 4 3.6v1.15c0 .77-.63 1.4-1.4 1.4h-2.2c.06-.28.1-.58.1-.9 0-2.24-.98-4-2.5-5.1a9.6 9.6 0 0 1 2-.15z"/></svg></span><span class="nav-label">사람과 역할</span></button></section>
       </div>
     </aside>
 
@@ -138,8 +138,8 @@
       <div class="panel-title">
         <span>Context</span>
         <div class="panel-actions">
-          <button id="expand-context" class="icon-button" aria-label="크게 보기" title="크게 보기">⤢</button>
-          <button id="collapse-context" class="icon-button" aria-label="닫기"><span class="when-peek">×</span><span class="when-docked">›</span></button>
+          <button id="expand-context" class="icon-button" aria-label="크게 보기" title="크게 보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.75h5.25V10M10 19.25H4.75V14M19.25 4.75 13.5 10.5M4.75 19.25 10.5 13.5"/></svg></button>
+          <button id="collapse-context" class="icon-button" aria-label="닫기"><span class="when-peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></span><span class="when-docked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.75 6.5 15.25 12l-5.5 5.5"/></svg></span></button>
         </div>
       </div>
       <div id="context-empty" class="empty-state">문서나 태스크를 선택하면 속성, 연결과 검증 정보를 표시합니다.</div>
@@ -150,7 +150,7 @@
   <div id="scrim" class="scrim" hidden></div>
   <dialog id="task-dialog" aria-labelledby="task-form-heading">
     <form id="task-form" method="dialog">
-      <div class="dialog-heading"><div><p id="task-id" class="eyebrow">NEW TASK</p><h2 id="task-form-heading">태스크 추가</h2></div><button id="close-dialog" type="button" data-dialog-cancel="task-dialog" aria-label="닫기">×</button></div>
+      <div class="dialog-heading"><div><p id="task-id" class="eyebrow">NEW TASK</p><h2 id="task-form-heading">태스크 추가</h2></div><button id="close-dialog" type="button" data-dialog-cancel="task-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>
       <label>제목<input id="task-title" required maxlength="160"></label><label>설명<textarea id="task-summary" rows="4"></textarea></label>
       <div class="form-grid"><label>상태<select id="task-status"></select></label><label>우선순위<select id="task-priority"><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select></label><label>담당자<select id="task-owner"><option value="">미지정</option></select></label></div>
       <label>완료조건<textarea id="task-acceptance" rows="3" placeholder="한 줄에 하나씩 입력"></textarea></label><label>연결 문서<textarea id="task-links" rows="2" placeholder="REQ-001"></textarea></label>
@@ -159,7 +159,7 @@
   </dialog>
   <dialog id="blocker-dialog" aria-labelledby="blocker-form-heading">
     <form id="blocker-form" method="dialog">
-      <div class="dialog-heading"><div><p class="eyebrow">WAITING</p><h2 id="blocker-form-heading">대기 사유</h2></div><button type="button" data-dialog-cancel="blocker-dialog" aria-label="닫기">×</button></div>
+      <div class="dialog-heading"><div><p class="eyebrow">WAITING</p><h2 id="blocker-form-heading">대기 사유</h2></div><button type="button" data-dialog-cancel="blocker-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>
       <p class="dialog-hint">대기 상태에는 누구를 기다리는지, 무엇이 충족되면 풀리는지, 언제부터 기다렸는지가 모두 필요합니다.</p>
       <label>대기 대상<select id="blocker-waiting-for" required></select></label>
       <label>해제 조건<input id="blocker-condition" required maxlength="200" placeholder="예: API-003 리뷰 승인"></label>
@@ -169,7 +169,7 @@
   </dialog>
   <dialog id="cancellation-dialog" aria-labelledby="cancellation-form-heading">
     <form id="cancellation-form" method="dialog">
-      <div class="dialog-heading"><div><p class="eyebrow">CANCELLED</p><h2 id="cancellation-form-heading">반려 사유</h2></div><button type="button" data-dialog-cancel="cancellation-dialog" aria-label="닫기">×</button></div>
+      <div class="dialog-heading"><div><p class="eyebrow">CANCELLED</p><h2 id="cancellation-form-heading">반려 사유</h2></div><button type="button" data-dialog-cancel="cancellation-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>
       <p class="dialog-hint">반려는 완료가 아니라 하지 않기로 한 결정입니다. 완료조건이 남아 있어도 닫히지만, 왜 접었는지는 남겨야 나중에 같은 판단을 다시 하지 않습니다.</p>
       <label>반려 사유<textarea id="cancellation-reason" required rows="3" maxlength="1000" placeholder="예: 모노레포 전환을 하지 않기로 해 이 구조 정의가 필요 없어졌습니다"></textarea></label>
       <label>결정자<select id="cancellation-decided-by" required></select></label>
