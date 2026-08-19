@@ -1551,6 +1551,37 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-J9D5567W": {
+      "title": "[개선] 계산 가능한 저장 필드 제거 — implementationReadiness",
+      "summary": "task.links에서 결정되는 implementationReadiness가 저장된다. 링크가 바뀌어도 갱신 경로가 없어 조용히 어긋난다. 필드를 없애고 읽을 때 계산한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "links": [
+        "REQ-047",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "implementationReadiness 필드 없이도 RDL-IMPL 진단이 같게 나온다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "옛 값이 남은 태스크를 읽어도 오류가 나지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T01:48:48.593Z",
+      "updatedAt": "2026-08-19T01:48:48.593Z",
+      "statusChangedAt": "2026-08-19T01:48:48.593Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
