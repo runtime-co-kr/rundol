@@ -1756,7 +1756,7 @@
         },
         "AC-002": {
           "text": "인가를 통합하지 않는 이유와 그 전제가 기록된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "다음 조각의 순서가 기록된다",
@@ -1765,7 +1765,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:30.249Z",
-      "updatedAt": "2026-08-19T02:23:55.256Z",
+      "updatedAt": "2026-08-19T02:23:56.829Z",
       "statusChangedAt": "2026-08-19T02:22:30.249Z",
       "externalRefs": [],
       "project": "rundol",
