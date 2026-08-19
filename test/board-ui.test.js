@@ -248,9 +248,15 @@ assert(sidebar.includes('data-view="tasks"'), '주요 이동은 사이드바가 
 assert(!header.includes('data-view="tasks"'), '헤더에 주요 이동까지 넣으면 줄바꿈되어 자리가 흔들립니다');
 assert(style.includes('--header-Height') && theme.includes('--header-Height'), '헤더 높이는 토큰이어야 합니다');
 
-// 검색은 좌우 내용 길이가 바뀌어도 같은 자리에 있어야 한다. flex 가운데는 따라 움직인다.
+// 검색은 오른쪽 묶음의 글자 길이가 바뀌어도 같은 자리에 있어야 한다. flex 가운데나
+// 1fr 나눗셈에 맡기면 상태 글자가 길어질 때마다 검색이 따라 움직인다.
 assert(/\.app-header\s*\{[^}]*display:\s*grid/u.test(style), '헤더는 격자여야 검색이 고정됩니다');
-assert(/\.app-header\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 720px\) minmax\(0, 1fr\)/u.test(style), '검색은 가운데 칸을 고정으로 차지해야 합니다');
+// 왼쪽 칸은 검색 폭만큼만 갖고, 오른쪽 칸은 내용만큼의 바닥을 가진다. 바닥이 없으면
+// 오른쪽 묶음이 내용보다 좁게 무너져 검색칸 위로 올라탄다.
+assert(/\.app-header\s*\{[^}]*grid-template-columns:\s*minmax\(0, 480px\) minmax\(min-content, 1fr\)/u.test(style), '검색은 왼쪽 칸에 고정되고 오른쪽은 내용만큼의 바닥을 가져야 합니다');
+// 좁은 폭에서는 검색을 아이콘으로 접되, 초점이 오면 다시 펼쳐져야 한다. 접기만 하고
+// 펼칠 길을 두지 않으면 그 폭에서 검색을 아예 쓸 수 없다.
+assert(/\.app-header \.search:focus-within\s*\{/u.test(style), '접힌 검색은 초점이 오면 펼쳐져야 합니다');
 
 // 접힌 사이드바는 사라지지 않고 아이콘 레일로 좁아진다.
 assert(theme.includes('--nav-rail-Width'), '레일 폭 토큰이 있어야 합니다');

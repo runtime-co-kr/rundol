@@ -115,8 +115,74 @@ body {
   margin-bottom: var(--spacing-1_5);
 }
 
+/* 제목과 필터 사이는 벌리고, 개수 배지는 필터에 붙어 따라간다. */
+.section-heading h2 {
+  margin-right: auto;
+}
+
 .content-section {
   margin-top: var(--spacing-4);
+}
+
+/* 같은 자리에 있어도 하는 일이 다르다. 값을 바꾸는 버튼과 달리 data-view가 붙은
+   버튼은 화면을 옮긴다. 테두리와 바탕을 지우고 화살표를 붙여 누르면 이동한다는
+   것을 드러낸다. 화살표는 배경을 mask로 깎아 만들므로 색을 글자에서 물려받고,
+   테마가 바뀌거나 hover가 걸려도 따로 손대지 않아도 따라온다. */
+.section-heading > button[data-view],
+.task-detail-actions button[data-view] {
+  gap: var(--spacing-0_5);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent-TextColor);
+  font-weight: 600;
+}
+
+.section-heading > button[data-view]::after,
+.task-detail-actions button[data-view]::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  transition: transform .12s ease;
+}
+
+/* 화살표는 가는 방향을 가리켜야 한다. 목록으로는 돌아가는 이동이므로 왼쪽이다. */
+.section-heading > button[data-view] {
+  padding-right: 0;
+}
+
+.section-heading > button[data-view]::after {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22%23000%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22%3E%3Cpath d%3D%22M4.75 12h13.5%22%2F%3E%3Cpath d%3D%22m12.75 6.25 5.5 5.75-5.5 5.75%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22%23000%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22%3E%3Cpath d%3D%22M4.75 12h13.5%22%2F%3E%3Cpath d%3D%22m12.75 6.25 5.5 5.75-5.5 5.75%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+.task-detail-actions button[data-view] {
+  padding-left: 0;
+}
+
+.task-detail-actions button[data-view]::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22%23000%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22%3E%3Cpath d%3D%22M19.25 12H5.75%22%2F%3E%3Cpath d%3D%22m11.25 6.25-5.5 5.75 5.5 5.75%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22%23000%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22%3E%3Cpath d%3D%22M19.25 12H5.75%22%2F%3E%3Cpath d%3D%22m11.25 6.25-5.5 5.75 5.5 5.75%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+/* hover에서 바탕 틴트를 얹으면 테두리 없는 버튼이 허공에 뜬 것처럼 보인다.
+   대신 글자에 밑줄을 긋고 화살표를 가려는 쪽으로 조금 민다. */
+.section-heading > button[data-view]:hover,
+.task-detail-actions button[data-view]:hover {
+  border-color: transparent;
+  background-image: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.section-heading > button[data-view]:hover::after {
+  transform: translateX(2px);
+}
+
+.task-detail-actions button[data-view]:hover::before {
+  transform: translateX(-2px);
 }
 
 .content-section h2,
@@ -364,9 +430,26 @@ button:disabled:hover {
   background: var(--ui-hover-OverlayColor);
 }
 
+/* 접기 손잡이. 아이콘 하나를 돌려 두 상태를 만든다. 화살표는 오른쪽이 기본이고
+   펼쳐진 묶음에서 아래를 가리킨다. 글리프 두 벌을 번갈아 넣던 때는 ▸와 ▾의
+   광학 무게가 달라 접었다 펼 때마다 머리글이 미세하게 흔들렸다. */
 .group-caret {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
   color: var(--tertiary-TextColor);
-  font-size: 11px;
+  transform: rotate(90deg);
+  transition: transform .12s ease;
+}
+
+.task-group.collapsed .group-caret {
+  transform: none;
+}
+
+/* 머리글은 34px이라 18px 아이콘은 크다. 칩·뱃지와 같은 눈높이로 맞춘다. */
+.group-caret svg {
+  width: 16px;
+  height: 16px;
 }
 
 .segmented {
@@ -417,7 +500,10 @@ button:disabled:hover {
   z-index: 15;
   top: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 720px) minmax(0, 1fr);
+  /* 검색은 왼쪽 끝에 고정한다. 가운데에 두면 오른쪽 묶음의 글자 길이가 바뀔 때마다
+     자리가 흔들리고, 브랜드가 패널로 옮겨간 뒤로는 왼쪽에 비워 둘 이유도 없다.
+     오른쪽 칸은 내용만큼의 바닥을 가져 검색칸 위로 올라타지 않는다. */
+  grid-template-columns: minmax(0, 480px) minmax(min-content, 1fr);
   align-items: center;
   gap: var(--spacing-2);
   height: var(--header-Height);
@@ -434,11 +520,17 @@ button:disabled:hover {
   min-width: 0;
 }
 
+/* 검색이 펼쳐질 때 흐름에서 빠지면, 자동 배치는 남은 묶음을 1번 칸으로 끌어올려
+   헤더가 통째로 왼쪽으로 쏠린다. 칸을 못박아 두면 검색이 떠도 자리가 흔들리지 않는다. */
 .app-header-right {
+  grid-column: 2;
   justify-content: flex-end;
 }
 
+/* 폭이 모자라면 flex는 항목을 눌러서 줄인다. 줄어드는 몫은 늘고 줄어도 되는
+   검색칸이 받는다. 검색은 헤더의 1번 칸에 못박아 둔다. */
 .app-header .search {
+  grid-column: 1;
   margin: 0;
 }
 
@@ -460,10 +552,34 @@ button:disabled:hover {
   min-width: 0;
 }
 
+/* 브랜드가 왼쪽 패널로 올라갔으므로 패널도 화면 맨 위에서 시작해야 한다. 헤더를
+   셸 안으로 들여 첫 행에 두고, 패널은 두 행을 모두 차지한다. 헤더는 패널 오른쪽
+   영역만 덮는다. */
 .workspace-shell {
   display: grid;
   grid-template-columns: var(--nav-Width) minmax(0, 1fr) var(--context-Width);
-  min-height: calc(100vh - var(--header-Height));
+  grid-template-rows: var(--header-Height) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.workspace-shell > .app-header {
+  grid-column: 2 / -1;
+  grid-row: 1;
+}
+
+.workspace-shell > .navigation-panel {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+
+.workspace-shell > .main-content {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.workspace-shell > .context-panel {
+  grid-column: 3;
+  grid-row: 2;
 }
 
 /* 세로 배치와 폭 규칙은 아래 패널 공통 규칙이 갖는다. 여기서 다시 선언하면
@@ -472,11 +588,99 @@ button:disabled:hover {
   border-right: 1px solid var(--divider-BorderColor);
 }
 
+/* 브랜드는 헤더가 아니라 탐색 패널의 머리다. 접는 손잡이는 접히는 대상의 머리에
+   같이 세운다. 아래 프로젝트 선택기와 같은 세로줄에 서도록 좌우 여백을 맞춘다. */
+.sidebar-brand {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-1);
+  height: var(--header-Height);
+  padding: 0 var(--spacing-2);
+}
+
+/* 브랜드가 머리를 맡으므로 그 아래는 원래의 큰 윗여백이 필요 없다. */
+.sidebar-brand + .sidebar-head {
+  padding-top: var(--spacing-2);
+}
+
 /* 동기화는 상태를 읽고 누르는 자리다. 할 일이 없으면 비활성이라 눌러볼 이유가 없다. */
-.sync-status {
+/* 헤더 오른쪽에는 성격이 다른 셋이 섞여 있다. 동기화와 조치는 지금 상태를 알리는
+   것이고, 보기 기준은 값을 고르는 입력이며, 새로고침과 설정은 누르는 조작이다.
+   모두 같은 테두리 상자로 두면 무엇이 정보이고 무엇이 할 일인지 구분되지 않는다.
+   상태는 테두리를 벗고 글자와 점으로만 말한다. 평상시에는 보조색으로 물러나 있다가
+   손댈 것이 생기면 색이 살아난다. 누를 수 있을 때만 hover에 반응한다. */
+.sync-status,
+.health {
+  flex: none;
   gap: var(--spacing-1);
   justify-content: flex-start;
   min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 var(--spacing-1);
+  color: var(--secondary-TextColor);
+  font-weight: 500;
+}
+
+.sync-status:disabled,
+.health:disabled {
+  opacity: 1;
+  color: var(--tertiary-TextColor);
+}
+
+/* 동기화는 정보가 아니라 실행이다. 누르면 커밋하고 원격으로 올라간다 - 이 화면에서
+   가장 되돌리기 어려운 동작이다. 그래서 할 일이 있을 때는 버튼처럼 보이고, 올릴
+   것이 없으면(=disabled) 글자로 가라앉는다. 색은 기본이 아니라 예외로 쓴다.
+   충돌은 순서를 지켜야 풀리므로 그때만 붉게 세운다. */
+.sync-status:not(:disabled) {
+  border-color: var(--control-BorderColor);
+  background: var(--control-BackgroundColor);
+  box-shadow: var(--small-BoxShadow);
+  padding: 0 var(--spacing-1_5);
+  color: var(--primary-TextColor);
+}
+
+.sync-status.error:not(:disabled) {
+  color: var(--danger-Color);
+}
+
+/* 조치 필요는 누르면 목록으로 데려갈 뿐이므로 조용해도 된다. 건수는 배지가 말하고,
+   등급은 목록의 태그가 말한다. 헤더에서까지 색을 쓰면 셋이 서로 경쟁한다. */
+.health .health-dot {
+  display: none;
+}
+
+/* 점은 글자색을 따라간다. 상태가 바뀌면 둘이 같이 움직여야 한 덩어리로 읽힌다. */
+.sync-status .health-dot,
+.health .health-dot {
+  flex: none;
+  background: currentColor;
+}
+
+/* 조작은 테두리 없이 보조색으로 물러나 있다가 가리키면 올라온다. 패널 손잡이와
+   같은 언어를 쓴다. 값을 고르는 보기 기준만 입력다운 테두리를 유지한다. */
+#refresh,
+#settings-button {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--secondary-TextColor);
+}
+
+#refresh:hover,
+#settings-button:hover {
+  color: var(--primary-TextColor);
+}
+
+/* 정보와 조작 사이에 선을 하나 세워 묶음을 나눈다. */
+.header-divider {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--divider-BorderColor);
 }
 
 .sync-status span:last-child {
@@ -485,22 +689,28 @@ button:disabled:hover {
   white-space: nowrap;
 }
 
-.sync-status .health-dot {
-  flex: none;
-  background: var(--tertiary-TextColor);
-}
 
-.sync-status.warning .health-dot {
-  background: var(--warning-Color);
-}
 
-.sync-status.error .health-dot {
-  background: var(--danger-Color);
-}
-
+/* flex 항목의 기본값은 shrink 1이라, 폭이 모자라면 34px을 못 지키고 눌린다.
+   34px은 아이콘이 찌그러지지 않는 최소치이므로 줄어드는 쪽에서 빼둔다. */
 .icon-button {
+  flex: none;
   width: var(--control-Height);
   padding: 0;
+}
+
+/* 패널 손잡이는 늘 누르는 것이 아니라 필요할 때 찾는 것이다. 옆 목록의 글자와 같은
+   보조색으로 내려 두고, 가리키면 본색으로 올라온다. */
+#collapse-nav,
+#collapse-context,
+#expand-context {
+  color: var(--secondary-TextColor);
+}
+
+#collapse-nav:hover,
+#collapse-context:hover,
+#expand-context:hover {
+  color: var(--primary-TextColor);
 }
 
 /* 버튼 안의 아이콘은 글자가 아니라 그림이다. 크기를 못박지 않으면 브라우저 기본값
@@ -514,28 +724,13 @@ button svg,
 }
 
 
-/* 마크와 글자는 세로 가운데로 묶는다. */
+/* 브랜드 글자는 세로 가운데로 세운다. */
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-1);
   color: var(--primary-TextColor);
   text-decoration: none;
-}
-
-/* 마크는 글자가 아니라 그림이다. 보드 서버는 UI 자산 경로를 index.html·app.js·
-   style.css·theme.css 넷만 허용하므로 파일을 따로 두는 대신 그림을 여기 심는다.
-   CSP가 img-src에 data:를 허용하고 있어 배경으로 뜬다. 원본 1024px PNG에서 투명
-   여백을 걷어내고 글리프만 남겨 3배(78px)로 넣었다. 여백을 남기면 상자와 그림이
-   어긋나 gap이 보이는 것보다 넓어진다. 26:19는 글리프 비율 0.730이다. */
-.brand-mark {
-  display: block;
-  width: 19px;
-  height: 26px;
-  background-image: url(data:image/png;base64,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);
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
 }
 
 .brand b,
@@ -580,7 +775,8 @@ button svg,
   text-align: center;
 }
 
-/* 아이콘은 면 그림이다. 색은 버튼 글자색을 따라가 선택 상태를 그대로 물려받는다. */
+/* 아이콘은 선 그림이고 색은 버튼 글자색을 따라간다. 선택 상태가 색을 바꾸면 아이콘도
+   따라 바뀐다. */
 .nav-icon svg {
   width: 18px;
   height: 18px;
@@ -605,10 +801,6 @@ button svg,
   font-weight: 600;
 }
 
-.health {
-  gap: var(--spacing-1);
-}
-
 .health-dot {
   width: 8px;
   height: 8px;
@@ -616,28 +808,31 @@ button svg,
   background: var(--accent-BackgroundColor);
 }
 
-.health.warning .health-dot {
-  background: var(--warning-Color);
-}
 
-.health.error .health-dot {
-  background: var(--danger-Color);
-}
 
-/* 헤더가 자리를 차지하므로 붙는 위치와 높이가 그만큼 밀린다.
-   패널은 세로 flex다. 머리글은 제자리에 남고 목록만 스크롤해야, 길게 내려간 뒤에도
-   지금 무엇을 보고 있는지와 접는 손잡이를 잃지 않는다. */
+/* 패널은 세로 flex다. 머리글은 제자리에 남고 목록만 스크롤해야, 길게 내려간 뒤에도
+   지금 무엇을 보고 있는지와 접는 손잡이를 잃지 않는다. 붙는 자리와 높이는 둘이
+   다르므로 각자 갖는다. 왼쪽 패널은 브랜드를 이고 화면 맨 위에서 시작하고,
+   Context는 헤더 아래에서 시작한다. */
 .navigation-panel,
 .context-panel {
   position: sticky;
-  top: var(--header-Height);
   align-self: start;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--header-Height));
   min-width: 0;
   overflow: hidden;
   background: var(--surface-01-BackgroundColor);
+}
+
+.navigation-panel {
+  top: 0;
+  height: 100vh;
+}
+
+.context-panel {
+  top: var(--header-Height);
+  height: calc(100vh - var(--header-Height));
 }
 
 /* 헤더와 패널은 같은 표면색이라 경계에서 한 덩어리로 붙어 보인다. 본문은 헤더에서
@@ -754,6 +949,13 @@ body.nav-collapsed .navigation-panel {
   padding: var(--spacing-1_5) var(--spacing-1);
 }
 
+/* 레일 폭은 52px이고 패널이 이미 좌우 8px을 갖는다. 본문이 여기에 16px을 더하면
+   남는 내용 폭이 3px이 되어 버튼이 칸 밖으로 밀리고 아이콘이 가운데를 잃는다. */
+body.nav-collapsed .sidebar-body {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 body.nav-collapsed .sidebar-head select,
 body.nav-collapsed .nav-label,
 body.nav-collapsed .nav-section,
@@ -763,6 +965,31 @@ body.nav-collapsed .navigation-panel h2 {
 
 body.nav-collapsed .sidebar-head {
   justify-content: center;
+}
+
+/* 접기 손잡이는 지금 상태에 따라 다른 것을 가리킨다. 펼쳐져 있으면 닫는 쪽을,
+   접혀 있으면 여는 쪽을 보여준다. 아이콘 둘을 담아 두고 여기서 고른다. */
+.when-collapsed {
+  display: none;
+}
+
+body.nav-collapsed .when-expanded {
+  display: none;
+}
+
+body.nav-collapsed .when-collapsed {
+  display: inline-flex;
+}
+
+/* 레일에는 손잡이만 남긴다. 52px 폭에 로고까지 넣으면 둘 다 읽히지 않고,
+   펼치는 방법을 가리키는 것이 이 상태에서 할 일의 전부다. */
+body.nav-collapsed .sidebar-brand {
+  justify-content: center;
+  padding: 0;
+}
+
+body.nav-collapsed .sidebar-brand .brand {
+  display: none;
 }
 
 body.nav-collapsed .primary-nav button,
@@ -1223,8 +1450,9 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   text-align: left;
 }
 
+/* 점 칸이 사라져 열은 내용과 화살표 둘이다. 세로 정렬은 위 공통 규칙이 갖는다. */
 .attention-item {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .document-row {
@@ -1242,6 +1470,39 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   border-bottom: 0;
 }
 
+/* 모서리. 행은 목록 상자를 가로로 꽉 채우는 띠다. button이라 전역 규칙에서 8px 모서리를
+   물려받는데, 상자가 이미 모서리를 갖고 있으므로 가운데 행까지 둥글면 가리키거나 고를
+   때마다 알약이 줄줄이 떠서 어디가 목록의 끝인지 읽히지 않는다. 행은 각지게 두고,
+   상자와 맞닿는 처음과 끝만 바깥선을 따라간다. 처음이자 마지막인 한 줄짜리 목록도
+   두 규칙이 각각 걸려야 하므로 네 모서리를 통으로 쓰지 않고 위·아래를 나눠 준다. */
+.attention-item,
+.document-row,
+.person-row,
+.task-row,
+.task-group-head {
+  border-radius: 0;
+}
+
+.attention-list > .attention-item:first-child,
+.document-list > .document-row:first-child,
+.person-list > .person-row:first-child,
+.task-table > .task-row:first-child,
+.task-table > .task-group:first-child > .task-group-head {
+  border-top-left-radius: var(--inner-BorderRadius);
+  border-top-right-radius: var(--inner-BorderRadius);
+}
+
+/* 접힌 묶음의 마지막 자식은 행이 아니라 머리글이다. 둘을 따로 적으면 접을 때마다
+   아래 모서리가 사라진다. 마지막 묶음의 마지막 자식이 무엇이든 끝으로 본다. */
+.attention-list > .attention-item:last-child,
+.document-list > .document-row:last-child,
+.person-list > .person-row:last-child,
+.task-table > .task-row:last-child,
+.task-table > .task-group:last-child > :last-child {
+  border-bottom-left-radius: var(--inner-BorderRadius);
+  border-bottom-right-radius: var(--inner-BorderRadius);
+}
+
 .attention-item:hover,
 .document-row:hover,
 .task-row:hover {
@@ -1255,6 +1516,24 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 행 끝의 화살표는 "여기로 들어간다"는 표시다. 본문 글꼴의 › 한 자로 두었을 때는
+   14px에 획도 가늘어 눈에 걸리지 않았고, 열 폭이 글자 하나라 겨눌 곳도 없었다.
+   나머지 아이콘과 같은 18px로 세우고 좌우 여백까지 자기 열로 갖는다.
+   색은 뒤로 물러나 있다가 행을 가리키면 올라온다. 목록 전체가 화살표로 얼룩지면
+   행마다 무엇이 다른지가 아니라 화살표만 보인다. */
+.row-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: var(--tertiary-TextColor);
+}
+
+.attention-item:hover .row-chevron {
+  color: var(--primary-TextColor);
 }
 
 .attention-item small,
@@ -1360,10 +1639,6 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   padding: 0 var(--spacing-2);
   border-bottom: 1px solid var(--divider-BorderColor);
   background: var(--surface-02-BackgroundColor);
-}
-
-.task-table > .task-group:first-child .task-group-head {
-  border-radius: var(--large-BorderRadius) var(--large-BorderRadius) 0 0;
 }
 
 /* ── 태스크 Board(칸반) ───────────────────────────────── */
@@ -2116,6 +2391,30 @@ body.view-settings .page-heading {
   font-size: var(--caption-FontSize);
 }
 
+/* 칩 안의 제거는 아이콘 버튼이다. 전역 버튼의 가로 여백 12px을 그대로 물려받으면
+   글리프 하나가 칩 절반을 차지하는 폭에 떠 있고 세로로는 글자 높이뿐이라 겨누기
+   어렵다. 정사각형으로 못박아 손가락이 닿을 넓이를 준다. */
+.component-chip button {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: var(--round-BorderRadius);
+  color: var(--tertiary-TextColor);
+}
+
+.component-chip button svg {
+  width: 12px;
+  height: 12px;
+}
+
+.component-chip button:hover {
+  border: 0;
+  background: var(--ui-hover-OverlayColor);
+  background-image: none;
+  color: var(--danger-Color);
+}
+
 .component-add {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2487,6 +2786,42 @@ dialog label textarea {
 
 /* ── 반응형 ───────────────────────────────────────────── */
 
+/* 이 폭부터는 검색칸을 펼쳐 둘 자리가 없다. 아이콘만 남기고, 누르면(=초점이 오면)
+   헤더 위에 겹쳐서 펼친다. 겹쳐 띄우므로 오른쪽 상태 글자가 밀리지 않는다. */
+@media (max-width: 1240px) {
+  .app-header {
+    grid-template-columns: var(--control-Height) minmax(min-content, 1fr);
+  }
+
+  .app-header .search {
+    gap: 0;
+    padding: 0;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .app-header .search input {
+    width: 0;
+    flex: none;
+  }
+
+  .app-header .search:focus-within {
+    gap: var(--spacing-1);
+    position: absolute;
+    left: var(--spacing-2);
+    z-index: 20;
+    width: min(520px, calc(100% - 2 * var(--spacing-2)));
+    padding: 0 var(--spacing-1_5);
+    justify-content: flex-start;
+    box-shadow: var(--medium-BoxShadow, 0 8px 24px rgba(0, 0, 0, .12));
+  }
+
+  .app-header .search:focus-within input {
+    width: 100%;
+    flex: 1;
+  }
+}
+
 @media (max-width: 1180px) {
   /* Context 열을 세울 폭이 없다. 자리를 비우되 띄우지는 않는다. 태스크를 고르면
      peek이 대신 열리고, 그건 사용자가 부른 것이라 겹쳐도 놀라지 않는다. */
@@ -2569,7 +2904,6 @@ dialog label textarea {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
-  .app-header .brand b,
   .app-header-right .health span:not(.badge),
   .app-header-right .sync-status span:last-child {
     display: none;

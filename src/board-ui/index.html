@@ -9,43 +9,43 @@
   <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
-  <!-- 어디에 있든 같은 자리에 있어야 하는 것만 헤더가 갖는다. 무엇을 보고 있는지(프로젝트),
-       어디로 갈지(주요 이동·검색), 지금 상태가 어떤지(동기화·조치·사용자).
-       사이드바는 지금 보는 프로젝트의 내용물만 남긴다. -->
-  <!-- 헤더는 프로젝트를 가리지 않는 것만 갖는다. 검색은 좌우 내용 길이와 무관하게
-       늘 같은 자리에 있어야 하므로 3열 격자의 가운데 칸이 소유한다.
-       프로젝트 안에서의 이동은 전부 사이드바가 갖는다. -->
-  <header class="app-header">
-    <div class="app-header-left">
-      <a class="brand" href="#home" aria-label="Rundol 홈"><span class="brand-mark" aria-hidden="true"></span><b>Rundol</b></a>
-    </div>
-    <label class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
-    <div class="app-header-right">
-      <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
-      <button id="health" class="health" data-view="home"><span class="health-dot"></span><span id="health-label">상태 확인</span><span id="operation-count" class="badge"></span></button>
-      <button id="refresh" class="icon-button" aria-label="로컬 새로고침"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19.4 10.2A7.6 7.6 0 1 0 19.7 14"/><path d="M19.9 4.6v5.7h-5.7" stroke-linejoin="round"/></svg></button>
-      <label class="sr-only" for="current-member">보기 기준</label>
-      <select id="current-member" title="보기 기준"><option value="">사용자 선택</option></select>
-      <button id="settings-button" class="icon-button" data-view="settings" aria-label="설정"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="nonzero" clip-rule="nonzero"><path d="M21.78 9.9A10 10 0 0 1 21.78 14.1L19.09 13.53A7.25 7.25 0 0 1 18.09 15.93L20.4 17.42A10 10 0 0 1 17.42 20.4L15.93 18.09A7.25 7.25 0 0 1 13.53 19.09L14.1 21.78A10 10 0 0 1 9.9 21.78L10.47 19.09A7.25 7.25 0 0 1 8.07 18.09L6.58 20.4A10 10 0 0 1 3.6 17.42L5.91 15.93A7.25 7.25 0 0 1 4.91 13.53L2.22 14.1A10 10 0 0 1 2.22 9.9L4.91 10.47A7.25 7.25 0 0 1 5.91 8.07L3.6 6.58A10 10 0 0 1 6.58 3.6L8.07 5.91A7.25 7.25 0 0 1 10.47 4.91L9.9 2.22A10 10 0 0 1 14.1 2.22L13.53 4.91A7.25 7.25 0 0 1 15.93 5.91L17.42 3.6A10 10 0 0 1 20.4 6.58L18.09 8.07A7.25 7.25 0 0 1 19.09 10.47ZM15.05 12A3.05 3.05 0 1 0 8.95 12A3.05 3.05 0 1 0 15.05 12Z"/></svg></button>
-    </div>
-  </header>
-
+  <!-- 브랜드는 왼쪽 패널이 갖고, 그 패널은 화면 맨 위에서 시작한다. 헤더는 그 오른쪽
+       영역만 덮는다. 무엇을 보고 있는지(프로젝트)와 프로젝트 안에서의 이동은 전부
+       사이드바가 갖고, 헤더에는 프로젝트를 가리지 않는 것만 남는다.
+       검색은 좌우 내용 길이와 무관하게 늘 같은 자리에 있어야 하므로 3열 격자의
+       가운데 칸이 소유한다. -->
   <div class="workspace-shell">
+    <header class="app-header">
+      <label class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
+      <div class="app-header-right">
+        <button id="sync-status" class="sync-status"><span class="health-dot"></span><span id="sync-label">동기화 상태</span></button>
+        <button id="health" class="health" data-focus-attention="1"><span class="health-dot"></span><span id="health-label">상태 확인</span><span id="operation-count" class="badge"></span></button>
+        <span class="header-divider" aria-hidden="true"></span>
+        <label class="sr-only" for="current-member">보기 기준</label>
+        <select id="current-member" title="보기 기준"><option value="">사용자 선택</option></select>
+        <span class="header-divider" aria-hidden="true"></span>
+        <button id="refresh" class="icon-button" aria-label="로컬 새로고침"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19.4 10.2A7.6 7.6 0 1 0 19.7 14"/><path d="M19.9 4.6v5.7h-5.7" stroke-linejoin="round"/></svg></button>
+        <button id="settings-button" class="icon-button" data-view="settings" aria-label="설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+    </header>
     <aside class="navigation-panel" aria-label="프로젝트 탐색">
+      <div class="sidebar-brand">
+        <a class="brand" href="#home" aria-label="Rundol 홈"><b>Rundol</b></a>
+        <button id="collapse-nav" class="icon-button" aria-label="탐색 접기"><span class="when-expanded"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></span><span class="when-collapsed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></span></button>
+      </div>
       <div class="sidebar-head">
         <label class="sr-only" for="project-switcher">프로젝트</label>
         <select id="project-switcher"></select>
-        <button id="collapse-nav" class="icon-button" aria-label="탐색 접기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.25 6.5 8.75 12l5.5 5.5"/></svg></button>
       </div>
       <div class="sidebar-body">
       <nav class="primary-nav" aria-label="주요 화면">
-        <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M11.24 3.05a1.2 1.2 0 0 1 1.52 0l8.1 6.62c.29.24.45.6.45.97v9.36c0 .69-.56 1.25-1.25 1.25h-4.81v-5.6c0-.55-.45-1-1-1h-4.5c-.55 0-1 .45-1 1v5.6H3.94c-.69 0-1.25-.56-1.25-1.25V10.64c0-.37.16-.73.45-.97z"/></svg></span><span class="nav-label">홈</span></button>
-        <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M6.85 2.5h6.5l5.5 5.5v11.75a1.75 1.75 0 0 1-1.75 1.75H6.85A1.75 1.75 0 0 1 5.1 19.75V4.25c0-.97.78-1.75 1.75-1.75zM9.1 12a.75.75 0 0 0 0 1.5h7a.75.75 0 0 0 0-1.5zm0 3.75a.75.75 0 0 0 0 1.5h5a.75.75 0 0 0 0-1.5z"/></svg></span><span class="nav-label">문서</span></button>
-        <button data-view="tasks" class="nav-item" title="태스크"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M6.85 4.6h10.3c1.02 0 1.85.83 1.85 1.85v13.2c0 1.02-.83 1.85-1.85 1.85H6.85A1.85 1.85 0 0 1 5 19.65V6.45c0-1.02.83-1.85 1.85-1.85zM8.1 4.35h7.8a1.9 1.9 0 0 1 1.9 1.9 1.9 1.9 0 0 1-1.9 1.9H8.1a1.9 1.9 0 0 1-1.9-1.9 1.9 1.9 0 0 1 1.9-1.9zM16.16 11.06a1.15 1.15 0 0 0-1.62-.06l-4.5 4.23-1.46-1.53a1.15 1.15 0 1 0-1.67 1.58l2.24 2.36c.43.46 1.16.48 1.62.04l5.33-5a1.15 1.15 0 0 0 .06-1.62z"/><path d="M9.55 2.5h4.9c.6 0 1.1.5 1.1 1.1v2.4c0 .6-.5 1.1-1.1 1.1h-4.9c-.6 0-1.1-.5-1.1-1.1V3.6c0-.6.5-1.1 1.1-1.1z"/></svg></span><span class="nav-label">태스크</span></button>
+        <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="nav-label">홈</span></button>
+        <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></span><span class="nav-label">문서</span></button>
+        <button data-view="tasks" class="nav-item" title="태스크"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 4h7"/><path d="M14 9h7"/><path d="M14 15h7"/><path d="M14 20h7"/></svg></span><span class="nav-label">태스크</span></button>
       </nav>
       <section class="nav-section"><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
       <section class="nav-section"><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
-      <section class="utility-nav"><h2>참고</h2><button data-view="people" title="사람과 역할"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M9.4 11.63a3.95 3.95 0 1 0 0-7.9 3.95 3.95 0 0 0 0 7.9zM2.5 18.88c0-2.98 3.09-4.75 6.9-4.75s6.9 1.77 6.9 4.75c0 .77-.62 1.4-1.4 1.4H3.9c-.77 0-1.4-.63-1.4-1.4z"/><path d="M17.05 11.33a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2zM17.5 13.13c2.55.15 4 1.55 4 3.6v1.15c0 .77-.63 1.4-1.4 1.4h-2.2c.06-.28.1-.58.1-.9 0-2.24-.98-4-2.5-5.1a9.6 9.6 0 0 1 2-.15z"/></svg></span><span class="nav-label">사람과 역할</span></button></section>
+      <section class="utility-nav"><h2>참고</h2><button data-view="people" title="사람과 역할"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg></span><span class="nav-label">사람과 역할</span></button></section>
       </div>
     </aside>
 
@@ -139,7 +139,7 @@
         <span>Context</span>
         <div class="panel-actions">
           <button id="expand-context" class="icon-button" aria-label="크게 보기" title="크게 보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.75h5.25V10M10 19.25H4.75V14M19.25 4.75 13.5 10.5M4.75 19.25 10.5 13.5"/></svg></button>
-          <button id="collapse-context" class="icon-button" aria-label="닫기"><span class="when-peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></span><span class="when-docked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.75 6.5 15.25 12l-5.5 5.5"/></svg></span></button>
+          <button id="collapse-context" class="icon-button" aria-label="닫기"><span class="when-peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></span><span class="when-docked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></span></button>
         </div>
       </div>
       <div id="context-empty" class="empty-state">문서나 태스크를 선택하면 속성, 연결과 검증 정보를 표시합니다.</div>

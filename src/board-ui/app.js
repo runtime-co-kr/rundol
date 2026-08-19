@@ -232,6 +232,13 @@ function resetViewOptions() {
   for (const key of Object.keys(localStorage)) if (key.startsWith(prefix)) localStorage.removeItem(key);
 }
 
+// 화면 아이콘은 글자가 아니라 그림이다. ›·▸·×는 본문 글꼴을 따라가므로 크기도 굵기도
+// 제 뜻대로 정할 수 없고, 14px 글리프 하나는 누를 수 있는 곳으로 읽히지 않는다.
+// 헤더·탐색과 같은 24 격자·2px 선을 쓰고, 크기와 방향은 CSS가 정한다.
+// 화살표는 오른쪽 하나만 두고 펼친 상태는 돌려서 만든다. 두 벌을 두면 둘이 어긋난다.
+const CHEVRON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg>';
+
 // breadcrumb은 지금까지 textContent라 눌러도 아무 일이 없었다.
 // 마디마다 돌아갈 곳이 있어야 들어갔다 나오는 길이 생긴다.
 function breadcrumb(parts) {
@@ -284,6 +291,7 @@ function renderHome() {
   const data = state.snapshot; const tasks = data.tasks.tasks; const documents = data.documents; const attention = data.attention;
   // 숫자를 보고 그 목록으로 갈 수 없으면 요약이 막다른 길이 된다. 지금까지 div였고
   // 눌러도 아무 일이 없었다. 각 지표를 그 수를 만든 화면으로 보낸다.
+  el('attention-count').textContent = attention.length;
   const metrics = [
     [tasks.length, '전체 태스크', 'data-view="tasks"'],
     [documents.length, '프로젝트 문서', 'data-view="documents"'],
@@ -291,7 +299,6 @@ function renderHome() {
     [attention.length, '조치 필요', 'data-focus-attention="1"']
   ];
   el('metrics').innerHTML = metrics.map(([value, label, action]) => `<button type="button" class="metric" ${action}><strong>${value}</strong><span>${label}</span></button>`).join('');
-  el('attention-count').textContent = attention.length;
   // 태스크는 그 태스크로 가고 동기화 항목은 동기화를 실행한다. 예전에는 둘 다 운영 상태
   // 화면으로 보냈는데 그 화면은 헤더와 이 목록의 중복이라 없앴다.
   el('attention-list').innerHTML = attention.length ? attention.slice(0, 12).map((item) => `<button class="attention-item" ${item.kind === 'task' ? `data-task="${escapeHtml(item.id)}"` : 'data-run-sync="1"'}><span class="severity ${item.severity}"></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.reason)}</small></span><span>›</span></button>`).join('') : '<p class="empty-state">현재 조치가 필요한 항목이 없습니다.</p>';
@@ -502,7 +509,7 @@ function taskGroups(tasks) {
     .filter(([, items]) => items.length)
     .map(([key, items]) => {
       const collapsed = groupCollapsed(groupBy, key);
-      return `<section class="task-group${collapsed ? ' collapsed' : ''}"><button class="task-group-head" data-group-toggle="${escapeHtml(`${groupBy}.${key}`)}" aria-expanded="${!collapsed}"><span class="group-caret">${collapsed ? '▸' : '▾'}</span><span class="chip">${escapeHtml(grouper.label(key))}</span><span class="badge">${items.length}</span></button>${collapsed ? '' : items.map(taskRow).join('')}</section>`;
+      return `<section class="task-group${collapsed ? ' collapsed' : ''}"><button class="task-group-head" data-group-toggle="${escapeHtml(`${groupBy}.${key}`)}" aria-expanded="${!collapsed}"><span class="group-caret" aria-hidden="true">${CHEVRON_ICON}</span><span class="chip">${escapeHtml(grouper.label(key))}</span><span class="badge">${items.length}</span></button>${collapsed ? '' : items.map(taskRow).join('')}</section>`;
     })
     .join('');
 }
@@ -996,7 +1003,7 @@ function ensureContractSettings() {
   if (el('contract-settings')) return;
   el('settings-panels').insertAdjacentHTML('beforeend', `<section id="contract-settings" class="settings-panel contract-settings"><header class="section-heading"><div><h2>문서 계획 계약</h2><p id="contract-summary"></p></div><div class="page-actions"><button id="save-preset" hidden>프리셋으로 저장</button><button id="save-contract" class="primary">계약 저장</button></div></header><div class="form-grid"><label>프로필<select id="contract-profile"></select><small id="contract-profile-hint" class="control-hint"></small></label><label>강제 수준<select id="contract-enforcement"></select><small id="contract-enforcement-hint" class="control-hint"></small></label></div><p id="implementation-contract-summary" class="control-hint"></p><div id="contract-rules" class="contract-table" aria-label="문서 계약 규칙"></div></section>`);
 }
-function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">×</button></span>`; }
+function contractComponent(value) { return `<span class="component-chip" data-contract-section="${escapeHtml(value)}"><span>${escapeHtml(value)}</span><button type="button" data-component-remove aria-label="${escapeHtml(value)} 제거">${CLOSE_ICON}</button></span>`; }
 function setSuggestionState(row, value, selected) {
   for (const suggestion of row.querySelectorAll('[data-component-suggestion]')) if (suggestion.dataset.componentSuggestion === value) suggestion.disabled = selected;
 }
