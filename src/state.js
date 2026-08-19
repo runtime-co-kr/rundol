@@ -14,6 +14,7 @@ const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
 const { getClient } = require('./collaboration-store');
 const { readCollaboration } = require('./collaboration');
 const { newDocumentUid } = require('./document-identity');
+const { taskEnforcementFrom } = require('./document-profile');
 const { runtimeWorkspace } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
@@ -375,7 +376,9 @@ function persistTaskChange(config, values) {
   }));
   const changedRelative = storeChange ? path.relative(config.worktree, storeChange.file).replace(/\\/g, '/') : config.taskRelative;
   runGit(['add', '--', changedRelative], { cwd: config.worktree });
-  runGit(['commit', '-m', values.message], { cwd: config.worktree });
+  // 태스크를 만들고 고치는 커밋도 어느 태스크의 일인지 답한다. 답이 자기 자신이라
+  // 당연해 보이지만, 적지 않으면 검사에서 결박을 지나지 않은 커밋으로 보인다.
+  runGit(['commit', '-m', commitMessageWith(values.message, { taskId: values.taskId })], { cwd: config.worktree });
   return runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout;
 }
 
@@ -569,6 +572,77 @@ function stageScoped(config, scope) {
   return Boolean(dirty);
 }
 
+// 어느 태스크의 일이었는지는 커밋 자체가 답한다. 원장이나 설정에 적으면 커밋과
+// 그 사실이 따로 움직이고, 나중에 둘이 어긋났을 때 어느 쪽이 사실인지 알 수 없다.
+const TASK_TRAILER = 'Rundol-Task';
+const TASK_REASON_TRAILER = 'Rundol-Task-Reason';
+
+function taskTrailer(binding) {
+  if (!binding) return '';
+  const lines = binding.taskId
+    ? [`${TASK_TRAILER}: ${binding.taskId}`]
+    : [`${TASK_TRAILER}: none`, `${TASK_REASON_TRAILER}: ${binding.reason}`];
+  return `\n\n${lines.join('\n')}`;
+}
+
+function commitMessageWith(message, binding) {
+  return `${message}${taskTrailer(binding)}`;
+}
+
+function projectTaskEnforcement(config) {
+  if (!config.project) return 'advisory';
+  const charter = path.join(config.worktree, 'project.md');
+  if (!fs.existsSync(charter)) return 'advisory';
+  return taskEnforcementFrom(fs.readFileSync(charter, 'utf8'));
+}
+
+// 강제 지점은 저장 하나다. 여러 곳에 나누어 걸면 어디서 막혔는지가 흐려지고, 공유에
+// 걸면 늦다 — 작업이 로컬에 쌓인 뒤에는 어느 커밋이 무슨 일이었는지가 추측이 된다.
+// 저장은 일이 사실로 굳는 순간이고, 그때는 자기가 무엇을 했는지 안다.
+function resolveTaskBinding(config, settings) {
+  const level = projectTaskEnforcement(config);
+  const requested = settings.task ? String(settings.task).trim() : null;
+  const excuse = settings.noTask ? String(settings.noTask).trim() : null;
+  const notices = [];
+  if (requested && excuse) throw new Error('RDL-TASK-030: --task와 --no-task를 함께 쓸 수 없습니다. 태스크를 밝히거나 사유를 대거나 둘 중 하나입니다.');
+  // 우회는 거부 수준에서만 존재한다. 경고 수준에서는 경고가 나가므로 우회할 것이 없고,
+  // 그래도 받아 주면 아무것도 막지 않는 자리에 사유를 적는 습관만 남는다.
+  if (excuse && level !== 'checkpoint') throw new Error('RDL-TASK-031: 이 프로젝트의 태스크 강제는 경고 수준입니다. 우회할 것이 없습니다.');
+
+  const store = config.project ? readTaskStore(path.join(config.worktree, config.taskRelative)) : { tasks: {} };
+  const tasks = store.tasks || {};
+  if (requested) {
+    // 없는 태스크나 다른 프로젝트의 태스크로는 묶을 수 없다. 묶이지 않은 식별자를
+    // 커밋에 적으면, 결박이 있었다는 기록만 남고 가리키는 곳이 없다.
+    if (!Object.prototype.hasOwnProperty.call(tasks, requested)) throw new Error(`RDL-TASK-032: 이 프로젝트에 없는 태스크입니다: ${requested}`);
+    return { level, taskId: requested, inferred: false, reason: null, notices };
+  }
+  if (excuse) return { level, taskId: null, inferred: false, reason: excuse, notices };
+
+  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
+  if (doing.length === 1) {
+    notices.push(`태스크를 지정하지 않아 진행 중인 ${doing[0]}(으)로 기록합니다.`);
+    return { level, taskId: doing[0], inferred: true, reason: null, notices };
+  }
+  // 둘 이상이면 추론하지 않는다. 골라 주는 것이 편해 보이지만, 틀린 결박은 결박이
+  // 없는 것보다 나쁘다 — 없는 것은 비어 있고 틀린 것은 거짓이다.
+  const why = doing.length ? `진행 중인 태스크가 ${doing.length}건입니다: ${doing.join(', ')}` : '진행 중인 태스크가 없습니다';
+  if (level === 'checkpoint') throw new Error(`RDL-TASK-033: 이 저장이 어느 태스크의 일인지 밝혀야 합니다. ${why}. --task <ID>로 지정하거나 --no-task <사유>로 사유를 남기세요.`);
+  notices.push(`RDL-TASK-034: 이 저장은 태스크에 묶이지 않았습니다. ${why}.`);
+  return { level, taskId: null, inferred: false, reason: `태스크 강제가 경고 수준입니다 (${why})`, notices };
+}
+
+// 결과는 평평하게 싣는다. 중첩 객체는 사람이 읽는 출력에서 통째로 생략되므로,
+// 무엇을 골랐는지 알린다는 요구가 --json에서만 지켜지게 된다.
+function bindingReport(binding) {
+  return {
+    task: binding.taskId || null,
+    taskInferred: binding.taskId ? binding.inferred : null,
+    taskEnforcement: binding.level,
+    notices: binding.notices.length ? binding.notices : undefined
+  };
+}
+
 function saveProjectState(config, settings) {
   if (!refExists(config.root, config.ref)) initProjectState(config);
   ensureWorkspaceWorktree(config);
@@ -581,19 +655,27 @@ function saveProjectState(config, settings) {
     if (expected !== actual) throw new Error(`RDL-SAVE-011: 기대한 HEAD와 다릅니다. 기대 ${expected}, 실제 ${actual}.`);
   }
   const scope = settings.scope || null;
+  const message = settings.message || 'rdl: update workspace';
   if (scope) {
     const changed = stageScoped(config, scope);
     validateProjection(config);
     if (!changed) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
-    runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
-    return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() };
+    // 결박은 담을 것이 있다는 것을 확인한 뒤에 묻는다. 바꾼 것이 없는데 태스크를
+    // 요구하면, 아무 일도 하지 않은 호출이 막힌 이유가 태스크가 된다.
+    //
+    // 두 축이 모두 걸리면 문서 경고가 먼저 나가고 태스크 거부가 뒤에 온다. 막은
+    // 이유가 마지막에 오는 편이 읽기 좋다 — 그래서 validateProjection 다음이다.
+    const binding = resolveTaskBinding(config, settings);
+    runGit(['commit', '-m', commitMessageWith(message, binding)], { cwd: config.worktree });
+    return Object.assign({ root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() }, bindingReport(binding));
   }
   validateProjection(config);
   const status = runGit(['status', '--porcelain'], { cwd: config.worktree }).stdout;
   if (!status) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
+  const binding = resolveTaskBinding(config, settings);
   runGit(['add', '-A', '--', '.'], { cwd: config.worktree });
-  runGit(['commit', '-m', settings.message || 'rdl: update workspace'], { cwd: config.worktree });
-  return { root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() };
+  runGit(['commit', '-m', commitMessageWith(message, binding)], { cwd: config.worktree });
+  return Object.assign({ root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() }, bindingReport(binding));
 }
 
 // 런이 시킨 저장의 범위는 그 런이 고정한 대상 문서 하나다. 범위를 부르는 쪽이

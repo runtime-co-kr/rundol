@@ -107,6 +107,7 @@ function evaluateDocumentContract(profileInput, artifactInput) {
   ready.sort((left, right) => rank[left.state] - rank[right.state] || REGULAR_TYPES.indexOf(left.type) - REGULAR_TYPES.indexOf(right.type));
   return {
     enforcement: profile.enforcement,
+    taskEnforcement: profile.taskEnforcement || 'advisory',
     revision: profile.revision,
     present: Array.from(present).sort((left, right) => REGULAR_TYPES.indexOf(left) - REGULAR_TYPES.indexOf(right)),
     ready,
@@ -126,13 +127,13 @@ function loadDocumentContract(start, projectKey) {
   const presets = resolveProfilePresets(presentation);
   const validation = validateDocumentProfile(source, presets);
   const catalog = Object.assign(documentContractCatalog(), { profiles: Object.keys(presets), profileChoices: profileChoices(presentation) });
-  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, evaluation: null, catalog };
-  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, errors: validation.errors, evaluation: null, catalog };
+  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, taskEnforcement: 'advisory', evaluation: null, catalog };
+  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, taskEnforcement: (validation.profile && validation.profile.taskEnforcement) || 'advisory', errors: validation.errors, evaluation: null, catalog };
   const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
   const artifacts = projectArtifacts(project);
   const evaluation = evaluateDocumentContract(profile, artifacts);
   const traceability = implementationTrace(artifacts);
-  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, evaluation, traceability, catalog };
+  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, taskEnforcement: profile.taskEnforcement || 'advisory', evaluation, traceability, catalog };
 }
 
 function assertDocumentCreationAllowed(start, projectKey, type) {

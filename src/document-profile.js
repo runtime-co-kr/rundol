@@ -84,11 +84,11 @@ function profileBlock(source) {
 function parseRawProfile(source) {
   const block = profileBlock(source);
   if (!block) return null;
-  const raw = { schemaVersion: null, revision: null, name: null, enforcement: null, traits: [], history: [], policy: {}, rules: {}, omissions: {} };
+  const raw = { schemaVersion: null, revision: null, name: null, enforcement: null, taskEnforcement: null, traits: [], history: [], policy: {}, rules: {}, omissions: {} };
   let section = 'profile';
   let currentType = null;
   for (const line of block.split('\n').slice(1)) {
-    const top = /^  (schemaVersion|revision|name|enforcement|traits|history):\s*(.*)$/u.exec(line);
+    const top = /^  (schemaVersion|revision|name|enforcement|taskEnforcement|traits|history):\s*(.*)$/u.exec(line);
     if (top) {
       raw[top[1]] = ['traits', 'history'].includes(top[1]) ? parseList(top[2]) : scalar(top[2]);
       section = 'profile';
@@ -116,6 +116,15 @@ function parseRawProfile(source) {
     }
   }
   return raw;
+}
+
+// 태스크 축만 알고 싶은 자리가 있다. 저장 게이트는 프로필 이름이 유효한지, 문서가
+// 다 있는지를 묻지 않는다 — 이 프로젝트가 태스크를 요구하는지만 묻는다. 계약 전체를
+// 읽어 그 판정에 얹으면, 무관한 계약 오류가 저장을 막는 이유가 된다.
+function taskEnforcementFrom(source) {
+  const raw = parseRawProfile(source);
+  if (!raw) return 'advisory';
+  return ENFORCEMENTS.includes(raw.taskEnforcement) ? raw.taskEnforcement : 'advisory';
 }
 
 function ordered(values) {
@@ -173,6 +182,13 @@ function normalizeProfile(input, presets) {
   };
   if (schemaVersion === 1) return result;
   result.enforcement = ENFORCEMENTS.includes(value.enforcement) ? value.enforcement : 'checkpoint';
+  // 강제 수준의 축은 둘이다. 문서 계약과 태스크 규율은 성숙도가 다르므로 하나의 값에
+  // 묶으면 낮은 쪽에 맞춰지고, 이미 지켜지던 쪽이 함께 약해진다.
+  //
+  // 파일에서 옛 이름 `enforcement`는 그대로 문서 축이다. 이름을 바꾸면 이미 저장된
+  // 계약이 전부 다시 쓰여야 하고, 다시 쓰인 파일은 구버전이 읽지 못한다. 태스크 축은
+  // 경고에서 시작한다 — 이 변경만으로 기존 프로젝트의 동작이 달라지면 안 된다.
+  result.taskEnforcement = ENFORCEMENTS.includes(value.taskEnforcement) ? value.taskEnforcement : 'advisory';
   // rules는 더 이상 프로젝트가 들고 다니는 상태가 아니다. "REQ는 PRD 다음"이라는 지식은
   // 프로젝트마다 다르지 않아 아무도 바꾸지 않았고, 바꿔도 아무것도 막지 않았다.
   // 지식은 DEFAULT_RULES 상수로 남고 contract next가 거기서 계산한다.
@@ -223,6 +239,7 @@ function parseDocumentProfile(source, presets) {
     revision: Number.parseInt(raw.revision, 10) || 1,
     name: raw.name,
     enforcement: raw.enforcement,
+    taskEnforcement: raw.taskEnforcement,
     traits: raw.traits,
     history: raw.history,
     policy: raw.policy,
@@ -273,6 +290,9 @@ function validateDocumentProfile(source, presets) {
   }
   if (schemaVersion === 2) {
     if (!ENFORCEMENTS.includes(raw.enforcement)) errors.push(`지원하지 않는 enforcement입니다: ${raw.enforcement || '(없음)'}`);
+    // 태스크 축은 적혀 있지 않아도 된다. 없으면 경고에서 시작한다 — 축을 하나 더한 것만으로
+    // 기존 계약이 무효가 되면 안 된다. 다만 적혀 있으면 아는 값이어야 한다.
+    if (raw.taskEnforcement !== null && !ENFORCEMENTS.includes(raw.taskEnforcement)) errors.push(`지원하지 않는 taskEnforcement입니다: ${raw.taskEnforcement}`);
     for (const type of REGULAR_TYPES) {
       // 예전 파일에 남아 있는 rules는 읽되 요구하지 않는다. 있으면 그냥 무시되고,
       // 다음 계약 저장에서 블록을 다시 렌더할 때 자연스럽게 사라진다.
@@ -298,6 +318,7 @@ function assertProfileInput(input, presets) {
   if (value.name !== undefined && !known.includes(value.name)) throw new Error(`지원하지 않는 문서 프로필입니다: ${value.name}`);
   if (value.schemaVersion !== undefined && ![1, 2].includes(value.schemaVersion)) throw new Error(`지원하지 않는 documentProfile schemaVersion입니다: ${value.schemaVersion}`);
   if (value.enforcement !== undefined && !ENFORCEMENTS.includes(value.enforcement)) throw new Error(`지원하지 않는 enforcement입니다: ${value.enforcement}`);
+  if (value.taskEnforcement !== undefined && !ENFORCEMENTS.includes(value.taskEnforcement)) throw new Error(`지원하지 않는 taskEnforcement입니다: ${value.taskEnforcement}`);
   for (const trait of parseList(value.traits)) if (!TRAITS.includes(trait)) throw new Error(`지원하지 않는 project trait입니다: ${trait}`);
   if (value.policy) {
     const seen = new Map();
@@ -320,6 +341,9 @@ function assertProfileInput(input, presets) {
 function renderDocumentProfileUnchecked(profile) {
   const lines = ['documentProfile:', `  schemaVersion: ${profile.schemaVersion}`, `  revision: ${profile.revision}`, `  name: ${profile.name}`];
   if (profile.schemaVersion === 2) lines.push(`  enforcement: ${profile.enforcement}`);
+  // 기본값일 때는 적지 않는다. 축을 더했다는 이유로 손대지 않은 프로젝트의 계약 파일이
+  // 바뀌면, 그 파일을 읽는 구버전이 함께 멈춘다. 사람이 값을 정했을 때만 파일이 바뀐다.
+  if (profile.schemaVersion === 2 && profile.taskEnforcement && profile.taskEnforcement !== 'advisory') lines.push(`  taskEnforcement: ${profile.taskEnforcement}`);
   lines.push(`  traits: [${profile.traits.join(', ')}]`, `  history: [${profile.history.join(', ')}]`, '  policy:');
   for (const state of POLICY_STATES) lines.push(`    ${state}: [${profile.policy[state].join(', ')}]`);
   // 사람이 적어 둔 값은 계약을 저장해도 그대로 남는다. 규칙을 없앤 것이 그 기록을 지울
@@ -383,7 +407,7 @@ function profileImpact(before, after) {
   const changes = [];
   if (!before) changes.push({ field: 'contract', from: null, to: 'configured' });
   else {
-    for (const field of ['name', 'enforcement']) if (before[field] !== after[field]) changes.push({ field, from: before[field], to: after[field] });
+    for (const field of ['name', 'enforcement', 'taskEnforcement']) if (before[field] !== after[field]) changes.push({ field, from: before[field], to: after[field] });
     for (const type of REGULAR_TYPES) {
       const oldState = before && POLICY_STATES.find((state) => before.policy[state].includes(type));
       const newState = POLICY_STATES.find((state) => after.policy[state].includes(type));
@@ -403,6 +427,7 @@ function reconfigureProject(projectFile, name, overrides, presets) {
     schemaVersion: 2,
     name,
     enforcement: settings.enforcement || (migrated && migrated.enforcement) || 'checkpoint',
+    taskEnforcement: settings.taskEnforcement || (migrated && migrated.taskEnforcement) || 'advisory',
     traits: settings.traits || (migrated && migrated.traits) || [],
     policy: settings.policy || undefined,
     omissions: settings.omissions || (settings.policy ? undefined : migrated && migrated.omissions),
@@ -424,5 +449,5 @@ function missingActions(profile, presentTypes) {
 module.exports = {
   REGULAR_TYPES, PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS, DEFAULT_POLICIES, DEFAULT_RULES, DEFAULT_SECTIONS, DOCUMENT_SECTION_CATALOG,
   normalizeProfile, assertProfileInput, parseDocumentProfile, validateDocumentProfile, renderDocumentProfile,
-  migrateProfile, applyToProject, reconfigureProject, profileImpact, missingActions
+  migrateProfile, applyToProject, reconfigureProject, profileImpact, missingActions, taskEnforcementFrom
 };

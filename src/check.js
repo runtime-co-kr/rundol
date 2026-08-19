@@ -924,6 +924,40 @@ function checkCompositeViews(diagnostics, layout, project) {
   });
 }
 
+// 저장 게이트는 Rundol의 저장을 지나는 작업에만 걸린다. Git을 직접 써서 만든 커밋은
+// 그 게이트를 지나지 않으므로 결박을 요구할 방법이 없다. 그 한계를 없앨 수는 없지만
+// 감출 이유도 없다 — 사후 가시성은 검사가 맡는다.
+//
+// 창은 최근 커밋으로 한정한다. 전체 이력을 걷는 검사는 프로젝트가 자랄수록 느려지고,
+// 오래된 커밋은 어차피 되돌릴 수 없어 알려도 할 일이 없다. 병합은 일이 아니므로 세지
+// 않는다. 진단은 커밋마다가 아니라 한 건으로 모은다 — 올리자마자 옛 커밋 수십 건이
+// 경고로 쏟아지면, 그 경고는 읽히지 않고 꺼진다.
+const TASK_BINDING_WINDOW = 50;
+
+function checkTaskBinding(diagnostics, layout, project) {
+  if (!project.ref || !project.root) return;
+  const log = runGit(['log', '--no-merges', `--max-count=${TASK_BINDING_WINDOW}`, '--format=%H%x1f%B%x1e', project.ref], { cwd: layout.root, allowFailure: true });
+  if (log.status !== 0 || !log.stdout) return;
+  const unbound = [];
+  const excused = [];
+  for (const record of log.stdout.split('\x1e')) {
+    const [commit, body] = record.split('\x1f');
+    if (!commit || !commit.trim()) continue;
+    const trailer = /^Rundol-Task:[ \t]*(.+)$/mu.exec(body || '');
+    if (!trailer) unbound.push(commit.trim().slice(0, 12));
+    else if (trailer[1].trim() === 'none') excused.push(commit.trim().slice(0, 12));
+  }
+  const sample = (list) => list.slice(0, 5).join(', ') + (list.length > 5 ? ` 외 ${list.length - 5}건` : '');
+  if (unbound.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-034', category: 'task', severity: 'warning', file: null, project: project.key,
+    message: `최근 커밋 ${TASK_BINDING_WINDOW}건 중 ${unbound.length}건이 태스크 결박을 지나지 않았습니다: ${sample(unbound)}`
+  });
+  if (excused.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-035', category: 'task', severity: 'warning', file: null, project: project.key,
+    message: `최근 커밋 ${TASK_BINDING_WINDOW}건 중 ${excused.length}건이 태스크 없이 저장됐습니다: ${sample(excused)}`
+  });
+}
+
 function checkDocumentProfile(diagnostics, layout, project, settings) {
   if (!project.charter || !fs.existsSync(project.charter)) return;
   const source = fs.readFileSync(project.charter, 'utf8');
@@ -1017,6 +1051,7 @@ function checkWorkspace(start, options) {
     checkProjectCharter(diagnostics, layout.root, project);
     checkDocumentProfile(diagnostics, layout, project, settings);
     checkCompositeViews(diagnostics, layout, project);
+    checkTaskBinding(diagnostics, layout, project);
     const result = checkLegacyWorkspace(layout.root, settings, project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
     documents += result.summary.documents + 1;

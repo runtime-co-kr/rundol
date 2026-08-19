@@ -20,13 +20,13 @@ Usage:
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
   rdl contract show|next|check|trace --project <key> [--json]
   rdl contract diagram --project <key> [--write] [--json]
-  rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--json]
+  rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--task-enforcement <advisory|checkpoint>] [--json]
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
   rdl git init|boundary [--root <path>] [--project <key>] [--json]
   rdl refresh [--root <path>] [--project <key>] [--json]
-  rdl save [--root <path>] [--project <key>] [--run <RUN-ID>] [--expect-head <sha>] [--json]
+  rdl save [--root <path>] [--project <key>] [--task <TASK-ID> | --no-task <reason>] [--run <RUN-ID>] [--expect-head <sha>] [--json]
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
   rdl check --structure [--root <path>] [--project <key>] [--json]
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
@@ -206,7 +206,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -214,6 +214,9 @@ function parseOperationArgs(argv) {
       else if (value === '--name') options.name = argv[i];
       else if (value === '--profile') options.profile = argv[i];
       else if (value === '--enforcement') options.enforcement = argv[i];
+      else if (value === '--task-enforcement') options.taskEnforcement = argv[i];
+      else if (value === '--task') options.task = argv[i];
+      else if (value === '--no-task') options.noTask = argv[i];
       else if (value === '--remote') options.remote = argv[i];
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
@@ -649,8 +652,10 @@ async function main() {
       if (!available.includes(options.profile)) throw new Error(`--profile <${available.join('|')}>가 필요합니다.`);
     }
     if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
+    if (options.taskEnforcement && !ENFORCEMENTS.includes(options.taskEnforcement)) throw new Error('--task-enforcement는 advisory 또는 checkpoint여야 합니다.');
     const input = { name: options.profile };
     if (options.enforcement) input.enforcement = options.enforcement;
+    if (options.taskEnforcement) input.taskEnforcement = options.taskEnforcement;
     if (options.traits.length) input.traits = options.traits;
     if (options.policySpecified) input.policy = options.policy;
     if (subcommand === 'set') input.baseRevision = loadDocumentContract(options.root, options.project).revision;
