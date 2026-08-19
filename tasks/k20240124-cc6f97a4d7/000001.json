@@ -1484,7 +1484,8 @@
       "status": "todo",
       "priority": "mid",
       "links": [
-        "REQ-044"
+        "REQ-044",
+        "TST-018"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -1507,7 +1508,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:08.690Z",
-      "updatedAt": "2026-08-19T02:01:43.782Z",
+      "updatedAt": "2026-08-19T02:01:45.341Z",
       "statusChangedAt": "2026-08-18T22:49:08.690Z",
       "externalRefs": [],
       "project": "rundol",
