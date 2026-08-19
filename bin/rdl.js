@@ -333,6 +333,19 @@ function printText(result) {
   process.stdout.write(
     `\n${marker} 문서 ${summary.documents}개, 태스크 ${summary.tasks}개, 오류 ${summary.errors}개, 경고 ${summary.warnings}개 (${summary.durationMs}ms)\n`
   );
+  // 결박은 우회를 허용하는 통제다. 허용하는 대신 세기로 했으므로, 그 수는 경고 목록
+  // 안이 아니라 요약에 있어야 한다 — 진단 수십 개 사이에 묻힌 숫자는 아무도 세지 않고,
+  // 세지 않는 우회는 예외가 아니라 그냥 다른 길이 된다.
+  const binding = summary.taskBinding;
+  if (binding && binding.scanned) {
+    const rate = Math.round(((binding.excused + binding.unbound) / binding.scanned) * 100);
+    const parts = [`결박 ${binding.bound}`, `우회 ${binding.excused}`, `미결박 ${binding.unbound}`];
+    if (binding.dangling) parts.push(`끊긴 결박 ${binding.dangling}`);
+    process.stdout.write(`  최근 커밋 ${binding.scanned}건: ${parts.join(' · ')} (결박 밖 ${rate}%)\n`);
+  }
+  if (binding && binding.unchecked.length) {
+    process.stdout.write(`  결박을 확인하지 못한 프로젝트: ${binding.unchecked.join(', ')}\n`);
+  }
 }
 
 async function main() {

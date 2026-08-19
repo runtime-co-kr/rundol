@@ -934,12 +934,13 @@ function checkCompositeViews(diagnostics, layout, project) {
 // 경고로 쏟아지면, 그 경고는 읽히지 않고 꺼진다.
 const TASK_BINDING_WINDOW = 50;
 
-function checkTaskBinding(diagnostics, layout, project) {
+function checkTaskBinding(diagnostics, layout, project, tally) {
   if (!project.ref || !project.root) return;
   const log = runGit(['log', '--no-merges', `--max-count=${TASK_BINDING_WINDOW}`, '--format=%H%x1f%B%x1e', project.ref], { cwd: layout.root, allowFailure: true });
   // 조회하지 못한 것과 위반이 없는 것은 다른 값이다. 조용히 돌아가면 이 검사가
   // 한 번도 돈 적이 없는 저장소가 "결박 위반 없음"과 같은 얼굴을 한다.
   if (log.status !== 0) {
+    if (tally) tally.unchecked.push(project.key);
     diagnostic(diagnostics, {
       code: 'RDL-TASK-038', category: 'task', severity: 'warning', file: null, project: project.key,
       message: `태스크 결박을 확인하지 못했습니다. ${project.ref} 이력을 읽을 수 없습니다: ${String(log.stderr || '').split(/\r?\n/u)[0] || '알 수 없는 오류'}`
@@ -956,10 +957,12 @@ function checkTaskBinding(diagnostics, layout, project) {
   const unbound = [];
   const excused = [];
   const dangling = [];
+  let scanned = 0;
   for (const record of log.stdout.split('\x1e')) {
     const [commit, body] = record.split('\x1f');
     if (!commit || !commit.trim()) continue;
     const short = commit.trim().slice(0, 12);
+    scanned += 1;
     const trailer = /^Rundol-Task:[ \t]*(.+)$/mu.exec(body || '');
     if (!trailer) { unbound.push(short); continue; }
     const value = trailer[1].trim();
@@ -969,6 +972,13 @@ function checkTaskBinding(diagnostics, layout, project) {
     if (known && !known.has(value)) dangling.push(`${short}→${value}`);
   }
   const sample = (list) => list.slice(0, 5).join(', ') + (list.length > 5 ? ` 외 ${list.length - 5}건` : '');
+  if (tally) {
+    tally.scanned += scanned;
+    tally.bound += scanned - unbound.length - excused.length;
+    tally.unbound += unbound.length;
+    tally.excused += excused.length;
+    tally.dangling += dangling.length;
+  }
   if (unbound.length) diagnostic(diagnostics, {
     code: 'RDL-TASK-034', category: 'task', severity: 'warning', file: null, project: project.key,
     message: `최근 커밋 ${TASK_BINDING_WINDOW}건 중 ${unbound.length}건이 태스크 결박을 지나지 않았습니다: ${sample(unbound)}`
@@ -1072,11 +1082,14 @@ function checkWorkspace(start, options) {
   if (!settings.project && allProjects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-007', category: 'governance', file: layout.mountRelative, message: 'project.md가 있는 프로젝트를 찾지 못했습니다.' });
   let documents = 0;
   let tasks = 0;
+  // 우회는 막지 않는 통제다. 막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수
+  // 있어야 하고, 세려면 보여야 한다 — 진단 목록에만 있으면 경고 수십 개 사이에 묻힌다.
+  const taskBinding = { scanned: 0, bound: 0, unbound: 0, excused: 0, dangling: 0, unchecked: [] };
   for (const project of projects) {
     checkProjectCharter(diagnostics, layout.root, project);
     checkDocumentProfile(diagnostics, layout, project, settings);
     checkCompositeViews(diagnostics, layout, project);
-    checkTaskBinding(diagnostics, layout, project);
+    checkTaskBinding(diagnostics, layout, project, taskBinding);
     const result = checkLegacyWorkspace(layout.root, settings, project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
     documents += result.summary.documents + 1;
@@ -1109,6 +1122,7 @@ function checkWorkspace(start, options) {
       projects: projects.length,
       documents,
       tasks,
+      taskBinding,
       errors: diagnostics.filter((item) => item.severity === 'error').length,
       warnings: diagnostics.filter((item) => item.severity === 'warning').length,
       durationMs: Date.now() - startedAt

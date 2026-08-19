@@ -225,6 +225,17 @@ try {
   git(worktree, ['commit', '-m', 'bypassed the save gate']);
   const checked = rdl(workspace, ['check']);
   const codes = checked.diagnostics.map((item) => item.code);
+  // 우회는 막지 않는 통제다. 막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수
+  // 있어야 하고, 세려면 진단 목록이 아니라 요약에 있어야 한다 — 경고 수십 개 사이에
+  // 묻힌 숫자는 아무도 세지 않고, 세지 않는 우회는 예외가 아니라 그냥 다른 길이 된다.
+  const tally = checked.summary.taskBinding;
+  assert(tally, '결박 집계가 요약에 없습니다');
+  assert(tally.scanned > 0, JSON.stringify(tally));
+  assert(tally.bound > 0, `결박된 커밋이 세어지지 않았습니다: ${JSON.stringify(tally)}`);
+  assert(tally.excused > 0, `우회한 커밋이 세어지지 않았습니다: ${JSON.stringify(tally)}`);
+  assert(tally.unbound > 0, `결박을 지나지 않은 커밋이 세어지지 않았습니다: ${JSON.stringify(tally)}`);
+  assert.strictEqual(tally.scanned, tally.bound + tally.excused + tally.unbound,
+    `집계가 스캔한 커밋 수와 맞지 않습니다: ${JSON.stringify(tally)}`);
   assert(codes.includes('RDL-TASK-034'), `게이트를 지나지 않은 커밋이 드러나지 않았습니다: ${codes.join(', ')}`);
   assert(codes.includes('RDL-TASK-035'), `우회로 저장된 커밋이 드러나지 않았습니다: ${codes.join(', ')}`);
 
