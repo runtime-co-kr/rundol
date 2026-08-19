@@ -1087,7 +1087,7 @@
         },
         "AC-003": {
           "text": "커밋 트레일러 규약으로 태스크와 배달 커밋의 대응이 계산되고 브랜치 삭제 후에도 유지된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "스킬이 번들 브랜치 생성부터 PR·review 일괄 전이·병합 후 done까지의 순서를 안내한다",
@@ -1096,7 +1096,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:06:20.272Z",
-      "updatedAt": "2026-08-19T13:26:59.849Z",
+      "updatedAt": "2026-08-19T13:27:01.655Z",
       "statusChangedAt": "2026-08-17T00:06:20.272Z",
       "externalRefs": [],
       "project": "rundol",
