@@ -646,6 +646,59 @@
       "statusChangedAt": "2026-08-19T04:38:59.212Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-00MSZNC2S4BD2195BA82F7DA31": {
+      "title": "[기능] 테스트 차수와 차수별 범위 조회",
+      "summary": "테스트 태스크에 차수를 부여해 회차별로 모아 보고, 그 차수에서 빠진 TST를 계산으로 드러낸다. 차수 대상 목록을 따로 저장하지 않는 것이 요점이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "links": [
+        "REQ-018",
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "테스트 태스크는 1 이상의 정수 차수를 가지며 일반 태스크는 차수를 가질 수 없다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "같은 TST 문서를 같은 차수에 검증하는 태스크는 하나만 존재할 수 있고, 저장과 검사가 함께 막는다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "rdl task list --kind test --round <n>이 그 차수의 태스크와 판정 집계를 낸다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "rdl test rounds가 차수 목록과 차수별 요약을, --round <n>이 그 차수에서 태스크가 없는 TST 목록을 낸다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "차수 대상 목록을 저장하는 산출물을 만들지 않고 문서와 태스크를 대조해 계산한다.",
+          "done": false
+        },
+        "AC-006": {
+          "text": "기존 테스트 태스크에 차수를 부여하고 인덱스 경로와 정본 경로가 같은 답을 낸다.",
+          "done": false
+        },
+        "AC-007": {
+          "text": "회귀 시험이 이 동작들을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T05:23:46.323Z",
+      "updatedAt": "2026-08-19T05:23:46.323Z",
+      "statusChangedAt": "2026-08-19T05:23:46.323Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
