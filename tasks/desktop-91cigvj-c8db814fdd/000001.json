@@ -621,10 +621,10 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "mid",
       "kind": "test",
-      "result": null,
+      "result": "pass",
       "links": [
         "TST-008"
       ],
@@ -637,8 +637,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:38:47.747Z",
-      "updatedAt": "2026-08-19T04:38:58.223Z",
-      "statusChangedAt": "2026-08-19T04:38:47.747Z",
+      "updatedAt": "2026-08-19T04:38:59.212Z",
+      "statusChangedAt": "2026-08-19T04:38:59.212Z",
       "externalRefs": [],
       "project": "rundol"
     }
