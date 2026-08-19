@@ -1805,7 +1805,7 @@
         },
         "AC-004": {
           "text": "작업 할당과 보고 계약이 기능 ID별 완전 계약을 갖는 REQ로 존재한다.",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "rdl check --strict가 오류 없이 통과한다.",
@@ -1814,7 +1814,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T16:48:02.564Z",
-      "updatedAt": "2026-08-19T17:16:22.864Z",
+      "updatedAt": "2026-08-19T17:34:31.047Z",
       "statusChangedAt": "2026-08-19T17:12:09.188Z",
       "externalRefs": [],
       "project": "rundol"
