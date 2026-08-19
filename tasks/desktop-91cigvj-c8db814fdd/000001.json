@@ -535,6 +535,57 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZLLBVP5BD5CE27D22B6857": {
+      "title": "[기능] 태스크 종류와 테스트 판정 축",
+      "summary": "태스크에 종류를 부여해 테스트 실행을 일반 작업과 구분하고, 진행 상태와 별개인 판정 축을 둔다. 실패한 테스트도 수행은 완료이므로 두 축을 한 필드에 섞지 않는다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-018",
+        "TST-008"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "태스크가 normal 또는 test 종류를 갖고, 값이 없으면 normal로 읽힌다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "테스트 태스크만 pass·fail·blocked·skipped 판정을 가질 수 있고, 일반 태스크에 판정을 두면 거부된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "완료한 테스트 태스크에는 판정이 필요하다. 반려한 테스트 태스크에는 요구하지 않는다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "테스트 태스크는 TST 문서를 연결해야 한다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl task add --kind test, rdl task set --result <판정>, rdl task list --kind test가 동작하고 목록이 판정별 집계를 함께 낸다.",
+          "done": false
+        },
+        "AC-006": {
+          "text": "인덱스 경로와 정본 경로가 종류 필터와 판정에 대해 같은 답을 낸다.",
+          "done": false
+        },
+        "AC-007": {
+          "text": "회귀 시험이 이 동작들을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T04:34:58.788Z",
+      "updatedAt": "2026-08-19T04:34:58.788Z",
+      "statusChangedAt": "2026-08-19T04:34:58.788Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
