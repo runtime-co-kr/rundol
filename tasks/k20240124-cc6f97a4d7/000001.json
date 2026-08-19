@@ -1542,12 +1542,12 @@
         },
         "AC-004": {
           "text": "결과에 파생 근거가 남는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:48:46.626Z",
-      "updatedAt": "2026-08-19T11:24:57.278Z",
+      "updatedAt": "2026-08-19T11:24:58.830Z",
       "statusChangedAt": "2026-08-19T01:48:46.626Z",
       "externalRefs": [],
       "project": "rundol",
