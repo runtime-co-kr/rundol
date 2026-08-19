@@ -1599,7 +1599,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "계약과 board.json이 옛 이름을 새 이름으로 읽는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "rdl doc migrate가 API-### 문서의 ID·kind·태그·참조를 함께 옮긴다",
@@ -1616,7 +1616,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:23.666Z",
-      "updatedAt": "2026-08-19T02:22:23.666Z",
+      "updatedAt": "2026-08-19T02:22:43.689Z",
       "statusChangedAt": "2026-08-19T02:22:23.666Z",
       "externalRefs": [],
       "project": "rundol",
