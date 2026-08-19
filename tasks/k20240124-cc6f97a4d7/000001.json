@@ -1915,7 +1915,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "명령줄에서 기존 태스크의 문서 링크를 추가하고 제거할 수 있다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "링크 없이 생성한 태스크를 명령줄만으로 done 상태까지 옮길 수 있다.",
@@ -1928,7 +1928,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T22:37:30.505Z",
-      "updatedAt": "2026-08-19T22:37:30.505Z",
+      "updatedAt": "2026-08-19T23:06:26.038Z",
       "statusChangedAt": "2026-08-19T22:37:30.505Z",
       "externalRefs": [],
       "project": "rundol",
