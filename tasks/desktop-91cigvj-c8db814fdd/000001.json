@@ -618,7 +618,8 @@
         "reason": "구현 준비도 게이트 확인 중 만든 중복 항목",
         "decidedBy": "MEMBER-001",
         "at": "2026-08-19T04:39:00.079Z"
-      }
+      },
+      "round": 1
     },
     "TASK-00MSZLQ8JO805493CB4F8BB2D9": {
       "title": "[검증] 태스크 종류와 판정 축 회귀 실행",
@@ -645,7 +646,8 @@
       "updatedAt": "2026-08-19T04:38:59.212Z",
       "statusChangedAt": "2026-08-19T04:38:59.212Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "round": 1
     },
     "TASK-00MSZNC2S4BD2195BA82F7DA31": {
       "title": "[기능] 테스트 차수와 차수별 범위 조회",
@@ -665,7 +667,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "테스트 태스크는 1 이상의 정수 차수를 가지며 일반 태스크는 차수를 가질 수 없다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "같은 TST 문서를 같은 차수에 검증하는 태스크는 하나만 존재할 수 있고, 저장과 검사가 함께 막는다.",
@@ -694,7 +696,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T05:23:46.323Z",
-      "updatedAt": "2026-08-19T05:23:54.636Z",
+      "updatedAt": "2026-08-19T05:38:07.235Z",
       "statusChangedAt": "2026-08-19T05:23:54.636Z",
       "externalRefs": [],
       "project": "rundol",
