@@ -365,7 +365,6 @@
       "status": "todo",
       "priority": "mid",
       "links": [
-        "REQ-020",
         "ADR-005",
         "ARC-004"
       ],
@@ -394,7 +393,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-14T02:11:37.437Z",
-      "updatedAt": "2026-08-14T02:11:37.437Z",
+      "updatedAt": "2026-08-19T23:04:35.447Z",
       "statusChangedAt": "2026-08-14T02:11:37.437Z",
       "externalRefs": [],
       "project": "rundol",
