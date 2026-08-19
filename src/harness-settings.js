@@ -17,7 +17,7 @@ const SINGLETON_KEYS = {
   watch: new Set(['scanIntervalSeconds', 'remoteIntervalSeconds']),
   lease: new Set(['ttlSeconds', 'renewFactor']),
   adapter: new Set(['timeoutSeconds']),
-  verify: new Set(['defaultAdapter', 'defaultLenses']),
+  verify: new Set(['defaultAdapter', 'defaultLenses', 'maxConcurrency']),
   drive: new Set(['schedulerClientId'])
 };
 
@@ -28,7 +28,9 @@ const DEFAULT_HARNESS_SETTINGS = Object.freeze({
   lease: Object.freeze({ ttlSeconds: 300, renewFactor: 0.5 }),
   adapter: Object.freeze({ timeoutSeconds: 600 }),
   adapters: Object.freeze({}),
-  verify: Object.freeze({ defaultAdapter: null, defaultLenses: Object.freeze(['satisfaction-v1', 'omission-v1', 'boundary-v1']) }),
+  // 기본값은 보수적으로 둔다. 빠르게 만드는 것보다 판정자 제공자의 호출 한도를
+  // 넘지 않는 것이 우선이다 — 한도를 넘으면 빨라지는 것이 아니라 실패한다.
+  verify: Object.freeze({ defaultAdapter: null, defaultLenses: Object.freeze(['satisfaction-v1', 'omission-v1', 'boundary-v1']), maxConcurrency: 2 }),
   drive: Object.freeze({ schedulerClientId: null })
 });
 
@@ -188,6 +190,7 @@ function validateLayer(value, label) {
       const lenses = value.verify.defaultLenses;
       if (!Array.isArray(lenses) || lenses.length < 1 || lenses.length > 16 || lenses.some((lens) => !LENS_ID.test(lens || '') || !Object.prototype.hasOwnProperty.call(LENSES, lens)) || new Set(lenses).size !== lenses.length) throw new Error(`${label}.verify.defaultLenses는 1-16개의 고유 registry ID여야 합니다.`);
     }
+    if (own(value.verify, 'maxConcurrency') && (!Number.isSafeInteger(value.verify.maxConcurrency) || value.verify.maxConcurrency < 1 || value.verify.maxConcurrency > 16)) throw new Error(`${label}.verify.maxConcurrency는 1-16의 정수여야 합니다.`);
   }
   if (own(value, 'drive') && own(value.drive, 'schedulerClientId') && value.drive.schedulerClientId !== null && (typeof value.drive.schedulerClientId !== 'string' || !CLIENT_ID.test(value.drive.schedulerClientId))) throw new Error(`${label}.drive.schedulerClientId가 올바르지 않습니다.`);
   return value;
@@ -264,7 +267,7 @@ function resolveHarnessSettings(input) {
     lease: { ttlSeconds: 'built-in', renewFactor: 'built-in' },
     adapter: { timeoutSeconds: 'built-in' },
     adapters: {},
-    verify: { defaultAdapter: 'built-in', defaultLenses: 'built-in' },
+    verify: { defaultAdapter: 'built-in', defaultLenses: 'built-in', maxConcurrency: 'built-in' },
     drive: { schedulerClientId: 'built-in' }
   };
   mergeLayer(resolved, sources, workspace, 'workspace');

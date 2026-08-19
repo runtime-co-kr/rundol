@@ -288,6 +288,29 @@ function foldVerdicts(events, policy) {
   }
   return { status: overall, targetId: policy.targetId, reviewedRevision: revision, lenses, findings: normalizeFindings(allFindings), diagnostics };
 }
+// 상한이 있는 동시 실행. 실패를 모아서 받는 이유는, 하나가 실패했다고 나머지를
+// 중단하면 이미 끝난 판정까지 버려지고 다음 시도가 처음부터 다시 부르기 때문이다.
+// 성공한 판정은 이미 원장에 남았으므로, 다음 실행은 실패한 것만 다시 부른다.
+//
+// 그래도 마지막에는 던진다. 일부가 실패한 검증은 미완이고, 미완을 통과로 접으면
+// "확인 못 함"과 "이상 없음"이 같은 값이 된다.
+async function runBounded(items, limit, task) {
+  const failures = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next; next += 1;
+      try { await task(items[index], index); }
+      catch (error) { failures.push({ index, error }); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length || 1) }, worker));
+  if (!failures.length) return;
+  // 가장 앞선 호출의 실패를 대표로 던진다. 실행 순서가 달라져도 같은 실패가 보고되어야
+  // 호출자가 재시도 판단을 동시성에 흔들리지 않고 내릴 수 있다.
+  failures.sort((left, right) => left.index - right.index);
+  throw failures[0].error;
+}
 function projectMember(project, memberId) { return fs.existsSync(project.charter) && new RegExp(`\\^${memberId}(?:\\s|$)`, 'mu').test(fs.readFileSync(project.charter, 'utf8')); }
 function cleanSnapshot(project) {
   const head = runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout.toLowerCase();
@@ -356,19 +379,31 @@ async function verifyArtifact(start, input) {
   const commandDigest = verifyCommandDigest({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: adapterName, lenses, runId: input.runId });
   let root = journal.prepareRoot(runtimeWorkspace(layout.root), { rootRequestId, commandDigest, clientId });
   const runner = input.runAdapterOnce || require('./adapter').runAdapterOnce; const recorded = [];
+  // 판정 호출은 서로의 결과를 읽지 않는다. 순차로 짜여 있던 것은 설계가 아니라 루프
+  // 하나였고, 그 루프 때문에 판정자를 늘릴 때마다 시간이 선형으로 늘었다 — 독립성을
+  // 얻는 대가로 속도를 잃으면, 느려진 통제는 결국 꺼진다.
+  //
+  // 원장 접근이 안전한 이유는 락이 아니라 이 함수 몸통에 await가 하나뿐이기 때문이다.
+  // 어댑터 호출 말고는 전부 동기이므로 다른 호출이 그 사이를 비집고 들어올 수 없다.
+  // 대신 root는 재할당되므로 살아 있는 값을 함수로 읽는다 — 낡은 객체에 쓰면 그
+  // 사이에 기록된 판정을 지운다.
+  const currentRoot = () => root;
+  const work = [];
   for (const lens of lenses) {
     const required = lensPolicy(policy, lens);
-    for (let slot = 1; slot <= required.validators; slot += 1) {
+    for (let slot = 1; slot <= required.validators; slot += 1) work.push({ lens, slot });
+  }
+  async function runSlot({ lens, slot }) {
       const childKey = `verdict:${input.targetId}:${reviewedRevision}:${lens}:${slot}`;
-      const existingChild = root.journal.children[childKey];
+      const existingChild = currentRoot().journal.children[childKey];
       if (existingChild) {
         const after = cleanSnapshot(project); if (after.head !== reviewedRevision) throw new Error('project HEAD differs from the pinned verification revision');
         assertVerificationGuard(start, project, { settingsHash: settings.contentHash, runId: input.runId, clientId, ownerToken });
         const canonical = JSON.parse(journal.decodeChild(existingChild, rootRequestId).toString('utf8'));
-        const resumed = resumeVerdictJournalChild(start, { root, child: existingChild, canonical });
-        if (root.journal.invocations && root.journal.invocations[childKey]) journal.updateInvocation(root, childKey, 'complete');
-        recorded.push({ event: resumed.event, canonicalCommitted: true, projectionDegraded: false, rootRequestId, requestId: existingChild.requestId, eventId: existingChild.eventId });
-        continue;
+        const resumed = resumeVerdictJournalChild(start, { root: currentRoot(), child: existingChild, canonical });
+        if (currentRoot().journal.invocations && currentRoot().journal.invocations[childKey]) journal.updateInvocation(currentRoot(), childKey, 'complete');
+        recorded.push({ lens, slot, event: resumed.event, canonicalCommitted: true, projectionDegraded: false, rootRequestId, requestId: existingChild.requestId, eventId: existingChild.eventId });
+        return;
       }
       const validator = validatorInstanceId(rootRequestId, input.targetId, reviewedRevision, lens, slot);
       const lensEntry = getLens(lens);
@@ -380,7 +415,7 @@ async function verifyArtifact(start, input) {
         instruction: pinnedInstruction, adapter: expectedAdapter,
         command: Object.assign({ project: project.key, targetId: input.targetId, reviewedRevision, clientId, adapter: adapterName, lenses }, input.runId ? { runId: input.runId, stepId: step.id } : {})
       });
-      let invocation = journal.prepareInvocation(root, { invocationKey: childKey, descriptor });
+      let invocation = journal.prepareInvocation(currentRoot(), { invocationKey: childKey, descriptor });
       let outcome;
       if (invocation.phase === 'terminal') throw new Error(`verification invocation is terminal: ${invocation.failureCode || childKey}`);
       if (invocation.phase === 'running' && pidAlive(invocation.pid)) { const error = new Error(`verification invocation is still live: ${descriptor.invocationId}`); error.code = 'invocation-live'; throw error; }
@@ -389,41 +424,44 @@ async function verifyArtifact(start, input) {
           const existing = consumeInvocationResult(project, descriptor);
           if (existing.state === 'result') {
             outcome = { exitCode: 0, status: 'success', result: existing.result, adapter: existing.adapter };
-            journal.updateInvocation(root, childKey, 'result-ready');
+            journal.updateInvocation(currentRoot(), childKey, 'result-ready');
           } else if (existing.state === 'retryable-empty' || existing.state === 'absent') {
             if (invocation.phase === 'result-ready') throw new Error('result-ready invocation has no valid result');
             if (existing.state === 'retryable-empty') fs.rmSync(existing.directory, { recursive: true, force: false });
           }
         } catch (error) {
-          journal.updateInvocation(root, childKey, 'terminal', { failureCode: 'invalid-existing-result' });
+          journal.updateInvocation(currentRoot(), childKey, 'terminal', { failureCode: 'invalid-existing-result' });
           throw error;
         }
       }
       if (!outcome) {
-        journal.updateInvocation(root, childKey, 'running', { pid: process.pid });
+        journal.updateInvocation(currentRoot(), childKey, 'running', { pid: process.pid });
         try {
           outcome = await runner({ projectRoot: project.root, projectId: project.key, mode: 'verify', adapter: Object.assign({ name: adapterName }, adapterConfig), instruction: pinnedInstruction, targetPath: relativeTarget, allowedContextPaths: [relativeTarget], pin: { targetId: input.targetId, reviewedRevision }, instanceId: descriptor.invocationId, validatorInstanceId: validator, rootRequestId, runId: input.runId, stepId: step && step.id, lensId: lens }, {
-            onSpawn(pid) { journal.updateInvocation(root, childKey, 'running', { pid }); }
+            onSpawn(pid) { journal.updateInvocation(currentRoot(), childKey, 'running', { pid }); }
           });
         } catch (error) {
-          journal.updateInvocation(root, childKey, 'terminal', { failureCode: 'adapter-threw' });
+          journal.updateInvocation(currentRoot(), childKey, 'terminal', { failureCode: 'adapter-threw' });
           throw error;
         }
         if (!outcome || outcome.exitCode !== 0 || !outcome.result) {
-          journal.updateInvocation(root, childKey, 'terminal', { failureCode: outcome && outcome.status || 'invalid-result' });
+          journal.updateInvocation(currentRoot(), childKey, 'terminal', { failureCode: outcome && outcome.status || 'invalid-result' });
           const error = new Error(`adapter verification failed: ${outcome && outcome.status || 'invalid-result'}`); error.code = 'adapter-failed'; throw error;
         }
-        journal.updateInvocation(root, childKey, 'result-ready');
+        journal.updateInvocation(currentRoot(), childKey, 'result-ready');
       }
       const after = cleanSnapshot(project); if (after.head !== reviewedRevision) throw new Error('verifier changed project HEAD');
       assertVerificationGuard(start, project, { settingsHash: settings.contentHash, runId: input.runId, clientId, ownerToken });
       const event = { verdict: outcome.result.verdict, findings: outcome.result.findings, adapter: outcome.adapter };
       if (input.runId) { event.runId = input.runId; event.ownerToken = ownerToken; }
-      recorded.push(recordVerdict(start, { project: project.key, rootRequestId, commandDigest, clientId, targetId: input.targetId, reviewedRevision, lens, validatorSlot: slot, event }));
+      recorded.push(Object.assign({ lens, slot }, recordVerdict(start, { project: project.key, rootRequestId, commandDigest, clientId, targetId: input.targetId, reviewedRevision, lens, validatorSlot: slot, event })));
       root = journal.loadJournal(runtimeWorkspace(layout.root), rootRequestId);
-      journal.updateInvocation(root, childKey, 'complete');
-    }
+      journal.updateInvocation(currentRoot(), childKey, 'complete');
   }
+  await runBounded(work, Math.max(1, settings.runtimeResolved.verify.maxConcurrency || 1), runSlot);
+  // 완료 순서는 동시 실행에서 비결정적이다. 같은 입력에 같은 출력을 내려면 여기서
+  // 다시 세운다 — 판정 내용은 원장이 정하지만, 돌려주는 목록의 순서도 결과다.
+  recorded.sort((left, right) => String(left.lens).localeCompare(String(right.lens)) || left.slot - right.slot);
   const fold = foldVerdicts(readVerdicts(start, { project: project.key, targetId: input.targetId, runId: input.runId }), policy);
   return { exitCode: fold.status === 'passed' ? 0 : 1, status: fold.status, targetId: input.targetId, reviewedRevision, rootRequestId, commandDigest, verdicts: recorded.map((item) => item.event), fold };
 }
