@@ -1818,6 +1818,40 @@
       "statusChangedAt": "2026-08-19T16:48:02.564Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-QAY08AVW": {
+      "title": "[설계] SCR-001 Board 화면 설계 — assured 프로필 필수 유형 충족",
+      "summary": "프로필이 lean(rev7)에서 assured(rev8)로 바뀌면서 SCR이 필수가 되었으나 docs/screens/가 없다. Board의 태스크 보드·문서 뷰·결정함 화면을 SCR 계약으로 작성해 RDL-PROFILE-002를 해소한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "docs/screens/에 SCR 문서가 존재하고 기능 ID별 7슬롯 계약을 갖는다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "전이 섹션이 Mermaid flowchart를 포함하고 전이표가 정본이다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "rdl check --project rundol --strict에서 RDL-PROFILE-002가 사라진다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T17:11:48.132Z",
+      "updatedAt": "2026-08-19T17:11:48.132Z",
+      "statusChangedAt": "2026-08-19T17:11:48.132Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
