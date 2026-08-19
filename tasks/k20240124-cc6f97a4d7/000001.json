@@ -1231,7 +1231,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "사람 결정의 기록 방식 ADR이 선택과 대가를 담아 작성된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "문서 정체성과 표시 분리 ADR이 조율 없는 식별자 선택 근거를 담아 작성된다",
@@ -1244,7 +1244,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:49:27.627Z",
-      "updatedAt": "2026-08-17T00:49:48.072Z",
+      "updatedAt": "2026-08-19T13:27:06.657Z",
       "statusChangedAt": "2026-08-17T00:49:48.072Z",
       "externalRefs": [],
       "project": "rundol",
