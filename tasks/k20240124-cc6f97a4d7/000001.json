@@ -1725,12 +1725,12 @@
         },
         "AC-003": {
           "text": "캐시를 끄는 경로가 있다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:28.534Z",
-      "updatedAt": "2026-08-19T02:23:49.178Z",
+      "updatedAt": "2026-08-19T02:23:50.761Z",
       "statusChangedAt": "2026-08-19T02:22:28.534Z",
       "externalRefs": [],
       "project": "rundol",
