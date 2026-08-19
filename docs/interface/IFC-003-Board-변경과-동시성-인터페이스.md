@@ -1,7 +1,7 @@
 ---
-id: API-003
+id: IFC-003
 type: document
-kind: api
+kind: interface
 title: 보드 변경과 동시성 인터페이스
 description: BOP-02의 token 인증, 문서·태스크·contract 낙관적 revision, Client·lease·refresh·sync 변경 endpoint를 정의한다.
 granularity: bounded-v1
@@ -19,7 +19,7 @@ tags:
   - domain/rundol
   - feature/board-mutation-api
 aliases:
-  - API-003
+  - IFC-003
 related:
   - "[[REQ-022-보드-변경-인증과-동시성|REQ-022]]"
   - "[[TST-012-보드-변경-인증과-동시성-검증|TST-012]]"

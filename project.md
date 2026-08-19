@@ -25,7 +25,7 @@ documentProfile:
   policy:
     required: [PRD, REQ, TST]
     recommended: [ARC, ADR]
-    onDemand: [MOD, API, RUN, GLS]
+    onDemand: [MOD, IFC, RUN, STD, GLS]
     disabled: [SCR]
 ---
 

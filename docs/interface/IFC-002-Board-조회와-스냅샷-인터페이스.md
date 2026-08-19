@@ -1,7 +1,7 @@
 ---
-id: API-002
+id: IFC-002
 type: document
-kind: api
+kind: interface
 title: 보드 조회와 스냅샷 인터페이스
 description: BOP-01의 loopback 읽기 전용 HTTP endpoint, 필터, 통합 snapshot 응답과 영역별 revision 계약을 정의한다.
 granularity: bounded-v1
@@ -19,7 +19,7 @@ tags:
   - domain/rundol
   - feature/board-read-api
 aliases:
-  - API-002
+  - IFC-002
 related:
   - "[[REQ-021-로컬-보드-실행과-스냅샷|REQ-021]]"
   - "[[TST-011-로컬-보드-실행과-스냅샷-검증|TST-011]]"
