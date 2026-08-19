@@ -1463,12 +1463,12 @@
         },
         "AC-005": {
           "text": "모델 없는 판정자가 다양성 계산에 어댑터로 셈해진다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:06.991Z",
-      "updatedAt": "2026-08-19T01:48:26.913Z",
+      "updatedAt": "2026-08-19T01:48:28.442Z",
       "statusChangedAt": "2026-08-18T22:49:06.991Z",
       "externalRefs": [],
       "project": "rundol",
