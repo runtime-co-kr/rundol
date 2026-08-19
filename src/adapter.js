@@ -591,7 +591,14 @@ async function runAdapterOnce(invocation, executionOptions) {
   const mainBefore = sandbox ? { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() } : null;
   // 형제가 복귀시킨 파일은 이 저작이 만든 변경이 아니지만 탈출도 아니다. 빼지 않으면
   // 병렬을 켠 순간 모든 저작이 서로를 탈출로 고발한다.
-  const siblingPaths = new Set(siblingReals.flatMap((real) => Array.from(statusPaths(projectRoot, real))));
+  // 빼는 것은 형제의 경로뿐이고 자기 대상은 빼지 않는다. 자기 대상까지 빼면 격리를
+  // 벗어나 본 트리의 그 파일을 직접 고친 저작이 탈출 검사를 지나간다 — 병렬을 위해
+  // 넓힌 것은 "무엇이 남의 변경인가"의 기준이지 감시 범위가 아니다.
+  //
+  // fan-out이 아닐 때 이 집합은 비고, git을 한 번도 부르지 않는다. 형제가 없는데도
+  // 물으면 저작 한 번마다 git 호출 셋이 늘고, 그 지연이 자식 spawn을 늦춘다.
+  const siblingPaths = new Set(siblingReals.filter((real) => real !== mainTarget.real)
+    .flatMap((real) => Array.from(statusPaths(projectRoot, real))));
   const location = invocationDirectory(projectRoot, invocation);
   inspectExistingComponents(projectRoot, location.parent, 'directory');
   const directory = makeDirectoriesExclusive(projectRoot, location.parent, location.instanceId);

@@ -182,8 +182,18 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
   assert(Number.isSafeInteger(descendantPid) && descendantPid > 0);
   assert.strictEqual(await waitForProcessExit(descendantPid, 3000), true, `timed-out descendant ${descendantPid} survived tree termination`);
 
+  // 취소는 자식이 손자를 띄운 뒤에 와야 한다. 고정 지연으로 기다리면 그것은 성질이
+  // 아니라 경쟁이고, 느린 기계에서는 취소가 먼저 도착해 손자가 아예 없는 채로 끝난다 —
+  // 그러면 이 시험은 트리 종료에 대해 아무것도 말하지 못한 채 파일 없음으로 죽는다.
+  // 그래서 손자의 pid 파일이 생긴 것을 보고 취소한다. 상한을 두어 매달리지 않는다.
   const abortController = new AbortController();
-  setTimeout(() => abortController.abort(new Error('lease heartbeat failed')), 200);
+  const abortPidFile = path.join(project, '.rundol', 'runs', 'RUN-00000000000000000001', 'steps', 'author', 'invocations', 'INV-00000000000000000015', 'result.json.child-pid');
+  const abortDeadline = Date.now() + 4000;
+  const armAbort = setInterval(() => {
+    if (!fs.existsSync(abortPidFile) && Date.now() < abortDeadline) return;
+    clearInterval(armAbort);
+    abortController.abort(new Error('lease heartbeat failed'));
+  }, 20);
   const abortedTree = await runAdapterOnce(invocation(project, 'INV-00000000000000000015', 'author', 'abort-tree', {
     adapter: {
       name: 'fixture', command: process.execPath,
@@ -191,10 +201,13 @@ else fs.writeFileSync(result, JSON.stringify({ verdict: 'pass', findings: [] }))
       timeoutSeconds: 5, enabled: true
     }
   }), { signal: abortController.signal });
+  clearInterval(armAbort);
   assert.strictEqual(abortedTree.exitCode, 2);
   assert.strictEqual(abortedTree.status, 'cancelled');
   assert.deepStrictEqual(abortedTree.diagnosticCodes, ['ADAPTER_CANCELLED']);
   assert(!Object.hasOwn(abortedTree, 'error'), 'abort status must not expose the cancellation reason or process output');
+  assert(fs.existsSync(path.join(abortedTree.invocationRoot, 'result.json.child-pid')),
+    '손자가 뜨기 전에 취소가 도착했습니다. 이 시험은 트리 종료를 확인하지 못했습니다.');
   const abortedDescendantPid = Number(fs.readFileSync(path.join(abortedTree.invocationRoot, 'result.json.child-pid'), 'utf8'));
   assert.strictEqual(await waitForProcessExit(abortedDescendantPid, 3000), true, `aborted descendant ${abortedDescendantPid} survived tree termination`);
 
