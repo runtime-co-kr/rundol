@@ -18,7 +18,7 @@ const sourceRoot = path.resolve(__dirname, '..', 'src');
 
 // 판정 계층에 있어야 할 모듈. 여기 이름을 올리는 것은 "이 모듈은 값만 보고 답한다"는
 // 선언이며, 그 선언을 이 시험이 강제한다.
-const PURE_MODULES = ['worker-contract'];
+const PURE_MODULES = ['worker-contract', 'check-rules'];
 
 // 값 판정이 닿으면 안 되는 것들. 파일·프로세스·저장소·작업공간이 그 넷이다.
 const FORBIDDEN_BUILTINS = new Set(['fs', 'fs/promises', 'child_process', 'http', 'https', 'net', 'dns']);
