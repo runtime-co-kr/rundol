@@ -1682,7 +1682,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl check 요약이 결박·우회·미결박·끊긴 결박을 센다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "조회하지 못한 프로젝트가 값으로 남는다",
@@ -1695,7 +1695,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:26.890Z",
-      "updatedAt": "2026-08-19T02:22:26.890Z",
+      "updatedAt": "2026-08-19T02:23:39.285Z",
       "statusChangedAt": "2026-08-19T02:22:26.890Z",
       "externalRefs": [],
       "project": "rundol",
