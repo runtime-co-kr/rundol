@@ -1721,7 +1721,7 @@
         },
         "AC-002": {
           "text": "worktree·init·clone이 캐시를 무효화한다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "캐시를 끄는 경로가 있다",
@@ -1730,7 +1730,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:28.534Z",
-      "updatedAt": "2026-08-19T02:23:47.463Z",
+      "updatedAt": "2026-08-19T02:23:49.178Z",
       "statusChangedAt": "2026-08-19T02:22:28.534Z",
       "externalRefs": [],
       "project": "rundol",
