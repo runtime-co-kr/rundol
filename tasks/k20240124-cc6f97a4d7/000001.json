@@ -1793,7 +1793,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "PRD-001이 단일 1차 대상과 이종 워커 오케스트레이션 제품 정의를 담는다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "리스 폐기와 할당 시점 배타 결정이 ADR로 기록되고 ADR-007을 대체한다.",
@@ -1814,7 +1814,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T16:48:02.564Z",
-      "updatedAt": "2026-08-19T17:12:09.188Z",
+      "updatedAt": "2026-08-19T17:14:06.387Z",
       "statusChangedAt": "2026-08-19T17:12:09.188Z",
       "externalRefs": [],
       "project": "rundol"
