@@ -1091,12 +1091,12 @@
         },
         "AC-004": {
           "text": "스킬이 번들 브랜치 생성부터 PR·review 일괄 전이·병합 후 done까지의 순서를 안내한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:06:20.272Z",
-      "updatedAt": "2026-08-19T13:27:01.655Z",
+      "updatedAt": "2026-08-19T13:27:03.340Z",
       "statusChangedAt": "2026-08-17T00:06:20.272Z",
       "externalRefs": [],
       "project": "rundol",
