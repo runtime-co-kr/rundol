@@ -1553,46 +1553,75 @@ body.peek-open[data-peek-kind='task'] #expand-context {
   white-space: nowrap;
 }
 
-/* 무엇이 걸렸는지는 태그가 말한다. 색은 등급이고 글자는 종류다. 바탕을 옅게 깔면
-   여러 개가 한 줄에 서도 서로 잡아먹지 않는다. */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: var(--round-BorderRadius);
-  padding: 1px var(--spacing-1);
-  font-size: var(--caption-FontSize);
-  font-weight: 600;
-  white-space: nowrap;
+/* 목록의 태그는 색으로 등급을 말한다. 거르는 단추가 같은 색 점을 앞에 달아야
+   무슨 색이 무슨 등급인지 목록을 뒤져 맞춰 보지 않아도 안다. 점은 태그의 것과 같은
+   5px이라 둘이 같은 것을 가리킨다는 게 보인다. 전체는 등급이 아니므로 점이 없다.
+   전역 button의 8px 사이는 점과 글자를 떼어 놓아 한 덩어리로 읽히지 않는다. */
+#attention-filter button {
+  gap: var(--spacing-0_5);
 }
 
-.tag::before {
-  content: '';
+#attention-filter .severity-dot {
+  flex: none;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.tag.error {
+#attention-filter button[data-attention-severity='error'] .severity-dot {
   color: var(--danger-Color);
-  background: color-mix(in srgb, var(--danger-Color) 12%, transparent);
+}
+
+#attention-filter button[data-attention-severity='warning'] .severity-dot {
+  color: var(--warning-Color);
+}
+
+#attention-filter button[data-attention-severity='info'] .severity-dot {
+  color: var(--info-Color);
+}
+
+/* 무엇이 걸렸는지는 태그가 말한다. 알약은 배경과 여백으로 자리를 차지하는데,
+   한 태스크에 서넛이 붙으면 행이 알약 띠가 되어 정작 제목이 묻힌다. 배경을 걷고
+   점과 글자만 남긴다. 색은 점이 갖고 글자는 본문 색을 따르므로, 무엇이 걸렸는지는
+   그대로 읽히면서 행은 조용해진다. 점의 색은 거르는 단추의 것과 같다. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-0_5);
+  font-size: var(--caption-FontSize);
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--secondary-TextColor);
+}
+
+.tag::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--severity-Color);
+}
+
+.tag.error {
+  --severity-Color: var(--danger-Color);
 }
 
 .tag.warning {
-  color: var(--warning-Color);
-  background: color-mix(in srgb, var(--warning-Color) 14%, transparent);
+  --severity-Color: var(--warning-Color);
 }
 
 .tag.info {
-  color: var(--info-Color);
-  background: color-mix(in srgb, var(--info-Color) 12%, transparent);
+  --severity-Color: var(--info-Color);
 }
 
+/* 알약이 없으니 4px로는 옆 태그의 점과 이 태그의 글자가 붙어 한 덩어리로 읽힌다.
+   알약이 갖고 있던 여백만큼 사이를 벌려 각 태그가 하나로 보이게 한다. */
 .tagline {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-0_5);
+  gap: var(--spacing-0_5) var(--spacing-2);
   margin-top: var(--spacing-0_5);
 }
 

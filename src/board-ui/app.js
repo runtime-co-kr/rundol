@@ -318,8 +318,9 @@ function renderAttention(attention) {
   state.attentionFilter = filter;
   const labels = [['all', '전체'], ['error', '오류'], ['warning', '경고'], ['info', '정보']];
   // 개수를 달아 두면 누르기 전에 규모를 안다. 0건인 등급은 고를 이유가 없으므로 숨긴다.
+  // 등급 단추는 목록의 태그와 같은 색 점을 앞에 달아 무슨 색이 무슨 등급인지 알린다.
   el('attention-filter').innerHTML = labels.filter(([key]) => counts[key]).map(([key, label]) =>
-    `<button type="button" data-attention-severity="${key}"${key === filter ? ' class="active"' : ''}>${label} ${counts[key]}</button>`).join('');
+    `<button type="button" data-attention-severity="${key}"${key === filter ? ' class="active"' : ''}>${key === 'all' ? '' : '<span class="severity-dot" aria-hidden="true"></span>'}${label} ${counts[key]}</button>`).join('');
   const visible = filter === 'all' ? groups : groups.filter((group) => group.tags.some((tag) => tag.severity === filter));
   el('attention-list').innerHTML = visible.length ? visible.map((group) =>
     `<button class="attention-item" data-task="${escapeHtml(group.id)}"><span><strong>${escapeHtml(group.title)}</strong>    <span class="tagline">${group.tags.map((tag) => `<span class="tag ${tag.severity}">${escapeHtml(tag.label)}${tag.count > 1 ? ` ${tag.count}` : ''}</span>`).join('')}</span>    </span><span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`).join('') : '<p class="empty-state">이 등급에는 조치할 항목이 없습니다.</p>';
