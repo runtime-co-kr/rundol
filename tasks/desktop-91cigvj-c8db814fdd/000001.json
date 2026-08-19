@@ -488,6 +488,53 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-00MSZKWYCVC0941FB7EDBD3FD7": {
+      "title": "[계약] 시나리오 안정 ID와 검증 문서의 실행 결과 분리",
+      "summary": "TST가 명세만 갖고 실행 결과는 갖지 않도록 계약을 세우고, 시나리오에 문서 밖에서 참조 가능한 안정 ID를 요구한다. 태스크 타입과 실행 기록 층의 전제다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "REQ-034",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "TST의 시나리오 절은 첫 열이 ID인 표여야 하며, 표가 없으면 RDL-SCENARIO-001로 진단한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "시나리오 ID는 공백과 구분자 없는 토큰이어야 하고(RDL-SCENARIO-002) 문서 안에서 유일해야 한다(RDL-SCENARIO-003).",
+          "done": false
+        },
+        "AC-003": {
+          "text": "통과 기준 절에 체크박스가 있으면 RDL-SCENARIO-004로 진단한다. 실행 결과는 문서가 아니라 실행 기록이 갖는다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "새 진단은 일반 검사에서 경고이고 --implementation 준비도 게이트에서 오류다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "기존 TST 17개가 새 계약을 충족하도록 이전하고, 체크박스가 주장하던 상태를 버리기 전에 근거를 남긴다.",
+          "done": false
+        },
+        "AC-006": {
+          "text": "회귀 시험이 네 진단을 검증하고 rdl check --strict가 오류 0으로 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T04:16:01.519Z",
+      "updatedAt": "2026-08-19T04:16:01.519Z",
+      "statusChangedAt": "2026-08-19T04:16:01.519Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
