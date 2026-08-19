@@ -21,6 +21,12 @@ const canonicalA = profile.normalizeProfile({ name: 'lean', traits: ['operations
 const canonicalB = profile.normalizeProfile({ name: 'lean', traits: ['ui', 'operations'] });
 assert.deepStrictEqual(canonicalA, canonicalB);
 assert.strictEqual(canonicalA.schemaVersion, 2);
+// 화면이 있다고 선언한 제품에서 SCR은 권고가 아니라 전제다. RDL-IMPL-018이 TST에게
+// 화면 정본을 참조하라고 요구하는데 SCR이 없으면 그 규칙은 아무것도 잡지 못한다.
+assert(canonicalA.policy.required.includes('SCR'), 'ui trait는 SCR을 required로 올립니다');
+assert(!canonicalA.policy.recommended.includes('SCR'), 'SCR이 두 상태에 동시에 있으면 안 됩니다');
+// trait가 없으면 lean 프리셋 그대로다 — 승격은 선언한 프로젝트에만 적용된다.
+assert(!profile.normalizeProfile({ name: 'lean', traits: [] }).policy.required.includes('SCR'), 'ui trait 없이 SCR이 필수가 되면 안 됩니다');
 assert.strictEqual(canonicalA.enforcement, 'checkpoint');
 // 작성 순서는 프로젝트가 들고 다니던 상태에서 상수로 옮겼다. 프로필에는 남지 않는다.
 assert.strictEqual(canonicalA.rules, undefined, '프로필은 더 이상 rules를 갖지 않습니다');

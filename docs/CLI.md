@@ -58,12 +58,14 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl watch --project <key> [--remote] [--once] [--json]
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
-                   [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
+                   [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
+                 [--result <pass|fail|blocked|skipped|none>]
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
-  rdl task list [--project <key>] [--status <state>] [--open] [--json]
+  rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
+  rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
@@ -322,6 +324,26 @@ rdl task add "검색 구현" \
 - 담당자·검토자·이해관계자는 선택 프로젝트의 `project.md`에 등록돼야 한다.
 - 변경 검증 후 클라이언트 태스크 샤드와 operation 기록을 쓰고 프로젝트 브랜치에 즉시 커밋한다. 기존 프로젝트는 `tasks.json`을 계속 지원한다.
 
+#### 태스크 종류
+
+`--kind`는 `normal`과 `test` 중 하나이며 기본값은 `normal`이다. 값이 없는 옛 태스크도 `normal`로 읽는다.
+
+```bash
+rdl task add "검색 회귀 실행" --project memo --owner MEMBER-001 --kind test \n  --link TST-004 --acceptance "TST-004의 시나리오를 수행한다."
+```
+
+테스트 태스크는 `--link`로 TST 문서를 **정확히 하나** 연결하고 `--round`로 차수를 받아야 한다. 무엇을 검증했는지 가리키지 않으면 모아 세도 답이 나오지 않고, 여럿을 묶으면 판정이 하나뿐이라 어느 것이 실패했는지 알 수 없다.
+
+#### 차수
+
+차수는 실행 회차를 가리키는 **프로젝트 전역 정수**이며 1부터 시작한다. `(TST 문서 × 차수)` 하나에 태스크 하나이고, 같은 조합의 태스크를 또 만들면 거부한다(`RDL-TASK-032`). 반려한 태스크는 자리를 비우므로 잘못 만든 것을 반려하고 다시 만들 수 있다.
+
+정수 하나로 두는 이유는 표기가 갈리지 않게 하려는 것이다. 문자열이면 `2차`, `2차 `, `R2`가 서로 다른 회차가 되어 모아 세는 일이 불가능해진다. 정수는 정렬과 비교도 자명해서 회귀 판단이 그냥 되고, "지금 몇 차인가"를 따로 저장하지 않아도 태스크들의 최댓값이 답한다.
+
+재실행은 새 태스크가 아니다. 같은 차수에서 실패했다가 수정 후 통과하면 같은 태스크의 판정이 바뀐다. 발견한 결함은 별도의 일반 태스크로 만들어 그 테스트 태스크의 선행으로 연결한다 — 결함 목록이 보고서의 알맹이인데, 테스트 태스크를 둘로 나누는 방식으로는 무슨 결함이었는지가 남지 않는다.
+
+구현 준비도(`atomic-v1`) 표식은 테스트 태스크에 붙지 않는다. 준비도는 "이 태스크가 구현을 시작해도 되는가"를 묻는 게이트라 REQ와 TST 계약을 함께 요구하는데, 실행 태스크는 구현하지 않고 이미 있는 TST의 시나리오를 밟을 뿐이다.
+
 ### `rdl task set`
 
 ```bash
@@ -330,9 +352,20 @@ rdl task set TASK-AWM8ZS3N --project memo --owner null
 rdl task set TASK-AWM8ZS3N --project memo --status cancelled --reason "다른 방향으로 결정"
 ```
 
-현재 직접 변경 가능한 필드는 `status`와 `owner`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`, `cancelled`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
+현재 직접 변경 가능한 필드는 `status`, `owner`와 테스트 태스크의 `result`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`, `cancelled`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
 
 `done`과 `cancelled`는 둘 다 종료 상태지만 게이트가 반대다. `done`은 모든 수용조건 완료와 TST 문서 연결을 요구하고, `cancelled`는 그 증거가 없다는 것을 전제로 `--reason`을 요구한다. 하지 않기로 한 일을 `done`으로 닫으면 기록이 완료로 남아 뒤에 읽는 사람이 없는 산출물을 찾게 되므로 두 상태를 나눈다.
+
+#### 테스트 판정
+
+```bash
+rdl task set TASK-... --project memo --status done --result fail
+rdl task set TASK-... --project memo --result none
+```
+
+판정은 진행 상태와 **다른 축**이다. 실패한 테스트도 수행은 끝난 것이므로 상태는 `done`이고 판정이 `fail`이다. 한 필드에 섞으면 "실패를 확인한 테스트"와 "아직 돌리지 않은 테스트"가 같은 값이 되어, 테스트만 모아 성공 여부를 묻는 일이 처음부터 불가능해진다.
+
+판정은 `pass`, `fail`, `blocked`, `skipped` 중 하나이며 `none`은 판정을 지운다. 테스트 태스크가 아닌 태스크에는 둘 수 없다(`RDL-TASK-027`). 완료하는 테스트 태스크에는 판정이 필요하다(`RDL-TASK-028`). 반려는 수행하지 않기로 한 것이므로 요구하지 않는다.
 
 `--decided-by`를 생략하면 태스크의 현재 owner가 결정한 것으로 기록한다. 반려를 되돌려 다른 상태로 바꾸면 반려 사유는 자동으로 지워진다. 종료 상태가 된 태스크는 선행 태스크로서 후행 태스크를 더 이상 막지 않는다.
 
@@ -350,6 +383,37 @@ rdl task acceptance TASK-AWM8ZS3N AC-001 --undone --project memo
 ```
 
 등록된 수용조건 하나의 `done` 값만 변경하고 operation과 commit을 남긴다. 모든 수용조건을 완료한 뒤 `rdl task set --status done`을 실행한다. 존재하지 않는 태스크나 수용조건은 변경하지 않는다.
+
+### `rdl task list`
+
+```bash
+rdl task list --project memo --kind test --json
+```
+
+`--kind`는 목록을 종류로 좁히고, `--round`는 **범위를 좁힌다**. 둘의 성격이 다르다 — `--kind`는 표시 필터라 집계에 영향을 주지 않지만, `--round`는 `--project`처럼 범위여서 집계도 그 차수 안에서 센다. 2차를 물었는데 전체 차수의 집계가 돌아오면 답이 질문과 어긋나기 때문이다. 차수를 물으면 차수를 갖지 않는 일반 태스크는 애초에 범위 밖이다.
+
+`--kind`는 목록을 종류로 좁힌다. 응답의 `results`는 테스트 태스크의 판정별 집계이며, 상태 집계와 같은 규칙을 따른다 — 선택된 프로젝트 범위에서 세고 필터 이전 값을 쓴다. 아직 판정이 없는 테스트는 `pending`, 반려한 테스트는 `cancelled`로 센다. 둘을 나누는 이유는 돌릴 예정인 것과 돌리지 않기로 한 것이 다르기 때문이다.
+
+### `rdl test rounds`
+
+```bash
+rdl test rounds --project memo --json
+rdl test rounds --project memo --round 2 --json
+```
+
+차수 없이 부르면 존재하는 차수 목록과 차수별 요약(태스크 수, 판정 집계, 범위)을, `--round`를 주면 그 차수의 태스크와 **태스크가 없는 TST 목록**을 낸다.
+
+차수 대상 목록은 어디에도 저장하지 않는다. **태스크를 만든 것이 곧 그 차수의 범위**이고, 빠진 것은 TST 문서 전체와 대조해 계산한다. 목록을 파일로 두면 정본이 둘이 되어, 목록에는 다섯인데 태스크는 셋인 상태를 아무도 알아채지 못한다.
+
+```json
+{
+  "rounds": [1, 2],
+  "latest": 2,
+  "round": 2,
+  "results": { "pass": 8, "fail": 2 },
+  "coverage": { "total": 16, "covered": 10, "missing": [{ "id": "TST-004", "title": "알림 검증" }] }
+}
+```
 
 ### 태스크 마이그레이션과 충돌
 
@@ -389,9 +453,11 @@ rdl run log --run RUN-... --project memo --json
 
 ## 문서 생성
 
-문서 1개가 기능 1개를 나르는 것이 기본 계약이다. `--function-id`를 2개 이상 주려면 `--grouped --reason <합침 사유>`로 명시해야 하고, scaffold는 frontmatter에 `groupingReason`과 `groupingFunctions`를 기록한다. REQ와 SCR은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다. TST는 선언으로 허용되고, MOD와 IFC는 허용하되 검사가 사유를 경고로 항상 표면화한다. `rdl check`는 선언 없는 다기능(`RDL-IMPL-013`), 금지 유형의 다기능(`RDL-IMPL-014`), 선언 형식 위반(`RDL-IMPL-015`), 같은 기능 ID가 같은 유형 문서 여럿에 흩어진 것(`RDL-IMPL-016`)을 진단한다. 이 진단들은 일반 검사에서 경고이고 `--implementation` 준비도 게이트에서 오류다 — 기존 문서의 정리가 끝나면 상시 오류로 승격을 검토한다.
+문서 1개가 기능 1개를 나르는 것이 기본 계약이다. `--function-id`를 2개 이상 주려면 `--grouped --reason <합침 사유>`로 명시해야 하고, scaffold는 frontmatter에 `groupingReason`과 `groupingFunctions`를 기록한다. REQ와 SCR은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다. TST는 선언으로 허용되고, MOD와 IFC는 허용하되 검사가 사유를 경고로 항상 표면화한다. `rdl check`는 선언 없는 다기능(`RDL-IMPL-013`), 금지 유형의 다기능(`RDL-IMPL-014`), 선언 형식 위반(`RDL-IMPL-015`), 같은 기능 ID가 같은 유형 문서 여럿에 흩어진 것(`RDL-IMPL-016`), 기능의 화면 정본을 검증 문서가 참조하지 않는 것(`RDL-IMPL-018`)을 진단한다. 이 진단들은 일반 검사에서 경고이고 `--implementation` 준비도 게이트에서 오류다 — 기존 문서의 정리가 끝나면 상시 오류로 승격을 검토한다.
 
-`rdl init --guided`는 UI, data, API, component, operations, security/regulation, terminology 신호를 질문하고 최종 traits와 policy만 `project.md`에 저장한다. 같은 설정을 자동화할 때는 `--profile`과 반복 가능한 `--trait`를 사용한다. `rdl project profile --json` 결과에는 revision/history, 누락 required 유형과 다음 `rdl doc create` 명령이 포함된다. 정책을 직접 override할 때는 네 상태 옵션을 모두 지정하고 모든 정규 유형을 정확히 한 번 포함해야 한다.
+`RDL-IMPL-018`은 조건부다. TST의 필수 관계는 REQ로 남고, 그 TST가 선언한 기능 ID를 구현하는 SCR이 실제로 있을 때만 그 SCR을 `related`에 요구한다. 화면이 있는 기능은 화면을 근거로 검증되고, 인증·배치·웹훅·공개 API처럼 화면이 없는 기능은 REQ 관계만으로 통과한다 — 필수 관계를 SCR로 바꿨다면 이 기능들이 검증 대상에서 통째로 빠졌을 것이다. 집계와 원자성의 축은 화면이 아니라 기능 ID로 유지된다.
+
+`rdl init --guided`는 UI, data, API, component, operations, security/regulation, terminology 신호를 질문하고 최종 traits와 policy만 `project.md`에 저장한다. `ui` trait는 SCR을 `required`로 올린다 — 화면이 있다고 선언한 제품에서 화면 정본은 권고가 아니라 전제이고, SCR이 없으면 `RDL-IMPL-018`이 아무것도 잡지 못한다. 같은 설정을 자동화할 때는 `--profile`과 반복 가능한 `--trait`를 사용한다. `rdl project profile --json` 결과에는 revision/history, 누락 required 유형과 다음 `rdl doc create` 명령이 포함된다. 정책을 직접 override할 때는 네 상태 옵션을 모두 지정하고 모든 정규 유형을 정확히 한 번 포함해야 한다.
 
 ```bash
 rdl doc create PRD "메모 제품 요구사항" --project memo --owner MEMBER-001 --scope "메모 제품의 사용자 문제와 성공 기준" --exclude "개별 메모 작성 동작"

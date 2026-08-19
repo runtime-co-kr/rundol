@@ -2,6 +2,7 @@
 'use strict';
 
 const path = require('path');
+const { TASK_KINDS } = require('../src/tasks');
 const { doctor } = require('../src/doctor');
 
 const VERSION = require('../package.json').version;
@@ -62,12 +63,14 @@ Usage:
   rdl watch --project <key> [--remote] [--once] [--json]
   rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
-                   [--priority <high|mid|low>] [--link <ARTIFACT-ID>] [--json]
+                   [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
+                 [--result <pass|fail|blocked|skipped|none>]
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
-  rdl task list [--project <key>] [--status <state>] [--open] [--json]
+  rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
+  rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
@@ -127,6 +130,9 @@ Options:
   --defaults     결정하지 않고 권고 기본값을 수용한다고 명시적으로 선언합니다.
   --questions    결정해야 할 항목을 질문 목록으로 돌려주고 아무것도 만들지 않습니다.
   --acceptance   태스크 완료조건. 여러 번 지정할 수 있습니다.
+  --kind         태스크 종류. test는 TST 문서를 검증한 실행이며 판정을 갖습니다.
+  --result       테스트 태스크의 판정. 진행 상태와 다른 축이며 none은 판정을 지웁니다.
+  --round        테스트 실행 차수. 1 이상의 정수이며 프로젝트 전역입니다.
   --reviewer     project.md에 등록된 검토 멤버. 여러 번 지정할 수 있습니다.
   --stakeholder  project.md에 등록된 이해관계자. 여러 번 지정할 수 있습니다.
   --link         연결할 문서 또는 문서 섹션. 여러 번 지정할 수 있습니다.
@@ -181,6 +187,14 @@ function parseWatchArgs(argv) {
   return options;
 }
 
+// 차수는 정수 하나다. 표기를 문자열로 두면 2차·2차 ·R2로 갈라지고, 그러면 같은
+// 회차가 여러 값이 되어 모아 세는 일이 불가능해진다.
+function parseRound(value) {
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== String(value).trim()) throw new Error(`차수는 1 이상의 정수여야 합니다: ${value}`);
+  return parsed;
+}
+
 function parseOperationArgs(argv) {
   const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
@@ -207,7 +221,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -222,6 +236,8 @@ function parseOperationArgs(argv) {
       else if (value === '--status') options.status = argv[i];
       else if (value === '--owner') options.owner = argv[i] === 'null' ? null : argv[i];
       else if (value === '--summary') options.summary = argv[i];
+      else if (value === '--result') options.result = argv[i] === 'none' ? null : argv[i];
+      else if (value === '--round') options.round = parseRound(argv[i]);
       else if (value === '--reason') options.reason = argv[i];
       else if (value === '--grant-attempts') options.grantAttempts = argv[i];
       else if (value === '--share-unverified') options.shareUnverified = argv[i];
@@ -971,6 +987,15 @@ async function main() {
     else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, log, procedures입니다.');
     return 0;
   }
+  if (command === 'test') {
+    const subcommand = argv.shift();
+    if (subcommand !== 'rounds') throw new Error('지원하는 테스트 하위 명령은 rounds입니다.');
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl test rounds에는 위치 인수를 사용할 수 없습니다.');
+    printOperation(require('../src/test-round').testRounds(options.root, { project: options.project, round: options.round }), options.json);
+    return 0;
+  }
+
   if (command === 'task') {
     const subcommand = argv.shift();
     if (!['add', 'set', 'list', 'acceptance', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, identity, migrate입니다.');
@@ -980,7 +1005,8 @@ async function main() {
       // 조회는 정본을 직접 읽는다. 인덱스 계층은 남아 있지만 명령 표면에는
       // 없다 — 이 규모에서 이득이 없고, 공개 기능은 틀릴 여지를 남기는 것보다
       // 없는 편이 낫다. 어느 경로였는지는 결과의 source에 남는다.
-      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, status: options.status, open: options.open });
+      if (options.kind !== undefined && !TASK_KINDS.includes(options.kind)) throw new Error(`지원하지 않는 태스크 종류입니다: ${options.kind} (${TASK_KINDS.join(', ')})`);
+      const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, kind: options.kind, round: options.round, status: options.status, open: options.open });
       printOperation(listed, options.json);
       return 0;
     }
@@ -1008,6 +1034,12 @@ async function main() {
       if (!title) throw new Error('rdl task add에는 태스크 제목이 필요합니다.');
       if (options.acceptance.length === 0) throw new Error('rdl task add에는 --acceptance 완료조건이 하나 이상 필요합니다.');
       if (!['high', 'mid', 'low'].includes(options.priority)) throw new Error(`지원하지 않는 우선순위입니다: ${options.priority}`);
+      const kind = options.kind === undefined ? 'normal' : options.kind;
+      if (!TASK_KINDS.includes(kind)) throw new Error(`지원하지 않는 태스크 종류입니다: ${kind} (${TASK_KINDS.join(', ')})`);
+      // 테스트 태스크는 무엇을 검증했는지 가리키지 않으면 모아 세도 의미가 없다.
+      if (kind === 'test' && options.links.filter((link) => String(link).startsWith('TST-')).length !== 1) throw new Error('테스트 태스크에는 --link로 TST 문서를 정확히 하나 연결해야 합니다.');
+      if (kind === 'test' && options.round === undefined) throw new Error('테스트 태스크에는 --round 차수가 필요합니다.');
+      if (kind !== 'test' && options.round !== undefined) throw new Error('--round는 --kind test에만 사용합니다.');
       const acceptanceCriteria = {};
       options.acceptance.forEach((text, index) => {
         acceptanceCriteria[`AC-${String(index + 1).padStart(3, '0')}`] = { text, done: false };
@@ -1021,6 +1053,9 @@ async function main() {
         stakeholders: options.stakeholders,
         status: 'todo',
         priority: options.priority,
+        kind,
+        result: null,
+        round: options.round === undefined ? null : options.round,
         links: options.links,
         deps: [],
         acceptanceCriteria,
@@ -1043,6 +1078,10 @@ async function main() {
     const changes = {};
     if (options.status !== undefined) changes.status = options.status;
     if (options.owner !== undefined) changes.owner = options.owner;
+    // 판정은 진행 상태와 다른 축이라 따로 받는다. 값 검증은 저장 계층이 태스크의
+    // 종류까지 보고 하므로 여기서는 전달만 한다 — CLI는 태스크를 읽지 않는다.
+    if (options.result !== undefined) changes.result = options.result;
+    if (options.round !== undefined) changes.round = options.round;
     // 브랜치·병합 요청 참조는 태스크의 새 필드가 아니라 externalRefs 항목이다.
     // 같은 브랜치를 공유하는 태스크들이 곧 작업 묶음이므로, 참조를 붙이는 것이
     // 묶음을 만드는 일이고 review 전이(RDL-TASK-020)가 도달 가능해진다.
@@ -1070,7 +1109,7 @@ async function main() {
       changes.cancellation = { reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }
     else if (options.reason) throw new Error('--reason은 --status cancelled에만 사용합니다.');
-    if (Object.keys(changes).length === 0) throw new Error('--status, --owner 또는 --external-ref 중 하나가 필요합니다.');
+    if (Object.keys(changes).length === 0) throw new Error('--status, --owner, --result, --round 또는 --external-ref 중 하나가 필요합니다.');
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);
     if (DEBUG_CONTEXT) recordAction(options.root, { action: 'task.update', actualExecutor: 'cli', taskId: options.positional[0] });

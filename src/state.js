@@ -8,7 +8,7 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency } = require('./tasks');
+const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency, assertKindConsistency, assertRoundUniqueness } = require('./tasks');
 const { initSettings, saveSettings, prepareSettings, finalizeSettings } = require('./settings');
 const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
 const { getClient } = require('./collaboration-store');
@@ -408,6 +408,8 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   normalizeCancellationChange(task, changes);
   assertBlockerConsistency(task, changes);
   assertCancellationConsistency(task, changes);
+  assertKindConsistency(task, changes);
+  assertRoundUniqueness(parsed.tasks, taskIdValue, Object.assign({}, task, changes));
   const before = {};
   const changedFields = Object.keys(changes).filter((field) => JSON.stringify(task[field]) !== JSON.stringify(changes[field]));
   if (changedFields.length === 0) {
@@ -452,6 +454,9 @@ function taskCreate(start, input) {
     stakeholders: [],
     status: 'todo',
     priority: 'mid',
+    kind: 'normal',
+    result: null,
+    round: null,
     links: [],
     deps: [],
     acceptanceCriteria: {},
@@ -465,9 +470,14 @@ function taskCreate(start, input) {
     const project = selectProject(workspaceLayout(config.root), config.project || task.project, true);
     task.project = project.key;
   }
-  if ((task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)))) task.implementationReadiness = 'atomic-v1';
+  // 구현 준비도는 "이 태스크가 구현을 시작해도 되는가"를 묻는 게이트라 REQ와 TST 계약을
+  // 함께 요구한다. 테스트 실행 태스크는 구현하지 않고 이미 있는 TST의 시나리오를 밟을
+  // 뿐이므로 그 대상이 아니다. 걸어두면 실행 기록마다 REQ를 끌고 다니게 된다.
+  if (task.kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)))) task.implementationReadiness = 'atomic-v1';
   assertBlockerConsistency(null, task);
   assertCancellationConsistency(null, task);
+  assertKindConsistency(null, task);
+  assertRoundUniqueness(parsed.tasks, id, task);
   parsed.tasks[id] = task;
   const commit = persistTaskChange(config, {
     document: parsed,

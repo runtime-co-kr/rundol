@@ -154,7 +154,10 @@ function normalizePolicy(name, supplied, traits, presets) {
       for (const current of POLICY_STATES) policy[current] = policy[current].filter((item) => item !== type);
       policy[state].push(type);
     };
-    if (traits.includes('ui')) promote('SCR', 'recommended');
+    // 웹 프로젝트에서 화면 정본은 권고가 아니라 전제다. TST가 화면을 참조하도록
+    // 요구하는 RDL-IMPL-018이 SCR 없이는 아무것도 잡지 못하므로, "이 제품에 화면이
+    // 있다"는 선언을 required로 받는다. 관계 규칙 대신 trait로 표현하는 근거는 ADR-013.
+    if (traits.includes('ui')) promote('SCR', 'required');
     if (traits.includes('data')) promote('MOD', 'recommended');
     if (traits.includes('api')) promote('IFC', 'recommended');
     if (traits.includes('component')) { promote('ARC', 'recommended'); promote('IFC', 'recommended'); }

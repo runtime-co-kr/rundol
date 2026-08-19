@@ -11,6 +11,7 @@ const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST']);
 // forbidden 유형은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다.
 const GROUPING_POLICY = Object.freeze({ REQ: 'forbidden', SCR: 'forbidden', TST: 'declared', MOD: 'declared', IFC: 'declared' });
 const FUNCTION_ID_PATTERN = /^[A-Z][A-Z0-9]{1,7}-\d{2,4}$/u;
+const ARTIFACT_ID_PATTERN = /\b([A-Z]{3}-\d{3,})\b/u;
 const FUNCTION_ID_GLOBAL = /\b[A-Z][A-Z0-9]{1,7}-\d{2,4}\b/gu;
 const PLACEHOLDER_PATTERN = /(?:작성\s*필요|미정|추후[^\r\n]{0,40}확정|별도[^\r\n]{0,40}확정|원본(?:\s+문서)?\s*(?:기준|적용|참조)|todo|tbd|<[^>]+>)/iu;
 const INDEX_TITLE_PATTERN = /^(?:(?:문서|기능|요구사항|설계|테스트)\s*)?(?:인덱스|목록|카탈로그|추적표|추적성\s*매트릭스|index|catalog|traceability\s*matrix)(?:\s*문서)?$/iu;
@@ -138,10 +139,17 @@ function validateImplementationDocument(document, options) {
   return issues;
 }
 
+function relatedArtifactIds(meta) {
+  return unique((Array.isArray(meta && meta.related) ? meta.related : []).map((value) => {
+    const match = ARTIFACT_ID_PATTERN.exec(String(value));
+    return match ? match[1] : null;
+  }).filter(Boolean));
+}
+
 function artifactImplementation(artifact) {
   const parsed = parseFrontmatter(artifact.source || '');
   const meta = parsed ? parsed.data : {};
-  return { id: artifact.id, type: artifact.type, file: artifact.file, source: artifact.source, meta, functionIds: functionIds(meta), contract: meta.implementationContract || null };
+  return { id: artifact.id, type: artifact.type, file: artifact.file, source: artifact.source, meta, functionIds: functionIds(meta), related: relatedArtifactIds(meta), contract: meta.implementationContract || null };
 }
 
 function implementationTrace(artifactInput) {
@@ -182,6 +190,18 @@ function validateImplementationTrace(artifactInput, options) {
   for (const entry of trace.entries) {
     if ((!entry.artifacts.REQ || entry.artifacts.REQ.length === 0) && Object.keys(entry.artifacts).some((type) => type !== 'REQ')) issues.push({ code: 'RDL-IMPL-011', severity: 'error', target: entry.functionId, message: `REQ 원천 계약 없이 하위 산출물이 기능 ID를 참조합니다: ${entry.functionId}` });
     if (entry.artifacts.REQ && entry.artifacts.REQ.length && (!entry.artifacts.TST || entry.artifacts.TST.length === 0)) issues.push({ code: 'RDL-IMPL-012', severity: settings.implementation ? 'error' : 'warning', target: entry.functionId, artifactId: entry.artifacts.REQ[0], message: `기능 ID를 검증하는 TST가 없습니다: ${entry.functionId}` });
+  }
+  // 화면이 있는 기능은 화면을 근거로 검증되어야 한다. 다만 TST의 필수 관계를 SCR로
+  // 바꾸면 화면 없는 기능(인증·배치·웹훅·공개 API)이 검증 대상에서 통째로 빠지므로,
+  // 그 기능에 SCR 정본이 실제로 있을 때만 참조를 요구한다. 근거는 ADR-013이다.
+  const screenOwners = new Map();
+  for (const entry of trace.entries) if (entry.artifacts.SCR && entry.artifacts.SCR.length) screenOwners.set(entry.functionId, entry.artifacts.SCR);
+  for (const artifact of artifacts.filter((item) => item.type === 'TST')) for (const id of artifact.functionIds) {
+    const screens = screenOwners.get(id);
+    if (!screens || screens.some((screen) => artifact.related.includes(screen))) continue;
+    // 이 계열 진단은 파일 위치 없이 표시되므로, 어느 문서를 고쳐야 하는지가
+    // 메시지 안에서 끝나야 한다. 기능 ID만 알려주면 TST를 다시 찾아야 한다.
+    issues.push({ code: 'RDL-IMPL-018', severity: settings.implementation ? 'error' : 'warning', target: id, artifactId: artifact.id, message: `기능 ID의 화면 정본을 검증 문서가 참조하지 않습니다: ${id} (${artifact.id}에 ${screens.join(', ')} 관계 필요)` });
   }
   return { trace, issues };
 }
