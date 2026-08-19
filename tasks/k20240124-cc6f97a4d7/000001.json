@@ -1809,12 +1809,12 @@
         },
         "AC-005": {
           "text": "rdl check --strict가 오류 없이 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T16:48:02.564Z",
-      "updatedAt": "2026-08-19T19:23:52.174Z",
+      "updatedAt": "2026-08-19T22:10:25.744Z",
       "statusChangedAt": "2026-08-19T17:12:09.188Z",
       "externalRefs": [],
       "project": "rundol"
