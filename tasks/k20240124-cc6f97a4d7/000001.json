@@ -1621,6 +1621,48 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-7DWX25J5": {
+      "title": "[버그] 결박이 결박을 증명하지 않던 네 곳을 닫는다",
+      "summary": "외부 검토 HIGH 6건. 끝난 태스크에 묶임, 거부된 저장이 index 오염, 오타 설정이 advisory로 약화, 사후 검사가 trailer 의미 미검증. 그리고 식별자 이관이 옛→새 매핑을 보존하지 않았다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "끝난 태스크에는 묶이지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "거부된 저장이 staged 변경을 남기지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "잘못 적힌 taskEnforcement가 저장을 거부한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "trailer가 가리키는 태스크의 존재를 검사가 확인한다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "이관이 옛 식별자를 태스크에 보존한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:25.276Z",
+      "updatedAt": "2026-08-19T02:22:25.276Z",
+      "statusChangedAt": "2026-08-19T02:22:25.276Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
