@@ -1079,7 +1079,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl task set이 branch·PR 등 종류를 가진 externalRef를 설정·제거할 수 있어 review 전이가 CLI로 도달 가능하다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "한 브랜치를 공유하는 여러 태스크를 브랜치 또는 PR 기준으로 조회할 수 있다",
@@ -1096,7 +1096,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:06:20.272Z",
-      "updatedAt": "2026-08-17T00:06:20.272Z",
+      "updatedAt": "2026-08-19T13:26:58.114Z",
       "statusChangedAt": "2026-08-17T00:06:20.272Z",
       "externalRefs": [],
       "project": "rundol",
