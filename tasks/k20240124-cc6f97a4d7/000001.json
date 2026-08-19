@@ -1416,7 +1416,7 @@
         },
         "AC-003": {
           "text": "실패 후 재실행 시 성공했던 판정은 다시 호출되지 않는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "동시 실행과 순차 실행의 판정 결과가 같다",
@@ -1425,7 +1425,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:05.290Z",
-      "updatedAt": "2026-08-19T01:48:14.839Z",
+      "updatedAt": "2026-08-19T01:48:16.376Z",
       "statusChangedAt": "2026-08-18T22:49:05.290Z",
       "externalRefs": [],
       "project": "rundol",
