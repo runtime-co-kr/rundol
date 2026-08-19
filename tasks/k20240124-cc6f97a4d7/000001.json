@@ -1408,7 +1408,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "기존 검증 시험이 변경 없이 통과한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "렌즈 셋 동시 실행의 총 소요가 순차 합이 아니라 최대치에 가깝다",
@@ -1425,7 +1425,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:05.290Z",
-      "updatedAt": "2026-08-18T22:49:05.290Z",
+      "updatedAt": "2026-08-19T01:48:13.295Z",
       "statusChangedAt": "2026-08-18T22:49:05.290Z",
       "externalRefs": [],
       "project": "rundol",
