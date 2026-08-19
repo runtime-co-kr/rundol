@@ -1797,7 +1797,7 @@
         },
         "AC-002": {
           "text": "리스 폐기와 할당 시점 배타 결정이 ADR로 기록되고 ADR-007을 대체한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "페이퍼웍·가이드·태스크 세 레이어 분리가 ADR로 기록된다.",
@@ -1814,7 +1814,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T16:48:02.564Z",
-      "updatedAt": "2026-08-19T17:14:06.387Z",
+      "updatedAt": "2026-08-19T17:16:22.864Z",
       "statusChangedAt": "2026-08-19T17:12:09.188Z",
       "externalRefs": [],
       "project": "rundol"
