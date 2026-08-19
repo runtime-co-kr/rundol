@@ -1111,8 +1111,8 @@
       "status": "todo",
       "priority": "high",
       "links": [
-        "REQ-038",
-        "TST-002"
+        "REQ-039",
+        "TST-016"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -1135,7 +1135,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:17.189Z",
-      "updatedAt": "2026-08-19T13:26:53.111Z",
+      "updatedAt": "2026-08-19T13:26:54.749Z",
       "statusChangedAt": "2026-08-17T00:18:17.189Z",
       "externalRefs": [],
       "project": "rundol",
