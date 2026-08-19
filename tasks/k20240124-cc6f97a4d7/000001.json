@@ -1788,7 +1788,14 @@
       "kind": "normal",
       "result": null,
       "round": null,
-      "links": [],
+      "links": [
+        "TST-020",
+        "TST-021",
+        "TST-022",
+        "REQ-048",
+        "ADR-015",
+        "ADR-016"
+      ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
@@ -1814,7 +1821,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T16:48:02.564Z",
-      "updatedAt": "2026-08-19T22:10:25.744Z",
+      "updatedAt": "2026-08-19T23:04:49.352Z",
       "statusChangedAt": "2026-08-19T17:12:09.188Z",
       "externalRefs": [],
       "project": "rundol"
