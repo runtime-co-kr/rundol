@@ -1638,7 +1638,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "끝난 태스크에는 묶이지 않는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "거부된 저장이 staged 변경을 남기지 않는다",
@@ -1659,7 +1659,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:25.276Z",
-      "updatedAt": "2026-08-19T02:22:25.276Z",
+      "updatedAt": "2026-08-19T02:23:28.031Z",
       "statusChangedAt": "2026-08-19T02:22:25.276Z",
       "externalRefs": [],
       "project": "rundol",
