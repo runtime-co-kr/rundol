@@ -1697,6 +1697,40 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-EHRWBG74": {
+      "title": "[개선] 명령 실행의 프로세스 생성을 줄인다",
+      "summary": "저장소 위치 조회를 프로세스 안에서 한 번만 하고, 통합 배포판이 자식 프로세스 대신 CLI를 직접 들인다. 캐시는 위치 질의에만 걸고 RUNDOL_NO_GIT_CACHE로 끌 수 있다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "TST-006"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "위치 질의가 프로세스 안에서 재사용된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "worktree·init·clone이 캐시를 무효화한다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "캐시를 끄는 경로가 있다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:28.534Z",
+      "updatedAt": "2026-08-19T02:22:28.534Z",
+      "statusChangedAt": "2026-08-19T02:22:28.534Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
