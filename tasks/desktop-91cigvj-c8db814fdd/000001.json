@@ -462,7 +462,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "기능 ID를 구현하는 SCR이 있는데 그 기능을 검증하는 TST가 해당 SCR을 참조하지 않으면 RDL-IMPL-018로 진단한다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "화면이 없는 기능을 검증하는 TST는 REQ 관계만으로 새 진단이 발생하지 않는다.",
@@ -483,7 +483,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:43:29.204Z",
-      "updatedAt": "2026-08-19T01:43:35.621Z",
+      "updatedAt": "2026-08-19T02:33:30.987Z",
       "statusChangedAt": "2026-08-19T01:43:35.621Z",
       "externalRefs": [],
       "project": "rundol",
