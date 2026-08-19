@@ -1843,12 +1843,12 @@
         },
         "AC-003": {
           "text": "rdl check --project rundol --strict에서 RDL-PROFILE-002가 사라진다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T17:11:48.132Z",
-      "updatedAt": "2026-08-19T22:10:21.639Z",
+      "updatedAt": "2026-08-19T22:10:23.663Z",
       "statusChangedAt": "2026-08-19T17:11:48.132Z",
       "externalRefs": [],
       "project": "rundol"
