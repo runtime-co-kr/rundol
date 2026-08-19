@@ -1451,7 +1451,7 @@
         },
         "AC-002": {
           "text": "어댑터 하나로 같은 정책을 선언하면 절차 로드가 거부된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "재개한 검증에서 각 slot의 어댑터가 처음과 같다",
@@ -1468,7 +1468,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:06.991Z",
-      "updatedAt": "2026-08-19T01:48:22.344Z",
+      "updatedAt": "2026-08-19T01:48:23.867Z",
       "statusChangedAt": "2026-08-18T22:49:06.991Z",
       "externalRefs": [],
       "project": "rundol",
