@@ -1490,7 +1490,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "형제 문서 셋 동시 저작의 총 소요가 순차 합보다 짧다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "한 대상이 실패해도 나머지 결과가 본 트리에 남는다",
@@ -1507,7 +1507,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:08.690Z",
-      "updatedAt": "2026-08-18T22:49:08.690Z",
+      "updatedAt": "2026-08-19T02:01:38.919Z",
       "statusChangedAt": "2026-08-18T22:49:08.690Z",
       "externalRefs": [],
       "project": "rundol",
