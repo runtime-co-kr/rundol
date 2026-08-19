@@ -1711,6 +1711,7 @@
       "status": "todo",
       "priority": "high",
       "links": [
+        "REQ-015",
         "TST-006"
       ],
       "deps": [],
@@ -1730,7 +1731,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:28.534Z",
-      "updatedAt": "2026-08-19T02:23:50.761Z",
+      "updatedAt": "2026-08-19T02:23:52.233Z",
       "statusChangedAt": "2026-08-19T02:22:28.534Z",
       "externalRefs": [],
       "project": "rundol",
