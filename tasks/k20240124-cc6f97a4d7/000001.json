@@ -1157,7 +1157,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "위임이 부여자·범위·결정 종류·만료·사유와 함께 공유 레지스트리에 기록되고 조회·취소할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "만료된 위임은 자동으로 효력을 잃고 갱신이 명시적 행위다",
@@ -1174,7 +1174,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:20.418Z",
-      "updatedAt": "2026-08-17T00:18:20.418Z",
+      "updatedAt": "2026-08-19T13:25:21.784Z",
       "statusChangedAt": "2026-08-17T00:18:20.418Z",
       "externalRefs": [],
       "project": "rundol",
