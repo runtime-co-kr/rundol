@@ -1752,7 +1752,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "가져올 것과 가져오지 않을 것이 기록된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "인가를 통합하지 않는 이유와 그 전제가 기록된다",
@@ -1765,7 +1765,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:30.249Z",
-      "updatedAt": "2026-08-19T02:22:30.249Z",
+      "updatedAt": "2026-08-19T02:23:55.256Z",
       "statusChangedAt": "2026-08-19T02:22:30.249Z",
       "externalRefs": [],
       "project": "rundol",
