@@ -1852,6 +1852,40 @@
       "statusChangedAt": "2026-08-19T17:11:48.132Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-3E7QT56R": {
+      "title": "[개선] 진단 코드에 정본 문서 링크 필드 추가",
+      "summary": "진단 223개가 코드만 내보내고 그 규칙의 정본 문서를 가리키지 않는다. 규칙에서 근거 문서로, 문서에서 영향받는 진단으로 양방향 계산이 가능하도록 rule 필드를 붙인다. 계약 계열(IMPL 23, PROFILE 11)부터 적용한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "진단 객체가 규칙의 정본 문서를 가리키는 필드를 갖는다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "IMPL과 PROFILE 계열 진단이 모두 정본 문서를 지목한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "정본 문서에서 영향받는 진단 코드를 역방향으로 계산할 수 있다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T22:26:18.582Z",
+      "updatedAt": "2026-08-19T22:26:18.582Z",
+      "statusChangedAt": "2026-08-19T22:26:18.582Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
