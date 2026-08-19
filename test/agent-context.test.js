@@ -32,10 +32,15 @@ try {
   assert(catalog.commands.length > 40, `명령 수가 비정상입니다: ${catalog.commands.length}`);
   const taskList = catalog.commands.find((entry) => entry.command === 'task list');
   assert(taskList, 'rdl task list가 카탈로그에 없습니다.');
-  assert.deepStrictEqual(taskList.flags, ['--json', '--open', '--project', '--status']);
+  assert.deepStrictEqual(taskList.flags, ['--json', '--kind', '--open', '--project', '--round', '--status']);
   // 여러 줄로 이어진 명령은 하나의 항목으로 합쳐진다.
   const taskAdd = catalog.commands.find((entry) => entry.command === 'task add');
   assert(taskAdd.flags.includes('--reviewer') && taskAdd.flags.includes('--priority'), '이어진 줄의 플래그가 누락됐습니다.');
+  assert(taskAdd.flags.includes('--kind'), '태스크 종류 플래그가 카탈로그에 있어야 합니다.');
+  const taskSet = catalog.commands.find((entry) => entry.command === 'task set');
+  assert(taskSet.flags.includes('--result'), '테스트 판정 플래그가 카탈로그에 있어야 합니다.');
+  const testRounds = catalog.commands.find((entry) => entry.command === 'test rounds');
+  assert(testRounds && testRounds.flags.includes('--round'), '테스트 차수 조회가 카탈로그에 있어야 합니다.');
   const rootOption = catalog.options.find((entry) => entry.flag === '--root');
   assert.strictEqual(rootOption.argument, '<path>');
   assert(rootOption.description.length > 0);

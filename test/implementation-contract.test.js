@@ -131,6 +131,40 @@ function testTaskReadinessChecksEveryLinkedImplementationType() {
   assert.deepStrictEqual(validateTaskImplementationReadiness([req, tst]), []);
 }
 
+// 화면이 있는 기능은 화면을 근거로 검증되어야 한다. 다만 그 요구를 TST의 필수 관계로
+// 바꾸면 화면 없는 기능이 검증 대상에서 빠지므로, 화면 정본이 실제로 있을 때만 요구한다.
+function testTestReferencesScreenWhenOneExists() {
+  const withRelated = (id, type, ids, related) => ({
+    id, type, file: `${id}.md`,
+    source: `---\nid: ${id}\nimplementationContract: atomic-v1\nfunctionIds:\n${ids.map((value) => `  - ${value}`).join('\n')}\nrelated:\n${related.map((value) => `  - "[[${value}-어떤-제목|${value}]]"`).join('\n')}\n---\n\n# ${id}\n`
+  });
+  const req = withRelated('REQ-001', 'REQ', ['PAY-01'], ['PRD-001']);
+  const screen = withRelated('SCR-001', 'SCR', ['PAY-01'], ['REQ-001']);
+
+  // 화면이 있는데 참조하지 않으면 잡는다. 일반 검사는 경고, 준비도 게이트는 오류다.
+  const blind = withRelated('TST-001', 'TST', ['PAY-01'], ['REQ-001']);
+  const advisory = validateImplementationTrace([req, screen, blind], {}).issues.filter((item) => item.code === 'RDL-IMPL-018');
+  assert.deepStrictEqual(advisory.map((item) => [item.severity, item.target, item.artifactId]), [['warning', 'PAY-01', 'TST-001']]);
+  assert(validateImplementationTrace([req, screen, blind], { implementation: true }).issues
+    .some((item) => item.code === 'RDL-IMPL-018' && item.severity === 'error'));
+
+  // 참조하면 통과한다.
+  const grounded = withRelated('TST-001', 'TST', ['PAY-01'], ['REQ-001', 'SCR-001']);
+  assert.deepStrictEqual(validateImplementationTrace([req, screen, grounded], { implementation: true }).issues
+    .filter((item) => item.code === 'RDL-IMPL-018'), []);
+
+  // 화면이 없는 기능 — 인증·배치·웹훅 같은 것 — 은 REQ 관계만으로 충분하다.
+  const headlessReq = withRelated('REQ-002', 'REQ', ['AUTH-01'], ['PRD-001']);
+  const headlessTst = withRelated('TST-002', 'TST', ['AUTH-01'], ['REQ-002']);
+  assert.deepStrictEqual(validateImplementationTrace([headlessReq, headlessTst], { implementation: true }).issues
+    .filter((item) => item.code === 'RDL-IMPL-018'), []);
+
+  // 한 문서가 화면 있는 기능과 없는 기능을 함께 검증하면 화면 있는 쪽만 걸린다.
+  const mixed = withRelated('TST-003', 'TST', ['PAY-01', 'AUTH-01'], ['REQ-001', 'REQ-002']);
+  assert.deepStrictEqual(validateImplementationTrace([req, screen, headlessReq, mixed], {}).issues
+    .filter((item) => item.code === 'RDL-IMPL-018').map((item) => item.target), ['PAY-01']);
+}
+
 function testIndexArtifactNames() {
   assert.strictEqual(isIndexArtifact('인덱스'), true);
   assert.strictEqual(isIndexArtifact('기능 추적표'), true);
@@ -147,5 +181,6 @@ testUnresolvedRuleRejectedAtReadiness();
 testEveryImplementationTypeRequiresStandaloneFields();
 testComputedTraceWithoutIndex();
 testTaskReadinessChecksEveryLinkedImplementationType();
+testTestReferencesScreenWhenOneExists();
 testIndexArtifactNames();
 process.stdout.write('implementation contract tests passed\n');

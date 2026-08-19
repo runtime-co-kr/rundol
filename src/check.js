@@ -9,6 +9,8 @@ const { evaluateDocumentContract, projectArtifacts } = require('./document-contr
 const { loadBoardPresentation, resolveProfilePresets } = require('./board-presentation');
 const { validateBoundaryMetadata } = require('./document-boundary');
 const { validateDocumentDiagram } = require('./document-diagram');
+const { validateTestDocument } = require('./test-contract');
+const { TASK_KINDS, TEST_RESULTS, testedDocuments } = require('./tasks');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const { runGit } = require('./git');
@@ -253,6 +255,9 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
   }
   const taskIds = Object.keys(parsed.tasks).filter((taskId) => !projectKey || parsed.tasks[taskId].project === projectKey);
   const dependencies = new Map();
+  // (TST, 차수) 쌍의 주인을 기억해 두 번째를 잡는다. 저장 계층이 이미 막지만 git 병합으로
+  // 들어온 태스크는 그 경로를 거치지 않는다.
+  const roundOwners = new Map();
   const required = ['title', 'summary', 'owner', 'reviewers', 'stakeholders', 'status', 'priority', 'links', 'deps', 'acceptanceCriteria', 'blocker', 'createdAt', 'updatedAt', 'statusChangedAt', 'externalRefs'];
 
   for (const taskId of taskIds) {
@@ -282,6 +287,30 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
     if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
     if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
     if (task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))) diagnostic(list, { code: 'RDL-TASK-019', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크는 TST 문서를 연결해야 합니다.' });
+    // 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝났으므로 done이고 판정이
+    // fail이다. 저장 계층이 이미 막지만, git 병합으로 들어온 태스크는 그 경로를 거치지
+    // 않으므로 검사가 같은 불변식을 다시 본다.
+    const kind = task.kind || 'normal';
+    const result = task.result === undefined ? null : task.result;
+    if (!TASK_KINDS.includes(kind)) diagnostic(list, { code: 'RDL-TASK-026', category: 'task', file: taskFile, artifactId: taskId, target: kind, message: `지원하지 않는 태스크 종류입니다: ${kind} (${TASK_KINDS.join(', ')})` });
+    if (result !== null && kind !== 'test') diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 판정을 둘 수 없습니다.' });
+    if (result !== null && kind === 'test' && !TEST_RESULTS.includes(result)) diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, target: String(result), message: `지원하지 않는 테스트 판정입니다: ${result} (${TEST_RESULTS.join(', ')})` });
+    if (kind === 'test' && task.status === 'done' && result === null) diagnostic(list, { code: 'RDL-TASK-028', category: 'task', file: taskFile, artifactId: taskId, message: '완료한 테스트 태스크에는 판정이 필요합니다.' });
+    // 차수 하나에 TST 하나가 태스크 하나다. 여럿을 묶으면 판정이 하나뿐이라 어느 것이
+    // 실패했는지 알 수 없고, 없으면 무엇을 검증했는지 알 수 없다.
+    const tested = testedDocuments(task);
+    if (kind === 'test' && tested.length !== 1) diagnostic(list, { code: 'RDL-TASK-029', category: 'task', file: taskFile, artifactId: taskId, message: `테스트 태스크는 검증한 TST 문서를 정확히 하나 연결해야 합니다: 현재 ${tested.length}건` });
+    const round = task.round === undefined ? null : task.round;
+    if (kind === 'test' && (!Number.isInteger(round) || round < 1)) diagnostic(list, { code: 'RDL-TASK-030', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크에는 1 이상의 정수 차수가 필요합니다.' });
+    if (kind !== 'test' && round !== null) diagnostic(list, { code: 'RDL-TASK-031', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 차수를 둘 수 없습니다.' });
+    if (kind === 'test' && task.status !== 'cancelled' && Number.isInteger(round) && tested.length === 1) {
+      const key = `${tested[0]}@${round}`;
+      // 재실행은 새 태스크가 아니라 같은 태스크의 판정이 바뀌는 일이다. 둘이 되면
+      // 어느 쪽이 그 차수의 결론인지 정해지지 않는다. 반려한 태스크는 자리를 비운다 —
+      // 붙잡으면 잘못 만든 것을 되돌릴 방법이 차수를 올리는 것뿐이게 된다.
+      if (roundOwners.has(key)) diagnostic(list, { code: 'RDL-TASK-032', category: 'task', file: taskFile, artifactId: taskId, target: tested[0], message: `${tested[0]}의 ${round}차 검증 태스크가 둘 이상입니다: ${roundOwners.get(key)}에 이미 있음` });
+      else roundOwners.set(key, taskId);
+    }
     const implementationLinked = (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
     if (task.implementationReadiness && task.implementationReadiness !== 'atomic-v1') diagnostic(list, { code: 'RDL-IMPL-023', category: 'implementation', file: taskFile, artifactId: taskId, message: `지원하지 않는 구현 준비도 계약입니다: ${task.implementationReadiness}` });
     if (task.status === 'done' && implementationLinked && task.implementationReadiness === 'atomic-v1') {
@@ -489,6 +518,15 @@ function checkLegacyWorkspace(start, options, scope) {
       code: issue.code,
       category: 'diagram',
       severity: 'warning',
+      file: doc.relativeFile,
+      artifactId: doc.id,
+      target: issue.target || null,
+      message: issue.message
+    });
+    for (const issue of validateTestDocument(code, doc.source, doc.id, options)) diagnostic(diagnostics, {
+      code: issue.code,
+      category: 'test',
+      severity: issue.severity,
       file: doc.relativeFile,
       artifactId: doc.id,
       target: issue.target || null,

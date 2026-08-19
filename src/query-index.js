@@ -13,7 +13,7 @@ const path = require('path');
 const { runGit } = require('./git');
 
 // 형식이 바뀌면 올린다. 낡은 형식은 읽지 않고 버린다.
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 3;
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 
@@ -206,15 +206,26 @@ function queryTasks(start, options) {
   if (settings.index === true && settings.cold !== true) {
     const read = readIndex(start);
     if (read.status === 'valid') {
-      const scoped = read.index.tasks.filter((task) => !settings.project || task.project === settings.project);
-      const tasks = scoped.filter((task) => (!settings.status || task.status === settings.status)
+      // 차수는 필터가 아니라 범위다 — 무인덱스 경로가 그렇게 좁히므로 여기서도 집계
+      // 이전에 좁힌다. 두 경로가 갈리면 같은 질문에 다른 답이 나온다.
+      const scoped = read.index.tasks.filter((task) => (!settings.project || task.project === settings.project)
+        && (settings.round === undefined || settings.round === null || (task.round === undefined ? null : task.round) === settings.round));
+      const tasks = scoped.filter((task) => (!settings.kind || (task.kind || 'normal') === settings.kind)
+        && (!settings.status || task.status === settings.status)
         && (!settings.open || ['todo', 'doing', 'waiting', 'review'].includes(task.status)));
       // 집계는 선택된 프로젝트 범위에서 세고 상태 필터 이전 값을 쓴다 — 무인덱스
       // 경로가 정확히 그렇게 센다. 여기서 갈리면 같은 응답의 목록과 집계가
       // 서로 다른 질문에 답한다.
       const counts = {};
-      for (const task of scoped) counts[task.status] = (counts[task.status] || 0) + 1;
-      return { source: 'index', fingerprint: read.fingerprint, root: read.index.builtFrom, projects: settings.project ? [settings.project] : read.index.projects, counts, total: scoped.length, tasks };
+      const results = {};
+      for (const task of scoped) {
+        counts[task.status] = (counts[task.status] || 0) + 1;
+        if ((task.kind || 'normal') === 'test') {
+          const bucket = task.result || (task.status === 'cancelled' ? 'cancelled' : 'pending');
+          results[bucket] = (results[bucket] || 0) + 1;
+        }
+      }
+      return { source: 'index', fingerprint: read.fingerprint, root: read.index.builtFrom, projects: settings.project ? [settings.project] : read.index.projects, counts, results, total: scoped.length, tasks };
     }
   }
   return Object.assign({ source: 'cold' }, listTasks(start, settings));

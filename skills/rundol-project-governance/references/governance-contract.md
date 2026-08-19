@@ -50,6 +50,32 @@ A team may set `profiles.<name>.sections.<TYPE>` in `board.json` to extend or re
 
 `REQ`, `SCR`, `MOD`, `API`, and `TST` declare every implemented function with `functionIds` and `implementationContract: atomic-v1`. Several functions may share a file, but their specifications never share a range, combined row, placeholder, acceptance criterion, or test. Each function keeps the complete type-specific fields it would have in a standalone document. Implementation starts only after `rdl check --strict --implementation` succeeds for the linked REQ and TST.
 
+A `TST` keeps `REQ` as its required relation, and additionally must reference the `SCR` that owns a screen for any function it verifies — but only when such an `SCR` exists (`RDL-IMPL-018`). The rule is conditional on purpose. Making `SCR` the required relation outright would drop every screenless function — authentication, batch jobs, webhooks, public APIs — out of verification entirely, and the coverage denominator would silently shrink. The aggregation and atomicity axis therefore stays the function ID, never the screen: a screen composes many functions, so organizing tests by screen makes one function change ripple across several documents. Projects that declare the `ui` trait get `SCR` as a `required` type, which is how "this product has screens" is expressed — not by changing the relation rule.
+
+That relation exists so the screen is open in front of you while you write the test. Derive each per-function field from the document that owns the answer rather than restating the requirement in the abstract:
+
+| `TST` field | Derive from |
+|---|---|
+| `사전 조건` | the `SCR` `진입`, plus the `REQ` `사전조건` |
+| `입력과 데이터` | the `SCR` `바인딩` — its actual fields, formats, and validation rules |
+| `실행 절차` | the `SCR` `사용자 흐름`, walked as one concrete path |
+| `기대 결과` | the `SCR` `상태` and `전이` for what the screen shows next, plus the `REQ` `수용 기준` for why |
+| `오류와 취소` | the `SCR` `디자인에 없는 것` and the `REQ` `상태와 예외` |
+
+`RDL-IMPL-006` rejects an unfilled placeholder but cannot reject a vague sentence. "A valid value is entered and it succeeds" passes the check and fails as a test. Write the field values a person could type and the result they could compare against; when a screen exists and the test still reads abstractly, the screen was not consulted. For a screenless function the same fields come from `REQ`, `API`, or `MOD` instead, and the standard of concreteness does not change.
+
+## Specification and execution
+
+A `TST` carries specification only. What must be true to pass belongs to the document; whether this run actually passed belongs to the execution record. Keeping both in one file means editing the source of truth on every re-run, which erases the history — "it failed last week" leaves no trace, and a dashboard built on that data can only ever show the present.
+
+The `시나리오` section is therefore a table whose first column is an ID, because an execution record has to address the scenario it reports on. A scenario written as a bullet has nowhere for a result to attach. References take the form `TST-017#S-03`.
+
+Do not unify ID spelling across documents. The document identifier already precedes the scenario ID, so the ID need not restate which document it belongs to, and what referencing actually needs is stability and uniqueness rather than uniformity. Any token that starts with a letter, carries no spaces or separators, stays within 32 characters, and is unique inside its document will serve.
+
+`통과 기준` holds no checkboxes. A checkbox asserts a result inside a canonical document, and nobody maintains it — Rundol's own test documents carried thirteen unticked boxes whose underlying facts had all been true for some time. That is the failure mode: the document keeps claiming a state that stopped being measured.
+
+Section names are configurable per project, so these checks stay silent when the section is absent rather than demanding a heading a team has renamed.
+
 Rundol never persists a document index, catalog, list, or traceability matrix as a canonical artifact. Direct IDs and links remain authoritative; `rdl contract trace` computes the current view on demand.
 
 ## Diagram convention

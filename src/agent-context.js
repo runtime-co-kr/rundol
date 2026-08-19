@@ -25,6 +25,10 @@ function taskEntry(id, task, projectKey) {
     project: task.project || projectKey,
     title: task.title || '',
     status: task.status || null,
+    // 진행 상태와 판정은 다른 축이다. 값이 없는 옛 태스크는 일반 태스크로 읽는다.
+    kind: task.kind || 'normal',
+    result: task.result === undefined ? null : task.result,
+    round: task.round === undefined ? null : task.round,
     priority: task.priority || null,
     owner: task.owner || null,
     links: Array.isArray(task.links) ? task.links.slice() : [],
@@ -49,11 +53,24 @@ function listTasks(start, options) {
   const projects = selectedProjects(layout, settings.project);
   const tasks = [];
   const counts = {};
+  // 테스트 판정 집계는 상태 집계와 같은 규칙을 따른다 — 선택된 프로젝트 범위에서
+  // 세고 필터 이전 값을 쓴다. 판정이 아직 없는 테스트는 pending으로 센다.
+  const results = {};
   for (const project of projects) {
     const store = readTaskStore(project.tasks);
     for (const [id, task] of Object.entries(store.tasks || {})) {
       const entry = taskEntry(id, task, project.key);
+      // 차수는 필터가 아니라 범위다. project처럼 먼저 좁히고 그 안에서 집계한다 —
+      // 2차를 물었는데 전체 차수의 집계가 돌아오면 답이 질문과 어긋난다. 차수를 물으면
+      // 차수를 갖지 않는 일반 태스크는 애초에 범위 밖이다.
+      if (settings.round !== undefined && settings.round !== null && entry.round !== settings.round) continue;
       counts[entry.status] = (counts[entry.status] || 0) + 1;
+      if (entry.kind === 'test') {
+        // 반려한 테스트는 수행하지 않기로 한 것이라 아직 돌리지 않은 것과 다르다.
+        const bucket = entry.result || (entry.status === 'cancelled' ? 'cancelled' : 'pending');
+        results[bucket] = (results[bucket] || 0) + 1;
+      }
+      if (settings.kind && entry.kind !== settings.kind) continue;
       if (settings.status && entry.status !== settings.status) continue;
       if (settings.open && !OPEN_STATES.has(entry.status)) continue;
       tasks.push(entry);
@@ -66,6 +83,7 @@ function listTasks(start, options) {
     root: layout.root,
     projects: projects.map((project) => project.key),
     counts,
+    results,
     total: Object.values(counts).reduce((sum, value) => sum + value, 0),
     tasks
   };

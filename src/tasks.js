@@ -54,6 +54,66 @@ function assertCancellationConsistency(current, changes) {
   }
 }
 
+// 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝난 것이라 done이고, 그
+// 판정이 fail이다. 한 필드에 섞으면 "실패를 확인한 테스트"와 "아직 돌리지 않은 테스트"를
+// 구분할 수 없어, 테스트만 모아 성공 여부를 묻는 일이 처음부터 불가능해진다.
+const TASK_KINDS = Object.freeze(['normal', 'test']);
+const TEST_RESULTS = Object.freeze(['pass', 'fail', 'blocked', 'skipped']);
+
+function taskKind(task) {
+  return (task && task.kind) || 'normal';
+}
+
+function assertKindConsistency(current, changes) {
+  const next = Object.assign({}, current || {}, changes || {});
+  const kind = taskKind(next);
+  if (!TASK_KINDS.includes(kind)) throw inputError(`지원하지 않는 태스크 종류입니다: ${kind} (${TASK_KINDS.join(', ')})`);
+  const result = next.result === undefined ? null : next.result;
+  if (result !== null) {
+    if (kind !== 'test') throw inputError('테스트 태스크가 아니면 판정을 둘 수 없습니다.');
+    if (!TEST_RESULTS.includes(result)) throw inputError(`지원하지 않는 테스트 판정입니다: ${result} (${TEST_RESULTS.join(', ')})`);
+  }
+  // 반려는 수행하지 않았다는 뜻이므로 판정을 요구하지 않는다. 완료만 요구한다.
+  if (kind === 'test' && next.status === 'done' && result === null) throw inputError('완료한 테스트 태스크에는 판정이 필요합니다.');
+  const round = next.round === undefined ? null : next.round;
+  if (kind !== 'test') {
+    if (round !== null) throw inputError('테스트 태스크가 아니면 차수를 둘 수 없습니다.');
+    return;
+  }
+  // 차수는 실행 회차를 가리키는 프로젝트 전역 번호다. 정수 하나로 두면 표기가 갈리지
+  // 않고, 1차 다음이 2차라는 것을 기계가 알아 회귀 비교가 그냥 된다. "지금 몇 차인가"도
+  // 따로 저장하지 않고 태스크들의 최댓값으로 답한다.
+  if (!Number.isInteger(round) || round < 1) throw inputError('테스트 태스크에는 1 이상의 정수 차수가 필요합니다.');
+  // 차수 하나에 TST 하나가 태스크 하나다. 여럿을 묶으면 판정이 하나뿐이라 어느 것이
+  // 실패했는지 알 수 없고, 모아서 성공 여부를 묻는 일이 다시 불가능해진다.
+  if (testedDocuments(next).length !== 1) throw inputError('테스트 태스크는 검증한 TST 문서를 정확히 하나 연결해야 합니다.');
+}
+
+function testedDocuments(task) {
+  return (task && Array.isArray(task.links) ? task.links : [])
+    .map((link) => String(link).split('#')[0])
+    .filter((link) => /^TST-\d{3,}$/u.test(link));
+}
+
+// 같은 TST를 같은 차수에 두 번 검증하는 태스크는 둘 수 없다. 재실행은 새 태스크가
+// 아니라 같은 태스크의 판정이 바뀌는 일이고, 결함은 별도 수정 태스크가 나른다.
+//
+// 다만 반려한 태스크는 자리를 붙잡지 않는다. 붙잡게 하면 잘못 만든 태스크를 반려한 뒤
+// 그 차수에서 다시 만들 방법이 없어져, 차수를 올리는 것이 유일한 해소가 된다.
+function holdsRoundSlot(task) {
+  return Boolean(task) && task.kind === 'test' && task.status !== 'cancelled';
+}
+
+function assertRoundUniqueness(tasks, taskIdValue, task) {
+  if (!holdsRoundSlot(task)) return;
+  const [target] = testedDocuments(task);
+  if (!target) return;
+  for (const [id, other] of Object.entries(tasks || {})) {
+    if (id === taskIdValue || !holdsRoundSlot(other) || other.round !== task.round) continue;
+    if (testedDocuments(other).includes(target)) throw inputError(`${target}의 ${task.round}차 검증 태스크가 이미 있습니다: ${id}`);
+  }
+}
+
 function clientId(root, preferred) {
   if (preferred) return normalizeClientId(preferred);
   const file = path.join(root, '.rundol', 'state', 'client-id');
@@ -189,8 +249,15 @@ function migrateTaskStore(legacyFile, directory, root, preferredClientId, maxIte
 module.exports = {
   MAX_TASKS_PER_SHARD,
   TERMINAL_TASK_STATES,
+  TASK_KINDS,
+  TEST_RESULTS,
+  taskKind,
   assertBlockerConsistency,
   assertCancellationConsistency,
+  assertKindConsistency,
+  assertRoundUniqueness,
+  holdsRoundSlot,
+  testedDocuments,
   clientId,
   generatedClientId,
   readTaskStore,
