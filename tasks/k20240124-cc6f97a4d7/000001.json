@@ -794,7 +794,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "drive가 verify 커서에서 verifyArtifact를 호출해 pin된 lenses·instructions·policy로 검증한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "검증 quorum 판정이 run.gate(exit 0/1)로 기록되어 fold 커서가 전진하거나 onFail 재시도한다",
@@ -807,7 +807,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:15.381Z",
-      "updatedAt": "2026-08-16T23:43:15.381Z",
+      "updatedAt": "2026-08-19T12:54:19.016Z",
       "statusChangedAt": "2026-08-16T23:43:15.381Z",
       "externalRefs": [],
       "project": "rundol",
