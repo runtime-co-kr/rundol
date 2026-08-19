@@ -1717,7 +1717,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "위치 질의가 프로세스 안에서 재사용된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "worktree·init·clone이 캐시를 무효화한다",
@@ -1730,7 +1730,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:28.534Z",
-      "updatedAt": "2026-08-19T02:22:28.534Z",
+      "updatedAt": "2026-08-19T02:23:47.463Z",
       "statusChangedAt": "2026-08-19T02:22:28.534Z",
       "externalRefs": [],
       "project": "rundol",
