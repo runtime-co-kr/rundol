@@ -1731,6 +1731,40 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-9KFDQ87J": {
+      "title": "[설계] 실행 엔진의 경계와 인가 2계층 유지를 정본화한다",
+      "summary": "워크플로 엔진 사례에서 실행 의미론만 가져오고 저장 구조는 가져오지 않는다. 원장을 물리적으로 합치지 않고 공통 작업 항목 투영을 첫 조각으로 삼는다. 인가 2계층은 유지한다 — 통합하려면 시점별 신원이 필요하고 그것은 별도 결정이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "TST-018"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "가져올 것과 가져오지 않을 것이 기록된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "인가를 통합하지 않는 이유와 그 전제가 기록된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "다음 조각의 순서가 기록된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:30.249Z",
+      "updatedAt": "2026-08-19T02:22:30.249Z",
+      "statusChangedAt": "2026-08-19T02:22:30.249Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
