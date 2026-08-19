@@ -1663,6 +1663,40 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-J5RHEKFZ": {
+      "title": "[개선] 결박 우회를 요약에서 세어 보여 준다",
+      "summary": "막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수 있어야 하고, 세려면 진단 목록이 아니라 요약에 있어야 한다. 메타데이터 예산 규칙도 STD-002에 남긴다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl check 요약이 결박·우회·미결박·끊긴 결박을 센다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "조회하지 못한 프로젝트가 값으로 남는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "메타데이터 예산 규칙이 STD-002에 기록된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:26.890Z",
+      "updatedAt": "2026-08-19T02:22:26.890Z",
+      "statusChangedAt": "2026-08-19T02:22:26.890Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
