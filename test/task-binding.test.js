@@ -198,6 +198,34 @@ try {
     }
   }
 
+  // ── 파생 사다리 ─────────────────────────────────────────────────────
+  //
+  // 대부분의 경우 기계가 이미 안다. 아는 것을 묻는 통제는 확인이 아니라 요금이고,
+  // 요금을 무는 통제는 우회된다.
+  const branchTask = addTask(workspace, '브랜치 묶음 태스크');
+  const currentBranch = git(worktreeRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  rdl(workspace, ['task', 'set', branchTask.taskId, '--external-ref', `branch=${currentBranch}`]);
+  touch(workspace, 'derive-workset');
+  const fromWorkset = rdl(workspace, ['save']);
+  assert.strictEqual(fromWorkset.task, branchTask.taskId, JSON.stringify(fromWorkset.notices || []));
+  assert.strictEqual(fromWorkset.taskSource, 'workset');
+  assert.strictEqual(fromWorkset.taskInferred, true);
+
+  // 인수 지정은 파생을 이긴다. 사람이 아는 것이 기계가 추측한 것보다 앞선다.
+  const explicitTask = addTask(workspace, '직접 지정할 태스크');
+  touch(workspace, 'derive-explicit');
+  const explicit = rdl(workspace, ['save', '--task', explicitTask.taskId]);
+  assert.strictEqual(explicit.task, explicitTask.taskId);
+  assert.strictEqual(explicit.taskSource, 'explicit');
+  assert.strictEqual(explicit.taskInferred, false);
+
+  // 파생이 가리킨 태스크가 끝나 있으면 파생하지 않는다. 파생이 사람이 지정할 수 없는
+  // 것을 묶어 주면 파생 자체가 우회가 된다.
+  rdl(workspace, ['task', 'set', branchTask.taskId, '--status', 'cancelled', '--reason', '접는다']);
+  touch(workspace, 'derive-terminal');
+  const afterTerminal = rdlFails(workspace, ['save']);
+  assert(afterTerminal.includes('RDL-TASK-033'), afterTerminal);
+
   // ── 방어를 끄면 시험이 실패하는가 ────────────────────────────────────
   //
   // 이 확인이 없으면 위의 거부 단언들이 다른 이유로 통과할 수 있다.

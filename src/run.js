@@ -110,7 +110,7 @@ function startRun(start, options) {
   if (harness.workspaceRevision !== undefined) settings.workspaceRevision = harness.workspaceRevision;
   if (harness.projectRevision !== undefined) settings.projectRevision = harness.projectRevision;
   return ledger.createRun(start, {
-    project: options.project, goal: options.goal, targetArtifactId: options.artifactId, clientId: options.clientId, procedure: pinnedProcedure,
+    project: options.project, goal: options.goal, targetArtifactId: options.artifactId, taskId: options.task, clientId: options.clientId, procedure: pinnedProcedure,
     settings, rootRequestId: options.requestId
   });
 }

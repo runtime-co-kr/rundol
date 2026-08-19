@@ -266,6 +266,21 @@ try {
   const runId = started.runId;
   assert(/^RUN-[A-F0-9]{20}$/u.test(runId));
 
+  // 런은 자기가 어느 태스크의 일인지 밝힐 수 있다. 저장이 결박을 파생할 때 첫 근거가
+  // 되며, 런 시작에 고정되고 도중에 바뀌지 않는다 — 바뀔 수 있으면 그 런이 만든
+  // 커밋들이 서로 다른 태스크를 가리킨다.
+  {
+    const bound = rdl(['task', 'add', '런이 밝히는 태스크', '--project', 'crm', '--client-id', 'laptop-a',
+      '--summary', '런과 결박을 잇는다.', '--owner', 'MEMBER-001', '--acceptance', '이어진다.']);
+    const taskRun = rdl(['run', 'start', 'document.authored', '--project', 'crm', '--client-id', 'laptop-a', '--task', bound.taskId]);
+    const log = rdl(['run', 'log', '--run', taskRun.runId, '--project', 'crm']);
+    const startEvent = log.events.find((event) => event.type === 'run.started');
+    assert.strictEqual(startEvent.taskId, bound.taskId, '런이 밝힌 태스크가 원장에 남지 않았습니다');
+    // 선택 필드다. 밝히지 않은 런도 그대로 돌아야 한다.
+    const plain = rdl(['run', 'log', '--run', runId, '--project', 'crm']);
+    assert.strictEqual(plain.events.find((event) => event.type === 'run.started').taskId, undefined);
+  }
+
   const procedureFixture = JSON.parse(fs.readFileSync(proceduresFile, 'utf8'));
   procedureFixture.procedures['environment.gate'] = {
     revision: 1,

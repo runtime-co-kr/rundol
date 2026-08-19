@@ -618,6 +618,40 @@ function projectTaskEnforcement(config) {
 // 강제 지점은 저장 하나다. 여러 곳에 나누어 걸면 어디서 막혔는지가 흐려지고, 공유에
 // 걸면 늦다 — 작업이 로컬에 쌓인 뒤에는 어느 커밋이 무슨 일이었는지가 추측이 된다.
 // 저장은 일이 사실로 굳는 순간이고, 그때는 자기가 무엇을 했는지 안다.
+// 결박을 파생할 근거들. 순서가 곧 우선순위이고, 각 근거는 태스크를 답하거나 답하지
+// 않는다 — 답하지 못하는 것은 실패가 아니라 다음 근거로 넘어가는 일이다.
+//
+// 근거를 읽다 실패해도 저장을 막지 않는다. 파생은 편의이고, 편의가 없다고 통제가
+// 강해지지는 않는다 — 못 정하면 아래에서 사람에게 묻는다.
+function derivationLadder(config, settings, tasks) {
+  const sources = [];
+  if (settings.run) {
+    let runTask = null;
+    try {
+      const ledger = require('./run-ledger');
+      const reconciled = ledger.reconcileRun(config.root, { project: config.project, runId: settings.run });
+      runTask = reconciled && reconciled.events.length ? ledger.foldSharedRun(reconciled.events).taskId : null;
+    } catch (_) { runTask = null; }
+    sources.push({ name: 'run', label: `런 ${settings.run}`, taskId: runTask });
+  }
+  // 작업 묶음은 브랜치가 만든다. 같은 브랜치를 가리키는 태스크가 하나면 그것이
+  // 지금 하는 일이고, 여럿이면 고르는 것은 추론이 아니라 추측이다.
+  let branch = null;
+  try { branch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: config.worktree, allowFailure: true }).stdout.trim(); }
+  catch (_) { branch = null; }
+  if (branch && branch !== 'HEAD') {
+    const { normalizeExternalRef } = require('./workset');
+    const onBranch = Object.keys(tasks).filter((id) => {
+      const refs = Array.isArray(tasks[id] && tasks[id].externalRefs) ? tasks[id].externalRefs : [];
+      return refs.map(normalizeExternalRef).some((ref) => ref.kind === 'branch' && ref.value === branch);
+    });
+    sources.push({ name: 'workset', label: `브랜치 ${branch}의 작업 묶음`, taskId: onBranch.length === 1 ? onBranch[0] : null });
+  }
+  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
+  sources.push({ name: 'single-doing', label: '진행 중인 태스크', taskId: doing.length === 1 ? doing[0] : null });
+  return sources;
+}
+
 function resolveTaskBinding(config, settings) {
   const level = projectTaskEnforcement(config);
   const requested = settings.task ? String(settings.task).trim() : null;
@@ -638,15 +672,27 @@ function resolveTaskBinding(config, settings) {
     // 아니라 "존재하는 문자열이다"가 된다. 완료·반려된 태스크를 가리키는 커밋은 그
     // 태스크가 끝난 뒤에 생긴 일이므로 그 태스크의 일일 수 없다.
     if (TERMINAL_TASK_STATUSES.includes(tasks[requested].status)) throw new Error(`RDL-TASK-037: 이미 끝난 태스크에는 묶을 수 없습니다: ${requested} (${tasks[requested].status}). 진행 중인 태스크를 지정하거나 새로 만드세요.`);
-    return { level, taskId: requested, inferred: false, reason: null, notices };
+    return { level, taskId: requested, inferred: false, source: 'explicit', reason: null, notices };
   }
   if (excuse) return { level, taskId: null, inferred: false, reason: excuse, notices };
 
-  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
-  if (doing.length === 1) {
-    notices.push(`태스크를 지정하지 않아 진행 중인 ${doing[0]}(으)로 기록합니다.`);
-    return { level, taskId: doing[0], inferred: true, reason: null, notices };
+  // 파생 사다리. 대부분의 경우 기계가 이미 안다 — 런이 돌고 있으면 그 런이 무엇을
+  // 하는 중인지 원장에 있고, 작업 묶음은 브랜치로 이미 묶여 있다. 아는 것을 묻는
+  // 통제는 확인이 아니라 요금이고, 요금을 무는 통제는 우회된다.
+  //
+  // 앞이 답하면 뒤를 묻지 않는다. 런이 작업 묶음을 이기는 이유는 런이 더 좁기
+  // 때문이다 — 한 브랜치에 여러 런이 있을 수 있어도 한 런은 하나의 일이다.
+  for (const source of derivationLadder(config, settings, tasks)) {
+    if (!source.taskId) continue;
+    if (!Object.prototype.hasOwnProperty.call(tasks, source.taskId)) continue;
+    // 파생된 태스크도 결박의 조건을 그대로 지난다. 끝난 태스크는 파생으로도 묶이지
+    // 않는다 — 파생이 사람이 지정할 수 없는 것을 묶어 주면 파생이 우회가 된다.
+    if (TERMINAL_TASK_STATUSES.includes(tasks[source.taskId].status)) continue;
+    notices.push(`태스크를 지정하지 않아 ${source.label}에서 ${source.taskId}(으)로 기록합니다.`);
+    return { level, taskId: source.taskId, inferred: true, source: source.name, reason: null, notices };
   }
+
+  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
   // 둘 이상이면 추론하지 않는다. 골라 주는 것이 편해 보이지만, 틀린 결박은 결박이
   // 없는 것보다 나쁘다 — 없는 것은 비어 있고 틀린 것은 거짓이다.
   const why = doing.length ? `진행 중인 태스크가 ${doing.length}건입니다: ${doing.join(', ')}` : '진행 중인 태스크가 없습니다';
@@ -661,6 +707,7 @@ function bindingReport(binding) {
   return {
     task: binding.taskId || null,
     taskInferred: binding.taskId ? binding.inferred : null,
+    taskSource: binding.taskId ? (binding.source || null) : null,
     taskEnforcement: binding.level,
     notices: binding.notices.length ? binding.notices : undefined
   };
