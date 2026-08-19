@@ -1381,12 +1381,12 @@
         },
         "AC-005": {
           "text": "강제를 지나지 않은 커밋이 검사에서 드러난다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:48:45.721Z",
-      "updatedAt": "2026-08-19T01:48:07.052Z",
+      "updatedAt": "2026-08-19T01:48:08.648Z",
       "statusChangedAt": "2026-08-18T22:48:45.721Z",
       "externalRefs": [],
       "project": "rundol",
