@@ -1583,6 +1583,44 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-FZF3Y2PV": {
+      "title": "[기능] 문서 유형 API를 IFC로 옮기고 STD를 더한다",
+      "summary": "API는 HTTP만 연상시켜 CLI·이벤트·파일 형식·어댑터 계약을 담기에 좁았다. IFC로 옮기고 표준(STD) 유형을 더하며, 계약·board.json·문서 세 곳에 이관 경로를 함께 낸다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "links": [
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "계약과 board.json이 옛 이름을 새 이름으로 읽는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "rdl doc migrate가 API-### 문서의 ID·kind·태그·참조를 함께 옮긴다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "정본 문서(DOCUMENT-STANDARD)가 새 유형표를 담는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "혼합 버전 시험이 선언된 파기만 허용한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:23.666Z",
+      "updatedAt": "2026-08-19T02:22:23.666Z",
+      "statusChangedAt": "2026-08-19T02:22:23.666Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
