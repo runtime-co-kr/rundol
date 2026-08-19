@@ -560,7 +560,7 @@
         },
         "AC-003": {
           "text": "완료한 테스트 태스크에는 판정이 필요하다. 반려한 테스트 태스크에는 요구하지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "테스트 태스크는 TST 문서를 연결해야 한다.",
@@ -581,7 +581,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:34:58.788Z",
-      "updatedAt": "2026-08-19T04:50:35.172Z",
+      "updatedAt": "2026-08-19T04:50:36.272Z",
       "statusChangedAt": "2026-08-19T04:35:05.720Z",
       "externalRefs": [],
       "project": "rundol",
