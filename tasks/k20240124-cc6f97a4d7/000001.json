@@ -1837,7 +1837,10 @@
       "kind": "normal",
       "result": null,
       "round": null,
-      "links": [],
+      "links": [
+        "SCR-002",
+        "TST-016"
+      ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
@@ -1855,7 +1858,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T17:11:48.132Z",
-      "updatedAt": "2026-08-19T22:10:23.663Z",
+      "updatedAt": "2026-08-19T23:04:51.374Z",
       "statusChangedAt": "2026-08-19T17:11:48.132Z",
       "externalRefs": [],
       "project": "rundol"
