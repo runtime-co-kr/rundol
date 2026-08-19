@@ -84,6 +84,42 @@ const running = (async () => { try {
     held.release();
   }
 
+  // 판단과 회수 사이의 틈. 죽었다고 읽은 뒤 옮기기 전에 다른 프로세스가 그 잠금을
+  // 치우고 자기 것을 만들면, 우리가 옮기는 것은 살아 있는 잠금이다. 그대로 지우면
+  // 둘 다 잠금을 쥔다 — 상호 배제가 깨지는 자리다.
+  //
+  // 경쟁으로 재현하면 기계마다 결과가 달라 게이트가 되지 못한다. isAlive 훅이
+  // 불리는 순간에 파일을 바꿔치기해 그 틈을 결정적으로 만든다.
+  {
+    const raced = path.join(runtime.locks, 'watch-raced.lock');
+    const dead = { schemaVersion: 1, kind: 'watch', workspaceId: '0123456789abcdef', projectId: 'raced', pid: 2147483646, token: 'c'.repeat(32) };
+    const live = { schemaVersion: 1, kind: 'watch', workspaceId: '0123456789abcdef', projectId: 'raced', pid: process.pid, token: 'd'.repeat(32) };
+    fs.writeFileSync(raced, `${JSON.stringify(dead)}
+`, 'utf8');
+    let swapped = false;
+    let failure = null;
+    try {
+      acquireProcessLock(runtime.locks, {
+        kind: 'watch', projectId: 'raced', workspaceId: '0123456789abcdef',
+        isAlive(candidate) {
+          // 죽은 잠금이라고 답하면서, 그 사이에 남이 살아 있는 잠금을 만들어 둔다.
+          if (candidate === dead.pid && !swapped) {
+            swapped = true;
+            fs.writeFileSync(raced, `${JSON.stringify(live)}
+`, 'utf8');
+            return false;
+          }
+          return candidate === process.pid;
+        }
+      });
+    } catch (error) { failure = error; }
+    assert(swapped, '이 시험의 전제가 깨졌습니다. 회수 판단이 일어나지 않았습니다.');
+    assert(failure, '살아 있는 잠금이 회수되어 두 프로세스가 모두 잠금을 쥐었습니다');
+    assert.strictEqual(failure.code, 'RDL_PROCESS_LOCKED', failure.message);
+    assert.strictEqual(readProcessLock(raced).token, live.token, '되돌려 놓아야 할 잠금이 사라졌습니다');
+    fs.rmSync(raced, { force: true });
+  }
+
   const contenders = [contender(), contender()];
   fs.writeFileSync(start, 'go', 'utf8');
   const outcomes = (await Promise.all(contenders)).sort();

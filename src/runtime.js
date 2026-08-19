@@ -92,14 +92,33 @@ function pause(milliseconds) {
 const UNREADABLE_LOCK_RETRIES = 8;
 
 // 유효하지 않은 잠금을 치운다. 없어졌거나 남이 먼저 치운 경우는 실패가 아니다.
-function reclaim(file) {
+//
+// 판단과 치움 사이에 틈이 있다. 죽었다고 읽은 뒤 옮기기 전에 다른 프로세스가 그 잠금을
+// 치우고 자기 것을 만들 수 있고, 그러면 우리가 옮기는 것은 살아 있는 잠금이다. 그것을
+// 그대로 지우면 둘 다 잠금을 쥐게 된다 — 상호 배제가 깨지는 자리가 여기다.
+//
+// 그래서 옮긴 뒤에 확인한다. 옮긴 것이 우리가 죽었다고 판단한 그 잠금이 아니면 되돌린다.
+function reclaim(file, expected) {
   const stale = `${file}.stale-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
   try {
     fs.renameSync(file, stale);
-    try { fs.unlinkSync(stale); } catch {}
   } catch (renameError) {
     if (!['ENOENT', 'EEXIST', 'EPERM', 'EACCES'].includes(renameError.code)) throw renameError;
+    return;
   }
+  if (expected) {
+    let moved = null;
+    try { moved = readProcessLock(stale); } catch { moved = null; }
+    // 읽히지 않는 것은 우리가 치우기로 한 그 쓰레기다. 읽히는데 다르면 남의 것이다.
+    if (moved && (moved.token !== expected.token || moved.pid !== expected.pid)) {
+      try { fs.renameSync(stale, file); return; } catch (restoreError) {
+        // 되돌릴 자리에 이미 새 잠금이 있으면 되돌리지 않는다. 그쪽이 지금의 정본이고,
+        // 우리가 들고 있는 것은 그보다 앞선 기록이다.
+        if (!['EEXIST', 'EPERM', 'EACCES', 'ENOTEMPTY'].includes(restoreError.code)) throw restoreError;
+      }
+    }
+  }
+  try { fs.unlinkSync(stale); } catch {}
 }
 
 function acquireProcessLock(lockDirectory, input) {
@@ -135,6 +154,12 @@ function acquireProcessLock(lockDirectory, input) {
       } finally {
         fs.closeSync(descriptor);
       }
+      // 만들었다고 쥔 것이 아니다. 죽은 잠금을 치우던 다른 프로세스가 방금 만든 이
+      // 잠금을 자기가 판단한 그 죽은 잠금으로 알고 지울 수 있다. 우리 토큰이 그대로
+      // 있는지 확인하고, 아니면 다시 겨룬다 — 만든 것과 쥔 것은 다르다.
+      let mine = null;
+      try { mine = readProcessLock(file); } catch { mine = null; }
+      if (!mine || mine.token !== token || mine.pid !== pid) { pause(2); continue; }
       acquired = true;
       break;
     } catch (error) {
@@ -157,7 +182,7 @@ function acquireProcessLock(lockDirectory, input) {
         current = null;
       }
       if (current === null) {
-        reclaim(file);
+        reclaim(file, null);
         continue;
       }
       if (current.kind !== kind || current.workspaceId !== settings.workspaceId || current.projectId !== settings.projectId) throw new Error(`process lock identity mismatch: ${file}`);
@@ -167,7 +192,7 @@ function acquireProcessLock(lockDirectory, input) {
         locked.lock = current;
         throw locked;
       }
-      reclaim(file);
+      reclaim(file, current);
     }
   }
   if (!acquired) {
