@@ -1338,12 +1338,12 @@
         },
         "AC-003": {
           "text": "이관 후 태스크를 가리키던 참조가 모두 새 식별자를 가리킨다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:48:43.989Z",
-      "updatedAt": "2026-08-19T01:47:56.007Z",
+      "updatedAt": "2026-08-19T01:47:57.611Z",
       "statusChangedAt": "2026-08-18T22:48:43.989Z",
       "externalRefs": [],
       "project": "rundol",
