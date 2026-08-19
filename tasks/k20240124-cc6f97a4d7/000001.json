@@ -1502,12 +1502,12 @@
         },
         "AC-004": {
           "text": "선행 문서가 없는 대상은 준비 완료 집합에 들어가지 않는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:08.690Z",
-      "updatedAt": "2026-08-19T02:01:42.168Z",
+      "updatedAt": "2026-08-19T02:01:43.782Z",
       "statusChangedAt": "2026-08-18T22:49:08.690Z",
       "externalRefs": [],
       "project": "rundol",
