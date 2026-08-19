@@ -1686,7 +1686,7 @@
         },
         "AC-002": {
           "text": "조회하지 못한 프로젝트가 값으로 남는다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "메타데이터 예산 규칙이 STD-002에 기록된다",
@@ -1695,7 +1695,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:26.890Z",
-      "updatedAt": "2026-08-19T02:23:39.285Z",
+      "updatedAt": "2026-08-19T02:23:40.956Z",
       "statusChangedAt": "2026-08-19T02:22:26.890Z",
       "externalRefs": [],
       "project": "rundol",
