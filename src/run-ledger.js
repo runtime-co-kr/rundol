@@ -21,7 +21,7 @@ const REVISION = /^[a-f0-9]{40,64}$/u;
 const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.synced', 'run.takeover', 'run.ownership_resolved']);
 const HALT_REASONS = new Set(['gate-failed', 'step-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual', 'settings-drift', 'ownership-conflict', 'operation-conflict', 'legacy-conflict', 'verification-required']);
 const TYPE_FIELDS = {
-  'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId'] },
+  'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId', 'taskId'] },
   'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
   'run.gate': { required: ['ownerToken', 'stepId', 'command', 'args', 'exitCode', 'diagnostics', 'attempt'], optional: ['operation'] },
   'run.forced': { required: ['ownerToken', 'stepId', 'reason'], optional: ['operation'] },
@@ -294,6 +294,15 @@ function normalizeRunEvent(event) {
     if (owner() !== event.eventId) throw new Error('run.started ownerToken must equal eventId');
     normalized.ownerToken = event.ownerToken;
     if (event.goal !== undefined) normalized.goal = normalizeText(event.goal, 'goal', 500, false);
+    // 이 런이 어느 태스크의 일인지. 선택 필드다 — 없는 이벤트를 읽는 구버전이 멈추지
+    // 않아야 하고, 밝히지 않은 런도 돌아야 한다.
+    //
+    // 런 시작에 고정하고 도중에 바꾸지 않는다. 바뀔 수 있으면 그 런이 만든 커밋들이
+    // 서로 다른 태스크를 가리킨다.
+    if (event.taskId !== undefined) {
+      if (!/^TASK-[0-9A-HJKMNP-TV-Z]{8}$/u.test(String(event.taskId))) throw new Error('taskId는 태스크 ID여야 합니다.');
+      normalized.taskId = event.taskId;
+    }
     // 이 런이 다루는 정본 문서. 절차의 {artifact}가 여기서 온다.
     if (event.targetArtifactId !== undefined) {
       if (!/^[A-Z]{3}-\d{3,}$/u.test(String(event.targetArtifactId))) throw new Error('targetArtifactId는 정본 문서 ID여야 합니다.');
@@ -916,6 +925,8 @@ function foldProgress(events, ownership) {
   if (ownership && ownership.status === 'CONFLICT') { status = 'ownership-conflict'; haltReason = 'ownership-conflict'; }
   return {
     runId: started.runId, projectId: started.projectId,
+    // 런이 밝힌 태스크. 저장이 결박을 파생할 때 첫 근거가 된다.
+    taskId: started.taskId || null,
     procedure: { name: started.procedure.name, revision: started.procedure.revision, contentHash: started.procedure.contentHash },
     status, cursor: current, cursorStep: current ? byId.get(current) || null : null,
     completedSteps: order.filter((identifier) => completed.has(identifier)), attempts, forcedSteps, artifactIds, lastGate, haltReason,
@@ -1294,6 +1305,7 @@ function createRun(start, input) {
     type: 'run.started', runId, projectId: project.key, clientId,
     goal: String(input.goal || '').trim() || undefined,
     targetArtifactId: String(input.targetArtifactId || '').trim() || undefined,
+    taskId: String(input.taskId || '').trim() || undefined,
     procedure: { name: procedure.name, revision: procedure.revision, schemaVersion: procedure.schemaVersion || 1, contentHash, resolved: procedure }
   };
   if (v2) {
