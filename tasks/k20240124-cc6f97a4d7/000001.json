@@ -1459,7 +1459,7 @@
         },
         "AC-004": {
           "text": "선택 렌즈 미실행 시 검증이 완료되고 미실행으로 기록된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "모델 없는 판정자가 다양성 계산에 어댑터로 셈해진다",
@@ -1468,7 +1468,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:49:06.991Z",
-      "updatedAt": "2026-08-19T01:48:25.390Z",
+      "updatedAt": "2026-08-19T01:48:26.913Z",
       "statusChangedAt": "2026-08-18T22:49:06.991Z",
       "externalRefs": [],
       "project": "rundol",
