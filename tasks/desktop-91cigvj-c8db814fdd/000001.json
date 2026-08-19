@@ -568,7 +568,7 @@
         },
         "AC-005": {
           "text": "rdl task add --kind test, rdl task set --result <판정>, rdl task list --kind test가 동작하고 목록이 판정별 집계를 함께 낸다.",
-          "done": false
+          "done": true
         },
         "AC-006": {
           "text": "인덱스 경로와 정본 경로가 종류 필터와 판정에 대해 같은 답을 낸다.",
@@ -581,7 +581,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T04:34:58.788Z",
-      "updatedAt": "2026-08-19T04:50:37.337Z",
+      "updatedAt": "2026-08-19T04:50:38.407Z",
       "statusChangedAt": "2026-08-19T04:35:05.720Z",
       "externalRefs": [],
       "project": "rundol",
