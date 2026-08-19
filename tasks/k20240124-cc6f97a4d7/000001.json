@@ -1365,7 +1365,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "거부 수준에서 태스크 없이 저장하면 거부되고 지정하면 저장된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "진행 중 태스크가 하나면 추론하고 고른 것을 출력한다",
@@ -1386,7 +1386,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-18T22:48:45.721Z",
-      "updatedAt": "2026-08-18T22:48:45.721Z",
+      "updatedAt": "2026-08-19T01:48:02.215Z",
       "statusChangedAt": "2026-08-18T22:48:45.721Z",
       "externalRefs": [],
       "project": "rundol",
