@@ -75,6 +75,16 @@ function registerClient(start, input) {
   if (!String(input.name || '').trim()) throw new Error('--name <Client 이름>이 필요합니다.');
   const file = clientFile(store, id);
   if (fs.existsSync(file)) throw new Error(`이미 등록된 Client입니다: ${id}`);
+  // 프로젝트 키와 Client ID가 둘 다 하이픈을 담을 수 있고 샤드 파일명은 하이픈으로
+  // 잇는다. 겹치는 짝은 완전히 같은 파일명을 만들어 두 짝의 이벤트가 한 파일에 섞이고,
+  // 그때는 파일을 보고 구분할 수 없다 — 이름이 같기 때문이다. 이름을 정하는 지금 막는다.
+  {
+    const existing = (listClients(start).clients || []).map((client) => client.id);
+    const pairs = [];
+    for (const project of store.layout.projects || []) for (const clientId of existing.concat([id])) pairs.push({ project: project.key, clientId });
+    const collision = require('./event-store').shardPrefixCollision(pairs);
+    if (collision) throw new Error(`RDL-EVENT-010: 이 Client ID는 샤드 파일명이 다른 짝과 겹칩니다. ${collision.first.project}+${collision.first.clientId}와 ${collision.second.project}+${collision.second.clientId}가 모두 ${collision.key}를 만듭니다. 하이픈 경계가 다른 ID를 쓰세요.`);
+  }
   const now = new Date().toISOString();
   atomicWrite(file, `schemaVersion: 1\nrevision: 1\nid: ${id}\nname: ${quote(input.name)}\ntype: ${type}\nowner: ${owner}\nstatus: active\nregisteredAt: ${quote(now)}\nregisteredBy: ${owner}\n`);
   const saved = saveSettings(store.layout.root);

@@ -332,10 +332,6 @@ function fanOutSiblings(projectRoot, invocation, targetRelative, targetReal) {
   return Array.from(reals);
 }
 
-function withoutSiblings(paths, siblingPaths) {
-  return paths.filter((item) => !siblingPaths.has(item));
-}
-
 // 저작 시도는 성공하거나 흔적을 남기지 않아야 한다. 실패한 시도가 반쯤 쓴 문서를
 // 작업 트리에 남기면 다음 저장이 그것을 커밋하고, 절차는 자기가 무엇을 저장했는지
 // 모르게 된다 — operation-id 재시도가 약속하는 "같은 시도는 같은 결과"도 깨진다.
@@ -588,17 +584,19 @@ async function runAdapterOnce(invocation, executionOptions) {
   // 어댑터는 넘겨받은 절대 경로에서 본 저장소를 역산해 직접 쓸 수 있다. 그것을 막지는
   // 못하지만 알아차리지 못한 채 성공으로 보고하는 것은 다른 문제다. 본 저장소의
   // 상태도 함께 스냅숏해서, 탈출한 저작은 실패로 끝나게 한다.
-  const mainBefore = sandbox ? { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() } : null;
-  // 형제가 복귀시킨 파일은 이 저작이 만든 변경이 아니지만 탈출도 아니다. 빼지 않으면
-  // 병렬을 켠 순간 모든 저작이 서로를 탈출로 고발한다.
-  // 빼는 것은 형제의 경로뿐이고 자기 대상은 빼지 않는다. 자기 대상까지 빼면 격리를
-  // 벗어나 본 트리의 그 파일을 직접 고친 저작이 탈출 검사를 지나간다 — 병렬을 위해
-  // 넓힌 것은 "무엇이 남의 변경인가"의 기준이지 감시 범위가 아니다.
   //
-  // fan-out이 아닐 때 이 집합은 비고, git을 한 번도 부르지 않는다. 형제가 없는데도
-  // 물으면 저작 한 번마다 git 호출 셋이 늘고, 그 지연이 자식 spawn을 늦춘다.
-  const siblingPaths = new Set(siblingReals.filter((real) => real !== mainTarget.real)
-    .flatMap((real) => Array.from(statusPaths(projectRoot, real))));
+  // 탈출 판정의 기준은 "fan-out 대상 밖에서 무엇이 변했는가"다. 형제가 지금 더러운지로
+  // 판정하면 안 된다 — 아직 복귀하지 않은 형제는 깨끗하므로 그 경로가 기준에서 빠지고,
+  // 나중에 그 형제가 복귀하는 순간 이 저작이 그것을 탈출로 고발한다. 병렬을 켠 순간
+  // 정상 실행이 서로를 고발하던 자리가 여기였다.
+  //
+  // pathspec으로 물으면 git이 더러운지와 무관하게 대상을 해석하므로 그 창이 닫힌다.
+  //
+  // 자기 대상은 이 판정에서 빠진다. 저작이 고치는 것이 그 파일이고, 격리를 벗어나
+  // 본 트리의 그 파일을 직접 고친 경우는 복귀 직전의 해시 대조가 따로 잡는다
+  // (targetPath changed in the project worktree during authoring).
+  const escapeScope = siblingReals.slice();
+  const mainBefore = sandbox ? { git: gitSnapshot(projectRoot), foreign: foreignChangedPaths(projectRoot, escapeScope) } : null;
   const location = invocationDirectory(projectRoot, invocation);
   inspectExistingComponents(projectRoot, location.parent, 'directory');
   const directory = makeDirectoriesExclusive(projectRoot, location.parent, location.instanceId);
@@ -732,8 +730,8 @@ async function runAdapterOnce(invocation, executionOptions) {
     // 않으면 어댑터는 main HEAD를 옮기고 파일을 고친 뒤에도 성공을 돌려주고,
     // 하네스는 자기가 무엇을 승인했는지 모른 채 다음 스텝으로 넘어간다.
     if (sandbox) {
-      const mainAfter = { git: gitSnapshot(projectRoot), paths: Array.from(statusPaths(projectRoot, null)).sort() };
-      if (mainAfter.git.head !== mainBefore.git.head || canonicalJson(withoutSiblings(mainAfter.paths, siblingPaths)) !== canonicalJson(withoutSiblings(mainBefore.paths, siblingPaths))) {
+      const mainAfter = { git: gitSnapshot(projectRoot), foreign: foreignChangedPaths(projectRoot, escapeScope) };
+      if (mainAfter.git.head !== mainBefore.git.head || canonicalJson(mainAfter.foreign) !== canonicalJson(mainBefore.foreign)) {
         const error = new Error('Author adapter modified the main project repository from outside its sandbox.');
         error.rdlCode = 'ADAPTER_ESCAPED_SANDBOX';
         throw error;

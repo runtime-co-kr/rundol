@@ -72,6 +72,7 @@ Usage:
   rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
+  rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
   rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
@@ -998,7 +999,7 @@ async function main() {
 
   if (command === 'task') {
     const subcommand = argv.shift();
-    if (!['add', 'set', 'list', 'acceptance', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, identity, migrate입니다.');
+    if (!['add', 'set', 'list', 'acceptance', 'commits', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, commits, identity, migrate입니다.');
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
@@ -1008,6 +1009,31 @@ async function main() {
       if (options.kind !== undefined && !TASK_KINDS.includes(options.kind)) throw new Error(`지원하지 않는 태스크 종류입니다: ${options.kind} (${TASK_KINDS.join(', ')})`);
       const listed = require('../src/query-index').queryTasks(options.root, { project: options.project, kind: options.kind, round: options.round, status: options.status, open: options.open });
       printOperation(listed, options.json);
+      return 0;
+    }
+    // 어느 커밋이 이 태스크의 일이었는지는 커밋 자신이 답한다. 원장이나 인덱스에
+    // 따로 적지 않는 이유는, 적으면 커밋과 그 사실이 따로 움직이고 어긋났을 때
+    // 어느 쪽이 사실인지 알 수 없기 때문이다.
+    //
+    // 작업 브랜치를 지워도 답이 남는다. 저장이 만든 커밋은 프로젝트 ref에 남기 때문이다.
+    if (subcommand === 'commits') {
+      if (options.positional.length > 1) throw new Error('rdl task commits [TASK-ID] 형식이 필요합니다.');
+      const { workspaceLayout, selectProject } = require('../src/workspace');
+      const { commitsForTask, commitBindingSummary } = require('../src/task-commits');
+      const layout = workspaceLayout(options.root);
+      const project = selectProject(layout, options.project, true);
+      const ref = options.branch ? `refs/heads/${options.branch}` : project.ref;
+      const limit = options.maxItems ? Number.parseInt(options.maxItems, 10) : undefined;
+      if (options.maxItems && (!Number.isSafeInteger(limit) || limit < 1)) throw new Error('--max-items는 1 이상의 정수여야 합니다.');
+      if (options.positional.length === 1) {
+        const taskId = options.positional[0];
+        const { readTaskStore } = require('../src/tasks');
+        // 없는 태스크를 빈 목록으로 답하면 오타가 정상 응답이 된다.
+        if (!Object.prototype.hasOwnProperty.call(readTaskStore(project.tasks).tasks || {}, taskId)) throw new Error(`이 프로젝트에 없는 태스크입니다: ${taskId}`);
+        printOperation(Object.assign({ project: project.key }, commitsForTask(layout.root, ref, taskId, { limit })), options.json);
+        return 0;
+      }
+      printOperation(Object.assign({ project: project.key }, commitBindingSummary(layout.root, ref, { limit })), options.json);
       return 0;
     }
     // 식별자 이관은 저장 방식 이관과 다른 일이다. 하나는 태스크가 어디 저장되는지를

@@ -18,6 +18,9 @@ const STEP_ID = /^[a-z][a-z0-9-]*$/u;
 const MEMBER_ID = /^MEMBER-\d{3}$/u;
 const DIGEST = /^[a-f0-9]{64}$/u;
 const REVISION = /^[a-f0-9]{40,64}$/u;
+// 커밋을 만들어야 하는 스텝. procedure.js의 COMMIT_PRODUCING_COMMANDS와 같은 목록이며,
+// fold가 절차 모듈을 부르면 순환이 되므로 여기 둔다. 어긋나면 시험이 잡는다.
+const COMMIT_REQUIRED_STEPS = new Set(['save']);
 const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.synced', 'run.takeover', 'run.ownership_resolved']);
 const HALT_REASONS = new Set(['gate-failed', 'step-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual', 'settings-drift', 'ownership-conflict', 'operation-conflict', 'legacy-conflict', 'verification-required']);
 const TYPE_FIELDS = {
@@ -785,6 +788,7 @@ function foldProgress(events, ownership) {
   const forcedSteps = [];
   const stepCommits = {};
   const producedCommits = [];
+  const stepsMissingCommit = [];
   // 런 시작 시 고정한 대상 문서가 있으면 그것이 첫 산출물이다. 절차가 문서를
   // 만들지 않고 이미 있는 것을 다루기 때문이다.
   const artifactIds = [];
@@ -842,6 +846,16 @@ function foldProgress(events, ownership) {
       // 방금 만든 커밋"을 지목하고, sync는 이것으로 "아직 사람이 승인하지 않은
       // 커밋"을 알아본다. 주변의 현재 HEAD를 믿으면 둘 다 할 수 없다.
       if (event.commit) { stepCommits[event.stepId] = event.commit; if (!producedCommits.includes(event.commit)) producedCommits.push(event.commit); }
+      // 커밋을 만드는 스텝이 성공했다고 하면서 커밋을 말하지 않으면 그 성공은 확인할
+      // 수 없다. 그리고 producedCommits가 비므로 공유 장벽이 그 런을 아예 보지 못한다 —
+      // 병합으로 들어온 이벤트는 CLI를 지나지 않으므로 이 형태가 실제로 만들어진다.
+      //
+      // 여기서 완료를 취소하지는 않는다. 커서를 되돌리면 이미 지나간 런이 다시 돌고,
+      // 그 피해가 더 크다. 대신 사실로 남겨 공유 장벽이 판정한다.
+      else {
+        const definition = byId.get(event.stepId);
+        if (definition && definition.executor === 'cli' && COMMIT_REQUIRED_STEPS.has(definition.command) && !stepsMissingCommit.includes(event.stepId)) stepsMissingCommit.push(event.stepId);
+      }
       for (const artifactId of event.artifactIds || []) if (!artifactIds.includes(artifactId)) artifactIds.push(artifactId);
     } else if (event.type === 'run.gate') {
       lastGate = { stepId: event.stepId, exitCode: event.exitCode, diagnostics: event.diagnostics || [] };
@@ -930,7 +944,7 @@ function foldProgress(events, ownership) {
     procedure: { name: started.procedure.name, revision: started.procedure.revision, contentHash: started.procedure.contentHash },
     status, cursor: current, cursorStep: current ? byId.get(current) || null : null,
     completedSteps: order.filter((identifier) => completed.has(identifier)), attempts, forcedSteps, artifactIds, lastGate, haltReason,
-    stepCommits, producedCommits: producedCommits.slice(),
+    stepCommits, producedCommits: producedCommits.slice(), stepsMissingCommit: stepsMissingCommit.slice(),
     verifiedCommit, humanApprovals, humanGateSteps: steps.filter((step) => step.human === true).map((step) => step.id),
     completedCommit: completedLocals.length ? completedLocals[completedLocals.length - 1].commit : null,
     // 사람 게이트를 사람의 승인이 아닌 방법으로 지나간 런. 지나가긴 했으나 누가

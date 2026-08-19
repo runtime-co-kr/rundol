@@ -156,6 +156,24 @@ function readEvents(eventsRoot, kind, scope, options) {
   return unique.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || String(a.eventId).localeCompare(String(b.eventId)));
 }
 
+// 프로젝트 키와 Client ID는 둘 다 하이픈을 담을 수 있고 파일명은 하이픈으로 잇는다.
+// 그래서 프로젝트 `a` + 클라이언트 `b-c`와 프로젝트 `a-b` + 클라이언트 `c`가 완전히
+// 같은 파일명을 만든다. 두 짝의 이벤트가 한 파일에 섞이고, 읽을 때 clientId 대조가
+// 시끄럽게 실패하지만 그때는 이미 섞인 뒤다.
+//
+// 파일을 보고는 구분할 수 없다 — 이름이 같기 때문이다. 그래서 이름을 정하는 자리에서
+// 막는다. 파일명 문법을 바꾸면 이미 있는 샤드를 읽던 구버전이 멈추므로 형식은 그대로 둔다.
+function shardPrefixCollision(pairs) {
+  const seen = new Map();
+  for (const { project, clientId } of pairs) {
+    const key = `${project}-${clientId}`;
+    const previous = seen.get(key);
+    if (previous && (previous.project !== project || previous.clientId !== clientId)) return { key, first: previous, second: { project, clientId } };
+    seen.set(key, { project, clientId });
+  }
+  return null;
+}
+
 function selectShard(eventsRoot, kind, scope, clientId, options) {
   const definition = kindDefinition(kind);
   const runId = options && options.runId;
@@ -212,4 +230,4 @@ function appendEvent(eventsRoot, kind, scope, clientId, event, options) {
   return withAppendLock(lockDirectory, lockName, write);
 }
 
-module.exports = { MAX_EVENTS, MAX_BYTES, KINDS, eventsDirectory, canonicalJson, canonicalProjection, projectionDigest, validateProjection, deduplicateEvents, readEvents, selectShard, appendEvent, withAppendLock };
+module.exports = { shardPrefixCollision, MAX_EVENTS, MAX_BYTES, KINDS, eventsDirectory, canonicalJson, canonicalProjection, projectionDigest, validateProjection, deduplicateEvents, readEvents, selectShard, appendEvent, withAppendLock };

@@ -373,7 +373,15 @@ async function runBounded(items, limit, task) {
   failures.sort((left, right) => left.index - right.index);
   throw failures[0].error;
 }
-function projectMember(project, memberId) { return fs.existsSync(project.charter) && new RegExp(`\\^${memberId}(?:\\s|$)`, 'mu').test(fs.readFileSync(project.charter, 'utf8')); }
+// 있는 것과 활성인 것은 다르다. run.js의 같은 이름 함수와 같은 판정을 해야 한다 —
+// 같은 물음에 두 경로가 다른 답을 내면 한쪽으로 들어가면 되는 구멍이 생긴다.
+function projectMember(project, memberId) {
+  if (!project.charter || !memberId) return false;
+  try {
+    return require('./collaboration').readCollaboration(project.root, project.key).members
+      .some((member) => member.id === memberId && member.fields['상태'] === 'active');
+  } catch (_) { return false; }
+}
 function cleanSnapshot(project) {
   const head = runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout.toLowerCase();
   if (!REVISION.test(head)) throw new Error('project HEAD is not a supported Git revision');

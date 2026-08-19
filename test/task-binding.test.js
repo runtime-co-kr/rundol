@@ -276,6 +276,28 @@ try {
   const forged = rdl(workspace, ['check']).diagnostics.map((item) => item.code);
   assert(forged.includes('RDL-TASK-039'), `없는 태스크를 가리키는 커밋이 드러나지 않았습니다: ${forged.join(', ')}`);
 
+  // ── 결박이 답을 낸다 ─────────────────────────────────────────────────
+  //
+  // 커밋에 태스크를 적어 두는 것만으로는 값이 없다. 그것을 읽어 "이 태스크가 만든
+  // 커밋이 무엇인가"에 답할 수 있어야 결박이 일을 한다.
+  {
+    const bound = rdl(workspace, ['task', 'commits', first.taskId, '--project', 'tms']);
+    assert.strictEqual(bound.taskId, first.taskId);
+    assert(bound.commits.length > 0, `결박된 커밋을 찾지 못했습니다: ${JSON.stringify(bound)}`);
+    assert(bound.commits.every((item) => item.binding === 'bound'), JSON.stringify(bound.commits));
+    assert(bound.commits.every((item) => /^[0-9a-f]{40}$/u.test(item.commit)), JSON.stringify(bound.commits));
+
+    const summary = rdl(workspace, ['task', 'commits', '--project', 'tms']);
+    assert(summary.scanned > 0);
+    assert(summary.tasks.some((item) => item.taskId === first.taskId));
+    // 우회와 미결박도 함께 낸다. 묶인 것만 세면 무엇이 빠졌는지 알 수 없다.
+    assert(summary.excused.length > 0, '우회 커밋이 집계에 없습니다');
+    assert(summary.unbound.length > 0, '결박을 지나지 않은 커밋이 집계에 없습니다');
+
+    // 없는 태스크를 빈 목록으로 답하면 오타가 정상 응답이 된다.
+    assert(rdlFails(workspace, ['task', 'commits', 'TASK-ZZZZZZZZ', '--project', 'tms']).includes('없는 태스크'));
+  }
+
   process.stdout.write('task binding tests passed\n');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

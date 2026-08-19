@@ -626,12 +626,19 @@ function projectTaskEnforcement(config) {
 function derivationLadder(config, settings, tasks) {
   const sources = [];
   if (settings.run) {
+    // 명시한 런을 읽지 못하면 다음 근거로 넘어가지 않는다. 넘어가면 사용자가 지목한
+    // 런과 무관한 태스크에 이 커밋이 묶이고, 그것은 결박이 없는 것보다 나쁘다 —
+    // 없는 것은 비어 있고 틀린 것은 거짓이다.
+    //
+    // 답하지 못하는 근거와 읽지 못한 근거는 다르다. 앞은 넘어갈 일이고 뒤는 멈출 일이다.
     let runTask = null;
     try {
       const ledger = require('./run-ledger');
       const reconciled = ledger.reconcileRun(config.root, { project: config.project, runId: settings.run });
       runTask = reconciled && reconciled.events.length ? ledger.foldSharedRun(reconciled.events).taskId : null;
-    } catch (_) { runTask = null; }
+    } catch (error) {
+      throw new Error(`RDL-TASK-040: 지목한 런을 읽지 못해 결박을 정할 수 없습니다: ${settings.run} (${error.message})`);
+    }
     sources.push({ name: 'run', label: `런 ${settings.run}`, taskId: runTask });
   }
   // 작업 묶음은 브랜치가 만든다. 같은 브랜치를 가리키는 태스크가 하나면 그것이
@@ -942,6 +949,14 @@ function unclearedRunCommits(config) {
     if (!events.length) continue;
     const fold = typeof ledger.foldSharedRun === 'function' && events.some((item) => item && item.schemaVersion >= 2) ? ledger.foldSharedRun(events) : ledger.foldRun(events);
     const commits = (fold.producedCommits || []).filter((commit) => /^[a-f0-9]{40,64}$/u.test(String(commit)));
+    // 커밋을 만드는 스텝이 성공했다면서 커밋을 말하지 않은 런은, 만든 커밋이 없는 것이
+    // 아니라 무엇을 만들었는지 말하지 않은 것이다. 그 둘을 같이 다루면 이 장벽을
+    // 지나가는 가장 싼 길이 커밋을 적지 않는 것이 된다 — 병합으로 들어온 이벤트는
+    // CLI를 지나지 않으므로 그 형태가 실제로 만들어진다.
+    if ((fold.stepsMissingCommit || []).length) {
+      blocked.push({ runId, commit: null, status: fold.status, missingCommitSteps: fold.stepsMissingCommit.slice(), unapprovedHumanSteps: [] });
+      continue;
+    }
     if (!commits.length) continue;
     // 이미 공유된 런은 다시 판정하지 않는다. 그 커밋은 원격에 있고 되돌릴 수 없으므로
     // 막을 대상이 아니며, 무엇보다 판정 기준이 지금의 Client 상태라는 것이 문제다 —

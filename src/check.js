@@ -14,6 +14,7 @@ const { TASK_KINDS, TEST_RESULTS, testedDocuments } = require('./tasks');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
 const { runGit } = require('./git');
+const { readCommitBindings } = require('./task-commits');
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
 const { createEventEnvelope: createRunEnvelope, normalizeRunEvent } = require('./run-ledger');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
@@ -720,6 +721,18 @@ function checkWorkspaceStore(diagnostics, layout) {
     if (!['active', 'disabled', 'retired'].includes(status)) diagnostic(diagnostics, { code: 'RDL-CLIENT-005', category: 'workspace', file: relative(layout.root, file), message: `지원하지 않는 Client status입니다: ${status || '(없음)'}` });
     clients.set(id, { owner, status, type });
   }
+  // 프로젝트 키와 Client ID가 둘 다 하이픈을 담을 수 있고 파일명은 하이픈으로 잇는다.
+  // 겹치는 짝은 완전히 같은 샤드 파일명을 만들어 두 짝의 이벤트가 한 파일에 섞인다.
+  // 파일을 보고는 구분할 수 없으므로 — 이름이 같기 때문이다 — 짝의 목록에서 찾는다.
+  {
+    const pairs = [];
+    for (const project of layout.projects || []) for (const clientId of clients.keys()) pairs.push({ project: project.key, clientId });
+    const collision = require('./event-store').shardPrefixCollision(pairs);
+    if (collision) diagnostic(diagnostics, {
+      code: 'RDL-EVENT-010', category: 'workspace', file: null,
+      message: `샤드 파일명이 겹치는 프로젝트·Client 짝이 있습니다: ${collision.first.project}+${collision.first.clientId}와 ${collision.second.project}+${collision.second.clientId}가 모두 ${collision.key}를 만듭니다. 한쪽의 하이픈 경계를 바꾸세요.`
+    });
+  }
   if (fs.existsSync(eventsRoot)) for (const entry of fs.readdirSync(eventsRoot, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
     const file = path.join(eventsRoot, entry.name);
@@ -974,45 +987,43 @@ const TASK_BINDING_WINDOW = 50;
 
 function checkTaskBinding(diagnostics, layout, project, tally) {
   if (!project.ref || !project.root) return;
-  const log = runGit(['log', '--no-merges', `--max-count=${TASK_BINDING_WINDOW}`, '--format=%H%x1f%B%x1e', project.ref], { cwd: layout.root, allowFailure: true });
-  // 조회하지 못한 것과 위반이 없는 것은 다른 값이다. 조용히 돌아가면 이 검사가
-  // 한 번도 돈 적이 없는 저장소가 "결박 위반 없음"과 같은 얼굴을 한다.
-  if (log.status !== 0) {
+  // 트레일러를 읽는 규칙은 한 곳에 있다. 검사와 조회가 각자 파싱하면 두 곳이 같은
+  // 커밋을 다르게 읽는 날이 오고, 결박은 무엇이 사실인지를 다투지 않아야 값을 갖는다.
+  let commits;
+  try { commits = readCommitBindings(layout.root, project.ref, { limit: TASK_BINDING_WINDOW }); }
+  catch (error) {
+    // 조회하지 못한 것과 위반이 없는 것은 다른 값이다. 조용히 돌아가면 이 검사가
+    // 한 번도 돈 적이 없는 저장소가 결박 위반 없음과 같은 얼굴을 한다.
     if (tally) tally.unchecked.push(project.key);
     diagnostic(diagnostics, {
       code: 'RDL-TASK-038', category: 'task', severity: 'warning', file: null, project: project.key,
-      message: `태스크 결박을 확인하지 못했습니다. ${project.ref} 이력을 읽을 수 없습니다: ${String(log.stderr || '').split(/\r?\n/u)[0] || '알 수 없는 오류'}`
+      message: `태스크 결박을 확인하지 못했습니다. ${error.message}`
     });
     return;
   }
-  if (!log.stdout) return;
-  // trailer가 있다는 것과 그것이 가리키는 태스크가 있다는 것은 다른 사실이다.
-  // 줄만 세면 Git으로 직접 만든 커밋에 아무 문자열이나 적어 이 검사를 지날 수 있고,
-  // 그러면 이 검사가 세는 것은 결박이 아니라 그 줄을 적을 줄 아는 사람의 수다.
+  if (!commits.length) return;
+  // trailer가 있다는 것과 그것이 가리키는 태스크가 있다는 것은 다른 사실이다. 줄만
+  // 세면 Git으로 직접 만든 커밋에 아무 문자열이나 적어 이 검사를 지날 수 있고, 그러면
+  // 이 검사가 세는 것은 결박이 아니라 그 줄을 적을 줄 아는 사람의 수다.
+  // 옛 식별자도 아는 이름이다. 이관은 태스크를 옮긴 것이지 과거를 지운 것이 아니므로,
+  // 이관 전 커밋의 trailer가 가리키는 옛 ID는 끊긴 결박이 아니다. previousIds를 보지
+  // 않으면 이관을 돌린 사람에게 자기 이력 전체가 위반으로 보인다.
   let known = null;
-  try { known = new Set(Object.keys(readTaskStore(project.tasks).tasks || {})); }
-  catch (_) { known = null; }
-  const unbound = [];
-  const excused = [];
-  const dangling = [];
-  let scanned = 0;
-  for (const record of log.stdout.split('\x1e')) {
-    const [commit, body] = record.split('\x1f');
-    if (!commit || !commit.trim()) continue;
-    const short = commit.trim().slice(0, 12);
-    scanned += 1;
-    const trailer = /^Rundol-Task:[ \t]*(.+)$/mu.exec(body || '');
-    if (!trailer) { unbound.push(short); continue; }
-    const value = trailer[1].trim();
-    if (value === 'none') { excused.push(short); continue; }
-    // 태스크 저장소를 읽지 못했으면 판정하지 않는다. 읽지 못한 것을 근거로 "없는
-    // 태스크"라고 말하면 저장소 문제 하나가 모든 커밋을 위반으로 만든다.
-    if (known && !known.has(value)) dangling.push(`${short}→${value}`);
-  }
+  try {
+    const store = readTaskStore(project.tasks).tasks || {};
+    known = new Set(Object.keys(store));
+    for (const task of Object.values(store)) for (const previous of Array.isArray(task.previousIds) ? task.previousIds : []) known.add(previous);
+  } catch (_) { known = null; }
+  const short = (item) => item.commit.slice(0, 12);
+  const unbound = commits.filter((item) => item.binding === 'unbound').map(short);
+  const excused = commits.filter((item) => item.binding === 'excused').map(short);
+  // 태스크 저장소를 읽지 못했으면 판정하지 않는다. 읽지 못한 것을 근거로 없는
+  // 태스크라고 말하면 저장소 문제 하나가 모든 커밋을 위반으로 만든다.
+  const dangling = known ? commits.filter((item) => item.taskId && !known.has(item.taskId)).map((item) => `${short(item)}→${item.taskId}`) : [];
   const sample = (list) => list.slice(0, 5).join(', ') + (list.length > 5 ? ` 외 ${list.length - 5}건` : '');
   if (tally) {
-    tally.scanned += scanned;
-    tally.bound += scanned - unbound.length - excused.length;
+    tally.scanned += commits.length;
+    tally.bound += commits.length - unbound.length - excused.length;
     tally.unbound += unbound.length;
     tally.excused += excused.length;
     tally.dangling += dangling.length;

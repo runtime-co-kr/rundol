@@ -32,10 +32,18 @@ function runContext(start, options) {
 
 // 명령을 내리는 주체는 런의 현재 소유자다. --client-id를 명시하면 소유자와
 // 일치해야 한다 — 다른 클라이언트는 takeover를 거쳐야만 쓸 수 있다 (LAW-1).
+// 있는 것과 활성인 것은 다르다. 문서에 이름이 남아 있다는 사실만으로 실행 자격을 주면
+// 퇴사한 사람의 Client가 계속 런을 몰고 검증을 낸다. sync는 이미 상태를 보고 있었으므로,
+// 이 검사가 느슨한 채로 두면 같은 물음에 두 경로가 다른 답을 낸다.
+//
+// 지금 해도 되는지를 묻는 자리이므로 현재 상태로 판정한다. 이미 기록된 이벤트가 그때
+// 인가되었는지는 읽기 경로가 그때의 사실로 따로 판정한다(ADR-014).
 function projectMember(project, memberId) {
-  const fs = require('fs');
-  if (!project.charter || !fs.existsSync(project.charter)) return false;
-  return new RegExp(`\\^${memberId}(?:\\s|$)`, 'mu').test(fs.readFileSync(project.charter, 'utf8'));
+  if (!project.charter || !memberId) return false;
+  try {
+    return require('./collaboration').readCollaboration(project.root, project.key).members
+      .some((member) => member.id === memberId && member.fields['상태'] === 'active');
+  } catch (_) { return false; }
 }
 
 function authorizeClient(start, project, clientId, allowedTypes) {
