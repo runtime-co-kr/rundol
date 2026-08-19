@@ -69,6 +69,7 @@ Usage:
   rdl workset list [--project <key>] [--branch <name>] [--json]
   rdl task list [--project <key>] [--status <state>] [--open] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
+  rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
   rdl help [--json]

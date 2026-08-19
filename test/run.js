@@ -28,6 +28,7 @@ require('./document-grouping.test');
 require('./document-migration.test');
 require('./note-artifact.test');
 require('./git.test');
+require('./task-identity.test');
 require('./task-binding.test');
 require('./collaboration.test');
 require('./collaboration-store.test');

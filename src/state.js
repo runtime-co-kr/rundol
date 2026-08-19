@@ -562,19 +562,28 @@ function commitShardedMerge(config, remoteCommit) {
 // scope는 스테이징 범위이자 거부 조건이다. 대상 밖이 더러우면 담지 않는 것으로
 // 끝내지 않고 멈춘다. 조용히 남겨 두면 그 변경은 다음 저장에 섞이고, 그때는
 // 어느 런의 것인지 아무도 모른다.
-function stageScoped(config, scope) {
+// 범위 판정과 담기는 나눈다. 담은 뒤에 거부하면 그 저장은 실패했는데 index는 이미
+// 바뀌어 있고, 다음 저장이 그 결과를 자기 것으로 물려받는다 — 실패한 시도가 흔적을
+// 남기지 않는다는 계약이 여기서 깨진다.
+function assertScopeClean(config, scope) {
   const dirty = runGit(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', scope], { cwd: config.worktree }).stdout;
   const all = runGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: config.worktree }).stdout;
   if (String(all || '').split('\0').filter(Boolean).length !== String(dirty || '').split('\0').filter(Boolean).length) {
     throw new Error(`RDL-SAVE-010: 런의 저장 범위(${scope}) 밖에 변경이 있습니다. 런이 만들지 않은 변경은 런의 커밋에 담기지 않습니다.`);
   }
-  runGit(['add', '-A', '--', scope], { cwd: config.worktree });
   return Boolean(dirty);
+}
+
+function stageScoped(config, scope) {
+  runGit(['add', '-A', '--', scope], { cwd: config.worktree });
 }
 
 // 어느 태스크의 일이었는지는 커밋 자체가 답한다. 원장이나 설정에 적으면 커밋과
 // 그 사실이 따로 움직이고, 나중에 둘이 어긋났을 때 어느 쪽이 사실인지 알 수 없다.
 const TASK_TRAILER = 'Rundol-Task';
+// 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 그 뒤에 생긴 커밋은
+// 그 태스크의 일일 수 없다.
+const TERMINAL_TASK_STATUSES = ['done', 'cancelled'];
 const TASK_REASON_TRAILER = 'Rundol-Task-Reason';
 
 function taskTrailer(binding) {
@@ -615,6 +624,10 @@ function resolveTaskBinding(config, settings) {
     // 없는 태스크나 다른 프로젝트의 태스크로는 묶을 수 없다. 묶이지 않은 식별자를
     // 커밋에 적으면, 결박이 있었다는 기록만 남고 가리키는 곳이 없다.
     if (!Object.prototype.hasOwnProperty.call(tasks, requested)) throw new Error(`RDL-TASK-032: 이 프로젝트에 없는 태스크입니다: ${requested}`);
+    // 끝난 태스크에도 묶을 수 있으면, 결박이 증명하는 것은 "활성 작업에 속한다"가
+    // 아니라 "존재하는 문자열이다"가 된다. 완료·반려된 태스크를 가리키는 커밋은 그
+    // 태스크가 끝난 뒤에 생긴 일이므로 그 태스크의 일일 수 없다.
+    if (TERMINAL_TASK_STATUSES.includes(tasks[requested].status)) throw new Error(`RDL-TASK-037: 이미 끝난 태스크에는 묶을 수 없습니다: ${requested} (${tasks[requested].status}). 진행 중인 태스크를 지정하거나 새로 만드세요.`);
     return { level, taskId: requested, inferred: false, reason: null, notices };
   }
   if (excuse) return { level, taskId: null, inferred: false, reason: excuse, notices };
@@ -657,15 +670,17 @@ function saveProjectState(config, settings) {
   const scope = settings.scope || null;
   const message = settings.message || 'rdl: update workspace';
   if (scope) {
-    const changed = stageScoped(config, scope);
+    const changed = assertScopeClean(config, scope);
     validateProjection(config);
     if (!changed) return { root: config.root, project: config.project || null, branch: config.branch, changed: false, commit: head() };
-    // 결박은 담을 것이 있다는 것을 확인한 뒤에 묻는다. 바꾼 것이 없는데 태스크를
-    // 요구하면, 아무 일도 하지 않은 호출이 막힌 이유가 태스크가 된다.
+    // 결박은 담을 것이 있다는 것을 확인한 뒤에, 그러나 담기 전에 묻는다. 바꾼 것이
+    // 없는데 태스크를 요구하면 아무 일도 하지 않은 호출이 막힌 이유가 태스크가 되고,
+    // 담은 뒤에 거부하면 실패한 저장이 index에 흔적을 남긴다.
     //
     // 두 축이 모두 걸리면 문서 경고가 먼저 나가고 태스크 거부가 뒤에 온다. 막은
     // 이유가 마지막에 오는 편이 읽기 좋다 — 그래서 validateProjection 다음이다.
     const binding = resolveTaskBinding(config, settings);
+    stageScoped(config, scope);
     runGit(['commit', '-m', commitMessageWith(message, binding)], { cwd: config.worktree });
     return Object.assign({ root: config.root, project: config.project || null, branch: config.branch, changed: true, commit: head() }, bindingReport(binding));
   }

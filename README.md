@@ -133,7 +133,7 @@ rdl doctor --json
 | [Board와 협업 API](docs/BOARD-API.md) | 멀티 프로젝트 UI와 Client·임대·동기화 API를 어떻게 사용하는가? |
 | [Workspace 브랜치 규칙](docs/WORKSPACE-BRANCH.md) | main, settings와 프로젝트 브랜치는 무엇을 소유하는가? |
 | [태스크 저장과 동기화](docs/TASK-STORAGE.md) | 1만 건 태스크를 어떻게 분할·병합하는가? |
-| [문서 표준](docs/DOCUMENT-STANDARD.md) | PRD, REQ, ARC, SCR, MOD, API 등은 언제 만드는가? |
+| [문서 표준](docs/DOCUMENT-STANDARD.md) | PRD, REQ, ARC, SCR, MOD, IFC, STD 등은 언제 만드는가? |
 | [프로젝트 거버넌스](docs/PROJECT-GOVERNANCE.md) | 왜 역할·멤버·이해관계자와 책임을 생략하지 않는가? |
 | [Obsidian 연동](docs/OBSIDIAN-INTEGRATION.md) | 팀 설정과 개인 Vault 설정은 어떻게 분리하는가? |
 | [AI 클라이언트 지원](docs/AI-CLIENTS.md) | Codex, Claude Code, Copilot이 같은 규칙을 어떻게 쓰는가? |

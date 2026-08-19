@@ -57,6 +57,22 @@ function rewriteFile(file, plan) {
   return after === before ? null : after;
 }
 
+// 옛 식별자를 태스크에 붙여 둔다. 별도 매핑 파일을 두지 않는 이유는, 그 파일이
+// 태스크와 따로 병합되고 따로 지워지기 때문이다 — 매핑은 태스크의 사실이므로
+// 태스크와 같은 자리에서 같은 규칙으로 병합되어야 한다.
+function carryPreviousIds(content, plan) {
+  const parsed = JSON.parse(content);
+  const reverse = new Map(Array.from(plan, ([from, to]) => [to, from]));
+  for (const [id, task] of Object.entries(parsed.tasks || {})) {
+    const previous = reverse.get(id);
+    if (!previous) continue;
+    const carried = Array.isArray(task.previousIds) ? task.previousIds.slice() : [];
+    if (!carried.includes(previous)) carried.push(previous);
+    task.previousIds = carried.sort();
+  }
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
 function migrateTaskIds(projectRoot, options) {
   const settings = options || {};
   const taskDirectory = path.join(projectRoot, 'tasks');
@@ -79,6 +95,14 @@ function migrateTaskIds(projectRoot, options) {
   for (const file of candidates) {
     const next = rewriteFile(file, plan);
     if (next !== null) writes.push([file, next]);
+  }
+  // 바꿀 수 없는 곳에 옛 식별자가 남는다. 이미 만들어진 커밋의 trailer, 원장에 적힌
+  // action·run 이벤트가 그렇다 — 이력은 고쳐 쓰지 않는다. 그래서 매핑을 태스크
+  // 자신이 들고 간다. 매핑이 없으면 과거 감사 기록과 지금의 태스크를 다시 이을
+  // 방법이 없고, 이관은 연결을 끊는 일이 된다.
+  for (const [index, [file, content]] of writes.entries()) {
+    if (!stores.includes(file)) continue;
+    writes[index] = [file, carryPreviousIds(content, plan)];
   }
   if (settings.dryRun) {
     return { migrated: plan.size, files: writes.map(([file]) => path.relative(projectRoot, file).split(path.sep).join('/')), plan: Object.fromEntries(plan) };

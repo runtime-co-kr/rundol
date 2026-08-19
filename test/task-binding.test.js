@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { taskEnforcementFrom } = require('../src/document-profile');
 
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'bin', 'rdl.js');
@@ -157,6 +158,46 @@ try {
   touch(workspace, 'after-excuse');
   assert(rdlFails(workspace, ['save']).includes('RDL-TASK-033'));
 
+  // ── 끝난 태스크에는 묶을 수 없다 ─────────────────────────────────────
+  //
+  // 존재만 확인하면 결박이 증명하는 것은 "활성 작업에 속한다"가 아니라 "존재하는
+  // 문자열이다"가 된다. 완료된 태스크를 가리키는 커밋은 그 태스크가 끝난 뒤에 생긴
+  // 일이므로 그 태스크의 일일 수 없다.
+  const finished = addTask(workspace, '끝난 태스크');
+  rdl(workspace, ['task', 'set', finished.taskId, '--status', 'cancelled', '--reason', '다른 방향으로 결정']);
+  touch(workspace, 'terminal-1');
+  const terminal = rdlFails(workspace, ['save', '--task', finished.taskId]);
+  assert(terminal.includes('RDL-TASK-037'), terminal);
+
+  // ── 거부된 저장은 index에 흔적을 남기지 않는다 ────────────────────────
+  //
+  // 담은 뒤에 거부하면 그 저장은 실패했는데 다음 저장이 그 결과를 물려받는다.
+  const worktreeRoot = path.join(workspace, 'projects', 'tms');
+  assert.strictEqual(git(worktreeRoot, ['diff', '--cached', '--name-only']), '',
+    '거부된 저장이 staged 변경을 남겼습니다');
+
+  // ── 잘못 적힌 강제 수준은 조용히 약해지지 않는다 ──────────────────────
+  //
+  // 오타를 기본값으로 접으면, 켰다고 믿는 사람의 프로젝트가 아무것도 막지 않는
+  // 상태로 돈다. 설정 실수가 강제 수준 약화로 이어지면 안 된다.
+  {
+    const charter = path.join(worktreeRoot, 'project.md');
+    const original = fs.readFileSync(charter, 'utf8');
+    try {
+      fs.writeFileSync(charter, original.replace(/^  taskEnforcement: checkpoint$/mu, '  taskEnforcement: checkpont'), 'utf8');
+      assert.notStrictEqual(fs.readFileSync(charter, 'utf8'), original, '이 시험의 전제가 깨졌습니다');
+      const typo = rdlFails(workspace, ['save']);
+      // 막히기만 하면 되는 것이 아니라 무엇이 틀렸는지 말해야 한다. 계약 검사가
+      // 먼저 잡아도 좋지만, 그 검사를 지나오는 경로가 따로 있으므로 저장 경로도
+      // 스스로 거부해야 한다 — 아래 단위 단언이 그것을 본다.
+      assert(typo.includes('checkpont'), typo);
+      assert.throws(() => taskEnforcementFrom(fs.readFileSync(charter, 'utf8')), /RDL-TASK-036/u,
+        '저장 경로가 잘못 적힌 값을 조용히 advisory로 바꿨습니다');
+    } finally {
+      fs.writeFileSync(charter, original, 'utf8');
+    }
+  }
+
   // ── 방어를 끄면 시험이 실패하는가 ────────────────────────────────────
   //
   // 이 확인이 없으면 위의 거부 단언들이 다른 이유로 통과할 수 있다.
@@ -186,6 +227,15 @@ try {
   const codes = checked.diagnostics.map((item) => item.code);
   assert(codes.includes('RDL-TASK-034'), `게이트를 지나지 않은 커밋이 드러나지 않았습니다: ${codes.join(', ')}`);
   assert(codes.includes('RDL-TASK-035'), `우회로 저장된 커밋이 드러나지 않았습니다: ${codes.join(', ')}`);
+
+  // trailer가 있다는 것과 그것이 가리키는 태스크가 있다는 것은 다른 사실이다.
+  // 줄만 세면 Git으로 직접 만든 커밋에 아무 문자열이나 적어 이 검사를 지날 수 있고,
+  // 그러면 검사가 세는 것은 결박이 아니라 그 줄을 적을 줄 아는 사람의 수다.
+  touch(workspace, '위조된 결박');
+  git(worktree, ['add', '--', 'project.md']);
+  git(worktree, ['commit', '-m', `forged binding${String.fromCharCode(10, 10)}Rundol-Task: TASK-ZZZZZZZZ`]);
+  const forged = rdl(workspace, ['check']).diagnostics.map((item) => item.code);
+  assert(forged.includes('RDL-TASK-039'), `없는 태스크를 가리키는 커밋이 드러나지 않았습니다: ${forged.join(', ')}`);
 
   process.stdout.write('task binding tests passed\n');
 } finally {

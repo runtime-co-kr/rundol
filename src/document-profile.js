@@ -121,10 +121,15 @@ function parseRawProfile(source) {
 // 태스크 축만 알고 싶은 자리가 있다. 저장 게이트는 프로필 이름이 유효한지, 문서가
 // 다 있는지를 묻지 않는다 — 이 프로젝트가 태스크를 요구하는지만 묻는다. 계약 전체를
 // 읽어 그 판정에 얹으면, 무관한 계약 오류가 저장을 막는 이유가 된다.
+// 적혀 있지 않은 것과 잘못 적힌 것은 다르다. 앞은 기본값이고 뒤는 오류다. 오타를
+// 기본값으로 접으면 checkpont라고 쓴 프로젝트가 아무것도 막지 않는 상태로 돌고,
+// 그것을 켰다고 믿는 사람은 자기 설정이 꺼져 있다는 사실을 영영 모른다 — 설정
+// 실수가 강제 수준 약화로 조용히 이어진다.
 function taskEnforcementFrom(source) {
   const raw = parseRawProfile(source);
-  if (!raw) return 'advisory';
-  return ENFORCEMENTS.includes(raw.taskEnforcement) ? raw.taskEnforcement : 'advisory';
+  if (!raw || raw.taskEnforcement === null || raw.taskEnforcement === '') return 'advisory';
+  if (!ENFORCEMENTS.includes(raw.taskEnforcement)) throw new Error(`RDL-TASK-036: 지원하지 않는 taskEnforcement입니다: ${raw.taskEnforcement}. advisory 또는 checkpoint여야 합니다.`);
+  return raw.taskEnforcement;
 }
 
 function ordered(values) {

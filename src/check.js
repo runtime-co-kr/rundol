@@ -937,15 +937,36 @@ const TASK_BINDING_WINDOW = 50;
 function checkTaskBinding(diagnostics, layout, project) {
   if (!project.ref || !project.root) return;
   const log = runGit(['log', '--no-merges', `--max-count=${TASK_BINDING_WINDOW}`, '--format=%H%x1f%B%x1e', project.ref], { cwd: layout.root, allowFailure: true });
-  if (log.status !== 0 || !log.stdout) return;
+  // 조회하지 못한 것과 위반이 없는 것은 다른 값이다. 조용히 돌아가면 이 검사가
+  // 한 번도 돈 적이 없는 저장소가 "결박 위반 없음"과 같은 얼굴을 한다.
+  if (log.status !== 0) {
+    diagnostic(diagnostics, {
+      code: 'RDL-TASK-038', category: 'task', severity: 'warning', file: null, project: project.key,
+      message: `태스크 결박을 확인하지 못했습니다. ${project.ref} 이력을 읽을 수 없습니다: ${String(log.stderr || '').split(/\r?\n/u)[0] || '알 수 없는 오류'}`
+    });
+    return;
+  }
+  if (!log.stdout) return;
+  // trailer가 있다는 것과 그것이 가리키는 태스크가 있다는 것은 다른 사실이다.
+  // 줄만 세면 Git으로 직접 만든 커밋에 아무 문자열이나 적어 이 검사를 지날 수 있고,
+  // 그러면 이 검사가 세는 것은 결박이 아니라 그 줄을 적을 줄 아는 사람의 수다.
+  let known = null;
+  try { known = new Set(Object.keys(readTaskStore(project.tasks).tasks || {})); }
+  catch (_) { known = null; }
   const unbound = [];
   const excused = [];
+  const dangling = [];
   for (const record of log.stdout.split('\x1e')) {
     const [commit, body] = record.split('\x1f');
     if (!commit || !commit.trim()) continue;
+    const short = commit.trim().slice(0, 12);
     const trailer = /^Rundol-Task:[ \t]*(.+)$/mu.exec(body || '');
-    if (!trailer) unbound.push(commit.trim().slice(0, 12));
-    else if (trailer[1].trim() === 'none') excused.push(commit.trim().slice(0, 12));
+    if (!trailer) { unbound.push(short); continue; }
+    const value = trailer[1].trim();
+    if (value === 'none') { excused.push(short); continue; }
+    // 태스크 저장소를 읽지 못했으면 판정하지 않는다. 읽지 못한 것을 근거로 "없는
+    // 태스크"라고 말하면 저장소 문제 하나가 모든 커밋을 위반으로 만든다.
+    if (known && !known.has(value)) dangling.push(`${short}→${value}`);
   }
   const sample = (list) => list.slice(0, 5).join(', ') + (list.length > 5 ? ` 외 ${list.length - 5}건` : '');
   if (unbound.length) diagnostic(diagnostics, {
@@ -955,6 +976,10 @@ function checkTaskBinding(diagnostics, layout, project) {
   if (excused.length) diagnostic(diagnostics, {
     code: 'RDL-TASK-035', category: 'task', severity: 'warning', file: null, project: project.key,
     message: `최근 커밋 ${TASK_BINDING_WINDOW}건 중 ${excused.length}건이 태스크 없이 저장됐습니다: ${sample(excused)}`
+  });
+  if (dangling.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-039', category: 'task', severity: 'warning', file: null, project: project.key,
+    message: `커밋 ${dangling.length}건이 이 프로젝트에 없는 태스크를 가리킵니다: ${sample(dangling)}`
   });
 }
 
