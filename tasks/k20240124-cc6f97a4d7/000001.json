@@ -1690,12 +1690,12 @@
         },
         "AC-003": {
           "text": "메타데이터 예산 규칙이 STD-002에 기록된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-19T02:22:26.890Z",
-      "updatedAt": "2026-08-19T02:23:40.956Z",
+      "updatedAt": "2026-08-19T02:23:42.573Z",
       "statusChangedAt": "2026-08-19T02:22:26.890Z",
       "externalRefs": [],
       "project": "rundol",
