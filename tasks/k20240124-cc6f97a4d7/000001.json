@@ -2131,7 +2131,9 @@
       "links": [
         "ADR-003",
         "ADR-012",
-        "ADR-016"
+        "ADR-016",
+        "ADR-020",
+        "ADR-021"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -2158,7 +2160,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:04:04.713Z",
+      "updatedAt": "2026-08-20T15:14:55.527Z",
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
@@ -2864,6 +2866,46 @@
       "createdAt": "2026-08-20T15:14:13.833Z",
       "updatedAt": "2026-08-20T15:14:13.833Z",
       "statusChangedAt": "2026-08-20T15:14:13.833Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-5JRTNZAJ": {
+      "title": "[스킬] 에이전트 클라이언트에 런 계약을 연다",
+      "summary": "SKILL.md가 런을 한 번도 언급하지 않아 AI 클라이언트는 런의 존재 자체를 모른다. 사람이 마주하는 표면이 AI 클라이언트인 이상 런 수명주기와 세션이 쓸 실행 단위를 정본 스킬에 넣어야 한다. 클라이언트별 복제 없이 SKILL.md 하나를 정본으로 유지한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-038"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "SKILL.md가 런의 조회·시작·재개·승인 경로를 명시한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "세션이 쓸 실행 단위가 정해진다 - next·step 반복인지 drive 한 번인지",
+          "done": false
+        },
+        "AC-003": {
+          "text": "세션과 드라이버 사이의 소유권 교대가 언제 일어나는지 밝힌다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "클라이언트별 복제 없이 SKILL.md 하나로 유지된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:14:56.370Z",
+      "updatedAt": "2026-08-20T15:14:56.370Z",
+      "statusChangedAt": "2026-08-20T15:14:56.370Z",
       "externalRefs": [],
       "project": "rundol"
     }
