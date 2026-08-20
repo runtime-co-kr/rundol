@@ -2103,7 +2103,7 @@
         },
         "AC-003": {
           "text": "자산의 크기와 차원을 코덱 없이 재고 임계 초과를 진단이 잡는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "어느 문서도 참조하지 않는 자산을 진단이 잡는다",
@@ -2112,7 +2112,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T14:15:48.753Z",
-      "updatedAt": "2026-08-20T15:02:54.061Z",
+      "updatedAt": "2026-08-20T15:02:58.411Z",
       "statusChangedAt": "2026-08-20T15:02:37.375Z",
       "externalRefs": [],
       "project": "rundol"
