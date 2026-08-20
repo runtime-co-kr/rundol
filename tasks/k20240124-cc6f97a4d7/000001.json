@@ -3439,7 +3439,7 @@
         },
         "AC-002": {
           "text": "번들이 배포 준비 단계에서 만들어지고 저장소에 산출물을 두지 않는다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "배포물에 제3자 라이선스 고지가 포함된다",
@@ -3452,7 +3452,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:10.054Z",
-      "updatedAt": "2026-08-20T22:00:52.656Z",
+      "updatedAt": "2026-08-20T22:00:57.299Z",
       "statusChangedAt": "2026-08-20T18:30:55.163Z",
       "externalRefs": [],
       "project": "rundol"
@@ -3645,6 +3645,40 @@
       "createdAt": "2026-08-20T22:00:41.021Z",
       "updatedAt": "2026-08-20T22:00:41.021Z",
       "statusChangedAt": "2026-08-20T22:00:41.021Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-1GWRR7Z2": {
+      "title": "[보드] 태스크 댓글을 보드에서 읽고 쓴다",
+      "summary": "CLI만 만들고 UI를 안 만들어 정작 보드에서 일하는 사람이 못 본다. 세션 간 소통이 목적이었는데 보이지 않으면 없는 것과 같다. TASK-TMWS9XDM의 수용 조건에 '어디서 읽는지'가 빠져 있어 CLI만으로 통과했다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "태스크 상세에서 댓글을 읽을 수 있고 작성 주체가 사람인지 에이전트인지 보인다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "보드에서 댓글을 남길 수 있다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "다른 세션이 남긴 댓글이 폴링으로 반영된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T22:00:56.164Z",
+      "updatedAt": "2026-08-20T22:00:56.164Z",
+      "statusChangedAt": "2026-08-20T22:00:56.164Z",
       "externalRefs": [],
       "project": "rundol"
     }
