@@ -2403,7 +2403,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "네 모드가 사람 게이트·검증자 정책·승인 근거·위임 요구의 조합으로 REQ에 정의된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "파이프별 허용정책의 필드와 판정 의미가 REQ에 정의된다",
@@ -2424,7 +2424,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:01.195Z",
-      "updatedAt": "2026-08-20T17:45:16.392Z",
+      "updatedAt": "2026-08-20T17:45:21.117Z",
       "statusChangedAt": "2026-08-20T17:41:07.565Z",
       "externalRefs": [],
       "project": "rundol"
