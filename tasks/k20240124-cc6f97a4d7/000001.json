@@ -2143,7 +2143,7 @@
         },
         "AC-002": {
           "text": "ADR-003의 board.json 표시 전용 제약과 Workspace 계약 상속 배제가 개정 결정으로 닫힌다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "업무 유형을 데이터로 정의하는 방식과 제약 카탈로그를 정한 ADR이 active로 존재한다",
@@ -2160,7 +2160,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:29:15.410Z",
+      "updatedAt": "2026-08-20T15:29:19.846Z",
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
