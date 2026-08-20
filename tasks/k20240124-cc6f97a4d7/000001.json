@@ -3487,7 +3487,7 @@
         },
         "AC-003": {
           "text": "device 클라이언트로 쓴 댓글이 자동으로 human이 되지 않음이 시험으로 고정된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "이미 기록된 댓글의 판정이 바뀌지 않는다",
@@ -3500,7 +3500,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T18:13:37.064Z",
-      "updatedAt": "2026-08-20T23:45:40.796Z",
+      "updatedAt": "2026-08-20T23:45:44.939Z",
       "statusChangedAt": "2026-08-20T18:13:37.064Z",
       "externalRefs": [],
       "project": "rundol"
