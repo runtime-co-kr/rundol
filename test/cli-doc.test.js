@@ -22,7 +22,18 @@ function normalize(value) {
 }
 
 assert(help.includes('rdl watch --project <key> [--remote] [--once] [--json]'));
-assert(help.includes('rdl sync watch [--interval <seconds>]'), 'sync watch must remain a distinct command');
+assert(help.includes('rdl sync watch --client-id <id> [--interval <seconds>]'), 'sync watch must remain a distinct command');
+// 필수 인자는 usage에 보여야 한다. sync와 sync watch는 --client-id 없이는 종료 코드
+// 2로 거부하는데, 그것이 usage에 없으면 사람은 문서대로 쳐 보고 실패한 뒤에야
+// 알게 되고 rdl help --json을 읽는 에이전트는 아예 알지 못한다.
+for (const line of ['rdl sync --client-id <id>', 'rdl sync watch --client-id <id>']) {
+  assert(help.includes(line), `필수 인자가 usage에 없습니다: ${line}`);
+}
+for (const args of [['sync', '--project', 'rundol'], ['sync', 'watch', '--project', 'rundol', '--once']]) {
+  const refused = spawnSync(process.execPath, [cli].concat(args), { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(refused.status, 2, `--client-id 없이 성공했습니다: rdl ${args.join(' ')}`);
+  assert(refused.stderr.includes('--client-id'), '거부 사유가 어느 인자인지 밝혀야 합니다.');
+}
 
 // 사람 표면과 고급 표면은 다른 대상을 위한 목록이다. 실행 식별자·임대·어댑터가
 // 드러나는 명령군은 사람 표면에서 내렸고, 내린 것이 실제로 내려갔는지와 여전히
