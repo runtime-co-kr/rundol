@@ -55,13 +55,54 @@ export const BLOCK_GROUPS = [
 
 export const BLOCK_ITEMS = BLOCK_GROUPS.flatMap((group) => group.items.map((item) => ({ ...item, group: group.name })));
 
+const CONTRACT_GROUP = '이 문서에 없는 절';
+
+/**
+ * 문서 유형의 계약이 요구하는 절 가운데 아직 없는 것.
+ *
+ * 런돌 문서는 자유 문서가 아니라 유형마다 절이 정해진 계약이다. 그것을 아는 곳이
+ * 지금까지 `rdl check`뿐이었고, 그래서 빠진 절은 저장한 뒤에야 드러났다. 넣을 것을
+ * 고르는 자리에서 알려 주면 그 자리에서 채운다.
+ *
+ * 문서에 이미 있는 절은 뺀다. 있는 것을 또 권하면 목록이 곧 배경 소음이 된다.
+ */
+export function contractItems(sections, doc) {
+  if (!Array.isArray(sections) || !sections.length || !doc) return [];
+  const present = new Set();
+  doc.forEach((node) => {
+    if (node.type.name === 'heading' && node.attrs.level === 2) present.add(node.textContent.trim());
+  });
+  return sections.filter((name) => !present.has(name)).map((name) => ({
+    label: name,
+    hint: `## ${name}`,
+    keywords: [name, 'section', '절'],
+    group: CONTRACT_GROUP,
+    make: () => [
+      schema.nodes.heading.create({ level: 2 }, [schema.text(name)]),
+      schema.nodes.paragraph.create()
+    ]
+  }));
+}
+
+/** 메뉴가 보여 줄 전체 목록. 계약이 요구하는 절이 맨 위에 온다. */
+export function menuItems(sections, doc) {
+  return contractItems(sections, doc).concat(BLOCK_ITEMS);
+}
+
 /** 슬래시 메뉴가 이어 친 글자로 거를 때 쓴다. 빈 질의는 전부를 돌려준다. */
-export function filterBlocks(query) {
+export function filterBlocks(query, items) {
+  const list = items || BLOCK_ITEMS;
   const needle = String(query || '').trim().toLowerCase();
-  if (!needle) return BLOCK_ITEMS;
-  return BLOCK_ITEMS.filter((item) =>
+  if (!needle) return list;
+  return list.filter((item) =>
     item.label.toLowerCase().includes(needle)
     || item.keywords.some((keyword) => keyword.toLowerCase().includes(needle)));
+}
+
+/** make()가 노드 하나든 여럿이든 같게 다룬다. 계약 절은 제목과 빈 문단 둘이다. */
+export function madeNodes(entry) {
+  const made = entry.make();
+  return Array.isArray(made) ? made : [made];
 }
 
 /**

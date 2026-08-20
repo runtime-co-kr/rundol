@@ -9,7 +9,7 @@
 // 그래서 놓을 자리를 언제나 최상위 블록의 경계로 맞춘다.
 
 import { Plugin, PluginKey, NodeSelection, Selection } from 'prosemirror-state';
-import { BLOCK_GROUPS, selectInside } from './blocks.mjs';
+import { menuItems, madeNodes, selectInside } from './blocks.mjs';
 
 export const blockHandleKey = new PluginKey('rundol-block-handle');
 
@@ -45,9 +45,10 @@ function dropTarget(view, clientX, clientY) {
 }
 
 class BlockHandleView {
-  constructor(view, shared) {
+  constructor(view, shared, options) {
     this.view = view;
     this.shared = shared;
+    this.sections = (options && options.contractSections) || [];
     this.target = null;
 
     this.root = element('div', 'rdl-block-handle');
@@ -63,16 +64,6 @@ class BlockHandleView {
 
     this.menu = element('div', 'rdl-block-menu');
     this.menu.style.display = 'none';
-    for (const group of BLOCK_GROUPS) {
-      this.menu.append(element('div', 'rdl-block-menu-group', group.name));
-      for (const entry of group.items) {
-        const item = element('button', 'rdl-block-menu-item');
-        item.type = 'button';
-        item.append(element('span', 'rdl-block-menu-label', entry.label), element('span', 'rdl-block-menu-hint', entry.hint));
-        item.addEventListener('click', () => this.insert(entry));
-        this.menu.append(item);
-      }
-    }
 
     this.line = element('div', 'rdl-drop-line');
     this.line.style.display = 'none';
@@ -129,9 +120,26 @@ class BlockHandleView {
     this.target = null;
   }
 
+  paintMenu() {
+    this.menu.replaceChildren();
+    let group = null;
+    for (const entry of menuItems(this.sections, this.view.state.doc)) {
+      if (entry.group !== group) {
+        group = entry.group;
+        this.menu.append(element('div', 'rdl-block-menu-group', group));
+      }
+      const item = element('button', 'rdl-block-menu-item');
+      item.type = 'button';
+      item.append(element('span', 'rdl-block-menu-label', entry.label), element('span', 'rdl-block-menu-hint', entry.hint));
+      item.addEventListener('click', () => this.insert(entry));
+      this.menu.append(item);
+    }
+  }
+
   toggleMenu() {
     if (this.menu.style.display !== 'none') return this.closeMenu();
     if (!this.target) return;
+    this.paintMenu();
     const handle = this.root.getBoundingClientRect();
     const host = this.host.getBoundingClientRect();
     this.menu.style.display = 'block';
@@ -144,7 +152,7 @@ class BlockHandleView {
   insert(entry) {
     if (!this.target) return this.closeMenu();
     const at = this.target.pos + this.target.node.nodeSize;
-    const tr = this.view.state.tr.insert(at, entry.make());
+    const tr = this.view.state.tr.insert(at, madeNodes(entry));
     this.view.dispatch(selectInside(tr, Selection, at).scrollIntoView());
     this.view.focus();
     this.closeMenu();
@@ -192,7 +200,7 @@ class BlockHandleView {
   }
 }
 
-export function blockHandle() {
+export function blockHandle(options = {}) {
   // 손잡이(뷰)와 놓기 처리(props)가 같은 상태를 본다. 어느 블록을 끌고 있는지는
   // 뷰가 알고, 그것을 어디에 놓을지는 props가 정한다.
   const shared = { dragFrom: null, line: null, host: null };
@@ -209,7 +217,7 @@ export function blockHandle() {
 
   return new Plugin({
     key: blockHandleKey,
-    view: (view) => new BlockHandleView(view, shared),
+    view: (view) => new BlockHandleView(view, shared, options),
     props: {
       handleDOMEvents: {
         dragover(view, event) {

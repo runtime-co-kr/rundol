@@ -97,8 +97,8 @@ export function openEditor(mount, markdown, options = {}) {
         gapCursor(),
         columnResizing(),
         tableEditing(),
-        blockHandle(),
-        slashMenu(),
+        blockHandle({ contractSections: options.contractSections }),
+        slashMenu({ contractSections: options.contractSections }),
         // 링크 후보는 밖에서 받는다. 편집기가 저장소를 읽으면 브라우저에서 돌 수 없고,
         // 보드는 이미 그 목록을 스냅샷으로 갖고 있다.
         linkPicker({ candidates: options.linkCandidates || [] }),

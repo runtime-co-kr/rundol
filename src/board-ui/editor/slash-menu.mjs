@@ -8,7 +8,7 @@
 
 import { Plugin, PluginKey, Selection } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
-import { filterBlocks, selectInside } from './blocks.mjs';
+import { filterBlocks, menuItems, madeNodes, selectInside } from './blocks.mjs';
 
 export const slashMenuKey = new PluginKey('rundol-slash-menu');
 
@@ -20,8 +20,9 @@ function element(tag, className, text) {
 }
 
 class SlashMenuView {
-  constructor(view) {
+  constructor(view, options) {
     this.view = view;
+    this.sections = (options && options.contractSections) || [];
     this.open = false;
     this.from = null;   // `/`가 놓인 자리
     this.query = '';
@@ -67,7 +68,7 @@ class SlashMenuView {
     // 빈 문단만 남았으면 그 문단을 새 블록으로 갈아 끼운다.
     const $at = tr.doc.resolve(at);
     const parent = $at.parent;
-    const made = entry.make();
+    const made = madeNodes(entry);
     if (parent.isTextblock && parent.content.size === 0) {
       const start = $at.before();
       tr.replaceWith(start, start + parent.nodeSize, made);
@@ -129,7 +130,7 @@ class SlashMenuView {
 
     this.from = $from.start();
     this.query = match[1];
-    this.items = filterBlocks(this.query);
+    this.items = filterBlocks(this.query, menuItems(this.sections, state.doc));
     if (this.index >= this.items.length) this.index = 0;
     this.open = true;
     this.paint();
@@ -142,10 +143,10 @@ class SlashMenuView {
   }
 }
 
-export function slashMenu() {
+export function slashMenu(options = {}) {
   return new Plugin({
     key: slashMenuKey,
-    view: (view) => new SlashMenuView(view),
+    view: (view) => new SlashMenuView(view, options),
     props: {
       // 메뉴를 여는 `/`가 화면에서 티나야 사람이 그것이 명령이라는 것을 안다.
       decorations(state) {

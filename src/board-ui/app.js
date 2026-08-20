@@ -1027,6 +1027,39 @@ function linkCandidates() {
   return documents.concat(people);
 }
 
+// 문서 유형이 요구하는 절. 계약은 프로필마다 다르고 자주 바뀌지 않으므로 한 번 읽어 둔다.
+// 못 읽으면 빈 목록으로 둔다 — 계약을 몰라도 편집은 되어야 한다.
+let contractSectionsByType = null;
+async function loadContractSections() {
+  if (contractSectionsByType) return contractSectionsByType;
+  try {
+    const contract = await api(projectPath('/contract'));
+    const choices = (contract.catalog && contract.catalog.profileChoices) || [];
+    const active = contract.profile && contract.profile.name;
+    const chosen = choices.find((choice) => choice.name === active) || choices[0];
+    contractSectionsByType = (chosen && chosen.sections) || {};
+  } catch (_) {
+    contractSectionsByType = {};
+  }
+  return contractSectionsByType;
+}
+
+// 문서 ID의 앞 세 글자가 유형이다. 계약은 그 코드로 절을 갖고 있다.
+function sectionsFor(item) {
+  const code = String(item.id || '').slice(0, 3).toUpperCase();
+  return (contractSectionsByType && contractSectionsByType[code]) || [];
+}
+
+// frontmatter는 편집기가 다루지 않는다. 저장 경로가 그 부분을 통째로 보존하기
+// 때문인데, 화면이 그 사실을 말하지 않으면 사람은 제목이나 담당을 여기서 고치려
+// 하다가 그것이 본문에 글자로 들어간다.
+function frontmatterNotice() {
+  const notice = document.createElement('p');
+  notice.className = 'editor-frontmatter-notice';
+  notice.textContent = 'ID·제목·담당·태그 같은 문서 속성은 여기서 고치지 않습니다. 오른쪽 Context에서 확인하세요.';
+  return notice;
+}
+
 function closeBlockEditor() {
   if (!blockEditor) return;
   blockEditor.destroy();
@@ -1035,7 +1068,7 @@ function closeBlockEditor() {
   el('document-editor-surface').hidden = true;
 }
 
-function enterEditing(item) {
+async function enterEditing(item) {
   el('document-body').hidden = true;
   el('edit-document').hidden = true;
   el('cancel-document-edit').hidden = false;
@@ -1043,9 +1076,11 @@ function enterEditing(item) {
 
   closeBlockEditor();
   if (window.RundolEditor) {
+    await loadContractSections();
     el('document-editor').hidden = true;
     el('document-editor-surface').hidden = false;
-    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates() });
+    el('document-editor-surface').append(frontmatterNotice());
+    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates(), contractSections: sectionsFor(item) });
     blockEditor.view.focus();
     return;
   }
@@ -1065,7 +1100,7 @@ el('edit-document').addEventListener('click', async () => {
   if (!state.snapshot.client.registered) {
     return message(`이 기기를 Client로 등록해야 협업 편집을 시작할 수 있습니다: rdl client register ${state.snapshot.client.id} --name "<이름>" --type device --owner <MEMBER-ID>`, true);
   }
-  enterEditing(item);
+  await enterEditing(item);
 });
 el('cancel-document-edit').addEventListener('click', () => { renderDocument(state.selected); });
 el('save-document').addEventListener('click', async () => {

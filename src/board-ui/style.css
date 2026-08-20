@@ -3368,3 +3368,15 @@ dialog label textarea {
   color: var(--secondary-TextColor);
   max-width: 70ch;
 }
+
+/* 편집기 위의 frontmatter 안내. 문서 속성은 편집기가 다루지 않는다는 사실을
+   말하지 않으면, 사람은 제목이나 담당을 여기서 고치려다 그것이 본문 글자가 된다. */
+.editor-frontmatter-notice {
+  margin: var(--spacing-2) 0 0;
+  padding: var(--spacing-1) var(--spacing-1_5);
+  border: 1px solid var(--divider-BorderColor);
+  border-radius: var(--small-BorderRadius);
+  background: var(--surface-02-BackgroundColor);
+  color: var(--secondary-TextColor);
+  font-size: var(--caption-FontSize);
+}
