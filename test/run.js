@@ -67,6 +67,12 @@ require('./packages.test');
 require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
+require('./worker-contract.test');
+require('./worker-contract-purity.test');
+require('./surface-leak.test');
+require('./human-intervention.test');
+require('./task-link.test');
+require('./diagnostic-rules.test');
 
 require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./author-fanout.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),

@@ -32,10 +32,58 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl member set <MEMBER-ID|STAKEHOLDER-ID> [--name <이름>] [--role <ROLE-ID>] [--organization <소속>] [--account <계정>] [--responsibility <책임>] [--status <상태>] [--project <key>] [--json]
   rdl member list [--project <key>] [--json]
+  rdl watch --project <key> [--remote] [--once] [--json]
+  rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
+                   [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
+                   [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
+  rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
+                 [--result <pass|fail|blocked|skipped|none>]
+                 [--link <ARTIFACT-ID>] [--unlink <ARTIFACT-ID>]
+                 [--external-ref <branch|pr|issue>=<값>] [--json]
+                 반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
+  rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
+  rdl test rounds [--round <n>] [--project <key>] [--json]
+  rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
+  rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
+  rdl task identity [--project <key>] [--apply] [--json]
+  rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
+  rdl context [--root <path>] [--project <key>] [--json]
+  rdl help [--json]
+  rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
+                 [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
+  rdl doc migrate [--project <key>] [--apply] [--json]
+  rdl doc identity [--project <key>] [--apply] [--json]
+  rdl doc status [--project <key>] [--status <approved|stale|unapproved>] [--json]
+  rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
+                  --client-id <id> [--reason <사유>] [--project <key>] [--json]
+  rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
+  rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
+  rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
+  rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
+  rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
+  rdl conflict list [--project <key>] [--json]
+  rdl conflict resolve --strategy <ours|theirs> [--project <key>] [--json]
+  rdl conflict clear [--project <key>] [--json]
+  rdl doctor [--git-url <url>] [--json]
+  rdl board [--root <path>] [--project <key>] [--port <number>] [--no-open] [--json]
+  rdl --version
+  rdl --help
+
+  rdl advanced [--json]   실행 원장, 임대, 어댑터, 검증, 결정, 위임 등 내부 명령을 나열합니다
+```
+<!-- rdl-help:end -->
+
+
+## 고급 명령
+
+아래는 `rdl advanced`가 나열하는 내부 표면이다. 실행 원장, 임대, 어댑터 호출, 검증, 결정과 위임은 절차와 에이전트가 쓰는 명령이며 사람이 매일 칠 일이 없다. 사람 표면에서 내린 것은 은닉이지 삭제가 아니므로 기존 자동화와 스크립트는 그대로 동작한다.
+
+이 블록도 `rdl advanced`의 Usage와 항상 일치해야 한다.
+
+<!-- rdl-advanced:start -->
+```text
   rdl client register <client-id> --name <name> --type <device|agent|service|human> --owner <MEMBER-ID> [--json]
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
-  rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
-  rdl lease list --project <key> [--json]
   rdl run start <절차이름> --project <key> --client-id <id> [--artifact-id <ARTIFACT-ID>] [--task <TASK-ID>] [--goal <목표>]
                 [--request-id <REQ-ID>] [--json]
   rdl run next --run <RUN-ID> --project <key> [--json]
@@ -55,23 +103,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
   rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--adapters <name>]... [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
-  rdl watch --project <key> [--remote] [--once] [--json]
-  rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
-                   [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
-                   [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
-  rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
-                 [--result <pass|fail|blocked|skipped|none>]
-                 [--external-ref <branch|pr|issue>=<값>] [--json]
-                 반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
   rdl workset list [--project <key>] [--branch <name>] [--json]
-  rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
-  rdl test rounds [--round <n>] [--project <key>] [--json]
-  rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
-  rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
-  rdl task identity [--project <key>] [--apply] [--json]
-  rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
-  rdl context [--root <path>] [--project <key>] [--json]
-  rdl help [--json]
   rdl decision list [--project <key>] [--open] [--json]
   rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
                        [--supersedes <EVENT-ID>]
@@ -86,32 +118,14 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                        [--days <n>] --client-id <id> [--project <key>] [--json]
   rdl delegation revoke <DLG-ID> --member <MEMBER-ID> --reason <사유> --client-id <id>
                         [--project <key>] [--json]
-  rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
-                 [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
-  rdl doc migrate [--project <key>] [--apply] [--json]
-  rdl doc identity [--project <key>] [--apply] [--json]
-  rdl doc status [--project <key>] [--status <approved|stale|unapproved>] [--json]
-  rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
-                  --client-id <id> [--reason <사유>] [--project <key>] [--json]
-  rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
-  rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
-  rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
-  rdl sync [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
-  rdl sync watch [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
-  rdl conflict list [--project <key>] [--json]
-  rdl conflict resolve --strategy <ours|theirs> [--project <key>] [--json]
-  rdl conflict clear [--project <key>] [--json]
   rdl action resolve <ACTION> [--json]
   rdl action record <ACTION> --actual-executor <cli|llm|hybrid> [--planned-executor <executor>]
                     [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
   rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
   rdl debug summary [--json]
-  rdl doctor [--git-url <url>] [--json]
-  rdl board [--root <path>] [--project <key>] [--port <number>] [--no-open] [--json]
-  rdl --version
-  rdl --help
+
 ```
-<!-- rdl-help:end -->
+<!-- rdl-advanced:end -->
 
 ## 공통 탐색과 프로젝트 선택
 
@@ -143,7 +157,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 | `rdl skill install` | 거버넌스 스킬을 AI 클라이언트 개인 skills 폴더에 설치 | 클라이언트 `skills/` 디렉터리 | 없음 |
 | `rdl settings migrate` | 기존 schemaVersion 3 등록·Obsidian 설정을 settings 브랜치로 이전 | 기존 Workspace와 settings 브랜치 | 없음 |
 | `rdl task add` | 완료조건이 있는 태스크 생성 | 태스크 샤드, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
-| `rdl task set` | 태스크 상태 또는 담당자 변경, 사유를 남기는 반려 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
+| `rdl task set` | 태스크 상태·담당자·문서 링크 변경, 사유를 남기는 반려 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
 | `rdl task acceptance` | 완료조건의 완료·미완료 상태 변경 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
 | `rdl task identity` | 옛 26자 태스크 식별자를 8자로 이관하고 옛 식별자를 태스크에 보존 | 태스크 샤드와 태스크를 가리키는 문서 | 없음 |
 | `rdl task migrate` | 단일 `tasks.json`을 클라이언트 샤드로 전환 | settings와 프로젝트 브랜치 커밋 | 없음 |
@@ -353,7 +367,18 @@ rdl task set TASK-AWM8ZS3N --project memo --owner null
 rdl task set TASK-AWM8ZS3N --project memo --status cancelled --reason "다른 방향으로 결정"
 ```
 
-현재 직접 변경 가능한 필드는 `status`, `owner`와 테스트 태스크의 `result`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`, `cancelled`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
+현재 직접 변경 가능한 필드는 `status`, `owner`, 문서 `links`와 테스트 태스크의 `result`다. 허용 상태는 `todo`, `doing`, `waiting`, `review`, `done`, `cancelled`이며 상태별 owner·blocker·검토·완료조건 규칙을 전체 검사한다. 같은 값이면 새 커밋을 만들지 않는다.
+
+#### 문서 링크 편집
+
+```bash
+rdl task set TASK-AWM8ZS3N --project memo --link TST-004 --link REQ-012
+rdl task set TASK-AWM8ZS3N --project memo --unlink REQ-020
+```
+
+`--link`는 더하고 `--unlink`는 뺀다. 한 호출에 여러 번 쓸 수 있고 같이 쓸 수도 있으며, 제거가 먼저 적용되므로 같은 호출로 교체가 된다. 이미 있는 링크를 다시 더해도 중복되지 않고 기존 순서가 앞에 남는다. 태스크에 없는 링크를 빼려 하면 거절한다 — 조용히 넘기면 오타로 지운 줄 알고 넘어가고 정작 끊긴 참조는 그대로 남는다.
+
+이 경로가 필요한 이유는 `done` 게이트가 TST 링크를 요구하기 때문이다(`RDL-TASK-019`). 링크를 생성 시점에만 정할 수 있으면 링크 없이 만든 태스크는 명령줄로 영원히 닫히지 않고, 가리키던 문서가 폐기되면 그 참조를 지울 방법도 없어 검사가 계속 실패한다.
 
 `done`과 `cancelled`는 둘 다 종료 상태지만 게이트가 반대다. `done`은 모든 수용조건 완료와 TST 문서 연결을 요구하고, `cancelled`는 그 증거가 없다는 것을 전제로 `--reason`을 요구한다. 하지 않기로 한 일을 `done`으로 닫으면 기록이 완료로 남아 뒤에 읽는 사람이 없는 산출물을 찾게 되므로 두 상태를 나눈다.
 

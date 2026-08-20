@@ -32,10 +32,28 @@ for (const namespace of ['artifact/', 'domain/', 'feature/']) {
   assert.ok(!tags.some((tag) => tag.startsWith(namespace)), `NTE는 비정규 노트이므로 ${namespace} 태그를 갖지 않습니다.`);
 }
 
-// the reduced namespace requirement is what lets that template pass RDL-DOC-008
-const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
-assert.match(check, /NON_CANONICAL_CODES\s*=\s*new Set\(\['NTE'\]\)/u);
-assert.match(check, /NOTE_TAG_NAMESPACES\s*=\s*\['rundol\/'\]/u);
+// the reduced namespace requirement is what lets that template pass RDL-DOC-008.
+// 판정과 그 상수는 check-rules로 옮겼다 — 값만 보고 답하는 규칙이므로 읽기 계층에
+// 남을 이유가 없었다. 소스를 문자열로 확인하는 대신 판정을 직접 불러 확인한다.
+const { NON_CANONICAL_CODES, NOTE_TAG_NAMESPACES, REQUIRED_TAG_NAMESPACES, checkDocumentMetadata } = require('../src/check-rules');
+assert.ok(NON_CANONICAL_CODES.has('NTE'), 'NTE는 비정규 유형이어야 합니다.');
+assert.deepStrictEqual(NOTE_TAG_NAMESPACES, ['rundol/']);
+assert.ok(REQUIRED_TAG_NAMESPACES.length > NOTE_TAG_NAMESPACES.length, '비정규 유형의 태그 요구가 더 적어야 합니다.');
+
+// 규칙이 실제로 그렇게 판정하는지 본다. 상수만 맞고 판정이 다르면 아무 의미가 없다.
+function noteDoc(id, docTags) {
+  return {
+    relativeFile: `inbox/${id}-메모.md`,
+    frontmatter: { locations: {}, data: { id, type: 'document', kind: 'note', title: '메모', description: '설명', owner: 'x', state: 'draft', tags: docTags, aliases: [id], related: [] } }
+  };
+}
+const noDelegates = { boundary: () => [], implementation: () => [] };
+const noteIssues = [];
+checkDocumentMetadata(noteIssues, noteDoc('NTE-001', ['rundol/artifact']), 'NTE-001-메모.md', noDelegates);
+assert.ok(!noteIssues.some((item) => item.code === 'RDL-DOC-008'), 'NTE는 rundol/ 태그 하나로 충분해야 합니다.');
+const requirementIssues = [];
+checkDocumentMetadata(requirementIssues, noteDoc('REQ-999', ['rundol/artifact']), 'REQ-999-메모.md', noDelegates);
+assert.ok(requirementIssues.some((item) => item.code === 'RDL-DOC-008'), '정규 유형은 태그 namespace를 더 요구해야 합니다.');
 
 // the published standard states that notes are non-canonical
 const standard = fs.readFileSync(path.join(repository, 'docs', 'DOCUMENT-STANDARD.md'), 'utf8');
@@ -68,16 +86,46 @@ assert.doesNotThrow(() => assertCancellationConsistency({ status: 'todo' }, { st
 assert.doesNotThrow(() => assertCancellationConsistency({ status: 'cancelled', cancellation: { reason: '중단', decidedBy: 'MEMBER-001', at: '2026-08-15T00:00:00.000Z' } }, { status: 'todo', cancellation: null }));
 assert.deepStrictEqual(Array.from(TERMINAL_TASK_STATES), ['done', 'cancelled']);
 
-// 반려는 허용 상태이면서 완료 게이트(수용조건·TST link)의 대상은 아니다
-const checkSource = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
-assert.match(checkSource, /ALLOWED_TASK_STATES\s*=\s*new Set\(\['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'\]\)/u);
-assert.match(checkSource, /RDL-TASK-023/u, '사유 없는 반려를 진단해야 합니다.');
-assert.match(checkSource, /RDL-TASK-024/u, '반려가 아닌 태스크의 사유를 진단해야 합니다.');
-assert.match(checkSource, /RDL-TASK-025/u, '존재하지 않는 반려 결정자를 진단해야 합니다.');
+// 반려는 허용 상태이면서 완료 게이트(수용조건·검증 문서 연결)의 대상은 아니다.
+// 태스크 판정은 check-rules로 옮겼다 — 값만 보고 답하는 규칙이므로 읽기 계층에
+// 남을 이유가 없었다. 소스를 문자열로 뒤지는 대신 판정을 직접 불러 확인한다.
+const { ALLOWED_TASK_STATES, checkTaskEntries } = require('../src/check-rules');
+assert.deepStrictEqual(Array.from(ALLOWED_TASK_STATES), ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
+
+function judgeTask(task) {
+  const issues = [];
+  checkTaskEntries(issues, { 'TASK-ABCDEFGH': task }, {
+    taskIds: ['TASK-ABCDEFGH'], taskFile: 'tasks.json', registry: new Map(),
+    memberIds: new Set(['MEMBER-001']), stakeholderIds: new Set(),
+    kinds: ['normal', 'test'], results: ['pass', 'fail', 'blocked', 'skipped'],
+    testedDocuments: () => [], readiness: () => []
+  });
+  return issues.map((item) => item.code);
+}
+
+const cancelledBase = {
+  title: 't', summary: 's', owner: 'MEMBER-001', reviewers: [], stakeholders: [], priority: 'mid',
+  links: [], deps: [], acceptanceCriteria: { 'AC-001': { text: 'x', done: false } }, blocker: null,
+  createdAt: '', updatedAt: '', statusChangedAt: '', externalRefs: []
+};
+
+// 사유 없는 반려는 진단한다.
+assert.ok(judgeTask(Object.assign({}, cancelledBase, { status: 'cancelled' })).includes('RDL-TASK-023'));
+// 반려가 아닌 태스크의 사유도 진단한다.
+assert.ok(judgeTask(Object.assign({}, cancelledBase, { status: 'todo', cancellation: { reason: 'x', decidedBy: 'MEMBER-001', at: 'z' } })).includes('RDL-TASK-024'));
+// 존재하지 않는 반려 결정자를 진단한다.
+assert.ok(judgeTask(Object.assign({}, cancelledBase, { status: 'cancelled', cancellation: { reason: 'x', decidedBy: 'MEMBER-999', at: 'z' } })).includes('RDL-TASK-025'));
+
+// 완료 게이트가 반려에 적용되면 안 된다. 미완료 수용조건과 검증 문서 부재를 가진
+// 반려 태스크가 완료 게이트 진단을 받지 않는 것이 그 확인이다.
+const cancelledCodes = judgeTask(Object.assign({}, cancelledBase, { status: 'cancelled', cancellation: { reason: 'x', decidedBy: 'MEMBER-001', at: 'z' } }));
 for (const gate of ['RDL-TASK-018', 'RDL-TASK-019']) {
-  const line = checkSource.split('\n').find((value) => value.includes(gate));
-  assert.ok(line.includes("task.status === 'done'"), `${gate}는 완료에만 적용되어야 합니다.`);
-  assert.ok(!line.includes('cancelled'), `${gate}가 반려에 적용되면 안 됩니다.`);
+  assert.ok(!cancelledCodes.includes(gate), `${gate}가 반려에 적용되면 안 됩니다.`);
+}
+// 같은 내용이 완료 상태이면 두 게이트가 모두 걸린다.
+const doneCodes = judgeTask(Object.assign({}, cancelledBase, { status: 'done' }));
+for (const gate of ['RDL-TASK-018', 'RDL-TASK-019']) {
+  assert.ok(doneCodes.includes(gate), `${gate}는 완료에 적용되어야 합니다.`);
 }
 
 // blocker 불변식은 공통 태스크 계층이 강제한다

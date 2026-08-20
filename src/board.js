@@ -11,7 +11,7 @@ const { readCollaboration } = require('./collaboration');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, shardFiles, clientId, TERMINAL_TASK_STATES } = require('./tasks');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
-const { listClients, registerClient, setClientStatus, appendLease, listLeases } = require('./collaboration-store');
+const { listClients, registerClient, setClientStatus } = require('./collaboration-store');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 
@@ -268,7 +268,6 @@ function workspaceSnapshot(root, projectKey, search) {
   const tasksResult = queryTasks(config, search || new URLSearchParams(), { all: true });
   const documents = listDocuments(project);
   const collaboration = readCollaboration(root, project.key);
-  const leases = layout.schemaVersion >= 6 ? listLeases(root, project.key).leases : [];
   const sync = syncStatus(project);
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
   const contract = loadDocumentContract(root, project.key);
@@ -278,14 +277,13 @@ function workspaceSnapshot(root, projectKey, search) {
     project: project.key,
     client: boardClient(root, project, clients),
     diagnostics: projectDiagnostics(root, project.key, `${workspaceRevision}:${entityRevision(documents)}`),
-    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), leases: entityRevision(leases), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(stripSources(presentation)) },
+    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(stripSources(presentation)) },
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
     attention: attentionItems(tasksResult.tasks, documents, sync),
     people: collaboration,
     clients,
-    leases,
     sync,
     contract,
     presentation,
@@ -294,9 +292,9 @@ function workspaceSnapshot(root, projectKey, search) {
   };
 }
 
-// Board가 lease를 잡으려면 자기가 어느 Client인지 알아야 한다.
+// Board가 정본을 바꾸려면 자기가 어느 Client인지 알아야 한다.
 // 로컬 ID(.rundol/state/client-id)는 태스크 샤딩이 이미 쓰고 있으므로 같은 값을 재사용해
-// "이 기기가 만든 태스크"와 "이 기기가 잡은 lease"가 하나의 정체성으로 이어지게 한다.
+// "이 기기가 만든 태스크"와 "이 기기가 남긴 기록"이 하나의 정체성으로 이어지게 한다.
 function boardClient(root, project, clients) {
   const id = clientId(project.root);
   const registered = (clients || []).find((item) => item.id === id) || null;
@@ -309,15 +307,9 @@ function inputError(message) {
   throw error;
 }
 
-// lease는 권한이 아니라 신호다. 저장을 막는 것은 baseRevision과 브랜치 경계이고, lease는
-// "지금 누가 이 문서를 열어 두었다"를 알린다. 그래서 어긋나도 거절하지 않고 알리기만 한다.
-// 막아 버리면 브라우저가 죽어 남은 5분짜리 lease가 남의 저장을 그동안 통째로 잠근다.
-function leaseMismatch(root, project, documentId, clientId) {
-  if (workspaceLayout(root).schemaVersion < 6) return null;
-  const holder = listLeases(root, project.key).leases.find((item) => item.documentId === documentId);
-  if (!holder || (clientId && holder.clientId === clientId)) return null;
-  return { holder: holder.clientId, memberId: holder.memberId || null, expiresAt: holder.expiresAt };
-}
+// 문서 편집 소프트 리스는 ADR-015로 폐기했다. 저장을 막는 것은 baseRevision과
+// 브랜치 경계이며, 그 둘은 시계에 의존하지 않으므로 그대로 남는다. "지금 누가 이
+// 문서를 열어 두었다"는 신호는 중앙 권위 없이는 관측 시점에 이미 낡은 값이었다.
 
 function updateDocumentBody(root, projectKey, documentId, body) {
   const project = selectProject(workspaceLayout(root), projectKey, true);
@@ -349,9 +341,7 @@ function updateDocumentBody(root, projectKey, documentId, body) {
     fs.writeFileSync(file, original, 'utf8');
     throw error;
   }
-  const saved = listDocuments(project).find((item) => item.id === documentId);
-  const mismatch = leaseMismatch(root, project, documentId, body.clientId);
-  return mismatch ? Object.assign({}, saved, { leaseNotice: mismatch }) : saved;
+  return listDocuments(project).find((item) => item.id === documentId);
 }
 
 function stringList(value, field) {
@@ -484,15 +474,13 @@ function createBoardServer(start, options) {
       const projectTaskMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks\/(TASK-[A-Za-z0-9-]+)$/u);
       const projectDocumentsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents$/u);
       const projectDocumentMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)$/u);
-      const projectLeasesMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/leases$/u);
-      const projectLeaseActionMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/leases\/([^/]+)\/(acquire|renew|release)$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
       const projectContractMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract$/u);
       const projectContractPlanMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract\/plan$/u);
       const projectPresentationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/presentation$/u);
-      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentMatch, projectLeasesMatch, projectLeaseActionMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
+      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
       const requestedConfig = requestedProject ? boardConfig(config.root, requestedProject[1]) : config;
       if (request.method === 'GET' && projectMatch) {
         const summary = overview(config.root).projects.find((item) => item.key === projectMatch[1]);
@@ -508,7 +496,6 @@ function createBoardServer(start, options) {
         const document = listDocuments(selectProject(workspaceLayout(config.root), projectDocumentMatch[1], true)).find((item) => item.id === decodeURIComponent(projectDocumentMatch[2]));
         return document ? json(response, 200, document) : json(response, 404, { error: '문서를 찾지 못했습니다.' });
       }
-      if (request.method === 'GET' && projectLeasesMatch) return json(response, 200, listLeases(config.root, projectLeasesMatch[1]));
       if (request.method === 'GET' && projectSyncMatch) return json(response, 200, syncStatus(selectProject(workspaceLayout(config.root), projectSyncMatch[1], true)));
       if (request.method === 'GET' && projectSnapshotMatch) {
         return json(response, 200, workspaceSnapshot(config.root, projectSnapshotMatch[1], url.searchParams));
@@ -572,14 +559,10 @@ function createBoardServer(start, options) {
         savePresentation(config.root, projectKey, scope, body);
         return json(response, 200, loadBoardPresentation(config.root, projectKey));
       }
-      if (request.method === 'POST' && projectLeaseActionMatch) {
-        const body = await requestBody(request);
-        return json(response, 200, appendLease(config.root, projectLeaseActionMatch[3], { project: projectLeaseActionMatch[1], documentId: decodeURIComponent(projectLeaseActionMatch[2]), clientId: body.clientId }));
-      }
       if (request.method === 'POST' && projectRefreshMatch) return json(response, 200, refreshState(config.root, { project: projectRefreshMatch[1] }));
       if (request.method === 'POST' && projectSyncMatch) {
         // sync는 공유 이벤트를 쓰므로 실행 주체를 밝혀야 한다. Board는 정체성을 지어낼
-        // 수 없으므로 이 기기의 등록된 Client를 쓴다 — lease와 태스크 샤딩이 이미 쓰는
+        // 수 없으므로 이 기기의 등록된 Client를 쓴다 — 태스크 샤딩이 이미 쓰는
         // 그 값이다. 등록되지 않았거나 자격이 맞지 않으면 스키마 오류가 아니라 무엇을
         // 해야 하는지를 말한다.
         const project = selectProject(workspaceLayout(config.root), projectSyncMatch[1], true);

@@ -2,11 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const { workspaceLayout, selectProject, yamlValue } = require('./workspace');
 const { saveSettings } = require('./settings');
-const { runGit } = require('./git');
-const { runtimeWorkspace } = require('./runtime');
 const eventStore = require('./event-store');
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -31,7 +28,7 @@ function quote(value) {
 
 function workspaceStore(start) {
   const layout = workspaceLayout(start);
-  if (layout.schemaVersion < 6) throw new Error('Client와 임대 기능은 schemaVersion 6 Workspace가 필요합니다. rdl workspace migrate를 실행하세요.');
+  if (layout.schemaVersion < 6) throw new Error('Client 기능은 schemaVersion 6 Workspace가 필요합니다. rdl workspace migrate를 실행하세요.');
   const root = path.join(layout.root, 'projects', 'workspace');
   return { layout, root, clients: path.join(root, 'clients'), events: path.join(root, 'events') };
 }
@@ -104,78 +101,16 @@ function setClientStatus(start, id, status) {
   return { id, status, changed: true, commit: saved.commit };
 }
 
-function projectMember(project, memberId) {
-  if (!fs.existsSync(project.charter)) return false;
-  return new RegExp(`\\^${memberId}(?:\\s|$)`, 'mu').test(fs.readFileSync(project.charter, 'utf8'));
-}
-
-function documentExists(project, documentId) {
-  function markdownFiles(root) {
-    if (!fs.existsSync(root)) return [];
-    if (fs.statSync(root).isFile()) return [root];
-    const files = [];
-    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-      const target = path.join(root, entry.name);
-      if (entry.isDirectory()) files.push(...markdownFiles(target));
-      else if (entry.isFile() && entry.name.endsWith('.md')) files.push(target);
-    }
-    return files;
-  }
-  const roots = [project.charter, project.documents];
-  for (const root of roots) {
-    for (const file of markdownFiles(root)) if (new RegExp(`^id:\\s*["']?${documentId}["']?\\s*$`, 'mu').test(fs.readFileSync(file, 'utf8'))) return true;
-  }
-  return false;
-}
-
+// 문서 편집 소프트 리스의 획득·갱신·해제와 그 접기는 ADR-015로 폐기했다. 중앙
+// 권위 없이 만료 시각에 기대는 배타는 보장이 아니라 조언이었고, 조언을 보장처럼
+// 다루느라 만료·회수·자기 임대 이어받기 같은 예외를 계속 쌓고 있었다. 임대 획득의
+// 사전조건이던 멤버 확인과 문서 존재 확인도 부르는 곳이 없어져 함께 걷어냈다.
+//
+// 이미 쌓인 이벤트는 지우지 않는다. 지난 기록을 고쳐 쓰지 않는 것이 이 제품의
+// 원칙이며, event-store가 그 샤드를 계속 읽을 수 있게 둔다. 다만 새로 쓰지 않으므로
+// 여기서는 읽기 함수만 남긴다.
 function readEvents(store, scope) {
   return eventStore.readEvents(store.events, 'lease', scope);
 }
 
-function activeLeases(events, now) {
-  const leases = new Map();
-  for (const event of events) {
-    if (event.type === 'lease.acquired') leases.set(event.documentId, event);
-    else if (event.type === 'lease.renewed' && leases.get(event.documentId)?.leaseId === event.leaseId) leases.set(event.documentId, Object.assign({}, leases.get(event.documentId), event));
-    else if (['lease.released', 'lease.force_released', 'lease.conflicted'].includes(event.type) && leases.get(event.documentId)?.leaseId === event.leaseId) leases.delete(event.documentId);
-  }
-  const at = now || Date.now();
-  return Array.from(leases.values()).filter((lease) => Date.parse(lease.expiresAt) > at);
-}
-
-function appendLease(start, action, input) {
-  const store = workspaceStore(start);
-  const project = selectProject(store.layout, input.project, true);
-  const client = getClient(start, input.clientId);
-  if (client.status !== 'active') throw new Error(`비활성 Client는 임대를 변경할 수 없습니다: ${client.id}`);
-  if (!projectMember(project, client.owner)) throw new Error(`${client.owner}는 ${project.key} project.md에 등록된 멤버가 아닙니다.`);
-  if (!documentExists(project, input.documentId)) throw new Error(`문서를 찾지 못했습니다: ${input.documentId}`);
-  const leases = activeLeases(readEvents(store, project.key));
-  const active = leases.find((lease) => lease.documentId === input.documentId);
-  if (action === 'acquire' && active) throw new Error(`${input.documentId}은 ${active.clientId}가 임대 중입니다: ${active.expiresAt}`);
-  if (action !== 'acquire' && (!active || active.clientId !== client.id)) throw new Error(`${client.id}가 보유한 유효 임대가 없습니다: ${input.documentId}`);
-  const now = new Date();
-  const leaseId = active ? active.leaseId : `LEASE-${crypto.randomBytes(10).toString('hex').toUpperCase()}`;
-  const type = { acquire: 'lease.acquired', renew: 'lease.renewed', release: 'lease.released' }[action];
-  const event = {
-    schemaVersion: 1, eventId: `EVT-${crypto.randomBytes(10).toString('hex').toUpperCase()}`, type,
-    scope: 'project', projectId: project.key, documentId: input.documentId, clientId: client.id,
-    memberId: client.owner, leaseId, baseRevision: runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout,
-    occurredAt: now.toISOString(), expiresAt: action === 'release' ? null : new Date(now.getTime() + 5 * 60 * 1000).toISOString()
-  };
-  // append와 세그먼트 롤오버는 머신 단위 락으로 직렬화한다 — 같은 client의
-  // 동시 CLI 프로세스가 같은 샤드를 두고 경합하는 것은 clientId만으로 막지 못한다.
-  const file = eventStore.appendEvent(store.events, 'lease', project.key, client.id, event, {
-    lockDirectory: runtimeWorkspace(store.layout.root).locks
-  });
-  const saved = saveSettings(store.layout.root);
-  return { project: project.key, documentId: input.documentId, clientId: client.id, leaseId, type, expiresAt: event.expiresAt, file, commit: saved.commit };
-}
-
-function listLeases(start, projectKey) {
-  const store = workspaceStore(start);
-  const project = selectProject(store.layout, projectKey, true);
-  return { project: project.key, leases: activeLeases(readEvents(store, project.key)) };
-}
-
-module.exports = { listClients, getClient, registerClient, setClientStatus, appendLease, listLeases, readEvents, activeLeases };
+module.exports = { listClients, getClient, registerClient, setClientStatus, readEvents };

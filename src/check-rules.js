@@ -1,0 +1,383 @@
+'use strict';
+
+// 검사의 판정부. 파일을 읽지 않고 이미 읽어 둔 값만 보고 진단을 만든다.
+//
+// 이 분리가 필요한 이유는 코드 정리가 아니라 답의 일치다. 같은 저장소 상태에서
+// 명령줄과 보드와 워커 어댑터가 다른 판정을 내면 사람과 에이전트는 같은 계층이
+// 아니게 된다. 판정이 파일 읽기와 붙어 있는 한 각 표면은 자기 경로로 다시
+// 구현하게 되고, 다시 구현한 것들은 조금씩 달라진다.
+//
+// 그래서 여기에는 파일에 닿는 require가 없다. 값을 만드는 일은 check.js가 하고, 그
+// 값을 보고 옳고 그름을 말하는 일만 여기서 한다. worker-contract-purity.test.js가
+// 전이 의존까지 따라가며 이 경계를 지킨다.
+
+const { ruleSource } = require('./diagnostic-rules');
+
+const REQUIRED_FIELDS = ['id', 'type', 'kind', 'title', 'description', 'owner', 'state', 'tags', 'aliases', 'related'];
+const ID_PATTERN = /^[A-Z]{3}-\d{3,}$/u;
+const FILE_PATTERN = /^[A-Z]{3}-\d{3,}-(?=.*[가-힣])[가-힣A-Za-z0-9]+(?:-[가-힣A-Za-z0-9]+)*\.md$/u;
+const NON_CANONICAL_CODES = new Set(['NTE']);
+const REQUIRED_TAG_NAMESPACES = ['rundol/', 'artifact/', 'domain/', 'feature/'];
+const NOTE_TAG_NAMESPACES = ['rundol/'];
+// 조인 키의 형식 판정. 정체성 모듈이 아니라 규칙 쪽에 두는 이유는, 이것이 값 하나를
+// 보고 옳고 그름을 말하는 규칙이기 때문이다. 저장·부여는 정체성 모듈의 일이고
+// 그 모듈은 파일을 읽으므로, 판정이 거기 있으면 판정도 함께 파일에 묶인다.
+const DOCUMENT_UID = /^[0-9A-HJKMNP-TV-Z]{8}$/u;
+
+const GOVERNANCE_HEADINGS = ['미션', '목표', '범위', '역할', '프로젝트 팀원', '이해관계자', '책임 매트릭스', '의사결정과 에스컬레이션', '위험과 제약', '협업 리듬', '완료 정의'];
+const GOVERNANCE_BLOCK_FIELDS = {
+  ROLE: ['미션', '결정권', '주요 산출물', '에스컬레이션'],
+  MEMBER: ['역할', '소속', '업무 계정', '책임 영역', '상태'],
+  STAKEHOLDER: ['유형', '관심', '영향력', '참여 방식', '담당 역할']
+};
+
+function headingKey(value) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function wikiTarget(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^\[\[([^|\]#]+)(?:#([^|\]]+))?(?:\|[^\]]+)?\]\]$/.exec(value.trim());
+  return match ? { id: match[1], anchor: match[2] || null } : null;
+}
+
+function lineOf(source, needle) {
+  const index = source.indexOf(needle);
+  if (index < 0) return 1;
+  return source.slice(0, index).split(/\r?\n/).length;
+}
+
+function diagnostic(list, values) {
+  const entry = Object.assign({ severity: 'error', category: 'metadata', file: null, line: 1, artifactId: null, target: null }, values);
+  // 진단이 자기 규칙의 정본 문서를 들고 다닌다. 없으면 사람도 에이전트도 이 코드가
+  // 왜 존재하는지 알려면 검사기 소스를 뒤져야 한다. 모르는 코드에는 붙이지 않는다 —
+  // 틀린 근거는 근거가 없는 것보다 나쁘다.
+  const rule = ruleSource(entry.code);
+  if (rule) entry.rule = rule;
+  list.push(entry);
+}
+
+function resolveArtifact(registry, id) {
+  return registry.get(id) || null;
+}
+
+function uniqueDocuments(documents) {
+  const seen = new Set();
+  return documents.filter((document) => {
+    const key = document.file || document.id;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function governanceBlocks(doc) {
+  const result = [];
+  const pattern = /^###\s+(.+?)\s+\^(ROLE|MEMBER|STAKEHOLDER)-([A-Z0-9]+)\s*$/gm;
+  const matches = Array.from(doc.body.matchAll(pattern));
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const nextHeading = doc.body.slice(match.index + match[0].length).search(/^#{2,3}\s+/m);
+    const end = nextHeading < 0 ? doc.body.length : match.index + match[0].length + nextHeading;
+    const source = doc.body.slice(match.index, end);
+    const fields = new Map();
+    for (const field of source.matchAll(/^-\s+([^:]+):\s*(.*)$/gm)) fields.set(field[1].trim(), field[2].trim());
+    result.push({ type: match[2], id: `${match[2]}-${match[3]}`, name: match[1].trim(), source, fields, line: doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1 });
+  }
+  return result;
+}
+
+function checkProjectGovernance(list, projectDoc) {
+  if (!projectDoc) return;
+  for (const heading of GOVERNANCE_HEADINGS) {
+    if (!projectDoc.headings.has(headingKey(heading))) diagnostic(list, { code: 'RDL-GOV-001', category: 'governance', file: projectDoc.relativeFile, artifactId: projectDoc.id, message: `프로젝트 거버넌스 필수 섹션이 없습니다: ${heading}` });
+  }
+  const blocks = governanceBlocks(projectDoc);
+  for (const type of Object.keys(GOVERNANCE_BLOCK_FIELDS)) {
+    if (!blocks.some((block) => block.type === type)) diagnostic(list, { code: 'RDL-GOV-002', category: 'governance', file: projectDoc.relativeFile, artifactId: projectDoc.id, message: `${type} 정의가 하나 이상 필요합니다.` });
+  }
+  for (const block of blocks) {
+    for (const field of GOVERNANCE_BLOCK_FIELDS[block.type]) {
+      if (!block.fields.has(field) || !block.fields.get(field)) diagnostic(list, { code: 'RDL-GOV-003', category: 'governance', file: projectDoc.relativeFile, line: block.line, artifactId: projectDoc.id, target: block.id, message: `${block.id}에 필수 필드가 없습니다: ${field}` });
+    }
+  }
+}
+
+function checkReference(list, fileRegistry, artifactRegistry, sourceDoc, rawValue, values) {
+  const target = wikiTarget(rawValue);
+  if (!target) {
+    diagnostic(list, Object.assign({
+      code: 'RDL-LINK-001', category: 'link', file: sourceDoc.relativeFile,
+      line: lineOf(sourceDoc.source, String(rawValue)), artifactId: values.artifactId,
+      message: `Wiki link 형식이 아닙니다: ${rawValue}`
+    }, values));
+    return;
+  }
+  const targetDoc = fileRegistry.get(target.id) || null;
+  if (!targetDoc) {
+    const aliasDoc = resolveArtifact(artifactRegistry, target.id);
+    diagnostic(list, Object.assign({
+      code: aliasDoc ? 'RDL-LINK-006' : 'RDL-LINK-002', category: 'link', file: sourceDoc.relativeFile,
+      line: lineOf(sourceDoc.source, rawValue), artifactId: values.artifactId, target: target.id,
+      message: aliasDoc
+        ? `Obsidian link 대상은 alias가 아니라 실제 파일명이어야 합니다: [[${aliasDoc.fileStem}|${target.id}]]`
+        : `존재하지 않는 Obsidian 파일을 참조합니다: ${target.id}`
+    }, values));
+    return;
+  }
+  if (target.anchor) {
+    const exists = target.anchor.startsWith('^')
+      ? targetDoc.blocks.has(target.anchor.slice(1))
+      : targetDoc.headings.has(headingKey(target.anchor));
+    if (!exists) {
+      diagnostic(list, Object.assign({
+        code: 'RDL-LINK-003', category: 'link', file: sourceDoc.relativeFile,
+        line: lineOf(sourceDoc.source, rawValue), artifactId: values.artifactId, target: `${target.id}#${target.anchor}`,
+        message: `존재하지 않는 섹션 또는 block을 참조합니다: ${target.id}#${target.anchor}`
+      }, values));
+    }
+  }
+}
+
+function isDocumentUid(value) {
+  return DOCUMENT_UID.test(String(value || ''));
+}
+
+/**
+ * 문서 하나의 메타데이터 판정. 이미 읽어 둔 문서 값과 파일 이름만 보고 답한다.
+ *
+ * 파일을 여는 일은 호출자가 이미 끝냈다. 여기서 다시 열면 같은 문서를 두 번 읽게
+ * 되고, 그보다 나쁘게는 이 판정이 파일 시스템에 묶여 보드나 워커 어댑터가 같은
+ * 판정을 부를 수 없게 된다.
+ *
+ * 경계 계약과 구현 계약 판정은 각자 순수 모듈이 갖고 있으므로 그대로 위임한다.
+ */
+function checkDocumentMetadata(list, doc, fileName, delegates) {
+  if (!doc.frontmatter) {
+    diagnostic(list, { code: 'RDL-DOC-001', file: doc.relativeFile, message: 'YAML frontmatter가 없습니다.' });
+    return null;
+  }
+  const meta = doc.frontmatter.data;
+  const artifactId = typeof meta.id === 'string' ? meta.id : null;
+  const locations = doc.frontmatter.locations;
+
+  for (const field of REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(meta, field) || meta[field] === '' || meta[field] === null) {
+      diagnostic(list, { code: 'RDL-DOC-002', file: doc.relativeFile, line: locations[field] || 2, artifactId, message: `필수 메타 필드가 없습니다: ${field}` });
+    }
+  }
+  if (!artifactId || !ID_PATTERN.test(artifactId)) diagnostic(list, { code: 'RDL-DOC-003', file: doc.relativeFile, line: locations.id || 2, artifactId, message: `문서 ID는 3자리 코드와 3자리 이상 숫자여야 합니다: ${artifactId || '(없음)'}` });
+  if (!FILE_PATTERN.test(fileName)) diagnostic(list, { code: 'RDL-DOC-004', file: doc.relativeFile, artifactId, message: '파일명은 <3자리 코드>-<번호>-<한글 제목>.md 형식이어야 합니다.' });
+  if (artifactId && !fileName.startsWith(`${artifactId}-`)) diagnostic(list, { code: 'RDL-DOC-005', file: doc.relativeFile, artifactId, message: `파일명의 ID가 frontmatter ID와 다릅니다: ${fileName}` });
+  if (typeof meta.title === 'string' && /[A-Za-z]/u.test(meta.title)) diagnostic(list, { code: 'RDL-DOC-006', file: doc.relativeFile, line: locations.title, artifactId, message: '문서 title은 한글 중심으로 작성하고 영문 약어는 description 또는 본문에서 설명하세요.' });
+
+  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
+  if (aliases[0] !== artifactId) diagnostic(list, { code: 'RDL-DOC-007', file: doc.relativeFile, line: locations.aliases, artifactId, message: 'aliases의 첫 값은 문서 ID와 같아야 합니다.' });
+
+  // 조인 키는 번호가 아니라 uid다. 형식이 어긋난 값은 조용히 무시하면 그 문서가
+  // 조인에서 사라지므로 진단한다. 부여 자체가 없는 것은 아직 이관하지 않은 문서일
+  // 수 있어 경고로 둔다.
+  if (meta.uid === undefined) diagnostic(list, { code: 'RDL-DOC-014', severity: 'warning', file: doc.relativeFile, artifactId, message: '문서 고유 식별자(uid)가 없습니다. rdl doc identity --apply로 부여하세요.' });
+  else if (!isDocumentUid(meta.uid)) diagnostic(list, { code: 'RDL-DOC-015', file: doc.relativeFile, line: locations.uid, artifactId, message: `문서 고유 식별자 형식이 잘못되었습니다: ${meta.uid}` });
+
+  const tags = Array.isArray(meta.tags) ? meta.tags : [];
+  const namespaces = NON_CANONICAL_CODES.has(typeof artifactId === 'string' ? artifactId.slice(0, 3) : '') ? NOTE_TAG_NAMESPACES : REQUIRED_TAG_NAMESPACES;
+  for (const namespace of namespaces) {
+    if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) {
+      diagnostic(list, { code: 'RDL-DOC-008', file: doc.relativeFile, line: locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
+    }
+  }
+
+  for (const issue of delegates.boundary(meta)) {
+    diagnostic(list, { code: issue.code, category: 'granularity', file: doc.relativeFile, line: locations[issue.field] || 2, artifactId, message: issue.message });
+  }
+  for (const issue of delegates.implementation(doc)) {
+    diagnostic(list, {
+      code: issue.code, category: 'implementation', severity: issue.severity, file: doc.relativeFile,
+      line: issue.line || locations.implementationContract || 2, artifactId, target: issue.target || null, message: issue.message
+    });
+  }
+  return artifactId;
+}
+
+/**
+ * 프로젝트 헌장의 메타데이터 판정. 이미 읽어 둔 문서 값과 프로젝트 키만 본다.
+ *
+ * 일반 문서와 규칙이 다른 이유는 헌장이 유형이 아니라 프로젝트 자체이기 때문이다.
+ * 식별자가 프로젝트 키에서 파생하고, 파일 이름 규칙도 적용되지 않는다.
+ */
+function checkCharterMetadata(list, doc, projectKey) {
+  if (!doc.frontmatter) {
+    diagnostic(list, { code: 'RDL-PROJECT-001', category: 'governance', file: doc.relativeFile, message: 'project.md에 YAML frontmatter가 필요합니다.' });
+    return;
+  }
+  const meta = doc.frontmatter.data;
+  const locations = doc.frontmatter.locations;
+  const expectedId = `project:${projectKey}`;
+  for (const field of REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(meta, field) || meta[field] === '' || meta[field] === null) {
+      diagnostic(list, { code: 'RDL-PROJECT-002', category: 'governance', file: doc.relativeFile, line: locations[field] || 2, artifactId: expectedId, message: `project.md 필수 메타 필드가 없습니다: ${field}` });
+    }
+  }
+  if (meta.id !== expectedId) diagnostic(list, { code: 'RDL-PROJECT-003', category: 'governance', file: doc.relativeFile, line: locations.id || 2, artifactId: meta.id, message: `project.md id는 ${expectedId}여야 합니다.` });
+  if (meta.type !== 'project') diagnostic(list, { code: 'RDL-PROJECT-004', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md type은 project여야 합니다.' });
+  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
+  if (aliases[0] !== expectedId) diagnostic(list, { code: 'RDL-PROJECT-005', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md aliases의 첫 값은 프로젝트 ID여야 합니다.' });
+}
+
+// 계약 평가 결과를 진단으로 옮기는 표. 평가 자체는 계약 모듈이 하고 여기서는
+// 그 결과에 코드와 심각도를 입힌다. 권장 누락만 경고로 남기는 이유는, 권장은
+// 없어도 되는 것이고 강제 수준이 무엇이든 그 성질이 바뀌지 않기 때문이다.
+const CONTRACT_VIOLATION_CODES = Object.freeze({
+  'required-missing': 'RDL-PROFILE-002',
+  'recommended-missing': 'RDL-PROFILE-003',
+  'disabled-present': 'RDL-PROFILE-004'
+});
+
+function checkContractViolations(list, evaluation, context) {
+  const severity = evaluation.enforcement === 'checkpoint' && context.strict ? 'error' : 'warning';
+  for (const violation of evaluation.violations) {
+    diagnostic(list, {
+      code: CONTRACT_VIOLATION_CODES[violation.code] || 'RDL-PROFILE-009',
+      category: 'profile',
+      severity: violation.code === 'recommended-missing' ? 'warning' : severity,
+      file: context.file, project: context.project, target: violation.type, message: violation.message
+    });
+  }
+}
+
+const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/u;
+// 완료와 반려는 둘 다 종료지만 게이트가 다르다. 완료는 수용조건과 검증 증거를,
+// 반려는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
+// 아래 규칙들은 두 상태를 하나로 묶지 않는다.
+const ALLOWED_TASK_STATES = new Set(['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
+const REQUIRED_TASK_FIELDS = ['title', 'summary', 'owner', 'reviewers', 'stakeholders', 'status', 'priority', 'links', 'deps', 'acceptanceCriteria', 'blocker', 'createdAt', 'updatedAt', 'statusChangedAt', 'externalRefs'];
+
+/**
+ * 태스크 집합의 판정. 저장소를 읽는 일은 호출자가 끝냈고 여기서는 값만 본다.
+ *
+ * 종류·판정 목록과 검증 문서 추출, 구현 준비도 판정은 각자 다른 모듈이 갖고 있으므로
+ * 위임으로 받는다. 여기서 직접 부르면 이 판정이 저장 계층에 묶이고, 그러면 보드가
+ * 같은 판정을 부를 수 없어 자기 경로로 다시 구현하게 된다.
+ */
+function checkTaskEntries(list, tasks, context) {
+  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, testedDocuments, readiness } = context;
+  const dependencies = new Map();
+  // (검증 문서, 차수) 쌍의 주인을 기억해 두 번째를 잡는다. 저장 계층이 이미 막지만
+  // 병합으로 들어온 태스크는 그 경로를 거치지 않는다.
+  const roundOwners = new Map();
+
+  for (const taskId of taskIds) {
+    const task = tasks[taskId];
+    if (!TASK_ID_PATTERN.test(taskId)) diagnostic(list, { code: 'RDL-TASK-004', category: 'task', file: taskFile, artifactId: taskId, message: `잘못된 태스크 ID입니다: ${taskId}` });
+    for (const field of REQUIRED_TASK_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(task, field)) diagnostic(list, { code: 'RDL-TASK-005', category: 'task', file: taskFile, artifactId: taskId, message: `필수 태스크 필드가 없습니다: ${field}` });
+    }
+    if (!ALLOWED_TASK_STATES.has(task.status)) diagnostic(list, { code: 'RDL-TASK-006', category: 'task', file: taskFile, artifactId: taskId, message: `허용되지 않은 상태입니다: ${task.status}` });
+    if (['doing', 'review', 'done', 'cancelled'].includes(task.status) && !task.owner) diagnostic(list, { code: 'RDL-TASK-007', category: 'task', file: taskFile, artifactId: taskId, message: `${task.status} 상태에는 owner가 필요합니다.` });
+    if (task.owner && !memberIds.has(task.owner)) diagnostic(list, { code: 'RDL-TASK-010', category: 'task', file: taskFile, artifactId: taskId, target: task.owner, message: `존재하지 않는 owner입니다: ${task.owner}` });
+    for (const reviewer of Array.isArray(task.reviewers) ? task.reviewers : []) if (!memberIds.has(reviewer)) diagnostic(list, { code: 'RDL-TASK-011', category: 'task', file: taskFile, artifactId: taskId, target: reviewer, message: `존재하지 않는 reviewer입니다: ${reviewer}` });
+    for (const stakeholder of Array.isArray(task.stakeholders) ? task.stakeholders : []) if (!stakeholderIds.has(stakeholder)) diagnostic(list, { code: 'RDL-TASK-012', category: 'task', file: taskFile, artifactId: taskId, target: stakeholder, message: `존재하지 않는 stakeholder입니다: ${stakeholder}` });
+    for (const link of Array.isArray(task.links) ? task.links : []) referenceFromTask(list, registry, taskFile, taskId, link);
+    const deps = Array.isArray(task.deps) ? task.deps : [];
+    dependencies.set(taskId, deps);
+    for (const dependency of deps) if (!Object.prototype.hasOwnProperty.call(tasks, dependency)) diagnostic(list, { code: 'RDL-TASK-013', category: 'task', file: taskFile, artifactId: taskId, target: dependency, message: `존재하지 않는 선행 태스크입니다: ${dependency}` });
+    if (task.status === 'waiting' && (!task.blocker || !task.blocker.waitingFor || !task.blocker.condition || !task.blocker.since)) diagnostic(list, { code: 'RDL-TASK-014', category: 'task', file: taskFile, artifactId: taskId, message: 'waiting 상태에는 waitingFor, condition, since가 있는 blocker가 필요합니다.' });
+    if (task.status !== 'waiting' && task.blocker) diagnostic(list, { code: 'RDL-TASK-015', category: 'task', file: taskFile, artifactId: taskId, message: 'waiting이 아닌 태스크에는 blocker를 둘 수 없습니다.' });
+    if (task.blocker && !memberIds.has(task.blocker.waitingFor) && !stakeholderIds.has(task.blocker.waitingFor)) diagnostic(list, { code: 'RDL-TASK-016', category: 'task', file: taskFile, artifactId: taskId, target: task.blocker.waitingFor, message: `blocker 대기 대상이 존재하지 않습니다: ${task.blocker.waitingFor}` });
+    // 사유 없는 반려는 "취소됨"만 남기고 왜인지는 남기지 않는다. 뒤에 읽는 사람이
+    // 그 판단을 재현할 수 없으므로 waiting↔blocker와 같은 강도로 짝을 강제한다.
+    if (task.status === 'cancelled' && (!task.cancellation || !task.cancellation.reason || !task.cancellation.decidedBy || !task.cancellation.at)) diagnostic(list, { code: 'RDL-TASK-023', category: 'task', file: taskFile, artifactId: taskId, message: 'cancelled 상태에는 reason, decidedBy, at이 있는 cancellation이 필요합니다.' });
+    if (task.status !== 'cancelled' && task.cancellation) diagnostic(list, { code: 'RDL-TASK-024', category: 'task', file: taskFile, artifactId: taskId, message: 'cancelled가 아닌 태스크에는 cancellation을 둘 수 없습니다.' });
+    if (task.cancellation && task.cancellation.decidedBy && !memberIds.has(task.cancellation.decidedBy)) diagnostic(list, { code: 'RDL-TASK-025', category: 'task', file: taskFile, artifactId: taskId, target: task.cancellation.decidedBy, message: `반려 결정자가 존재하지 않습니다: ${task.cancellation.decidedBy}` });
+    const criteria = task.acceptanceCriteria && typeof task.acceptanceCriteria === 'object' ? Object.values(task.acceptanceCriteria) : [];
+    if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
+    if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
+    if (task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))) diagnostic(list, { code: 'RDL-TASK-019', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크는 TST 문서를 연결해야 합니다.' });
+    // 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝났으므로 done이고 판정이
+    // fail이다. 저장 계층이 이미 막지만, 병합으로 들어온 태스크는 그 경로를 거치지
+    // 않으므로 검사가 같은 불변식을 다시 본다.
+    const kind = task.kind || 'normal';
+    const result = task.result === undefined ? null : task.result;
+    if (!kinds.includes(kind)) diagnostic(list, { code: 'RDL-TASK-026', category: 'task', file: taskFile, artifactId: taskId, target: kind, message: `지원하지 않는 태스크 종류입니다: ${kind} (${kinds.join(', ')})` });
+    if (result !== null && kind !== 'test') diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 판정을 둘 수 없습니다.' });
+    if (result !== null && kind === 'test' && !results.includes(result)) diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, target: String(result), message: `지원하지 않는 테스트 판정입니다: ${result} (${results.join(', ')})` });
+    if (kind === 'test' && task.status === 'done' && result === null) diagnostic(list, { code: 'RDL-TASK-028', category: 'task', file: taskFile, artifactId: taskId, message: '완료한 테스트 태스크에는 판정이 필요합니다.' });
+    // 차수 하나에 검증 문서 하나가 태스크 하나다. 여럿을 묶으면 판정이 하나뿐이라 어느
+    // 것이 실패했는지 알 수 없고, 없으면 무엇을 검증했는지 알 수 없다.
+    const tested = testedDocuments(task);
+    if (kind === 'test' && tested.length !== 1) diagnostic(list, { code: 'RDL-TASK-029', category: 'task', file: taskFile, artifactId: taskId, message: `테스트 태스크는 검증한 TST 문서를 정확히 하나 연결해야 합니다: 현재 ${tested.length}건` });
+    const round = task.round === undefined ? null : task.round;
+    if (kind === 'test' && (!Number.isInteger(round) || round < 1)) diagnostic(list, { code: 'RDL-TASK-030', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크에는 1 이상의 정수 차수가 필요합니다.' });
+    if (kind !== 'test' && round !== null) diagnostic(list, { code: 'RDL-TASK-031', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 차수를 둘 수 없습니다.' });
+    if (kind === 'test' && task.status !== 'cancelled' && Number.isInteger(round) && tested.length === 1) {
+      const key = `${tested[0]}@${round}`;
+      // 재실행은 새 태스크가 아니라 같은 태스크의 판정이 바뀌는 일이다. 둘이 되면
+      // 어느 쪽이 그 차수의 결론인지 정해지지 않는다. 반려한 태스크는 자리를 비운다 —
+      // 붙잡으면 잘못 만든 것을 되돌릴 방법이 차수를 올리는 것뿐이게 된다.
+      if (roundOwners.has(key)) diagnostic(list, { code: 'RDL-TASK-032', category: 'task', file: taskFile, artifactId: taskId, target: tested[0], message: `${tested[0]}의 ${round}차 검증 태스크가 둘 이상입니다: ${roundOwners.get(key)}에 이미 있음` });
+      else roundOwners.set(key, taskId);
+    }
+    // 구현 준비도는 저장된 값이 아니라 링크에서 계산한다. 저장하면 링크가 바뀌어도
+    // 갱신 경로가 없어 조용히 어긋나고, 그때 게이트는 낡은 값으로 판정한다.
+    //
+    // 검증 실행 태스크는 대상이 아니다. 구현하지 않고 이미 있는 시험 문서의 시나리오를
+    // 밟을 뿐이라, 걸어두면 실행 기록마다 요구 문서를 끌고 다니게 된다.
+    //
+    // 옛 태스크에 남은 값은 읽되 보지 않는다. 지난 기록을 고쳐 쓰지 않는 것이 원칙이고,
+    // 그 값으로 진단하면 이관하지 않은 저장소가 갑자기 실패한다.
+    //
+    // 게이트가 도는 조건은 연결된 문서가 실제로 원자 계약을 선언했는지다. 저장된
+    // 필드는 그 선언의 사본이었고, 사본은 원본이 바뀌어도 따라가지 않아 어긋났다.
+    // 원본을 직접 보면 그 어긋남이 생길 자리가 없다. 계약을 쓰지 않는 프로젝트는
+    // 예전처럼 이 게이트의 대상이 아니다 — 쓰지 않기로 한 것을 위반으로 세지 않는다.
+    const implementationReady = kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
+    if (task.status === 'done' && implementationReady) {
+      const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
+      const declaresAtomic = linked.some((doc) => doc.frontmatter && doc.frontmatter.data && doc.frontmatter.data.implementationContract === 'atomic-v1');
+      for (const issue of (declaresAtomic ? readiness(linked) : [])) diagnostic(list, {
+        code: issue.code, category: 'implementation', severity: issue.severity, file: taskFile,
+        artifactId: taskId, target: issue.target || issue.artifactId || null, message: issue.message
+      });
+    }
+    if (task.status === 'review' && (!Array.isArray(task.externalRefs) || task.externalRefs.length === 0)) diagnostic(list, { code: 'RDL-TASK-020', category: 'task', file: taskFile, artifactId: taskId, message: 'review 태스크는 PR 또는 검토 대상 externalRef가 필요합니다.' });
+  }
+
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(id, trail) {
+    if (visiting.has(id)) {
+      diagnostic(list, { code: 'RDL-TASK-021', category: 'task', file: taskFile, artifactId: id, target: id, message: `태스크 의존성 순환이 있습니다: ${trail.concat(id).join(' -> ')}` });
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of dependencies.get(id) || []) if (dependencies.has(dependency)) visit(dependency, trail.concat(id));
+    visiting.delete(id);
+    visited.add(id);
+  }
+  for (const id of taskIds) visit(id, []);
+  return taskIds.length;
+}
+
+function referenceFromTask(list, registry, taskFile, taskId, value) {
+  const parts = String(value).split('#');
+  const targetDoc = resolveArtifact(registry, parts[0]);
+  if (!targetDoc) {
+    diagnostic(list, { code: 'RDL-TASK-008', category: 'task', file: taskFile, line: 1, artifactId: taskId, target: parts[0], message: `태스크가 존재하지 않는 Artifact를 참조합니다: ${value}` });
+  } else if (parts[1] && !targetDoc.headings.has(headingKey(parts.slice(1).join('#')))) {
+    diagnostic(list, { code: 'RDL-TASK-009', category: 'task', file: taskFile, line: 1, artifactId: taskId, target: value, message: `태스크가 존재하지 않는 문서 섹션을 참조합니다: ${value}` });
+  }
+}
+
+// FILE_PATTERN, TASK_ID_PATTERN, REQUIRED_TASK_FIELDS는 내보내지 않는다. 이 안의
+// 판정만 쓰는 값이고, 내보내면 밖에서 같은 규칙을 다시 구현할 길이 열린다 — 판정을
+// 한 곳에 모은 이유가 그것이었다.
+module.exports = {
+  GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS, REQUIRED_FIELDS, ID_PATTERN,
+  NON_CANONICAL_CODES, REQUIRED_TAG_NAMESPACES, NOTE_TAG_NAMESPACES,
+  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
+  ALLOWED_TASK_STATES, CONTRACT_VIOLATION_CODES,
+  governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
+  checkContractViolations, checkTaskEntries, checkReference, referenceFromTask
+};

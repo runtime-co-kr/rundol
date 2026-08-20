@@ -101,23 +101,26 @@ async function testWorkspaceBoard() {
       assert.strictEqual(fs.readFileSync(untouchedPath, 'utf8'), before, 'Board 저장이 내용을 바꾸지 않은 문서를 변형했습니다.');
       assert.strictEqual(resaved.json.revision, untouched.revision, '내용이 같은데 revision이 바뀌었습니다.');
 
-      const acquired = await request(port, '/api/projects/crm/leases/project%3Acrm/acquire', board.token, 'POST', { clientId: 'test-device' });
-      assert.strictEqual(acquired.status, 200);
-      const leases = await request(port, '/api/projects/crm/leases', board.token);
-      assert.strictEqual(leases.json.leases.length, 1);
+      // 문서 편집 소프트 리스는 ADR-015로 폐기했다. 경로가 사라졌는지와, 그 자리를
+      // 무엇이 대신하는지를 함께 본다 — 경로만 지우고 대체를 확인하지 않으면 동시
+      // 편집이 조용히 덮어쓰이는 상태로 물러난다.
+      const gone = await request(port, '/api/projects/crm/leases', board.token);
+      assert.strictEqual(gone.status, 404, '폐기한 임대 경로가 살아 있습니다.');
+      const goneAction = await request(port, '/api/projects/crm/leases/project%3Acrm/acquire', board.token, 'POST', { clientId: 'test-device' });
+      assert.strictEqual(goneAction.status, 404, '폐기한 임대 획득 경로가 살아 있습니다.');
 
-      // COL-02-S07·S08: lease는 저장 권한이 아니라 조율 신호다. 어긋나도 막지 않고 알린다.
-      // 막으면 브라우저가 죽어 남은 5분짜리 lease가 그동안 남의 저장을 통째로 잠근다.
-      const held = await request(port, '/api/projects/crm/board-snapshot', board.token);
-      const leased = held.json.documents.find((document) => document.id === 'project:crm');
-      const otherClient = await request(port, `/api/projects/crm/documents/project%3Acrm`, board.token, 'POST', { baseRevision: leased.revision, body: `${leased.body}\n\nLease notice test.`, clientId: 'someone-else' });
-      assert.strictEqual(otherClient.status, 200, '남의 lease가 저장을 막아서는 안 됩니다.');
-      assert.ok(otherClient.json.leaseNotice, '어긋난 저장은 leaseNotice로 알려야 합니다.');
-      assert.strictEqual(otherClient.json.leaseNotice.holder, 'test-device');
-      assert.ok(otherClient.json.leaseNotice.expiresAt, '누구와 언제까지 겹치는지 알려야 합니다.');
-      const sameClient = await request(port, `/api/projects/crm/documents/project%3Acrm`, board.token, 'POST', { baseRevision: otherClient.json.revision, body: otherClient.json.body, clientId: 'test-device' });
-      assert.strictEqual(sameClient.status, 200);
-      assert.strictEqual(sameClient.json.leaseNotice, undefined, '자기 lease에는 알림이 없어야 합니다.');
+      const afterRetire = await request(port, "/api/projects/crm/board-snapshot", board.token);
+      assert.strictEqual(afterRetire.json.leases, undefined, '스냅샷에 임대 영역이 남아 있습니다.');
+      assert.strictEqual(afterRetire.json.revision.leases, undefined, '임대 영역 revision이 남아 있습니다.');
+
+      // 대체 수단: 저장 시점의 revision 비교. 낡은 revision으로 쓰면 409와 함께
+      // 최신 내용이 돌아오므로 조용히 덮어쓰이지 않는다.
+      const target = afterRetire.json.documents.find((document) => document.id === 'project:crm');
+      const first = await request(port, `/api/projects/crm/documents/project%3Acrm`, board.token, 'POST', { baseRevision: target.revision, body: `${target.body}\n\nConcurrent edit test.`, clientId: 'someone-else' });
+      assert.strictEqual(first.status, 200);
+      const staleConcurrent = await request(port, `/api/projects/crm/documents/project%3Acrm`, board.token, 'POST', { baseRevision: target.revision, body: `${target.body}\n\nStale write.`, clientId: 'test-device' });
+      assert.strictEqual(staleConcurrent.status, 409, '낡은 revision 저장은 거절해야 합니다.');
+      assert.ok(staleConcurrent.json.current, '거절 응답은 최신 내용을 함께 돌려줘야 합니다.');
 
       const current = await request(port, `/api/projects/crm/tasks/${task.taskId}`, board.token);
       assert.strictEqual(current.status, 200);

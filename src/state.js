@@ -470,10 +470,9 @@ function taskCreate(start, input) {
     const project = selectProject(workspaceLayout(config.root), config.project || task.project, true);
     task.project = project.key;
   }
-  // 구현 준비도는 "이 태스크가 구현을 시작해도 되는가"를 묻는 게이트라 REQ와 TST 계약을
-  // 함께 요구한다. 테스트 실행 태스크는 구현하지 않고 이미 있는 TST의 시나리오를 밟을
-  // 뿐이므로 그 대상이 아니다. 걸어두면 실행 기록마다 REQ를 끌고 다니게 된다.
-  if (task.kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)))) task.implementationReadiness = 'atomic-v1';
+  // 구현 준비도는 저장하지 않는다. 링크에서 결정되는 값이라 저장하면 링크가 바뀌어도
+  // 갱신 경로가 없어 조용히 어긋난다 — 계산되는 값을 저장하지 않는다는 REQ-047의
+  // 요구가 이것이다. 판정이 필요할 때 링크를 보고 계산한다.
   assertBlockerConsistency(null, task);
   assertCancellationConsistency(null, task);
   assertKindConsistency(null, task);
@@ -1138,4 +1137,24 @@ function migrateTaskStorage(start, options) {
   }
 }
 
-module.exports = { initState, refreshState, saveState, taskSet, taskAcceptance, taskUpdate, taskCreate, syncState, migrateTaskStorage, stateConfig: workspaceStateConfig, canonicalJson, prepareProjectState, syncProjectState, transitionRuns, preflightSyncClient };
+// 계측을 위한 가벼운 결박 추론. 저장의 결박은 강제 수준을 보고 막거나 물어야 하지만,
+// 기록은 아무것도 막지 않으므로 못 정하면 그냥 비운다.
+//
+// 이것이 필요한 이유는 계측이 새고 있었기 때문이다. 행위 서른다섯 건 중 스물아홉이
+// 어느 작업의 일인지 몰랐고, 그래서 "할당부터 검수까지 사람이 몇 번 개입했나"를
+// 셀 수 없었다. 문서를 쓰고 검사하고 저장하는 행위가 전부 집계 밖이었다.
+function inferTaskId(start, projectKey) {
+  try {
+    const config = workspaceStateConfig(start, projectKey);
+    if (!config.project) return null;
+    const store = readTaskStore(path.join(config.worktree, config.taskRelative));
+    const ladder = derivationLadder(config, {}, store.tasks || {});
+    const resolved = ladder.find((source) => source.taskId);
+    return resolved ? resolved.taskId : null;
+  } catch (_) {
+    // 추론에 실패해도 명령을 막지 않는다. 계측이 없는 것이 명령이 안 되는 것보다 낫다.
+    return null;
+  }
+}
+
+module.exports = { initState, refreshState, saveState, taskSet, taskAcceptance, taskUpdate, taskCreate, syncState, migrateTaskStorage, stateConfig: workspaceStateConfig, canonicalJson, prepareProjectState, syncProjectState, transitionRuns, preflightSyncClient, inferTaskId };

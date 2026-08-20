@@ -71,12 +71,17 @@ assert(app.includes('프로젝트 board.json'), 'Settings must show project pres
 assert(app.includes('documentTypeLabel(documentValue)'), 'Document cards must use the shared type vocabulary');
 assert(app.includes('documentStateLabel(documentValue.state)'), 'Document cards must use the shared state vocabulary');
 // 운영 상태 화면은 없앴다. SYNC와 ATTENTION은 헤더·홈과 중복이었고 WATCH는 빈 자리표시자였다.
-// 유일하게 고유하던 편집 임대만 Workspace 범위인 설정으로 옮겼다.
 assert(!html.includes('data-view="operations"'), '운영 상태 화면은 헤더와 홈의 중복이라 두지 않습니다');
 assert(!app.includes('renderOperations'), '운영 상태 렌더러가 남아 있으면 안 됩니다');
 assert(!app.includes('다음 Snapshot 계약에서 연결됩니다'), '빈 자리표시자를 화면에 두지 않습니다');
-assert(html.includes('data-settings-section="settings-leases"'), '편집 임대는 Workspace 설정으로 옮겨야 합니다');
-assert(app.includes("el('leases')"), '편집 임대는 설정에서 그려야 합니다');
+
+// 편집 임대는 ADR-015로 폐기했다. 화면에 잠금처럼 보이는 표시를 남겨 두면 사람은
+// 없어진 보장을 계속 믿는다. 편집을 지키는 것은 저장 시점의 revision 비교다.
+assert(!html.includes('settings-leases'), '폐기한 편집 임대 화면이 남아 있습니다');
+assert(!html.includes('document-lease'), '폐기한 편집 임대 배너가 남아 있습니다');
+assert(!app.includes('leaseAction'), '폐기한 임대 호출이 남아 있습니다');
+assert(!app.includes('heldLease'), '폐기한 임대 상태가 남아 있습니다');
+assert(!/\blease/i.test(app), '화면 코드에 임대 흔적이 남아 있습니다');
 assert(html.includes('id="settings-button"'), '설정으로 가는 길이 있어야 합니다');
 const theme = fs.readFileSync(path.join(uiRoot, 'theme.css'), 'utf8');
 
@@ -467,9 +472,10 @@ assert(/\.entity-card small,\s*\.document-card small,\s*\.person-card small\s*\{
   }
 }
 
-// sendBeacon은 헤더를 실을 수 없어 토큰이 빠지고 서버가 403으로 버린다.
+// sendBeacon은 헤더를 실을 수 없어 토큰이 빠지고 서버가 403으로 버린다. 종료 시
+// 임대를 풀던 keepalive 요청은 임대 폐기(ADR-015)와 함께 사라졌지만, sendBeacon 금지는
+// 남는다 — 인증이 필요한 요청에 헤더를 못 싣는 수단을 쓰면 조용히 403이 된다.
 assert(!app.includes('navigator.sendBeacon'), '인증이 필요한 요청에 sendBeacon을 쓰면 안 됩니다');
-assert(/keepalive: true[\s\S]{0,160}'X-Rundol-Token'/u.test(app), '종료 시 임대 해제도 토큰을 실어야 합니다');
 
 // 프로젝트 선택기는 사이드바에만 있다. 좁은 화면에서 레일을 강제하면 바꿀 길이 사라진다.
 const narrow = style.slice(style.indexOf('@media (max-width: 720px)'));
