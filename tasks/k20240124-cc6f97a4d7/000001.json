@@ -3435,7 +3435,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "보드 문서 편집이 기존 원문 편집기 대신 새 편집기를 연다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "번들이 배포 준비 단계에서 만들어지고 저장소에 산출물을 두지 않는다",
@@ -3452,7 +3452,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:10.054Z",
-      "updatedAt": "2026-08-20T18:30:55.163Z",
+      "updatedAt": "2026-08-20T22:00:52.656Z",
       "statusChangedAt": "2026-08-20T18:30:55.163Z",
       "externalRefs": [],
       "project": "rundol"
