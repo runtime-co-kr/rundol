@@ -3147,12 +3147,12 @@
         },
         "AC-003": {
           "text": "npm test에 등록되어 회귀를 막는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:40.873Z",
-      "updatedAt": "2026-08-20T18:00:54.107Z",
+      "updatedAt": "2026-08-20T18:01:00.252Z",
       "statusChangedAt": "2026-08-20T17:57:58.585Z",
       "externalRefs": [],
       "project": "rundol"
