@@ -2017,12 +2017,12 @@
         },
         "AC-005": {
           "text": "타입 검사와 잠금 무결성 검사가 릴리즈 게이트 안에 있다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T09:06:57.693Z",
-      "updatedAt": "2026-08-20T09:31:41.918Z",
+      "updatedAt": "2026-08-20T09:31:44.111Z",
       "statusChangedAt": "2026-08-20T09:07:06.650Z",
       "externalRefs": [],
       "project": "rundol"
