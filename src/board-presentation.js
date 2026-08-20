@@ -334,8 +334,62 @@ function presentationFile(start, projectKey, scope) {
 // 화면에서 고친 표시 규칙을 그 범위의 board.json에 쓴다. 쓰기 전에 읽을 때와 같은
 // 검증을 통과시킨다. 통과하지 못하면 파일을 건드리지 않는다. 반쯤 적용된 설정은
 // 잘못된 설정보다 나쁘다.
-function savePresentation(start, projectKey, scope, input) {
+// 키 순서와 공백은 변경이 아니다. 그대로 견주면 아무것도 바꾸지 않은 저장이
+// 결정을 요구하고, 그런 요구가 몇 번 반복되면 사람은 내용을 보지 않고 누른다.
+function stableJson(value) {
+  if (value === undefined) return ' ';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+}
+
+// 정책 차이만 결정을 요구한다. 표시 문구까지 결정을 요구하면 라벨의 오타를 고치는
+// 데도 결정이 필요해지고, 형식이 된 결정은 그 안에 담긴 정책 변경까지 함께 가린다.
+// 층을 나눈 이유가 여기서 쓰인다 — 표시 층은 판정에 쓰이지 않으므로 기록을 요구할
+// 근거가 없다.
+//
+// 조이는 변경과 푸는 변경을 가리지 않는다. 무엇이 조이는 것인지는 값의 의미를
+// 알아야 정하고, 그 판정을 기록 요구의 조건으로 삼으면 판정이 틀리는 순간 기록이
+// 조용히 사라진다.
+function policyDifferences(previous, next) {
+  const differences = [];
+  for (const group of Object.keys(PRESENTATION_GROUPS)) {
+    const before = (previous && previous[group]) || {};
+    const after = (next && next[group]) || {};
+    const fields = POLICY_FIELDS[group] || [];
+    for (const key of Array.from(new Set(Object.keys(before).concat(Object.keys(after)))).sort()) {
+      for (const field of fields) {
+        const from = before[key] ? before[key][field] : undefined;
+        const to = after[key] ? after[key][field] : undefined;
+        if (stableJson(from) !== stableJson(to)) differences.push({ group, key, field, from, to });
+      }
+      // 사용 안 함은 어느 그룹에서나 정책이다. 항목을 없애는 것은 표기가 아니라
+      // 그 항목을 쓸 수 있는지를 바꾸므로, 표시 층으로 새면 되돌릴 수 없는 값이
+      // 기록 없이 사라진다.
+      const fromDisabled = Boolean(before[key] && before[key].disabled);
+      const toDisabled = Boolean(after[key] && after[key].disabled);
+      if (fromDisabled !== toDisabled) differences.push({ group, key, field: 'disabled', from: fromDisabled, to: toDisabled });
+    }
+  }
+  return differences;
+}
+
+// 판수는 담긴 것이 정한다. 정책 필드가 없으면 1로 남겨 구버전이 계속 읽는다.
+function schemaVersionFor(next) {
+  for (const [group, fields] of Object.entries(POLICY_FIELDS)) {
+    for (const entry of Object.values(next[group] || {})) {
+      for (const field of fields) {
+        if (GRANDFATHERED_POLICY_FIELDS.has(`${group}.${field}`)) continue;
+        if (entry && Object.prototype.hasOwnProperty.call(entry, field)) return 2;
+      }
+    }
+  }
+  return 1;
+}
+
+function savePresentation(start, projectKey, scope, input, options) {
   const file = presentationFile(start, projectKey, scope);
+  const previous = readConfig(file);
   const next = { schemaVersion: 1 };
   for (const group of Object.keys(PRESENTATION_GROUPS)) {
     const supplied = (input && input[group]) || {};
@@ -346,11 +400,21 @@ function savePresentation(start, projectKey, scope, input) {
       next[group][key] = entry;
     }
   }
+  next.schemaVersion = schemaVersionFor(next);
+  // 정책이 바뀌는데 결정이 없으면 저장하지 않는다. 어떤 필드가 결정을 요구하는지
+  // 함께 알린다 — 이름만 알리면 무엇을 되돌려야 하는지 알 수 없다.
+  const policyChanges = policyDifferences(previous, next);
+  if (policyChanges.length && !(options && options.decisionId)) {
+    const where = policyChanges.map((item) => `${item.group}.${item.key}.${item.field}`).join(', ');
+    throw new Error(`정책 층 변경은 계약 변경 결정이 필요합니다: ${where}`);
+  }
   const temporary = `${file}.${process.pid}.tmp`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
   fs.renameSync(temporary, file);
-  return { file, scope };
+  // 무엇이 바뀌었는지를 돌려준다. 부르는 쪽이 이것을 결정 원장에 싣는다 — 이전
+  // 값과 새 값이 함께 남아야 복원할 수 있고, 복원할 수 없는 기록은 기록이 아니다.
+  return { file, scope, policyChanges };
 }
 
 // board.json은 덮어쓴 것만 갖는다. 기본값을 파일에 복사해두면 유형을 하나 더할 때마다
@@ -373,7 +437,8 @@ function renderProjectBoardConfig() {
 module.exports = {
   DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
   TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, DEFAULT_PRESENTATION,
-  readConfig, mergePresentation, loadBoardPresentation,
+  BOUNDARY_KEYS, POLICY_FIELDS,
+  readConfig, mergePresentation, loadBoardPresentation, computeOrigins, policyDifferences,
   resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile, savePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig
 };

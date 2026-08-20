@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const {
   DEFAULT_PRESENTATION, PRESENTATION_GROUPS, readConfig, mergePresentation,
-  renderWorkspaceBoardConfig, renderProjectBoardConfig
+  renderWorkspaceBoardConfig, renderProjectBoardConfig, policyDifferences
 } = require('../src/board-presentation');
 
 const merged = mergePresentation(JSON.parse(JSON.stringify(DEFAULT_PRESENTATION)), {
@@ -143,6 +143,34 @@ try {
   assert.strictEqual(tombstoned.priorities.low.disabled, true, '사용 안 함 표식이 병합 결과에 남아야 합니다');
   assert.strictEqual(tombstoned.priorities.low.label, '낮음', '표식이 붙어도 상위 값은 남아야 합니다');
   assert.strictEqual(tombstoned.priorities.high.disabled, undefined, '표식이 이웃 항목에 번지면 안 됩니다');
+}
+
+// 정책 변경만 결정을 요구한다. 표시 문구까지 요구하면 라벨의 오타를 고치는 데도
+// 결정이 필요해지고, 형식이 된 결정은 그 안에 담긴 정책 변경까지 함께 가린다.
+{
+  const where = (previous, next) => policyDifferences(previous, next).map((item) => `${item.group}.${item.key}.${item.field}`).join(', ');
+
+  assert.strictEqual(where({ priorities: { high: { label: '높음' } } }, { priorities: { high: { label: '아주 높음' } } }), '', '표시 변경은 결정을 요구하지 않아야 합니다');
+  assert.strictEqual(where({ profiles: { t: { policy: { required: ['REQ'] } } } }, { profiles: { t: { policy: { required: ['REQ', 'ARC'] } } } }), 'profiles.t.policy');
+
+  // 키 순서와 공백은 변경이 아니다. 그대로 견주면 아무것도 바꾸지 않은 저장이
+  // 결정을 요구하고, 그런 요구가 반복되면 사람은 내용을 보지 않고 누른다.
+  assert.strictEqual(where(
+    { profiles: { t: { policy: { required: ['REQ'], recommended: [] } } } },
+    { profiles: { t: { policy: { recommended: [], required: ['REQ'] } } } }
+  ), '', '키 순서 차이가 변경으로 보이면 안 됩니다');
+
+  // 조이는 방향도 기록을 요구한다. 무엇이 조이는 것인지는 값의 의미를 알아야 정하고,
+  // 그 판정을 기록 조건으로 삼으면 판정이 틀리는 순간 기록이 조용히 사라진다.
+  assert.strictEqual(where(
+    { profiles: { t: { policy: { required: ['REQ', 'ARC'] } } } },
+    { profiles: { t: { policy: { required: ['REQ', 'ARC', 'TST'] } } } }
+  ), 'profiles.t.policy', '조이는 변경도 기록을 요구해야 합니다');
+
+  // 사용 안 함은 어느 그룹에서나 정책이다. 표시 층으로 새면 되돌릴 수 없는 값이
+  // 기록 없이 사라진다.
+  assert.strictEqual(where({ priorities: { low: { label: '낮음' } } }, { priorities: { low: { label: '낮음', disabled: true } } }), 'priorities.low.disabled');
+  assert.strictEqual(where({ priorities: { low: { disabled: true } } }, { priorities: { low: {} } }), 'priorities.low.disabled', '표식을 떼는 것도 정책입니다');
 }
 
 process.stdout.write('board presentation tests passed\n');
