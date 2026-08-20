@@ -3363,7 +3363,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "코드 블록의 언어를 목록에서 고를 수 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "mermaid 블록이 편집기 안에서 그려진다",
@@ -3376,7 +3376,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:58.310Z",
-      "updatedAt": "2026-08-20T17:56:58.310Z",
+      "updatedAt": "2026-08-20T23:49:33.535Z",
       "statusChangedAt": "2026-08-20T17:56:58.310Z",
       "externalRefs": [],
       "project": "rundol"
