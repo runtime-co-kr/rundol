@@ -2847,7 +2847,7 @@
         },
         "AC-002": {
           "text": "결과가 waiting과 drivable로 갈리고 각 항목이 그 분류가 된 사유를 밝힌다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "개입할 런이 없으면 아무것도 출력하지 않는다",
@@ -2864,7 +2864,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:13.833Z",
-      "updatedAt": "2026-08-20T15:34:52.747Z",
+      "updatedAt": "2026-08-20T15:34:57.677Z",
       "statusChangedAt": "2026-08-20T15:34:47.169Z",
       "externalRefs": [],
       "project": "rundol"
