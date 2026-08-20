@@ -2610,7 +2610,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "정책 층 항목을 Board에서 편집하고 저장할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "항목마다 상속 출처와 덮어쓰기 여부가 표시된다",
@@ -2631,7 +2631,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:53.886Z",
-      "updatedAt": "2026-08-20T19:07:20.976Z",
+      "updatedAt": "2026-08-20T23:57:12.299Z",
       "statusChangedAt": "2026-08-20T16:27:16.791Z",
       "externalRefs": [],
       "project": "rundol"
