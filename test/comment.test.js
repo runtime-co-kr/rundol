@@ -39,6 +39,41 @@ assert.strictEqual(workerKindOf('service'), 'agent');
 // 모르는 유형은 에이전트로 본다. 사람으로 잘못 보면 근거 자격을 잘못 주지만,
 // 에이전트로 잘못 보면 자격을 잘못 뺏을 뿐이다. 덜 위험한 쪽으로 틀린다.
 assert.strictEqual(workerKindOf('unknown-kind'), 'agent');
+
+// 정정. 파생이 틀렸던 기간에 쌓인 기록은 틀린 채로 남아 승인 근거 자격을 계속 갖는다.
+// 지난 기록을 고쳐 쓰지 않는 원칙을 지킨 대가가 "AI가 쓴 것이 사람 것으로 남는다"이면,
+// 원칙이 막으려던 것을 원칙이 지키는 셈이 된다. 그래서 원본을 두고 정정을 덧붙인다.
+{
+  const { applyCorrections } = require('../src/comment-rules');
+  const original = {
+    type: 'task.comment', eventId: 'EVT-AAAAAAAAAAAAAAAAAAAA', taskId: 'TASK-ABCD1234',
+    body: '기록', workerKind: 'human', canGroundApproval: true, recordedAt: '2026-08-21T00:00:00.000Z', clientId: 'a'
+  };
+  const correction = {
+    type: 'task.comment.corrected', eventId: 'EVT-BBBBBBBBBBBBBBBBBBBB',
+    targetEventId: 'EVT-AAAAAAAAAAAAAAAAAAAA', workerKind: 'agent', reason: '기계 종류에서 잘못 파생됨',
+    recordedAt: '2026-08-21T01:00:00.000Z', clientId: 'a'
+  };
+
+  const applied = applyCorrections([original, correction]);
+  const fixed = applied.find((event) => event.eventId === original.eventId);
+  assert.strictEqual(fixed.workerKind, 'agent', '정정이 작성 주체를 내려야 합니다.');
+  assert.strictEqual(fixed.canGroundApproval, false, '정정이 승인 근거 자격을 함께 빼야 합니다.');
+  assert.strictEqual(fixed.correctedBy, correction.eventId, '어느 정정이 고쳤는지 남아야 합니다.');
+  assert.strictEqual(fixed.correctionReason, correction.reason, '왜 바뀌었는지가 없으면 기록이 아니라 덮어쓰기입니다.');
+
+  // 원본은 변형되지 않는다. 원장은 append-only이고 접기가 값을 만들 뿐이다.
+  assert.strictEqual(original.workerKind, 'human', '원본이 변형되면 이력이 지워집니다.');
+
+  // 사람으로 올리는 정정은 받지 않는다. 올릴 수 있으면 정정이 곧 주장이 되고,
+  // 주장을 막으려고 파생을 쓴 것이 무의미해진다.
+  const upgrade = Object.assign({}, correction, { eventId: 'EVT-CCCCCCCCCCCCCCCCCCCC', workerKind: 'human' });
+  const notUpgraded = applyCorrections([Object.assign({}, original, { workerKind: 'agent', canGroundApproval: false }), upgrade]);
+  assert.strictEqual(notUpgraded.find((e) => e.eventId === original.eventId).workerKind, 'agent', '사람으로 올리는 정정은 무시되어야 합니다.');
+
+  // 정정이 없으면 그대로다.
+  assert.strictEqual(applyCorrections([original])[0].workerKind, 'human');
+}
 assert.strictEqual(workerKindOf(undefined), 'agent');
 
 assert.strictEqual(canGroundApproval({ workerKind: 'human' }), true);

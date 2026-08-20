@@ -108,8 +108,41 @@ function composeComment(input) {
  * 저장된 댓글을 시간 순으로 정리한다. 같은 시각이면 Client 식별자로 가른다 —
  * 순서가 읽는 쪽마다 다르면 "위에서 세 번째 댓글"이라는 말이 통하지 않는다.
  */
+/**
+ * 잘못 파생된 작성 주체를 바로잡는 정정. 원본을 고치지 않고 덧붙인다.
+ *
+ * 지난 기록을 고쳐 쓰지 않는 것이 이 저장소의 원칙이다. 그런데 파생이 틀렸던 기간에
+ * 쌓인 기록은 틀린 채로 남고, 그 기록이 승인 근거 자격을 계속 갖는다 — 원칙을 지킨
+ * 대가가 "AI가 쓴 것이 사람 것으로 남는다"이면 원칙이 막으려던 것을 원칙이 지킨다.
+ *
+ * 그래서 원본은 그대로 두고 정정을 덧붙인다. 무엇이 왜 바뀌었는지가 남고, 원본과
+ * 정정이 모두 원장에 있으므로 판정은 재현되며 이력은 지워지지 않는다.
+ *
+ * 정정은 주체를 사람으로 올리지 못한다. 올릴 수 있으면 정정이 곧 주장이 되고, 주장을
+ * 막으려고 파생을 쓴 것이 무의미해진다. 내리는 방향으로만 간다.
+ */
+function applyCorrections(events) {
+  const corrections = new Map();
+  for (const event of events || []) {
+    if (!event || event.type !== 'task.comment.corrected' || !event.targetEventId) continue;
+    if (event.workerKind !== 'agent') continue;
+    corrections.set(event.targetEventId, event);
+  }
+  if (!corrections.size) return events || [];
+  return (events || []).map((event) => {
+    const correction = event && corrections.get(event.eventId);
+    if (!correction) return event;
+    return Object.assign({}, event, {
+      workerKind: correction.workerKind,
+      canGroundApproval: false,
+      correctedBy: correction.eventId,
+      correctionReason: correction.reason || null
+    });
+  });
+}
+
 function orderComments(events) {
-  return (events || [])
+  return applyCorrections(events || [])
     .filter((event) => event && event.type === 'task.comment' && event.taskId)
     .slice()
     .sort((left, right) => String(left.recordedAt).localeCompare(String(right.recordedAt))
@@ -140,5 +173,6 @@ function commentSummary(events) {
 
 module.exports = {
   MAX_COMMENT_LENGTH, CommentViolation,
-  workerKindOf, canGroundApproval, composeComment, orderComments, commentsForTask, commentSummary
+  workerKindOf, canGroundApproval, composeComment, orderComments, commentsForTask, commentSummary,
+  applyCorrections
 };

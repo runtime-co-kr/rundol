@@ -95,6 +95,78 @@ function addComment(start, input) {
   return { changed: true, project: project.key, file, comment: envelope.shared };
 }
 
+// 정정 이벤트의 다이제스트. 원본과 같은 규칙을 쓴다 — 판정에 쓰는 값은 덮어야 하고,
+// 정정도 판정에 쓰이므로 예외가 아니다.
+function correctionEnvelope(input) {
+  const canonical = {
+    schemaVersion: 1,
+    eventId: input.eventId,
+    type: 'task.comment.corrected',
+    clientId: input.clientId,
+    projectId: input.projectId,
+    targetEventId: input.targetEventId,
+    workerKind: input.workerKind,
+    reason: input.reason,
+    recordedAt: input.recordedAt
+  };
+  const digest = sha256(Buffer.from(eventStore.canonicalJson(canonical), 'utf8'));
+  return { canonical, shared: Object.assign({}, canonical, { canonicalDigest: digest }) };
+}
+
+/**
+ * 잘못 파생된 작성 주체를 바로잡는다. 원본을 고치지 않고 정정을 덧붙인다.
+ *
+ * 지난 기록을 고쳐 쓰지 않는 것이 이 저장소의 원칙인데, 파생이 틀렸던 기간에 쌓인
+ * 기록은 틀린 채로 남아 승인 근거 자격을 계속 갖는다. 원칙을 지킨 대가가 "AI가 쓴
+ * 것이 사람 것으로 남는다"이면 원칙이 막으려던 것을 원칙이 지키는 셈이 된다.
+ *
+ * 그래서 원본과 정정이 모두 원장에 남고, 판정은 둘을 접어 나온다. 무엇이 왜 바뀌었는지
+ * 읽을 수 있고 이력은 지워지지 않는다.
+ *
+ * 사람으로 올리는 정정은 받지 않는다. 올릴 수 있으면 정정이 곧 주장이 되고, 주장을
+ * 막으려고 파생을 쓴 것이 무의미해진다.
+ */
+function correctComment(start, input) {
+  const values = input || {};
+  const layout = workspaceLayout(start);
+  const project = selectProject(layout, values.project, true);
+  if (!SIMPLE_ID.test(values.clientId || '')) throw new CommentViolation('--client-id가 필요합니다.', 'missing-client');
+  let client;
+  try { client = getClient(layout.root, values.clientId); }
+  catch (error) { throw new CommentViolation(error.message, 'unknown-client'); }
+  if (client.status !== 'active') throw new CommentViolation(`비활성 Client는 정정할 수 없습니다: ${values.clientId}`, 'inactive-client');
+
+  const targetEventId = String(values.targetEventId || '');
+  if (!/^EVT-[A-F0-9]{20}$/u.test(targetEventId)) throw new CommentViolation(`정정할 댓글 식별자가 유효하지 않습니다: ${targetEventId || '(없음)'}`, 'missing-target');
+  if (values.workerKind !== 'agent') throw new CommentViolation('정정은 작성 주체를 에이전트로 내리는 방향만 받습니다.', 'invalid-direction');
+  const reason = String(values.reason || '').trim();
+  if (!reason) throw new CommentViolation('정정 사유가 필요합니다. 왜 바뀌었는지가 없으면 기록이 아니라 덮어쓰기입니다.', 'missing-reason');
+
+  // 접힌 결과가 아니라 원본 이벤트에서 찾는다. 접기는 정정을 이미 적용하고 정정
+  // 이벤트 자체를 걸러내므로, 접힌 것에서 찾으면 같은 댓글을 두 번 정정할 때
+  // 두 번째가 "찾지 못했습니다"로 떨어진다.
+  const raw = eventStore.readEvents(eventsRootOf(layout), 'comment', project.key, {});
+  const rawEvents = raw.events || raw || [];
+  const target = rawEvents.find((event) => event && event.eventId === targetEventId && event.type === 'task.comment');
+  if (!target) throw new CommentViolation(`정정할 댓글을 찾지 못했습니다: ${targetEventId}`, 'unknown-target');
+  if (target.workerKind === 'agent') throw new CommentViolation('이미 에이전트로 기록된 댓글입니다.', 'already-agent');
+
+  const envelope = correctionEnvelope({
+    eventId: `EVT-${crypto.randomBytes(10).toString('hex').toUpperCase()}`,
+    clientId: values.clientId,
+    projectId: project.key,
+    targetEventId,
+    workerKind: 'agent',
+    reason,
+    recordedAt: new Date().toISOString()
+  });
+
+  const file = eventStore.appendEvent(eventsRootOf(layout), 'comment', project.key, values.clientId, envelope.shared, {
+    lockDirectory: path.join(layout.root, 'projects', 'workspace', '.rundol', 'local', 'locks')
+  });
+  return { changed: true, project: project.key, file, correction: envelope.shared };
+}
+
 function readCommentEvents(start, projectKey) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, projectKey, true);
@@ -119,4 +191,4 @@ function summarizeComments(start, input) {
   return { project, taskCount: tasks.length, total: events.length, tasks };
 }
 
-module.exports = { addComment, listComments, summarizeComments, readCommentEvents, CommentViolation };
+module.exports = { addComment, correctComment, listComments, summarizeComments, readCommentEvents, CommentViolation };
