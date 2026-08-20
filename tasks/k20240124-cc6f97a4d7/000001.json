@@ -2057,7 +2057,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "할당 발급과 보고 접수가 저장되고 CLI로 왕복할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "명령줄과 보드가 같은 acceptReport·verifyReport 결과를 쓴다",
@@ -2074,7 +2074,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T09:21:28.703Z",
-      "updatedAt": "2026-08-20T17:57:03.258Z",
+      "updatedAt": "2026-08-20T19:01:18.701Z",
       "statusChangedAt": "2026-08-20T17:57:03.258Z",
       "externalRefs": [],
       "project": "rundol"
