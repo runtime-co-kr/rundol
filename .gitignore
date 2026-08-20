@@ -10,3 +10,5 @@ packages/cli/dist/
 .elder-gods/
 .codex/
 .agents/
+
+tmp/
