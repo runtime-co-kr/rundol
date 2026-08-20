@@ -28,17 +28,13 @@ const { workspaceLayout, listProjects } = workspaceApi;
 // 어댑터가 같은 판정 함수를 부를 수 있다.
 const {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS,
-  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, checkDocumentMetadata, ID_PATTERN, REQUIRED_FIELDS,
+  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, checkDocumentMetadata, checkTaskEntries, ID_PATTERN, REQUIRED_FIELDS,
   governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask
 } = require('./check-rules');
 
-// 새 식별자는 문서와 같은 8자 규칙이고, 옛 26자 식별자도 계속 읽는다 — 지난 기록을
-// 고쳐 쓰지 않는 것이 원칙이므로 이관 전 저장소도 그대로 동작해야 한다.
-const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/;
-// 완료와 반려는 둘 다 종료지만 게이트가 다르다. done은 수용조건과 TST 증거를,
-// cancelled는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
-// 아래 규칙들은 두 상태를 하나로 묶지 않는다.
-const ALLOWED_TASK_STATES = new Set(['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
+// 태스크 식별자 규칙과 허용 상태는 판정 계층으로 옮겼다. 새 식별자는 문서와 같은
+// 8자 규칙이고 옛 26자 식별자도 계속 읽는다 — 지난 기록을 고쳐 쓰지 않는 것이
+// 원칙이므로 이관 전 저장소도 그대로 동작해야 한다.
 // 폐지된 유형과 이름만 바뀐 유형은 다르다. 폐지는 사람이 내용을 나눠 옮겨야 하므로
 // strict에서 막고, 이름 변경은 `rdl doc migrate`가 자동으로 옮기므로 막지 않는다.
 // 자동 경로가 있는데도 막으면, 버전을 올린 것만으로 기존 프로젝트가 멈춘다.
@@ -138,95 +134,13 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
     return 0;
   }
   const taskIds = Object.keys(parsed.tasks).filter((taskId) => !projectKey || parsed.tasks[taskId].project === projectKey);
-  const dependencies = new Map();
-  // (TST, 차수) 쌍의 주인을 기억해 두 번째를 잡는다. 저장 계층이 이미 막지만 git 병합으로
-  // 들어온 태스크는 그 경로를 거치지 않는다.
-  const roundOwners = new Map();
-  const required = ['title', 'summary', 'owner', 'reviewers', 'stakeholders', 'status', 'priority', 'links', 'deps', 'acceptanceCriteria', 'blocker', 'createdAt', 'updatedAt', 'statusChangedAt', 'externalRefs'];
-
-  for (const taskId of taskIds) {
-    const task = parsed.tasks[taskId];
-    if (!TASK_ID_PATTERN.test(taskId)) diagnostic(list, { code: 'RDL-TASK-004', category: 'task', file: taskFile, artifactId: taskId, message: `잘못된 태스크 ID입니다: ${taskId}` });
-    for (const field of required) {
-      if (!Object.prototype.hasOwnProperty.call(task, field)) diagnostic(list, { code: 'RDL-TASK-005', category: 'task', file: taskFile, artifactId: taskId, message: `필수 태스크 필드가 없습니다: ${field}` });
-    }
-    if (!ALLOWED_TASK_STATES.has(task.status)) diagnostic(list, { code: 'RDL-TASK-006', category: 'task', file: taskFile, artifactId: taskId, message: `허용되지 않은 상태입니다: ${task.status}` });
-    if (['doing', 'review', 'done', 'cancelled'].includes(task.status) && !task.owner) diagnostic(list, { code: 'RDL-TASK-007', category: 'task', file: taskFile, artifactId: taskId, message: `${task.status} 상태에는 owner가 필요합니다.` });
-    if (task.owner && !memberIds.has(task.owner)) diagnostic(list, { code: 'RDL-TASK-010', category: 'task', file: taskFile, artifactId: taskId, target: task.owner, message: `존재하지 않는 owner입니다: ${task.owner}` });
-    for (const reviewer of Array.isArray(task.reviewers) ? task.reviewers : []) if (!memberIds.has(reviewer)) diagnostic(list, { code: 'RDL-TASK-011', category: 'task', file: taskFile, artifactId: taskId, target: reviewer, message: `존재하지 않는 reviewer입니다: ${reviewer}` });
-    for (const stakeholder of Array.isArray(task.stakeholders) ? task.stakeholders : []) if (!stakeholderIds.has(stakeholder)) diagnostic(list, { code: 'RDL-TASK-012', category: 'task', file: taskFile, artifactId: taskId, target: stakeholder, message: `존재하지 않는 stakeholder입니다: ${stakeholder}` });
-    for (const link of Array.isArray(task.links) ? task.links : []) referenceFromTask(list, registry, taskFile, taskId, link);
-    const deps = Array.isArray(task.deps) ? task.deps : [];
-    dependencies.set(taskId, deps);
-    for (const dependency of deps) if (!Object.prototype.hasOwnProperty.call(parsed.tasks, dependency)) diagnostic(list, { code: 'RDL-TASK-013', category: 'task', file: taskFile, artifactId: taskId, target: dependency, message: `존재하지 않는 선행 태스크입니다: ${dependency}` });
-    if (task.status === 'waiting' && (!task.blocker || !task.blocker.waitingFor || !task.blocker.condition || !task.blocker.since)) diagnostic(list, { code: 'RDL-TASK-014', category: 'task', file: taskFile, artifactId: taskId, message: 'waiting 상태에는 waitingFor, condition, since가 있는 blocker가 필요합니다.' });
-    if (task.status !== 'waiting' && task.blocker) diagnostic(list, { code: 'RDL-TASK-015', category: 'task', file: taskFile, artifactId: taskId, message: 'waiting이 아닌 태스크에는 blocker를 둘 수 없습니다.' });
-    if (task.blocker && !memberIds.has(task.blocker.waitingFor) && !stakeholderIds.has(task.blocker.waitingFor)) diagnostic(list, { code: 'RDL-TASK-016', category: 'task', file: taskFile, artifactId: taskId, target: task.blocker.waitingFor, message: `blocker 대기 대상이 존재하지 않습니다: ${task.blocker.waitingFor}` });
-    // 사유 없는 반려는 "취소됨"만 남기고 왜인지는 남기지 않는다. 뒤에 읽는 사람이
-    // 그 판단을 재현할 수 없으므로 waiting↔blocker와 같은 강도로 짝을 강제한다.
-    if (task.status === 'cancelled' && (!task.cancellation || !task.cancellation.reason || !task.cancellation.decidedBy || !task.cancellation.at)) diagnostic(list, { code: 'RDL-TASK-023', category: 'task', file: taskFile, artifactId: taskId, message: 'cancelled 상태에는 reason, decidedBy, at이 있는 cancellation이 필요합니다.' });
-    if (task.status !== 'cancelled' && task.cancellation) diagnostic(list, { code: 'RDL-TASK-024', category: 'task', file: taskFile, artifactId: taskId, message: 'cancelled가 아닌 태스크에는 cancellation을 둘 수 없습니다.' });
-    if (task.cancellation && task.cancellation.decidedBy && !memberIds.has(task.cancellation.decidedBy)) diagnostic(list, { code: 'RDL-TASK-025', category: 'task', file: taskFile, artifactId: taskId, target: task.cancellation.decidedBy, message: `반려 결정자가 존재하지 않습니다: ${task.cancellation.decidedBy}` });
-    const criteria = task.acceptanceCriteria && typeof task.acceptanceCriteria === 'object' ? Object.values(task.acceptanceCriteria) : [];
-    if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
-    if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
-    if (task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))) diagnostic(list, { code: 'RDL-TASK-019', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크는 TST 문서를 연결해야 합니다.' });
-    // 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝났으므로 done이고 판정이
-    // fail이다. 저장 계층이 이미 막지만, git 병합으로 들어온 태스크는 그 경로를 거치지
-    // 않으므로 검사가 같은 불변식을 다시 본다.
-    const kind = task.kind || 'normal';
-    const result = task.result === undefined ? null : task.result;
-    if (!TASK_KINDS.includes(kind)) diagnostic(list, { code: 'RDL-TASK-026', category: 'task', file: taskFile, artifactId: taskId, target: kind, message: `지원하지 않는 태스크 종류입니다: ${kind} (${TASK_KINDS.join(', ')})` });
-    if (result !== null && kind !== 'test') diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 판정을 둘 수 없습니다.' });
-    if (result !== null && kind === 'test' && !TEST_RESULTS.includes(result)) diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, target: String(result), message: `지원하지 않는 테스트 판정입니다: ${result} (${TEST_RESULTS.join(', ')})` });
-    if (kind === 'test' && task.status === 'done' && result === null) diagnostic(list, { code: 'RDL-TASK-028', category: 'task', file: taskFile, artifactId: taskId, message: '완료한 테스트 태스크에는 판정이 필요합니다.' });
-    // 차수 하나에 TST 하나가 태스크 하나다. 여럿을 묶으면 판정이 하나뿐이라 어느 것이
-    // 실패했는지 알 수 없고, 없으면 무엇을 검증했는지 알 수 없다.
-    const tested = testedDocuments(task);
-    if (kind === 'test' && tested.length !== 1) diagnostic(list, { code: 'RDL-TASK-029', category: 'task', file: taskFile, artifactId: taskId, message: `테스트 태스크는 검증한 TST 문서를 정확히 하나 연결해야 합니다: 현재 ${tested.length}건` });
-    const round = task.round === undefined ? null : task.round;
-    if (kind === 'test' && (!Number.isInteger(round) || round < 1)) diagnostic(list, { code: 'RDL-TASK-030', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크에는 1 이상의 정수 차수가 필요합니다.' });
-    if (kind !== 'test' && round !== null) diagnostic(list, { code: 'RDL-TASK-031', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 차수를 둘 수 없습니다.' });
-    if (kind === 'test' && task.status !== 'cancelled' && Number.isInteger(round) && tested.length === 1) {
-      const key = `${tested[0]}@${round}`;
-      // 재실행은 새 태스크가 아니라 같은 태스크의 판정이 바뀌는 일이다. 둘이 되면
-      // 어느 쪽이 그 차수의 결론인지 정해지지 않는다. 반려한 태스크는 자리를 비운다 —
-      // 붙잡으면 잘못 만든 것을 되돌릴 방법이 차수를 올리는 것뿐이게 된다.
-      if (roundOwners.has(key)) diagnostic(list, { code: 'RDL-TASK-032', category: 'task', file: taskFile, artifactId: taskId, target: tested[0], message: `${tested[0]}의 ${round}차 검증 태스크가 둘 이상입니다: ${roundOwners.get(key)}에 이미 있음` });
-      else roundOwners.set(key, taskId);
-    }
-    const implementationLinked = (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
-    if (task.implementationReadiness && task.implementationReadiness !== 'atomic-v1') diagnostic(list, { code: 'RDL-IMPL-023', category: 'implementation', file: taskFile, artifactId: taskId, message: `지원하지 않는 구현 준비도 계약입니다: ${task.implementationReadiness}` });
-    if (task.status === 'done' && implementationLinked && task.implementationReadiness === 'atomic-v1') {
-      const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
-      for (const issue of validateTaskImplementationReadiness(linked)) diagnostic(list, {
-        code: issue.code,
-        category: 'implementation',
-        severity: issue.severity,
-        file: taskFile,
-        artifactId: taskId,
-        target: issue.target || issue.artifactId || null,
-        message: issue.message
-      });
-    }
-    if (task.status === 'review' && (!Array.isArray(task.externalRefs) || task.externalRefs.length === 0)) diagnostic(list, { code: 'RDL-TASK-020', category: 'task', file: taskFile, artifactId: taskId, message: 'review 태스크는 PR 또는 검토 대상 externalRef가 필요합니다.' });
-  }
-
-  const visiting = new Set();
-  const visited = new Set();
-  function visit(id, trail) {
-    if (visiting.has(id)) {
-      diagnostic(list, { code: 'RDL-TASK-021', category: 'task', file: taskFile, artifactId: id, target: id, message: `태스크 의존성 순환이 있습니다: ${trail.concat(id).join(' -> ')}` });
-      return;
-    }
-    if (visited.has(id)) return;
-    visiting.add(id);
-    for (const dependency of dependencies.get(id) || []) if (dependencies.has(dependency)) visit(dependency, trail.concat(id));
-    visiting.delete(id);
-    visited.add(id);
-  }
-  for (const id of taskIds) visit(id, []);
-  return taskIds.length;
+  // 읽기는 여기서 끝났다. 아래 판정은 값만 본다 — 종류·판정 목록과 검증 문서 추출,
+  // 구현 준비도 판정은 각자 다른 모듈이 갖고 있으므로 위임으로 넘긴다.
+  return checkTaskEntries(list, parsed.tasks, {
+    taskIds, taskFile, registry, memberIds, stakeholderIds,
+    kinds: TASK_KINDS, results: TEST_RESULTS, testedDocuments,
+    readiness: validateTaskImplementationReadiness
+  });
 }
 
 function checkObsidian(list, root, hasTaggedDocuments) {
