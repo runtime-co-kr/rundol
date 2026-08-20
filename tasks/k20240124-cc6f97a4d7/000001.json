@@ -2307,7 +2307,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "정책 층 값의 저장 스키마가 REQ에 기능 ID별로 정의된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "내장→Workspace→프로젝트 상속 순서와 병합 규칙이 REQ에 규정된다",
@@ -2328,7 +2328,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:49.689Z",
-      "updatedAt": "2026-08-20T15:41:14.214Z",
+      "updatedAt": "2026-08-20T15:41:19.761Z",
       "statusChangedAt": "2026-08-20T15:31:21.287Z",
       "externalRefs": [],
       "project": "rundol"
