@@ -6,5 +6,8 @@
   "enforcementLevels": {},
   "taskStatuses": {},
   "priorities": {},
-  "profiles": {}
+  "profiles": {},
+  "approval": {
+    "mode": "ai-assisted"
+  }
 }
