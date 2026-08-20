@@ -1933,6 +1933,43 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-A1V50CFX": {
+      "title": "[개선] 근거 없는 진단 110건에 요구 문서를 세운다",
+      "summary": "진단 225건 중 110건이 어떤 요구 문서에도 근거를 두지 않는다. RUN 19, DOC 16, APPROVE 10 등 열두 계열이 검사기 자체 판단으로 규칙을 들고 있으며, 추적은 계산 결과라는 REQ-036 원칙과 어긋난다. 매핑이 아니라 요구 문서를 새로 써야 해소된다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "TST-020"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "근거 없는 계열마다 그 규칙을 선언하는 요구 문서가 존재한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "진단 225건 전부가 정본 문서를 가리킨다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "소관 확정 계열 시험이 전 계열로 확대된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T01:51:26.671Z",
+      "updatedAt": "2026-08-20T01:51:26.671Z",
+      "statusChangedAt": "2026-08-20T01:51:26.671Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
     }
   }
 }
