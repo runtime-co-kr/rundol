@@ -2040,12 +2040,19 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "kind": "normal",
       "result": null,
       "round": null,
-      "links": [],
+      "links": [
+        "REQ-048",
+        "REQ-049",
+        "REQ-050",
+        "TST-020",
+        "TST-021",
+        "TST-022"
+      ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
@@ -2067,8 +2074,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T09:21:28.703Z",
-      "updatedAt": "2026-08-20T09:21:28.703Z",
-      "statusChangedAt": "2026-08-20T09:21:28.703Z",
+      "updatedAt": "2026-08-20T17:57:03.258Z",
+      "statusChangedAt": "2026-08-20T17:57:03.258Z",
       "externalRefs": [],
       "project": "rundol"
     },
@@ -3357,6 +3364,46 @@
       "createdAt": "2026-08-20T17:56:58.310Z",
       "updatedAt": "2026-08-20T17:56:58.310Z",
       "statusChangedAt": "2026-08-20T17:56:58.310Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-TCVJCBG6": {
+      "title": "편집기를 문서 계약과 동시성에 잇는다",
+      "summary": "편집기가 문서를 글자 덩어리로만 다루면 계약을 아는 자리가 저장 시점뿐이다. 삽입 메뉴가 빠진 계약 절을 알고, 검사 결과를 미리 보여주고, 충돌을 잃지 않게 다뤄야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "IFC-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "삽입 메뉴 맨 위에 이 문서에 아직 없는 계약 절이 뜬다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "저장 전에 검사 결과를 미리 볼 수 있다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "base revision 충돌이 편집 내용을 잃지 않고 처리된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "frontmatter가 편집 대상이 아님이 화면에 드러난다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:57:04.080Z",
+      "updatedAt": "2026-08-20T17:57:04.080Z",
+      "statusChangedAt": "2026-08-20T17:57:04.080Z",
       "externalRefs": [],
       "project": "rundol"
     }
