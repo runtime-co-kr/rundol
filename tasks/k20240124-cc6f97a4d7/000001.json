@@ -2521,7 +2521,7 @@
         },
         "AC-003": {
           "text": "정책 변경이 contract-change 결정으로 원장에 남는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "기존 board.json이 그대로 동작한다는 회귀 시험이 있다",
@@ -2534,7 +2534,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:41.326Z",
-      "updatedAt": "2026-08-20T17:59:47.344Z",
+      "updatedAt": "2026-08-20T18:12:25.899Z",
       "statusChangedAt": "2026-08-20T15:10:41.326Z",
       "externalRefs": [],
       "project": "rundol"
