@@ -6,10 +6,9 @@
 
 - `GET /api/overview`: Workspace 전체 프로젝트와 상태 집계
 - `GET /api/projects`: 프로젝트 목록
-- `GET /api/projects/:key/board-snapshot`: 영역별 revision, 프로젝트, 문서 본문, 태스크, 조치 필요, 책임구조, Client, 임대와 Git 상태 통합 조회
+- `GET /api/projects/:key/board-snapshot`: 영역별 revision, 프로젝트, 문서 본문, 태스크, 조치 필요, 책임구조, Client와 Git 상태 통합 조회
 - `GET /api/projects/:key/tasks`: 검색·필터 가능한 태스크 목록
 - `GET /api/projects/:key/documents`: 정본 Markdown 문서와 연결 메타데이터
-- `GET /api/projects/:key/leases`: 유효한 문서 소프트 임대
 - `GET /api/projects/:key/sync`: HEAD, upstream, ahead/behind, 변경·충돌 상태
 - `GET /api/clients`: Workspace Client Registry
 
@@ -18,7 +17,6 @@
 - `POST /api/projects/:key/tasks`
 - `POST /api/projects/:key/tasks/:taskId`
 - `POST /api/projects/:key/documents/:documentId`: `baseRevision`과 Markdown `body`를 받아 검증 후 저장
-- `POST /api/projects/:key/leases/:documentId/acquire|renew|release`
 - `POST /api/projects/:key/refresh`
 - `POST /api/projects/:key/sync`
 - `POST /api/clients`
@@ -34,7 +32,9 @@
 - 문서 편집은 명시적인 편집 모드에서만 시작하며 저장 시 base revision을 검사한다.
 - Home은 검토자·담당자·완료조건·연결·선행 태스크에서 파생한 조치 필요를 우선 표시한다. 태스크 단위로 묶고 등급(error·warning·info)을 태그로 보여주며 등급으로 걸러 볼 수 있다.
 - Git 상태는 조치 필요에 넣지 않는다. 목록은 봐야 할 문제이고 동기화는 누르면 커밋과 push가 일어나는 실행이므로, 헤더의 동기화가 그 일을 갖는다.
-- Member·Role·Stakeholder는 People, Sync·Lease 상태는 Operations, Client와 정책은 Settings로 분리한다.
+- Member·Role·Stakeholder는 People, Sync 상태는 Operations, Client와 정책은 Settings로 분리한다.
 - 720px 이하에서는 Navigation과 Context를 별도 drawer로 연다.
 
-Client의 `active`는 등록 정책 상태이며 온라인 상태가 아니다. Client ID는 인증 수단이 아니고 실제 쓰기 권한은 Git 자격 증명과 로컬 세션 토큰으로 제한한다. 문서 임대는 충돌 가능성을 낮추는 Git 기반 소프트 임대이며 강한 잠금이나 문자 단위 공동 편집을 의미하지 않는다.
+Client의 `active`는 등록 정책 상태이며 온라인 상태가 아니다. Client ID는 인증 수단이 아니고 실제 쓰기 권한은 Git 자격 증명과 로컬 세션 토큰으로 제한한다.
+
+문서 소프트 임대와 그 조회·변경 API는 0.36에서 폐기했다. 만료 시각으로 배타를 주장하려면 공통 시계와 즉시 관측 가능한 공유 상태, 그리고 만료를 판정하는 단일 권위가 있어야 하는데 중앙 서버 없는 Git 구조에는 셋 다 없다. 그래서 그 기능이 준 것은 보장이 아니라 조언이었고, 명령과 화면은 잠금처럼 보였다. 지금은 같은 문서를 동시에 고치면 저장 시 `baseRevision` 비교가 `409 Conflict`로 막고, 그 뒤의 판정은 Git 병합이 한다. 근거는 ADR-015에 있다.

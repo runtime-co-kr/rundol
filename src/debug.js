@@ -33,12 +33,14 @@ function trimLog(file) {
   if (size <= MAX_LOG_BYTES) return;
   const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
   // 줄 수가 아니라 바이트로 자른다. 줄 길이가 고르지 않아 줄 수로 자르면 상한이
-  // 지켜지지 않는다.
+  // 지켜지지 않는다. 그리고 바이트는 Buffer.byteLength로 세야 한다 — 문자열의
+  // length는 UTF-16 코드 단위라서 한글 로그에서는 실제 파일 크기를 3분의 1로
+  // 세고, 그만큼 상한을 넘긴 채로 남는다.
   const budget = Math.floor(MAX_LOG_BYTES * KEEP_RATIO);
   const kept = [];
   let used = 0;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    used += lines[index].length + 1;
+    used += Buffer.byteLength(lines[index], 'utf8') + 1;
     if (used > budget) break;
     kept.unshift(lines[index]);
   }
@@ -86,28 +88,43 @@ function recordTokens(start, input) {
 // 사람 개입의 정의는 실행 주체가 cli 또는 hybrid인 행위다. hybrid를 사람으로 세는
 // 이유는 그 경우 사람이 실제로 손을 댔기 때문이며, 개입을 적게 세면 편익이 실제보다
 // 좋아 보인다. 계측은 자기에게 유리한 쪽으로 반올림하지 않는다.
+//
+// 이 값의 이름은 turn이 아니라 action이다. 세는 것이 사람의 개입 횟수가 아니라
+// 사람이 실행한 행위의 수이기 때문이다. 둘은 같지 않다 — 한 번 마음먹고 명령을
+// 셋 치면 개입은 한 번이고 행위는 셋이다. 이름을 turn으로 두면 그 차이가 지워지고,
+// 지워진 채로 PRD의 편익 판단에 들어간다. 셀 수 없는 것을 센 척하느니 셀 수 있는
+// 것의 이름을 정확히 붙인다.
+//
+// 그래서 이 집계가 보지 못하는 것을 여기 적어 둔다. 보드나 편집기에서 사람이
+// 손을 댔지만 action 이벤트가 남지 않으면 세지 못한다. 즉 이 값은 실제 개입의
+// 하한이다. 편익이 좋아 보이는 쪽으로 틀리는 방향이므로, 이 수치로 편익을
+// 주장할 때는 하한이라는 것을 함께 말해야 한다.
 function humanInterventionSummary(events) {
   const actions = (events || []).filter((event) => event && event.type === 'action');
   const byTask = new Map();
   for (const event of actions) {
     if (!event.taskId) continue;
-    const entry = byTask.get(event.taskId) || { taskId: event.taskId, actions: 0, humanTurns: 0 };
+    const entry = byTask.get(event.taskId) || { taskId: event.taskId, actions: 0, humanActions: 0 };
     entry.actions += 1;
-    if (event.actualExecutor === 'cli' || event.actualExecutor === 'hybrid') entry.humanTurns += 1;
+    if (event.actualExecutor === 'cli' || event.actualExecutor === 'hybrid') entry.humanActions += 1;
     byTask.set(event.taskId, entry);
   }
   const tasks = Array.from(byTask.values()).sort((left, right) => left.taskId.localeCompare(right.taskId));
-  const sorted = tasks.map((item) => item.humanTurns).sort((left, right) => left - right);
+  const sorted = tasks.map((item) => item.humanActions).sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   const median = sorted.length === 0 ? null
     : (sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
   return {
     tasks,
     taskCount: tasks.length,
-    medianHumanTurns: median,
+    medianHumanActions: median,
     // 태스크에 결박되지 않은 행위는 집계에서 빠진다. 그 수를 함께 내보내지 않으면
     // 중앙값이 전체를 대표하는 것처럼 읽힌다.
-    unattributedActions: actions.filter((event) => !event.taskId).length
+    unattributedActions: actions.filter((event) => !event.taskId).length,
+    // 계측이 보지 못하는 경로를 값으로 밝힌다. 주석에만 적으면 JSON을 읽는 쪽은
+    // 이 수치를 실제 개입 횟수로 읽는다.
+    measures: 'task-bound-cli-actions',
+    lowerBound: true
   };
 }
 

@@ -6,7 +6,7 @@
 const assert = require('assert');
 const {
   matchesPath, patternsOverlap, assignmentOverlaps, missingAssignmentFields,
-  unclaimedAcceptance, verifyReport, ContractViolation
+  unclaimedAcceptance, acceptReport, verifyReport, ContractViolation
 } = require('../src/worker-contract');
 
 const DIGEST = 'a'.repeat(64);
@@ -34,6 +34,7 @@ function report(overrides) {
     id: 'RPT-001',
     assignmentId: 'ASG-001',
     worker: { kind: 'agent', id: 'claude-code' },
+    schema: 'report-v1',
     outcome: 'done',
     claims: [
       { id: 'AC-001', met: true, evidence: 'test:search.test.js#title' },
@@ -156,5 +157,70 @@ assert.throws(
   (error) => error instanceof ContractViolation && error.message.includes('AC-002')
 );
 assert.throws(() => verifyReport(null, report()), ContractViolation);
+
+// ── 접수 계약 ────────────────────────────────────────────────────────────
+//
+// 접수는 "이 보고를 이 할당에 대해 판정할 수 있는가"를 묻고, 검수는 "판정해 보니
+// 통과인가"를 묻는다. 둘을 같은 값으로 뭉개면 보고를 잘못 만든 것과 일을 통과시키지
+// 못한 것이 구분되지 않고, 그러면 워커 종류별 형식 위반율을 잴 수 없다.
+
+// 계약을 갖춘 보고는 거부 사유가 없다.
+assert.strictEqual(acceptReport(assignment(), report()), null);
+
+function rejects(overrides, code, extra) {
+  const verdict = acceptReport(assignment(extra && extra.assignment), report(overrides));
+  assert(verdict, `거부를 기대했는데 접수되었습니다: ${code}`);
+  assert.strictEqual(verdict.code, code);
+  return verdict;
+}
+
+// 필수 항목이 빠지면 하나씩이 아니라 전부 돌려준다. 하나씩 알려주면 워커가 왕복을
+// 여러 번 한다.
+const missing = rejects({ id: '', procedureDigest: '' }, 'missing-field');
+assert.deepStrictEqual(missing.missing, ['id', 'procedureDigest']);
+// changed는 비어 있어도 되지만 없으면 안 된다. 막혀서 아무것도 못 바꾼 보고가
+// 정상이기 때문이며, 그것과 "무엇을 바꿨는지 말하지 않음"은 다르다.
+assert.strictEqual(acceptReport(assignment(), report({ changed: [] })), null);
+assert.deepStrictEqual(rejects({ changed: undefined }, 'missing-field').missing, ['changed']);
+// 보고가 따른 스키마를 밝히지 않으면 접수하지 않는다. 밝히지 않으면 할당의
+// reportSchema는 아무도 읽지 않는 필수 항목이 된다.
+assert.deepStrictEqual(rejects({ schema: '' }, 'missing-field').missing, ['schema']);
+
+// 다른 할당을 향한 보고로 이 할당을 닫을 수 없다.
+rejects({ assignmentId: 'ASG-999' }, 'wrong-assignment');
+// 닫힌 할당에는 접수하지 않는다.
+rejects({}, 'assignment-closed', { assignment: { state: 'closed' } });
+// 할당받지 않은 워커의 보고는 접수하지 않는다. 식별자가 같아도 종류가 다르면
+// 다른 워커다 — 사람 MEMBER-001과 에이전트 MEMBER-001은 같은 주체가 아니다.
+rejects({ worker: { kind: 'agent', id: 'other-agent' } }, 'not-assignee');
+rejects({ worker: { kind: 'human', id: 'claude-code' } }, 'not-assignee');
+// 할당이 고정한 스키마와 다른 것을 따랐으면 접수하지 않는다. 이름만 같고 뜻이
+// 다른 필드를 판정하면 조용히 틀린다.
+rejects({ schema: 'report-v2' }, 'schema-mismatch');
+// 차단과 반려는 사람에게 넘기는 결과이므로 사유 없이 넘길 수 없다.
+rejects({ outcome: 'blocked' }, 'missing-reason');
+rejects({ outcome: 'rejected' }, 'missing-reason');
+assert.strictEqual(acceptReport(assignment(), report({ outcome: 'blocked', reason: '외부 API가 응답하지 않습니다.' })), null);
+// 침묵으로 충족을 주장할 수 없다.
+assert.deepStrictEqual(
+  rejects({ claims: [{ id: 'AC-001', met: true, evidence: 'e' }] }, 'unclaimed-acceptance').unclaimed,
+  ['AC-002']
+);
+
+// 순수 함수다. 같은 입력이면 같은 답이고 입력을 바꾸지 않는다.
+{
+  const target = assignment();
+  const submitted = report({ schema: 'report-v2' });
+  const frozen = JSON.stringify([target, submitted]);
+  const once = JSON.stringify(acceptReport(target, submitted));
+  assert.strictEqual(JSON.stringify(acceptReport(target, submitted)), once);
+  assert.strictEqual(JSON.stringify([target, submitted]), frozen, '접수 판정이 입력을 바꿨습니다.');
+}
+
+// 검수는 접수를 통과한 보고만 받는다. 접수에서 걸릴 보고를 검수가 판정하면
+// 계약 결함이 반려로 위장된다.
+for (const broken of [{ assignmentId: 'ASG-999' }, { schema: 'report-v2' }, { worker: { kind: 'human', id: 'x' } }]) {
+  assert.throws(() => verifyReport(assignment(), report(broken)), ContractViolation);
+}
 
 process.stdout.write('worker contract tests passed\n');

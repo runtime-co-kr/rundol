@@ -24,7 +24,7 @@
     "test:install": "node test/install.test.js && node test/tarball-compat.test.js",
     "typecheck": "tsc --noEmit",
     "version:check": "node scripts/version-check.js",
-    "release:check": "npm run version:check && npm test && npm run test:install"
+    "release:check": "npm run version:check && npm run typecheck && npm test && npm run test:install"
   },
   "engines": {
     "node": ">=20"

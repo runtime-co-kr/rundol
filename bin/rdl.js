@@ -74,7 +74,7 @@ Usage:
   rdl --version
   rdl --help
 
-  rdl advanced [--json]   실행 원장, 임대, 어댑터, 검증, 결정, 위임 등 내부 명령을 나열합니다
+  rdl advanced [--json]   실행 원장, 어댑터, 검증, 결정, 위임 등 내부 명령을 나열합니다
 
 Options:
   --root <path>  Rundol Workspace root. Defaults to the current directory or its parent Workspace.
@@ -158,7 +158,7 @@ function parseRound(value) {
 
 // 고급 표면. 사람이 매일 쓰는 명령과 내부 실행 개념을 한 목록에 두면 사람은 제품이
 // 아니라 구현을 배워야 한다. 숨기는 기준은 취향이 아니라 개념 누출이다 — 이름이나
-// 인수에 실행 식별자, 임대, 클라이언트 식별자, 어댑터, 렌즈가 드러나는 명령군을 내린다.
+// 인수에 실행 식별자, 클라이언트 식별자, 어댑터, 렌즈가 드러나는 명령군을 내린다.
 // 삭제가 아니라 은닉이므로 기존 자동화와 스크립트는 그대로 동작한다.
 function usageAdvanced() {
   return `rdl ${VERSION} — 고급 명령
@@ -210,7 +210,7 @@ Usage:
 Options:
   옵션은 사람 표면과 같습니다. rdl --help의 Options를 따릅니다.
 
-이 명령들은 사람이 직접 쓰라고 만든 것이 아니다. 실행 원장과 임대, 어댑터 호출은
+이 명령들은 사람이 직접 쓰라고 만든 것이 아니다. 실행 원장과 어댑터 호출은
 절차와 에이전트가 쓰는 내부 표면이며 rdl help --json이 전체 목록을 함께 돌려준다.
 `;
 }
@@ -1190,9 +1190,16 @@ async function main() {
       if (!current) throw new Error(`태스크를 찾지 못했습니다: ${options.positional[0]}`);
       const removed = new Set(options.unlinks.map((value) => String(value).trim()));
       const kept = (current.links || []).filter((link) => !removed.has(String(link)));
-      // 같은 링크를 두 번 붙여도 한 번만 남는다. 순서는 기존 것을 앞에 두어
-      // 다시 붙이는 것만으로 목록이 뒤집히지 않게 한다.
-      const added = options.links.map((value) => String(value).trim()).filter((link) => link && !kept.includes(link));
+      // 같은 링크를 두 번 붙여도 한 번만 남는다. 이미 있는 것과의 중복만 막으면
+      // 한 호출 안에서 같은 값을 두 번 준 경우가 그대로 통과한다 — 링크가 없던
+      // 태스크에 --link REQ-001 --link REQ-001을 주면 둘 다 들어간다.
+      // 순서는 기존 것을 앞에 두어 다시 붙이는 것만으로 목록이 뒤집히지 않게 한다.
+      const added = [];
+      for (const value of options.links) {
+        const link = String(value).trim();
+        if (!link || kept.includes(link) || added.includes(link)) continue;
+        added.push(link);
+      }
       const missing = Array.from(removed).filter((link) => !(current.links || []).includes(link));
       if (missing.length) throw new Error(`태스크에 없는 링크는 제거할 수 없습니다: ${missing.join(', ')}`);
       changes.links = kept.concat(added);

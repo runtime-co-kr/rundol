@@ -1285,8 +1285,6 @@ function renderSettings() {
   }).join('') || `<p class="empty-state">등록된 Client가 없습니다. <code>rdl client register ${escapeHtml(state.snapshot.client.id)} --name "&lt;이름&gt;" --type device --owner &lt;MEMBER-ID&gt;</code></p>`;
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
-  // 임대는 운영 상태 화면에 있었지만 그 화면의 나머지(SYNC·ATTENTION)는 헤더·홈과 중복이고
-  // WATCH는 빈 자리표시자였다. 임대는 Workspace 범위이므로 Clients 옆이 제자리다.
   renderPresentationSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');

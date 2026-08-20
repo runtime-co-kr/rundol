@@ -63,6 +63,13 @@ try {
   const id = created.taskId;
   assert.deepStrictEqual(created.task.links, [], '링크 없이 만든 태스크가 시작점이다.');
 
+  // 같은 호출 안의 중복도 한 번만 남는다. 이미 있는 것과의 중복만 막으면 링크가
+  // 없던 태스크에 같은 값을 두 번 준 경우가 그대로 통과한다 — 걸러 낼 기존 목록이
+  // 비어 있기 때문이다.
+  const doubled = rdl(workspace, ['task', 'set', id, '--project', 'tms', '--link', 'REQ-001', '--link', 'REQ-001']);
+  assert.deepStrictEqual(doubled.after.links, ['REQ-001'], '한 호출 안의 중복이 그대로 들어갔습니다.');
+  rdl(workspace, ['task', 'set', id, '--project', 'tms', '--unlink', 'REQ-001']);
+
   // 붙이기. 생성 이후에도 링크를 더할 수 있어야 done 게이트에 도달할 수 있다.
   const added = rdl(workspace, ['task', 'set', id, '--project', 'tms', '--link', 'REQ-001']);
   assert.deepStrictEqual(added.after.links, ['REQ-001']);

@@ -69,14 +69,16 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl --version
   rdl --help
 
-  rdl advanced [--json]   실행 원장, 임대, 어댑터, 검증, 결정, 위임 등 내부 명령을 나열합니다
+  rdl advanced [--json]   실행 원장, 어댑터, 검증, 결정, 위임 등 내부 명령을 나열합니다
 ```
 <!-- rdl-help:end -->
 
 
 ## 고급 명령
 
-아래는 `rdl advanced`가 나열하는 내부 표면이다. 실행 원장, 임대, 어댑터 호출, 검증, 결정과 위임은 절차와 에이전트가 쓰는 명령이며 사람이 매일 칠 일이 없다. 사람 표면에서 내린 것은 은닉이지 삭제가 아니므로 기존 자동화와 스크립트는 그대로 동작한다.
+아래는 `rdl advanced`가 나열하는 내부 표면이다. 실행 원장, 어댑터 호출, 검증, 결정과 위임은 절차와 에이전트가 쓰는 명령이며 사람이 매일 칠 일이 없다. 사람 표면에서 내린 것은 은닉이지 삭제가 아니므로 기존 자동화와 스크립트는 그대로 동작한다.
+
+은닉과 삭제는 다르다. `rdl lease`는 여기에도 없다 — 내린 것이 아니라 0.36에서 폐기했기 때문이며, 호출하면 근거를 가리키는 오류로 끝난다.
 
 이 블록도 `rdl advanced`의 Usage와 항상 일치해야 한다.
 
@@ -136,7 +138,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 - `check`, `git init`, `refresh`, `save`, `sync`는 `--project`를 생략하면 등록 프로젝트 전체를 각각 처리한다.
 - `task add`, `task set`, `task acceptance`, `board`는 프로젝트가 하나면 자동 선택하고 여러 개면 `--project <key>`가 필요하다.
 - `--json`은 자동화와 AI 클라이언트가 사용할 안정된 JSON 결과를 출력한다.
-- 사람이 읽는 출력은 `키: 값`과 목록을 찍고 중첩 객체는 생략한다. 목록은 건수와 항목별 요약을 함께 보여주므로 `member list`, `client list`, `lease list`는 `--json` 없이도 내용을 확인할 수 있다.
+- 사람이 읽는 출력은 `키: 값`과 목록을 찍고 중첩 객체는 생략한다. 목록은 건수와 항목별 요약을 함께 보여주므로 `member list`와 `client list`는 `--json` 없이도 내용을 확인할 수 있다.
 
 `rundol/*`는 하나의 Git 브랜치나 wildcard 작업 단위가 아니다. CLI의 전체 처리 기준은 Workspace의 프로젝트 Registry이며 각 프로젝트 브랜치를 독립적으로 처리한다.
 
@@ -254,17 +256,16 @@ rdl check --json
 
 schemaVersion 5의 `rundol/settings` Registry를 schemaVersion 6 `rundol/workspace`로 복사하고 `projects/workspace/` worktree를 만든다. 프로젝트 파일은 `project-<key>.yaml` 패턴으로 변환한다. 기존 settings 브랜치는 자동 삭제하지 않는다.
 
-### Client와 문서 임대
+### Client
 
 ```bash
 rdl client register laptop-a --name "업무 노트북" --type device --owner MEMBER-001
 rdl client list
-rdl lease acquire REQ-001 --project crm --client-id laptop-a
-rdl lease renew REQ-001 --project crm --client-id laptop-a
-rdl lease release REQ-001 --project crm --client-id laptop-a
 ```
 
-Client는 사람 자체가 아니라 장치·Agent·Service 실행 주체다. 임대는 Workspace의 `events/lease-<scope>-<client>-<segment>.jsonl`에 Client별로 기록한다. Git-only 임대는 충돌을 예방하는 소프트 임대이며 문자 단위 공동 편집이나 강한 상호 배제를 제공하지 않는다.
+Client는 사람 자체가 아니라 장치·Agent·Service 실행 주체다.
+
+`rdl lease`는 0.36에서 폐기했다. 다른 명령을 사람 표면에서 내린 것은 은닉이지 삭제가 아니지만 이것은 삭제이며, 호출하면 폐기를 알리는 오류로 끝난다. 문서를 동시에 고쳤을 때의 판정은 Git 병합이 하고, 같은 곳을 건드리는 작업이 겹치는지는 할당을 낼 때 수정 가능 경로로 걸러진다. 폐기 근거는 ADR-015에 있고 옮겨가는 순서는 [0.36 마이그레이션](MIGRATION-0.36.md)에 있다.
 
 ### `rdl git init`
 
@@ -557,7 +558,7 @@ npm run version:check
 npm run release:check
 ```
 
-`version:check`는 SemVer, workspace package name 고유성, private monorepo 경계, 같은 CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. `release:check`는 전체 테스트와 통합·개별 package tarball 설치 회귀 테스트까지 실행한다. 정책은 [버전과 릴리스](RELEASES.md)를 따른다.
+`version:check`는 SemVer, workspace package name 고유성, private monorepo 경계, 같은 CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. 여기에 잠금 파일 무결성도 함께 본다 — 내부 의존이 선언과 잠금에서 갈리지 않는지, 그리고 서드파티 항목의 잠금 버전이 그 항목이 가리키는 tarball과 같은지다. 뒤엣것이 어긋나면 `npm ci`가 거부하는데, 그 거부는 태그를 단 뒤 릴리즈 워크플로에서 처음 보인다. `release:check`는 여기에 타입 검사와 전체 테스트, 통합·개별 package tarball 설치 회귀 테스트를 더한다. 정책은 [버전과 릴리스](RELEASES.md)를 따른다.
 
 ## Obsidian
 
@@ -595,7 +596,7 @@ rdl board --project memo --no-open
 - 태스크 쓰기는 검증 후 즉시 프로젝트 브랜치에 커밋한다.
 - 문서 편집은 base revision을 요구하고 strict 검증 실패 시 원본을 복구한다.
 - Refresh는 로컬 검증, Sync는 선택 프로젝트의 원격 동기화를 실행한다.
-- 3초마다 문서·태스크·사람·Client·Lease·Sync 영역별 revision을 확인해 변경된 Snapshot을 반영한다.
+- 3초마다 Workspace·문서·태스크·사람·Client·Sync·계약·표현 영역별 revision을 확인해 변경된 Snapshot을 반영한다.
 - API는 한 요청에서 최대 500개 태스크를 반환하고 쓰기 요청에 로컬 세션 토큰을 요구한다.
 - CSP, frame 차단과 64KB 요청 제한을 적용한다.
 

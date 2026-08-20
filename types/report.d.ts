@@ -25,6 +25,12 @@ export interface Report {
   id: string;
   assignmentId: string;
   worker: Worker;
+  /**
+   * 이 보고가 따른 스키마의 이름. 할당의 reportSchema와 같아야 접수된다.
+   * 보고가 밝히지 않으면 할당의 reportSchema는 아무도 읽지 않는 필수 항목이 되고,
+   * 이름만 같고 뜻이 다른 필드를 조용히 판정하게 된다.
+   */
+  schema: string;
   outcome: ReportOutcome;
   /** 할당이 선언한 수용 조건 전부를 언급해야 한다. 침묵으로 충족을 주장할 수 없다. */
   claims: AcceptanceClaim[];
@@ -38,13 +44,23 @@ export interface Report {
   forbiddenTouched?: string[];
 }
 
-/** 제출 계약을 갖추지 못한 보고의 접수 거부 사유. */
+/**
+ * 제출 계약을 갖추지 못한 보고의 접수 거부 사유.
+ *
+ * 접수 거부는 검수 반려와 다른 사건이다. 앞엣것은 보고를 잘못 만든 것이고
+ * 뒤엣것은 일을 통과시키지 못한 것이다. 같은 값으로 뭉개면 워커 종류별
+ * 형식 위반율을 잴 수 없고, 그 수치는 PRD-001의 편익 지표 하나를 이룬다.
+ */
 export type ReportRejectionCode =
   | 'missing-field'
   | 'unclaimed-acceptance'
   | 'missing-reason'
   | 'assignment-closed'
-  | 'not-assignee';
+  | 'not-assignee'
+  /** 다른 할당을 향한 보고. 이 할당에 대해 판정할 수 없다. */
+  | 'wrong-assignment'
+  /** 할당이 고정한 보고 스키마와 다른 스키마를 따른 보고. */
+  | 'schema-mismatch';
 
 export interface ReportRejection {
   code: ReportRejectionCode;

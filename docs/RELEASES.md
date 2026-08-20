@@ -67,7 +67,9 @@ npm run version:check
 npm run release:check
 ```
 
-`version:check`는 SemVer 형식, private monorepo 경계, package name 고유성, CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. `release:check`는 여기에 전체 테스트와 통합·개별 package tarball 설치 회귀 테스트를 더한다.
+`version:check`는 SemVer 형식, private monorepo 경계, package name 고유성, CHANGELOG 항목, `postinstall` 부재와 CI tag 일치를 검사한다. 잠금 파일 무결성도 여기서 본다 — 내부 의존이 선언과 잠금에서 갈리지 않는지, 그리고 서드파티 항목의 잠금 버전이 그 항목이 가리키는 tarball과 같은지다. `release:check`는 여기에 타입 검사와 전체 테스트, 통합·개별 package tarball 설치 회귀 테스트를 더한다.
+
+게이트가 이 둘을 보는 이유는 0.36.0에서 실제로 겪었기 때문이다. 판올림 스크립트가 경로 접두 `packages/`만 보고 워크스페이스를 골라 `packages/cli/node_modules/marked`까지 릴리즈 버전으로 덮었고, 그 오염은 당시의 모든 로컬 검사를 통과한 뒤 태그를 단 다음 릴리즈 워크플로의 `npm ci`에서 처음 드러났다. 태그는 옮기지 않으므로 그 판은 게시되지 못한 채 버려졌다. 태그 뒤에 처음 보이는 실패는 검사가 아니라 사고다.
 
 `.github/workflows/ci.yml`은 main push와 pull request에서 Node 20과 22로 `version:check`와 전체 테스트를 실행한다. 같은 ref의 이전 실행은 취소하여 동일 commit을 중복 검사하지 않는다. tag ref는 `release.yml`이 담당한다. pipeline 통과가 tag 생성을 대신하지는 않으며, 정식 배포 ref는 여전히 maintainer가 만든 변경 불가능한 tag다.
 

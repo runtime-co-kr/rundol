@@ -62,6 +62,36 @@ function checkVersion(root = path.resolve(__dirname, '..'), tag = process.env.CI
       const entry = Object.entries(lockedPackages).find(([key, value]) => key.startsWith('packages/') && value && value.name === manifest.name);
       if (entry && entry[1].version !== version) issues.push(`package-lock.json의 ${manifest.name} version ${entry[1].version}이 release version ${version}과 다릅니다.`);
     }
+
+    // 워크스페이스 내부 의존이 선언과 잠금에서 갈리면 npm ci가 거부한다. 그
+    // 거부는 태그를 단 뒤 릴리즈 워크플로에서 처음 보이므로, 여기서 먼저 본다.
+    for (const manifest of [packageJson].concat(workspaceManifests)) {
+      for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+        for (const [name, range] of Object.entries((manifest[field] || {}))) {
+          if (!name.startsWith('@rundol/') && name !== 'rundol') continue;
+          if (range !== version) issues.push(`${manifest.name}의 ${name} 의존 ${range}이 release version ${version}과 다릅니다.`);
+        }
+      }
+    }
+
+    // 서드파티 항목의 잠금 버전이 그 항목이 가리키는 tarball과 같은지 본다.
+    // 판올림이 경로 접두만 보고 워크스페이스를 고르면 packages/cli/node_modules/marked
+    // 같은 중첩 의존까지 잡아 릴리즈 버전으로 덮는데, 그 오염은 위의 검사들을
+    // 전부 통과하고 태그를 단 뒤 릴리즈 워크플로의 npm ci에서 처음 드러난다.
+    //
+    // 대조 상대를 설치본이 아니라 resolved URL로 둔 이유는, 오염된 바로 그 항목이
+    // 로컬에 설치돼 있지 않은 경우가 있기 때문이다. 없는 것과는 대조할 수 없고,
+    // 대조하지 못한 항목을 조용히 건너뛰는 검사는 필요할 때 침묵한다.
+    for (const [key, value] of Object.entries(lockedPackages)) {
+      if (!key.includes('node_modules/') || !value || !value.version) continue;
+      if (typeof value.resolved !== 'string' || !value.resolved.endsWith('.tgz')) continue;
+      const file = value.resolved.slice(value.resolved.lastIndexOf('/') + 1, -'.tgz'.length);
+      const unscoped = key.slice(key.lastIndexOf('node_modules/') + 'node_modules/'.length).split('/').pop();
+      const inTarball = file.startsWith(`${unscoped}-`) ? file.slice(unscoped.length + 1) : null;
+      if (inTarball && inTarball !== value.version) {
+        issues.push(`package-lock.json의 ${key} version ${value.version}이 tarball ${file}과 다릅니다.`);
+      }
+    }
   }
 
   if (!fs.existsSync(changelogFile)) {

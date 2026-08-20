@@ -129,6 +129,63 @@ function unclaimedAcceptance(assignment, report) {
   return declared.filter((id) => !claimed.has(id));
 }
 
+const REPORT_FIELDS = ['id', 'assignmentId', 'worker', 'outcome', 'claims', 'procedureDigest', 'schema'];
+
+function sameWorker(left, right) {
+  const a = left || {};
+  const b = right || {};
+  return a.kind === b.kind && String(a.id || '') === String(b.id || '');
+}
+
+/**
+ * 보고가 제출 계약을 갖췄는지 판정한다. 갖추지 못했으면 거부 사유를, 갖췄으면
+ * null을 돌려준다.
+ *
+ * 접수와 검수는 다른 질문이다. 접수는 "이 보고를 이 할당에 대해 판정할 수 있는가"를
+ * 묻고, 검수는 "판정해 보니 통과인가"를 묻는다. 둘을 섞으면 계약을 갖추지 못한
+ * 보고가 반려로 기록되어, 워커가 잘못 만든 것인지 일을 잘못한 것인지 구분되지
+ * 않는다. 그 구분이 사라지면 워커 종류별 형식 위반율을 잴 수 없다.
+ *
+ * 순서는 고정이다. 여러 사유가 동시에 성립할 때 어느 것을 돌려줄지가 호출 순서에
+ * 따라 달라지면 같은 값이 표면마다 다른 사유를 받는다.
+ */
+function acceptReport(assignment, report) {
+  const none = { missing: [], unclaimed: [] };
+  const input = report || {};
+  const target = assignment || {};
+
+  const missing = REPORT_FIELDS.filter((field) => emptyValue(input[field]));
+  // changed는 비어 있을 수 있다. 막혀서 아무것도 바꾸지 못한 보고가 정상이기
+  // 때문이며, 존재만 본다.
+  if (!Array.isArray(input.changed)) missing.push('changed');
+  if (missing.length) return Object.assign({}, none, { code: 'missing-field', missing });
+
+  // 다른 할당을 향한 보고는 이 할당에 대해 판정할 수 없다. 판정하면 남의 수용
+  // 조건으로 이 할당을 닫게 된다.
+  if (String(input.assignmentId) !== String(target.id || '')) {
+    return Object.assign({}, none, { code: 'wrong-assignment' });
+  }
+  if (target.state === 'closed') return Object.assign({}, none, { code: 'assignment-closed' });
+  if (!sameWorker(input.worker, target.assignee)) return Object.assign({}, none, { code: 'not-assignee' });
+
+  // 할당이 보고 스키마를 고정했는데 보고가 다른 것을 따랐다면, 필드가 같은
+  // 이름으로 다른 뜻을 가질 수 있다. 이름만 같은 값을 판정하면 조용히 틀린다.
+  if (String(input.schema) !== String(target.reportSchema || '')) {
+    return Object.assign({}, none, { code: 'schema-mismatch' });
+  }
+
+  // 차단과 반려는 실패가 아니라 사람에게 넘기는 결과다. 사유 없이 넘기면 사람은
+  // 무엇을 판단해야 하는지 모른 채 넘겨받는다.
+  if ((input.outcome === 'blocked' || input.outcome === 'rejected') && emptyValue(input.reason)) {
+    return Object.assign({}, none, { code: 'missing-reason' });
+  }
+
+  const unclaimed = unclaimedAcceptance(target, input);
+  if (unclaimed.length) return Object.assign({}, none, { code: 'unclaimed-acceptance', unclaimed });
+
+  return null;
+}
+
 // ── 검수 판정 ────────────────────────────────────────────────────────────
 
 class ContractViolation extends Error {
@@ -154,9 +211,13 @@ function verifyReport(assignment, report) {
   if (!Array.isArray(assignment.acceptance) || assignment.acceptance.length === 0) {
     throw new ContractViolation('할당은 수용 조건을 하나 이상 선언해야 판정할 수 있습니다.');
   }
-  const unclaimed = unclaimedAcceptance(assignment, report);
-  if (unclaimed.length) {
-    throw new ContractViolation(`보고가 언급하지 않은 수용 조건이 있어 판정할 수 없습니다: ${unclaimed.join(', ')}`);
+  // 접수 계약을 갖추지 못한 보고는 판정 대상이 아니다. 여기서 걸러야 접수 거부와
+  // 검수 반려가 같은 값으로 뭉개지지 않는다.
+  const rejection = acceptReport(assignment, report);
+  if (rejection) {
+    throw new ContractViolation(`접수 계약을 갖추지 못해 판정할 수 없습니다: ${rejection.code}`
+      + (rejection.missing.length ? ` (빠진 항목: ${rejection.missing.join(', ')})` : '')
+      + (rejection.unclaimed.length ? ` (언급하지 않은 수용 조건: ${rejection.unclaimed.join(', ')})` : ''));
   }
 
   const blocks = [];
@@ -210,6 +271,7 @@ module.exports = {
   assignmentOverlaps,
   missingAssignmentFields,
   unclaimedAcceptance,
+  acceptReport,
   verifyReport,
   ContractViolation
 };

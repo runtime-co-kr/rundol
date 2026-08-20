@@ -49,6 +49,7 @@ const report = {
   id: 'RPT-001',
   assignmentId: 'ASG-001',
   worker: { kind: 'human', id: 'MEMBER-001' },
+  schema: 'report-v1',
   outcome: 'done',
   claims: [{ id: 'AC-001', met: false, evidence: '' }],
   changed: ['src/board/ui.js'],
