@@ -2147,7 +2147,7 @@
         },
         "AC-003": {
           "text": "업무 유형을 데이터로 정의하는 방식과 제약 카탈로그를 정한 ADR이 active로 존재한다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "승인 모드 4종이 기존 절차·승인·위임 손잡이의 조합으로 정의된다",
@@ -2160,7 +2160,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:29:19.846Z",
+      "updatedAt": "2026-08-20T15:29:24.380Z",
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
