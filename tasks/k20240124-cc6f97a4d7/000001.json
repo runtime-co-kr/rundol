@@ -3062,7 +3062,10 @@
       "kind": "normal",
       "result": null,
       "round": null,
-      "links": [],
+      "links": [
+        "REQ-059",
+        "TST-031"
+      ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
@@ -3084,7 +3087,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:49:58.363Z",
-      "updatedAt": "2026-08-20T15:50:12.763Z",
+      "updatedAt": "2026-08-20T15:58:04.855Z",
       "statusChangedAt": "2026-08-20T15:50:12.763Z",
       "externalRefs": [],
       "project": "rundol"
