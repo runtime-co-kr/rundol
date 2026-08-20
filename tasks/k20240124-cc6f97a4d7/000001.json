@@ -2363,7 +2363,7 @@
         },
         "AC-003": {
           "text": "현재 test 유형의 규칙 여섯이 카탈로그로 남김없이 표현됨이 문서로 대조된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "진단 코드가 유형이 아니라 제약 종류에 붙는 규칙이 REQ에 규정된다",
@@ -2376,7 +2376,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:56.449Z",
-      "updatedAt": "2026-08-20T17:40:24.366Z",
+      "updatedAt": "2026-08-20T17:40:29.354Z",
       "statusChangedAt": "2026-08-20T17:35:09.240Z",
       "externalRefs": [],
       "project": "rundol"
