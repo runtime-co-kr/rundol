@@ -1,0 +1,213 @@
+'use strict';
+
+/**
+ * "지금 누가 무엇을 해야 하는가"에 답한다. `run list`는 "이 프로젝트에 런이 무엇이
+ * 있는가"를 묻고 fold 전체를 돌려주므로 세션 시작마다 주입할 수 없다. 두 물음을
+ * 한 명령으로 접으면 둘 중 하나가 다른 하나의 옵션이 되고, 옵션이 된 쪽은
+ * 기본값으로 죽는다.
+ *
+ * 갈래는 임의의 분류가 아니라 드라이버가 물어야 할 선택기 그 자체다 — 사람만
+ * 풀 수 있는가(waiting), 기계가 이을 수 있는가(drivable), 이미 누가 몰고
+ * 있는가(driving). 그래서 훅과 드라이버가 같은 판정을 한 곳에서 읽는다.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const ledger = require('./run-ledger');
+const driverLease = require('./driver-lease');
+const runtime = require('./runtime');
+const { findWorkspaceRoot, workspaceLayout, listProjects } = require('./workspace');
+
+// 사유의 정본은 원장이다. HALT_REASONS(src/run-ledger.js)를 여기서 다시
+// 정의하지 않고 fold가 준 haltReason을 그대로 나른다.
+const HUMAN_GATE = 'human-gate';
+const SYNC_PENDING = 'sync-pending';
+
+function quote(value) {
+  return `<${value}>`;
+}
+
+function runArgs(fold) {
+  return `--run ${fold.runId} --project ${fold.projectId}`;
+}
+
+/**
+ * 갈래마다 그대로 붙여 실행할 수 있는 한 줄을 만든다. 훅이 쓸모 있으려면 다음
+ * 명령을 모델이 유도하지 않아도 되어야 한다. 사람이 채워야 하는 값만 <>로 남긴다.
+ */
+function recoveryCommand(fold, reason) {
+  const base = runArgs(fold);
+  if (reason === HUMAN_GATE) return `rdl run approve ${base} --client-id ${quote('human-client-id')} --reason ${quote('사유')}`;
+  if (reason === SYNC_PENDING) return `rdl sync --project ${fold.projectId} --client-id ${quote('client-id')}`;
+  if (reason === 'ownership-conflict') {
+    const conflict = fold.ownershipConflict && fold.ownershipConflict.conflictId;
+    return `rdl run ownership resolve ${base} --conflict ${conflict || quote('digest')} --select ${quote('event-id')} --client-id ${quote('client-id')} --reason ${quote('사유')}`;
+  }
+  if (reason === 'operation-conflict') {
+    const conflict = (fold.operationConflicts || [])[0] || null;
+    const operation = conflict ? conflict.operationId : null;
+    const digest = conflict ? conflict.conflictId : null;
+    return `rdl run operation resolve ${base} --operation ${operation || quote('operation-id')} --conflict ${digest || quote('digest')} --select ${quote('event-id')} --client-id ${quote('client-id')} --reason ${quote('사유')}`;
+  }
+  return `rdl run resume ${base} --client-id ${quote('client-id')}`;
+}
+
+/**
+ * 순수 함수다. 파일 시스템도 git도 만지지 않는다 — 갈래 판정을 픽스처 작업공간
+ * 없이 시험으로 못 박을 수 있는 유일한 형태이며, 판정이 읽기 경로와 얽히면
+ * 나중에 드라이버가 같은 물음에 두 번째 답을 갖게 된다.
+ *
+ * @param fold      ledger.foldRun 또는 foldSharedRun의 결과
+ * @param liveness  { lease: boolean, lock: boolean } — 지금 이 런을 실제로 몰고
+ *                  있는 사슬이 있는지. 호출자가 읽어서 넣는다.
+ * @returns { bucket, reason, command } 또는 출력 대상이 아니면 null
+ */
+function classifyRun(fold, liveness) {
+  if (!fold || !fold.status) return null;
+  if (fold.status === 'missing') return null;
+
+  // 해결되지 않은 operation 충돌은 상태가 무엇이든 먼저 나온다. 원장이 이 목록을
+  // completed_local·synced에서도 비우지 않는 이유가 "목록을 비우면 충돌의 증거
+  // 자체가 모든 소비자에게서 사라진다"이므로(src/run-ledger.js:1050), 여기서
+  // 떨어뜨리면 이 명령이 바로 그 소비자가 된다. 완료한 런에 붙은 충돌에
+  // "sync 하세요"라고 답하는 것은 틀린 안내다.
+  if ((fold.operationConflicts || []).length) return { bucket: 'waiting', reason: 'operation-conflict', command: recoveryCommand(fold, 'operation-conflict') };
+
+  // 병합까지 살아남은 런은 아무에게도 일을 만들지 않는다.
+  if (fold.status === 'synced') return null;
+
+  const live = Boolean(liveness && (liveness.lease || liveness.lock));
+
+  // 이미 몰고 있는 런을 waiting이나 drivable로 내면, 훅이 돌고 있는 런을 다시
+  // 몰라고 말한다. 사람 출력에는 넣지 않고 --json에만 실어 드라이버가 구별한다.
+  if (live) return { bucket: 'driving', reason: 'driver-active', command: null };
+
+  if (fold.status === 'halted') {
+    const reason = fold.haltReason || 'manual';
+    return { bucket: 'waiting', reason, command: recoveryCommand(fold, reason) };
+  }
+  if (fold.status === 'ownership-conflict') return { bucket: 'waiting', reason: 'ownership-conflict', command: recoveryCommand(fold, 'ownership-conflict') };
+  if (fold.status === 'operation-conflict') return { bucket: 'waiting', reason: 'operation-conflict', command: recoveryCommand(fold, 'operation-conflict') };
+  // 런의 완료는 저장이 아니라 병합 생존이다. completed_local은 아직 끝이 아니다.
+  if (fold.status === 'completed_local') return { bucket: 'waiting', reason: SYNC_PENDING, command: recoveryCommand(fold, SYNC_PENDING) };
+
+  if (fold.status !== 'running') return null;
+  // 전진할 스텝이 없는 running은 완료 직전이거나 원장이 덜 접힌 것이다. 어느
+  // 쪽이든 지금 누구에게도 일을 만들지 않는다.
+  if (!fold.cursor || !fold.cursorStep) return null;
+
+  // 사람 게이트 판정은 fold 안에서 끝난다. cursorStep이 결의된 스텝 객체를 들고
+  // 있으므로 절차를 다시 결의할 필요가 없다 — 다시 결의하면 판정자가 둘이 된다.
+  if (fold.cursorStep.human === true) return { bucket: 'waiting', reason: HUMAN_GATE, command: recoveryCommand(fold, HUMAN_GATE) };
+
+  // 활성 소유권이 없으면 누구의 것도 아니다. *-conflict 상태와 같은 말이지만
+  // 상태가 그것을 덮지 못하는 경로가 있으므로 명시한다.
+  if (!fold.owner) return null;
+
+  // 시도 예산은 여기서 세지 않는다. src/run-ledger.js가 예산 소진을 이미
+  // status: halted / haltReason: attempt-limit으로 접는다.
+  return { bucket: 'drivable', reason: 'cursor-ready', command: `rdl run drive ${runArgs(fold)} --client-id ${quote('agent-or-service-client-id')}` };
+}
+
+/**
+ * 지금 이 런을 실제로 몰고 있는 사슬이 있는지 본다. 판정은 이미 있는 것을 읽기만
+ * 하고 새로 정의하지 않는다 — 활성의 정의는 driver-lease가 갖는다.
+ *
+ * 잠금을 잡지 않는다. `acquireProcessLock`을 부르면 상태를 묻는 명령이 상태를
+ * 바꾼다.
+ */
+function driverLeaseActive(layout, projectKey, runId) {
+  // schemaVersion 6 미만에는 정본 driver 이벤트 저장소가 없다. 없는 것은 활성이
+  // 아니다.
+  if (!layout || layout.schemaVersion < 6) return false;
+  const eventsRoot = path.join(layout.root, 'projects', 'workspace', 'events');
+  if (!fs.existsSync(eventsRoot)) return false;
+  return driverLease.foldDriverLeases(driverLease.readDriverEvents(eventsRoot, projectKey, runId)).activeLeases.length > 0;
+}
+
+function driveLockAlive(layout, projectKey, runId) {
+  let locks;
+  try { locks = runtime.runtimeWorkspace(layout.root).locks; } catch (error) { return false; }
+  // src/run.js:1184가 `drive-${project.key}-${run.toLowerCase()}`를 잠금 키로 쓴다.
+  const file = path.join(locks, `drive-${projectKey}-${String(runId).toLowerCase()}.lock`);
+  if (!fs.existsSync(file)) return false;
+  let record;
+  // 손상된 잠금은 누가 몰고 있다는 증거가 아니다. 그것을 활성으로 읽으면 깨진
+  // 파일 하나가 런을 영영 숨긴다.
+  try { record = runtime.readProcessLock(file); } catch (error) { return false; }
+  return runtime.processIsAlive(record.pid);
+}
+
+/**
+ * 로컬 원장과 공유 샤드를 합쳐 런 ID를 모은다. `.rundol/runs`는 git으로 전파되지
+ * 않으므로 로컬만 세면 다른 기계가 시작한 런이 새 클론에서 영영 보이지 않는다.
+ */
+function runIdsFor(layout, project) {
+  const ids = new Set();
+  const root = ledger.runsRoot(project.root);
+  if (fs.existsSync(root)) {
+    for (const name of fs.readdirSync(root)) if (ledger.RUN_ID.test(name)) ids.add(name);
+  }
+  for (const runId of ledger.listSharedRunIds(layout, project.key)) ids.add(runId);
+  return Array.from(ids).sort();
+}
+
+function item(project, fold, verdict) {
+  return {
+    project: project.key,
+    runId: fold.runId,
+    procedure: fold.procedure ? fold.procedure.name : null,
+    cursor: fold.cursor || null,
+    reason: verdict.reason,
+    command: verdict.command
+  };
+}
+
+/**
+ * 작업공간 전체를 훑어 갈래별 목록을 만든다. 쓰지 않는다.
+ *
+ * `runContext`(src/run.js:18)를 쓰지 않는 이유가 여기 있다 — 그 함수는
+ * `reconcileRun`을 부르고 reconcile은 원장에 append한다. 세션 시작마다 도는
+ * 명령이 원장을 고치면, 무엇이 주의를 요구하는지 묻는 행위가 원장을 바꾸는
+ * 행위가 된다. 보는 것과 고치는 것은 다른 일이다.
+ */
+function pendingRuns(start, options) {
+  const settings = options || {};
+  const empty = { workspace: null, waiting: [], drivable: [], driving: [], unreadable: [] };
+
+  // 작업공간이 없는 것과 깨진 것은 다르다. 없는 곳에서 훅이 도는 것은 정상이며
+  // "런이 없다"가 그 물음의 옳은 답이다. 깨진 것은 findWorkspaceRoot 다음에서
+  // 던져 호출자가 2로 끝내게 둔다.
+  let root;
+  try { root = findWorkspaceRoot(start); } catch (error) { return empty; }
+  const layout = workspaceLayout(root);
+
+  const all = listProjects(layout);
+  const projects = settings.project ? all.filter((project) => project.key === settings.project) : all;
+  if (settings.project && !projects.length) throw new Error(`${settings.project} 프로젝트를 작업공간에서 찾지 못했습니다.`);
+
+  const result = { workspace: layout.root, waiting: [], drivable: [], driving: [], unreadable: [] };
+  for (const project of projects) {
+    for (const runId of runIdsFor(layout, project)) {
+      let verdict;
+      let fold;
+      // 한 런의 손상이 나머지를 멀게 하지 않는다. 전체를 던지면 깨진 런 하나가
+      // 나머지 전부를 감추고, 그 사실을 아무도 모른다.
+      try {
+        const local = ledger.readRunEvents(ledger.runDirectory(project.root, runId));
+        const shared = ledger.readSharedRunEvents(layout, project.key, runId);
+        const events = ledger.unionRunEvents(local, shared);
+        fold = shared.length ? ledger.foldSharedRun(events) : ledger.foldRun(events);
+        verdict = classifyRun(fold, { lease: driverLeaseActive(layout, project.key, runId), lock: driveLockAlive(layout, project.key, runId) });
+      } catch (error) {
+        result.unreadable.push({ project: project.key, runId, reason: 'unreadable', detail: error.message });
+        continue;
+      }
+      if (!verdict) continue;
+      result[verdict.bucket].push(item(project, fold, verdict));
+    }
+  }
+  return result;
+}
+
+module.exports = { classifyRun, pendingRuns };

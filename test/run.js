@@ -54,6 +54,7 @@ require('./query-index.test');
 require('./document-analysis.test');
 require('./run-ledger.test');
 require('./run-cli.test');
+require('./run-pending.test');
 require('./harness-settings.test');
 require('./sync-finalization.test');
 require('./verify.test');

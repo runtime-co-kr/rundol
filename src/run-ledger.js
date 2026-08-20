@@ -1410,7 +1410,7 @@ function resolveOwnership(start, input) {
 
 module.exports = {
   RUN_ID, EVENT_ID, REQUEST_ID, DIGEST, CHECKPOINT_TYPES, canonicalJson, sha256, newRunId, newRequestId, deterministicRunId,
-  runDirectory, validateProcedure, normalizeRunEvent, createEventEnvelope, appendRunEvent, readRunEvents, createRun,
+  runsRoot, runDirectory, validateProcedure, normalizeRunEvent, createEventEnvelope, appendRunEvent, readRunEvents, createRun,
   foldRun, runOwner, listRuns, listSharedRunIds, recordRunEvent, mirrorRunEvent, readSharedRunEvents, unionRunEvents, reconcileRun,
   candidateConflictId, ownershipState, orderSharedEvents, foldSharedRun, takeoverRun, resolveOwnership,
   normalizeOperationDecision, operationIdFor, outcomeDigestFor, createOperation,
