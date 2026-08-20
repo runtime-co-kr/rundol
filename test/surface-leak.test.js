@@ -15,6 +15,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { verifyReport } = require('../src/worker-contract');
@@ -91,9 +92,30 @@ function ratchet(name, output) {
   assert.deepStrictEqual(stale, [], `${name}의 기준선 항목이 이미 해소되었습니다. KNOWN_LEAKS에서 지우세요: ${stale.join(', ')}`);
 }
 
-const context = spawnSync(process.execPath, [cli, 'context', '--json'], { cwd: repository, encoding: 'utf8' });
-assert.strictEqual(context.status, 0, context.stderr || context.stdout);
-ratchet('context', context.stdout);
+// 조회 결과의 래칫은 갓 만든 작업공간에서 잰다. 저장소 루트에 기대면 개발자
+// 기계에서만 통과하고 CI에서는 붙은 작업공간이 없어 실패한다 — 그러면 래칫은
+// 사람이 잊을 때만 도는 장치가 된다.
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-surface-leak-'));
+try {
+  const env = Object.assign({}, process.env, { RUNDOL_HOME: path.join(temporary, 'runtime') });
+  const setup = (program, args) => {
+    const done = spawnSync(program, args, { cwd: temporary, encoding: 'utf8', env });
+    assert.strictEqual(done.status, 0, `${program} ${args.join(' ')}\n${done.stdout}\n${done.stderr}`);
+  };
+  setup('git', ['init', '-b', 'main']);
+  setup('git', ['config', 'user.name', 'Rundol Test']);
+  setup('git', ['config', 'user.email', 'rundol@example.test']);
+  fs.writeFileSync(path.join(temporary, 'README.md'), '# surface leak\n', 'utf8');
+  setup('git', ['add', 'README.md']);
+  setup('git', ['commit', '-m', 'initial']);
+  setup(process.execPath, [cli, 'init', 'crm', '--name', 'CRM', '--profile', 'lean', '--root', temporary, '--json']);
+
+  const context = spawnSync(process.execPath, [cli, 'context', '--project', 'crm', '--root', temporary, '--json'], { cwd: repository, encoding: 'utf8', env });
+  assert.strictEqual(context.status, 0, context.stderr || context.stdout);
+  ratchet('context', context.stdout);
+} finally {
+  fs.rmSync(temporary, { recursive: true, force: true });
+}
 
 // 사람이 보는 명령 목록. 내부 실행 개념이 여기 나오면 사람은 제품이 아니라 구현을
 // 배워야 한다. 실행 원장·임대·어댑터 명령군은 rdl advanced로 내렸으므로 이 목록에

@@ -61,12 +61,33 @@ assert.strictEqual(JSON.stringify(input), frozen, '집계가 입력 배열을 �
 // 실제 명령 출력에 지표가 실려 나오는지 확인한다. 함수만 맞고 표면에 안 나오면
 // 아무도 그 수치를 보지 못한다.
 const repository = path.resolve(__dirname, '..');
-const result = spawnSync(process.execPath, [path.join(repository, 'bin', 'rdl.js'), 'debug', 'summary', '--project', 'rundol', '--json'], { cwd: repository, encoding: 'utf8' });
-assert.strictEqual(result.status, 0, result.stderr || result.stdout);
-const summary = JSON.parse(result.stdout);
-assert(summary.humanInterventions, 'debug summary에 humanInterventions가 없습니다.');
-assert(Object.prototype.hasOwnProperty.call(summary.humanInterventions, 'medianHumanTurns'));
-assert(Array.isArray(summary.humanInterventions.tasks));
+const cli = path.join(repository, 'bin', 'rdl.js');
+// 갓 만든 작업공간에서 잰다. 이 기계에 있는 프로젝트에 기대면 CI에서 실패하고,
+// 그러면 지표가 표면에 실려 나오는지를 아무도 확인하지 않게 된다.
+const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-intervention-'));
+try {
+  const env = Object.assign({}, process.env, { RUNDOL_HOME: path.join(probe, 'runtime') });
+  const setup = (program, args) => {
+    const done = spawnSync(program, args, { cwd: probe, encoding: 'utf8', env });
+    assert.strictEqual(done.status, 0, `${program} ${args.join(' ')}\n${done.stdout}\n${done.stderr}`);
+  };
+  setup('git', ['init', '-b', 'main']);
+  setup('git', ['config', 'user.name', 'Rundol Test']);
+  setup('git', ['config', 'user.email', 'rundol@example.test']);
+  fs.writeFileSync(path.join(probe, 'README.md'), '# intervention\n', 'utf8');
+  setup('git', ['add', 'README.md']);
+  setup('git', ['commit', '-m', 'initial']);
+  setup(process.execPath, [cli, 'init', 'crm', '--name', 'CRM', '--profile', 'lean', '--root', probe, '--json']);
+
+  const result = spawnSync(process.execPath, [cli, 'debug', 'summary', '--project', 'crm', '--root', probe, '--json'], { cwd: repository, encoding: 'utf8', env });
+  assert.strictEqual(result.status, 0, result.stderr || result.stdout);
+  const summary = JSON.parse(result.stdout);
+  assert(summary.humanInterventions, 'debug summary에 humanInterventions가 없습니다.');
+  assert(Object.prototype.hasOwnProperty.call(summary.humanInterventions, 'medianHumanTurns'));
+  assert(Array.isArray(summary.humanInterventions.tasks));
+} finally {
+  fs.rmSync(probe, { recursive: true, force: true });
+}
 
 // 로그는 진단이지 정본이 아니다. 상한이 없으면 계측을 기본으로 켜는 순간 로컬
 // 디스크를 조용히 먹는다. 상한에 닿으면 오래된 줄부터 버려야 하고, 그 판정은
