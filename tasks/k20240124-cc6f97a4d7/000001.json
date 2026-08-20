@@ -2026,6 +2026,44 @@
       "statusChangedAt": "2026-08-20T09:07:06.650Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-ZTBY5JN0": {
+      "title": "워커 계약을 실제 접수 경로에 연결한다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "할당 발급과 보고 접수가 저장되고 CLI로 왕복할 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "명령줄과 보드가 같은 acceptReport·verifyReport 결과를 쓴다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "사람 워커와 에이전트 워커가 같은 접수 경로를 쓴다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "겹치는 할당이 발급 시점에 assignmentOverlaps로 걸린다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T09:21:28.703Z",
+      "updatedAt": "2026-08-20T09:21:28.703Z",
+      "statusChangedAt": "2026-08-20T09:21:28.703Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
