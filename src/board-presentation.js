@@ -36,6 +36,34 @@ const POLICY_FIELDS = Object.freeze({ profiles: ['policy', 'sections'] });
 // 판수 1 시절부터 저장되던 정책 필드. 이름을 뒤늦게 붙였다고 이미 있는 파일을
 // 거부할 수는 없다. 판수 요구는 이 집합 밖의 새 정책 필드에만 건다.
 const GRANDFATHERED_POLICY_FIELDS = new Set(['profiles.policy', 'profiles.sections']);
+
+// 범위 전체에 하나뿐인 정책 값은 최상위 키에 둔다. 항목에 붙지 않는 값을 억지로
+// 항목 안에 넣으면 어느 항목에 넣을지가 임의가 되고, 임의로 정한 자리는 다음 사람이
+// 다른 자리에 넣는다. 그룹 이름과 겹치지 않아야 두 모양이 섞이지 않는다.
+const SCALAR_KEYS = Object.freeze(['approval']);
+
+// 승인 모드는 이름 하나가 조합 전체를 정한다. 조합의 일부를 여기서 적을 수 있으면
+// 이름이 뜻을 잃고 "AI 우선인데 검증자가 하나"인 프로젝트가 생긴다. 그래서 이 자리는
+// 이름만 받고 손잡이 값을 받지 않는다.
+//
+// mode는 프로젝트가 고르는 값이고 floor는 작업공간이 까는 바닥이다. 한 파일에 둘 다
+// 있어도 막지 않는다 — 범위마다 무엇을 읽을지는 읽는 쪽이 정하고, 파일이 그것까지
+// 강제하면 작업공간 파일을 프로젝트로 복사하는 흔한 일이 거부된다.
+const APPROVAL_FIELDS = Object.freeze(['mode', 'floor']);
+const APPROVAL_MODE_NAMES = Object.freeze(['human-only', 'ai-assisted', 'ai-first', 'ai-only']);
+
+function validateApproval(value, file) {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${file}: approval은 객체여야 합니다.`);
+  for (const field of Object.keys(value)) {
+    if (!APPROVAL_FIELDS.includes(field)) throw new Error(`${file}: 지원하지 않는 필드입니다: approval.${field} (가능: ${APPROVAL_FIELDS.join(', ')})`);
+    const name = value[field];
+    if (name === null) continue;
+    if (!APPROVAL_MODE_NAMES.includes(name)) {
+      throw new Error(`${file}: 알 수 없는 승인 모드입니다: approval.${field} = ${name} (가능: ${APPROVAL_MODE_NAMES.join(', ')})`);
+    }
+  }
+}
 // 표시 키의 옛 이름. 유형 이름을 바꾸면서 이관 경로를 함께 내지 않으면, 이름을 바꾼 것만으로
 // 이미 저장된 board.json이 "지원하지 않는 키"로 거부되어 기존 Workspace가 멈춘다.
 const LEGACY_GROUP_KEYS = { documentTypes: { api: 'interface' } };
@@ -204,8 +232,9 @@ function readConfig(file) {
   try { value = JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) { throw new Error(`${file}: 올바른 JSON이 아닙니다: ${error.message}`); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${file}: 설정 루트는 객체여야 합니다.`);
-  const allowed = ['schemaVersion'].concat(Object.keys(PRESENTATION_GROUPS));
+  const allowed = ['schemaVersion'].concat(SCALAR_KEYS, Object.keys(PRESENTATION_GROUPS));
   for (const field of Object.keys(value)) if (!allowed.includes(field)) throw new Error(`${file}: 지원하지 않는 필드입니다: ${field}`);
+  validateApproval(value.approval, file);
   // 경계 판정이 허용 필드 판정보다 먼저 돈다. 나중에 돌면 경계 이름이 "지원하지
   // 않는 필드"라는 엉뚱한 이름으로 거부되고, 그 메시지를 받은 사용자는 철자를
   // 고치려 든다. 판수도 보지 않는다 — 보면 판수를 올리는 것이 잠금 해제로 보인다.
@@ -247,6 +276,9 @@ function readConfig(file) {
 
 function mergePresentation(target, source) {
   if (!source) return target;
+  // 최상위 스칼라도 계층을 탄다. 그룹만 합치면 작업공간이 깐 바닥이 프로젝트에
+  // 닿지 않고, 바닥은 선언했는데 아무것도 막지 않는 상태가 된다.
+  if (source.approval) target.approval = Object.assign({}, target.approval, source.approval);
   for (const group of Object.keys(PRESENTATION_GROUPS)) {
     for (const [key, entry] of Object.entries(source[group] || {})) target[group][key] = Object.assign({}, target[group][key], entry);
   }
@@ -400,6 +432,14 @@ function savePresentation(start, projectKey, scope, input, options) {
       next[group][key] = entry;
     }
   }
+  if (input && input.approval !== undefined) {
+    validateApproval(input.approval, file);
+    next.approval = input.approval;
+  } else if (previous && previous.approval !== undefined) {
+    // 저장 요청이 approval을 담지 않았다고 지우지 않는다. 표시 문구 한 줄 고치는
+    // 저장이 승인 모드를 조용히 없애면, 없어진 것을 아무도 알아채지 못한다.
+    next.approval = previous.approval;
+  }
   next.schemaVersion = schemaVersionFor(next);
   // 정책이 바뀌는데 결정이 없으면 저장하지 않는다. 어떤 필드가 결정을 요구하는지
   // 함께 알린다 — 이름만 알리면 무엇을 되돌려야 하는지 알 수 없다.
@@ -437,7 +477,7 @@ function renderProjectBoardConfig() {
 module.exports = {
   DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
   TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, DEFAULT_PRESENTATION,
-  BOUNDARY_KEYS, POLICY_FIELDS,
+  BOUNDARY_KEYS, POLICY_FIELDS, SCALAR_KEYS, APPROVAL_MODE_NAMES,
   readConfig, mergePresentation, loadBoardPresentation, computeOrigins, policyDifferences,
   resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile, savePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig

@@ -6,6 +6,8 @@ const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { canonicalJson, validateProcedure } = require('./run-ledger');
 const { getLens, pinInstruction, resolveInstructionPin } = require('./instruction-registry');
+const { loadBoardPresentation } = require('./board-presentation');
+const { floorPolicy } = require('./approval-mode');
 
 function pinnedLensInstructions(lenses) {
   return Object.fromEntries(lenses.map((lensId) => {
@@ -506,6 +508,66 @@ function pinProcedureVerificationRevision(procedure, reviewedRevision) {
 // 유효 절차의 단일 소스: 내장 → Workspace → 프로젝트를 병합한 resolved 목록을
 // 한 곳에서 계산한다. show, check, run이 전부 이 함수만 소비해야 하며, 어떤
 // 소비자도 이름 목록이나 병합 규칙을 따로 계산하지 않는다.
+// 프로젝트가 고른 모드가 모든 스텝의 바닥이 된다. 바닥이 없으면 제약하지 않는다 —
+// 여기서 가장 조인 쪽을 기본으로 두면 절차가 통째로 얼어붙고, 그러면 사람들이 바닥을
+// 꺼 버린다. 꺼진 바닥은 없는 바닥보다 나쁘다.
+//
+// 바닥은 판정에만 쓰고 스텝에 저장하지 않는다. 저장하면 모드를 바꿨을 때 굳어 버린
+// 옛 바닥이 스텝에 남아, 모드를 조여도 스텝이 옛 값으로 통과한다.
+function resolveApprovalFloor(start, projectKey) {
+  if (!projectKey) return null;
+  let presentation;
+  try { presentation = loadBoardPresentation(start, projectKey); }
+  catch (error) { return null; }
+  const approval = presentation && presentation.approval;
+  if (!approval) return null;
+  // 바닥은 작업공간이 깔고 모드는 프로젝트가 고른다. 병합된 결과에서 둘 다 읽되,
+  // 실제 제약은 더 조인 쪽이 이긴다 — 바닥보다 조인 모드를 골랐으면 그 모드가 바닥이다.
+  const names = [approval.floor, approval.mode].filter(Boolean);
+  if (!names.length) return null;
+  let tightest = null;
+  for (const name of names) {
+    let policy;
+    try { policy = floorPolicy(name); } catch (error) { continue; }
+    if (!tightest) { tightest = policy; continue; }
+    tightest = {
+      validators: Math.max(tightest.validators, policy.validators),
+      quorum: Math.max(tightest.quorum, policy.quorum),
+      requireAdapterDiversity: tightest.requireAdapterDiversity || policy.requireAdapterDiversity
+    };
+  }
+  return tightest;
+}
+
+// 바닥은 올리는 것이지 벽이 아니다. 바닥보다 낮은 선언을 거부하면, 조직이 바닥을 까는
+// 순간 내장 절차가 로드에 실패한다 — 내장은 검증자 하나를 선언하고 있으므로 바닥을
+// 둘로 두면 아무 절차도 열리지 않는다. 그러면 사람들은 바닥을 꺼 버린다.
+//
+// 그래서 두 기제를 다르게 다룬다. 계층 오버라이드(작업공간 → 프로젝트)는 푸는 것을
+// 거부하고, 모드 바닥은 값을 끌어올린다. 앞엣것은 사람이 적은 것을 지키는 일이고
+// 뒤엣것은 조직 표준을 적용하는 일이라, 같은 규칙으로 다루면 한쪽이 반드시 어색해진다.
+//
+// 올린 값은 해석 결과에만 있고 파일에는 없다. 모드를 되돌리면 원래 값으로 돌아간다.
+function liftToFloor(procedure, floor) {
+  if (!floor) return procedure;
+  let touched = false;
+  const steps = procedure.steps.map((step) => {
+    const policy = step.verify && step.verify.policy;
+    if (!policy) return step;
+    const lifted = Object.assign({}, policy);
+    if (Number.isInteger(floor.validators) && Number.isInteger(lifted.validators) && lifted.validators < floor.validators) lifted.validators = floor.validators;
+    if (Number.isInteger(floor.quorum) && Number.isInteger(lifted.quorum) && lifted.quorum < floor.quorum) lifted.quorum = floor.quorum;
+    if (floor.requireAdapterDiversity === true && lifted.requireAdapterDiversity !== true) lifted.requireAdapterDiversity = true;
+    // 정족수는 검증자를 넘을 수 없다. 바닥이 검증자만 올리고 정족수를 그대로 두면
+    // 통과 불가능한 정책이 만들어지고, 그 절차는 영원히 완주하지 못한다.
+    if (Number.isInteger(lifted.quorum) && Number.isInteger(lifted.validators) && lifted.quorum > lifted.validators) lifted.quorum = lifted.validators;
+    if (JSON.stringify(lifted) === JSON.stringify(policy)) return step;
+    touched = true;
+    return Object.assign({}, step, { verify: Object.assign({}, step.verify, { policy: lifted }) });
+  });
+  return touched ? Object.assign({}, procedure, { steps }) : procedure;
+}
+
 function loadProcedures(start, projectKey) {
   const layout = workspaceLayout(start);
   const layers = [{ source: '내장', procedures: BUILTIN }];
@@ -516,15 +578,18 @@ function loadProcedures(start, projectKey) {
     const project = selectProject(layout, projectKey, true);
     layers.push({ source: `projects/${project.key}/procedures.json`, procedures: readProceduresFile(proceduresFile(project.root)) });
   }
+  const floor = resolveApprovalFloor(start, projectKey);
   const resolved = new Map();
   for (const layer of layers) {
     for (const [name, definition] of Object.entries(layer.procedures)) {
       if (!NAME.test(name)) throw new Error(`${layer.source}: 잘못된 절차 이름입니다: ${name}`);
       const pinned = pinProcedureInstructions(Object.assign({ name }, definition), layer.source);
       const candidate = validateDriveSafety(validateProcedure(pinned), layer.source);
+      for (const step of candidate.steps) assertAllowWithinFloor(name, step, floor, layer.source);
+      const raised = liftToFloor(candidate, floor);
       const parent = resolved.get(name);
-      if (parent) validateOverride(name, parent.definition, candidate, layer.source);
-      resolved.set(name, { definition: candidate, source: layer.source });
+      if (parent) validateOverride(name, parent.definition, raised, layer.source);
+      resolved.set(name, { definition: raised, source: layer.source });
     }
   }
   return {
@@ -551,4 +616,4 @@ function substituteArgs(args, context) {
   }));
 }
 
-module.exports = { BUILTIN, ALLOW_DIRECTION, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };
+module.exports = { BUILTIN, ALLOW_DIRECTION, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };

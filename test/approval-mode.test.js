@@ -127,4 +127,41 @@ for (const name of MODE_NAMES) {
   assertAllowWithinFloor('f', step({ minValidators: 5, requireDiversity: true }), floor, 'fixture');
 }
 
+// 바닥은 올리는 것이지 벽이 아니다. 바닥보다 낮은 선언을 거부하면 조직이 바닥을 까는
+// 순간 내장 절차가 로드에 실패하고 — 내장은 검증자 하나를 선언한다 — 그러면 사람들은
+// 바닥을 꺼 버린다. 꺼진 바닥은 없는 바닥보다 나쁘다.
+{
+  const { liftToFloor } = require('../src/procedure');
+
+  const procedure = {
+    steps: [
+      { id: 'author', executor: 'adapter' },
+      { id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'], policy: { validators: 1, quorum: 1, maxRefuted: 0, maxAbstain: 0, requireAdapterDiversity: false } } }
+    ]
+  };
+
+  const raised = liftToFloor(procedure, floorPolicy('ai-first'));
+  const lifted = raised.steps.find((step) => step.id === 'verify').verify.policy;
+  assert.strictEqual(lifted.validators, 2, '바닥이 검증자를 끌어올려야 합니다');
+  assert.strictEqual(lifted.requireAdapterDiversity, true, '바닥이 다양성 요구를 켜야 합니다');
+  assert.strictEqual(lifted.maxRefuted, 0, '바닥이 건드리지 않는 값은 그대로여야 합니다');
+
+  // 끌어올린 값은 해석 결과에만 있다. 원본을 고치면 모드를 되돌려도 돌아갈 곳이 없다.
+  assert.strictEqual(procedure.steps[1].verify.policy.validators, 1, '원본이 변형되면 안 됩니다');
+  assert.strictEqual(procedure.steps[1].verify.policy.requireAdapterDiversity, false);
+
+  // 정족수는 검증자를 넘을 수 없다. 검증자만 올리고 정족수를 그대로 두면 통과 불가능한
+  // 정책이 만들어지고, 그 절차는 영원히 완주하지 못한다.
+  const skewed = { steps: [{ id: 'verify', executor: 'adapter', verify: { policy: { validators: 1, quorum: 5 } } }] };
+  const fixed = liftToFloor(skewed, { validators: 2, quorum: 2, requireAdapterDiversity: false }).steps[0].verify.policy;
+  assert.ok(fixed.quorum <= fixed.validators, '정족수가 검증자를 넘으면 안 됩니다');
+
+  // 바닥이 없으면 그대로 둔다. 절차를 만질 이유가 없다.
+  assert.strictEqual(liftToFloor(procedure, null), procedure);
+
+  // 이미 바닥보다 조여 둔 스텝은 건드리지 않는다. 같은 객체가 그대로 돌아와야 한다.
+  const already = { steps: [{ id: 'verify', executor: 'adapter', verify: { policy: { validators: 5, quorum: 5, requireAdapterDiversity: true } } }] };
+  assert.strictEqual(liftToFloor(already, floorPolicy('ai-first')), already, '이미 조인 스텝은 그대로여야 합니다');
+}
+
 process.stdout.write('approval mode tests passed\n');
