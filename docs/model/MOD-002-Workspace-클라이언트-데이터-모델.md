@@ -11,7 +11,7 @@ functionIds:
   - COL-01
 scope: "COL-01 Client manifest의 생성·상태 변경·조회 데이터 계약"
 excludes:
-  - "문서 lease 이벤트와 프로젝트 task shard"
+  - "프로젝트 task shard"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
@@ -50,16 +50,14 @@ related:
 | 출발 | 관계 | 대상 | 카디널리티 | 삭제·수명주기 |
 |---|---|---|---|---|
 | Workspace | 등록 | Client manifest | 1:N | manifest를 자동 삭제하지 않음 |
-| Client manifest | 소유 | `project.md` Member | N:1 | lease 사용 시 대상 프로젝트에 member가 존재해야 함 |
-| Client manifest | 발생 | lease event | 1:N | Client disable 후 기존 이벤트는 보존 |
+| Client manifest | 소유 | `project.md` Member | N:1 | 프로젝트 정본 변경 시 대상 프로젝트에 member가 존재해야 함 |
 
-아래 다이어그램은 위 표와 엔티티 표에서 파생한 보조 뷰다. 카디널리티, 필드 제약과 수명주기의 정본은 표이며 두 표현이 어긋나면 표를 따른다. 본 문서의 책임 경계는 Client manifest이므로 속성은 Client manifest에만 표시하고, Member는 [[project]] charter가, lease event는 [[MOD-003-문서-리스-이벤트-데이터-모델|MOD-003]]이 정의한다.
+아래 다이어그램은 위 표와 엔티티 표에서 파생한 보조 뷰다. 카디널리티, 필드 제약과 수명주기의 정본은 표이며 두 표현이 어긋나면 표를 따른다. 본 문서의 책임 경계는 Client manifest이므로 속성은 Client manifest에만 표시하고, Member는 [[project]] charter가 정의한다.
 
 ```mermaid
 erDiagram
     WORKSPACE ||--o{ CLIENT_MANIFEST : "등록"
     MEMBER ||--o{ CLIENT_MANIFEST : "소유"
-    CLIENT_MANIFEST ||--o{ LEASE_EVENT : "발생"
 
     CLIENT_MANIFEST {
         string id PK
@@ -80,7 +78,7 @@ erDiagram
 - `type`, `owner`, `name` 검증이 끝나기 전 파일을 만들지 않는다.
 - 상태 변경은 기존 manifest의 `revision`과 `status`만 바꾸며 등록 메타데이터를 보존한다.
 - 현재 상태와 같은 enable/disable 요청은 `changed: false`이고 revision과 commit을 만들지 않는다.
-- disabled Client는 새 lease 이벤트를 만들 수 없다. lease 이벤트 자체는 [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]로 폐기 대상이 되었으며, 이 불변식은 구현 제거 전까지의 기록이다. 기존 이벤트는 지우지 않고 보존한다.
+- disabled Client는 프로젝트 정본을 바꾸는 요청을 낼 수 없다. 문서 편집 리스는 [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]로 폐기했고 이미 쌓인 이벤트는 지우지 않고 보존한다.
 
 ## 인덱스와 조회
 
@@ -120,7 +118,7 @@ Client의 기본 키는 소문자 케밥 표기 `id`다. 정본 파일은 `clien
 
 #### 관계와 카디널리티
 
-한 Client는 한 owner member를 참조하고 프로젝트별로 0개 이상의 lease 이벤트를 만들 수 있다. lease 시점마다 owner가 해당 프로젝트 charter의 member인지 재검증한다.
+한 Client는 한 owner member를 참조한다. 프로젝트 정본을 바꾸는 요청마다 owner가 해당 프로젝트 charter의 member인지 재검증한다.
 
 #### 상태와 전이
 
@@ -139,4 +137,4 @@ Client ID와 파일명은 항상 일치하고 type은 `device`, `agent`, `servic
 - 유효 입력은 revision 1 active manifest와 Workspace commit을 만든다.
 - 중복 ID, 잘못된 type·owner, 빈 name은 파일을 만들지 않고 거절한다.
 - 상태 변경은 revision을 1 증가시키고 동일 상태 요청은 변경하지 않는다.
-- disabled Client의 lease 요청은 거절된다.
+- disabled Client의 정본 변경 요청은 거절된다.
