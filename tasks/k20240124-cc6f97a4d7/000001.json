@@ -2162,6 +2162,46 @@
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-RVW4CCST": {
+      "title": "저장 왕복 무변경 보장을 시험으로 고정한다",
+      "summary": "Board 저장 경로가 편집하지 않은 문서를 다시 쓰지 않는다는 보장은 코드에만 있었고 시험되지 않았다. WYSIWYG 편집기 도입 판단의 전제이기도 하다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "IFC-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정본 문서 전체가 편집 없는 저장에서 바이트 동일임을 시험이 확인한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "wikilink·block anchor·한글 표·mermaid·CRLF가 고정값으로 남는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "npm test에 등록되어 회귀를 막는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "발견된 위반 문서가 정리되어 시험이 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:08:29.359Z",
+      "updatedAt": "2026-08-20T15:08:29.359Z",
+      "statusChangedAt": "2026-08-20T15:08:29.359Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
