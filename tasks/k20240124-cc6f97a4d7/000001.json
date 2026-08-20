@@ -2589,7 +2589,7 @@
         },
         "AC-002": {
           "text": "항목마다 상속 출처와 덮어쓰기 여부가 표시된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "경계 층 항목이 화면에 나타나지 않는다",
@@ -2606,7 +2606,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:53.886Z",
-      "updatedAt": "2026-08-20T16:27:16.791Z",
+      "updatedAt": "2026-08-20T16:27:21.201Z",
       "statusChangedAt": "2026-08-20T16:27:16.791Z",
       "externalRefs": [],
       "project": "rundol"
