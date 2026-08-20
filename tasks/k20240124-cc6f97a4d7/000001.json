@@ -2762,6 +2762,36 @@
       "statusChangedAt": "2026-08-20T15:11:44.179Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-M8NNSWX0": {
+      "title": "[자산] GIF와 WebP 축소를 지원하거나 대안을 정한다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "low",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "GIF·WebP가 한계를 넘어도 사람이 손대지 않고 처리된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "그 방법이 네이티브 의존성과 설치 스크립트를 늘리지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:12:01.326Z",
+      "updatedAt": "2026-08-20T15:12:01.326Z",
+      "statusChangedAt": "2026-08-20T15:12:01.326Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
