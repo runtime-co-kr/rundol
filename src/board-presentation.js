@@ -402,6 +402,24 @@ function stableJson(value) {
 // 조용히 사라진다.
 function policyDifferences(previous, next) {
   const differences = [];
+  // 최상위 값도 정책이다. 그룹만 훑으면 승인 모드를 사람만에서 AI만로 바꾸는 저장이
+  // 아무 기록도 남기지 않는다 — 가장 크게 푸는 변경이 가장 조용히 지나간다.
+  for (const key of SCALAR_KEYS) {
+    const from = previous ? previous[key] : undefined;
+    const to = next ? next[key] : undefined;
+    if (stableJson(from) !== stableJson(to)) differences.push({ group: key, key: '(범위 전체)', field: key, from, to });
+  }
+  // 최상위 맵은 키 단위로 견준다. 통째로 견주면 유형 하나를 고쳤는지 전부 갈아엎었는지
+  // 구분할 수 없고, 기록에 "무엇이 바뀌었나"가 남지 않는다.
+  for (const mapKey of MAP_KEYS) {
+    const before = (previous && previous[mapKey]) || {};
+    const after = (next && next[mapKey]) || {};
+    for (const key of Array.from(new Set(Object.keys(before).concat(Object.keys(after)))).sort()) {
+      if (stableJson(before[key]) !== stableJson(after[key])) {
+        differences.push({ group: mapKey, key, field: '(정의 전체)', from: before[key], to: after[key] });
+      }
+    }
+  }
   for (const group of Object.keys(PRESENTATION_GROUPS)) {
     const before = (previous && previous[group]) || {};
     const after = (next && next[group]) || {};

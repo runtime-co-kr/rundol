@@ -171,6 +171,30 @@ try {
   // 기록 없이 사라진다.
   assert.strictEqual(where({ priorities: { low: { label: '낮음' } } }, { priorities: { low: { label: '낮음', disabled: true } } }), 'priorities.low.disabled');
   assert.strictEqual(where({ priorities: { low: { disabled: true } } }, { priorities: { low: {} } }), 'priorities.low.disabled', '표식을 떼는 것도 정책입니다');
+
+  // 최상위 값도 정책이다. 그룹만 훑으면 승인 모드를 사람만에서 AI만로 바꾸는 저장이
+  // 아무 기록도 남기지 않는다 — 가장 크게 푸는 변경이 가장 조용히 지나간다.
+  assert.notStrictEqual(where({ approval: { mode: 'human-only' } }, { approval: { mode: 'ai-only' } }), '', '승인 모드 변경이 결정을 요구해야 합니다');
+  assert.strictEqual(where({ approval: { mode: 'ai-first' } }, { approval: { mode: 'ai-first' } }), '', '같은 모드는 변경이 아닙니다');
+
+  // 최상위 맵은 키 단위로 견준다. 통째로 견주면 유형 하나를 고쳤는지 전부 갈아엎었는지
+  // 구분할 수 없고, 기록에 무엇이 바뀌었는지가 남지 않는다.
+  assert.ok(
+    where({ itemTypes: {} }, { itemTypes: { spike: { label: '스파이크', constraints: {} } } }).startsWith('itemTypes.spike'),
+    '유형 추가가 그 키를 지목해야 합니다'
+  );
+  assert.ok(
+    where(
+      { itemTypes: { test: { constraints: { exempt: ['implementation-readiness'] } } } },
+      { itemTypes: { test: { constraints: { exempt: [] } } } }
+    ).startsWith('itemTypes.test'),
+    '면제를 바꾸는 것은 정책 변경입니다'
+  );
+  assert.strictEqual(
+    where({ itemTypes: { test: { label: '검증' } } }, { itemTypes: { test: { label: '검증' } } }),
+    '',
+    '같은 정의는 변경이 아닙니다'
+  );
 }
 
 // 업무 유형은 최상위 맵이다. 표시 그룹에 넣지 않는 이유는 그쪽이 라벨·설명·순서만

@@ -18,6 +18,7 @@ const { addAsset } = require('./asset');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
+const { CONSTRAINT_KINDS, EXEMPTABLE_GATES } = require('./item-type');
 
 // inheritance와 sources는 파일 경로와 원본을 담은 파생 정보라 revision 비교에서 뺀다.
 // 넣어 두면 경로가 같아도 값이 같은지 판단하는 데 방해만 된다.
@@ -357,6 +358,9 @@ function workspaceSnapshot(root, projectKey, search) {
     // 모드 표는 코드가 갖고 화면은 그것을 그린다. 화면이 표를 다시 적으면 코드가
     // 바뀌는 날 둘이 갈라지고, 사용자는 화면을 믿는다.
     approvalCatalog: { modes: APPROVAL_MODES, defaultMode: DEFAULT_PROJECT_MODE, defaultFloor: DEFAULT_WORKSPACE_FLOOR },
+    // 제약 카탈로그도 화면이 다시 적지 않는다. 다섯 종류가 무엇인지는 코드가 알고,
+    // 화면은 그것을 그린다 — 화면이 목록을 따로 들면 종류가 늘어날 때 한쪽만 는다.
+    itemTypeCatalog: { kinds: CONSTRAINT_KINDS, exemptable: EXEMPTABLE_GATES },
     runs: [],
     proposals: []
   };

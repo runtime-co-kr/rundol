@@ -1478,6 +1478,90 @@ const APPROVAL_MODE_LABELS = {
 };
 const APPROVAL_BASIS_LABELS = { read: '읽음', check: '검사', verdict: '판정', delegated: '위임됨' };
 
+// 업무 유형. 유형 하나가 필드·규칙·화면을 함께 끌고 오므로, 이 화면이 보여줄 것은
+// 이름 목록이 아니라 "이 유형이 무엇을 요구하는가"다.
+const CONSTRAINT_LABELS = {
+  fields: '필드와 허용값',
+  requiresLink: '문서 연결 요구',
+  requiredWhen: '조건부 필수',
+  unique: '조합 유일성',
+  exempt: '게이트 면제'
+};
+const GATE_LABELS = {
+  'implementation-readiness': '구현 준비도',
+  'done-requires-test-link': '완료 시 검증 문서 연결'
+};
+
+// 제약 값을 사람이 읽는 말로. 원본 JSON을 그대로 보이면 무엇을 뜻하는지 읽는 사람이
+// 매번 해석해야 하고, 해석이 필요한 화면은 결국 파일을 여는 것과 다르지 않다.
+function describeConstraint(kind, value) {
+  if (kind === 'fields') {
+    return Object.entries(value || {}).map(([name, spec]) => {
+      if (spec && Array.isArray(spec.values)) return `${name}: ${spec.values.join(' · ')}`;
+      if (spec && spec.type === 'integer') return `${name}: 정수${spec.min === undefined ? '' : ` ${spec.min} 이상`}`;
+      return name;
+    });
+  }
+  if (kind === 'requiresLink') {
+    return Object.entries(value || {}).map(([type, range]) => {
+      const min = range && range.min;
+      const max = range && range.max;
+      if (min !== undefined && min === max) return `${type} 정확히 ${min}개`;
+      if (max === undefined) return `${type} 최소 ${min}개`;
+      return `${type} ${min}~${max}개`;
+    });
+  }
+  if (kind === 'requiredWhen') {
+    return Object.entries(value || {}).map(([field, when]) => {
+      const values = when && Array.isArray(when.is) ? when.is.join(' 또는 ') : '';
+      return `${when && when.field}이(가) ${values}이면 ${field} 필요`;
+    });
+  }
+  if (kind === 'unique') {
+    const parts = [].concat(value && value.links || [], value && value.fields || []);
+    const released = value && value.releasedBy;
+    const base = `[${parts.join(', ')}] 조합이 유일`;
+    return [released && released.length ? `${base} — ${released.join(', ')} 상태는 자리를 놓아줌` : base];
+  }
+  if (kind === 'exempt') return (value || []).map((gate) => GATE_LABELS[gate] || gate);
+  return [JSON.stringify(value)];
+}
+
+function renderItemTypeSettings() {
+  if (!el('item-type-settings')) {
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="item-type-settings" class="settings-panel"><header><h2>업무 유형</h2><p>유형 하나가 필드와 규칙과 화면을 함께 끌고 옵니다. 규칙은 코드가 가진 다섯 가지 제약 종류에 값을 채우는 방식이라, 새 유형을 만드는 데 코드 변경이 필요하지 않습니다. 지금은 읽기 전용이며 <code>board.json</code>의 <code>itemTypes</code>를 직접 편집합니다.</p></header><div class="settings-body"><div id="item-type-list"></div><div id="item-type-derived"></div></div></section>');
+  }
+  const snapshot = state.snapshot;
+  const types = (snapshot.presentation && snapshot.presentation.itemTypes) || null;
+  const catalog = snapshot.itemTypeCatalog;
+  if (!types || !catalog) {
+    el('item-type-list').innerHTML = '<p class="empty-state">이 Board 서버는 업무 유형을 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
+    el('item-type-derived').innerHTML = '';
+    return;
+  }
+  const origins = snapshot.presentation.origins || {};
+
+  el('item-type-list').innerHTML = Object.keys(types).sort().map((id) => {
+    const entry = types[id] || {};
+    const constraints = entry.constraints || {};
+    const kinds = catalog.kinds.filter((kind) => constraints[kind] !== undefined);
+    const origin = presentationOrigin(origins, 'itemTypes', id);
+    const rows = kinds.length
+      ? kinds.map((kind) => `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(CONSTRAINT_LABELS[kind] || kind)}</strong><small><code>${escapeHtml(kind)}</code> · ${describeConstraint(kind, constraints[kind]).map(escapeHtml).join(' / ')}</small></div></div>`).join('')
+      : '<div class="presentation-row"><div class="presentation-row-main"><small>제약 없음 — 기본 유형입니다.</small></div></div>';
+    return `<section class="presentation-group"><h3>${escapeHtml(entry.label || id)}<span class="group-count"><code>${escapeHtml(id)}</code> · 제약 ${kinds.length}종${entry.disabled ? ' · 사용 안 함' : ''}</span></h3>`
+      + `<div class="presentation-rows">${rows}</div>`
+      + `<div class="item-type-origin">${originIndicator(origin)}</div></section>`;
+  }).join('');
+
+  // 유형 추가로 무엇이 따라오고 무엇이 안 따라오는지 함께 적는다. 이 선을 긋지 않으면
+  // "유형만 추가하면 다 된다"는 기대가 생기고, 기대가 깨지는 지점이 매번 다르게 나타난다.
+  el('item-type-derived').innerHTML = '<h3 class="approval-heading">유형을 더하면 따라오는 것</h3>'
+    + `<p class="approval-note">제약 다섯 종류(<code>${catalog.kinds.join('</code>, <code>')}</code>)로 규칙을 적으면 검사가 그대로 판정합니다. 면제할 수 있는 게이트는 <code>${catalog.exemptable.join('</code>, <code>')}</code>뿐이며, 되돌릴 수 없는 관문은 목록에 없습니다 — 유형 추가가 경계 우회 수단이 되면 안 되기 때문입니다.</p>`
+    + '<div class="split-note"><div class="note-block"><h4>자동으로 생깁니다</h4><ul><li>목록의 유형 필터</li><li>선언한 필드의 입력 칸</li><li>연결 요구에 맞는 문서 선택기</li><li>조건부 필수 안내</li></ul></div>'
+    + '<div class="note-block absent"><h4>생기지 않습니다</h4><ul><li>유형 전용 집계 화면</li><li>유형의 의미를 알아야 만들 수 있는 통계</li></ul></div></div>';
+}
+
 function renderApprovalSettings() {
   if (!el('approval-settings')) {
     el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 지금은 읽기 전용이며 <code>board.json</code>의 <code>approval</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
@@ -1619,7 +1703,7 @@ function renderSettings() {
   }).join('') || `<p class="empty-state">등록된 Client가 없습니다. <code>rdl client register ${escapeHtml(state.snapshot.client.id)} --name "&lt;이름&gt;" --type device --owner &lt;MEMBER-ID&gt;</code></p>`;
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
-  renderPresentationSettings(); renderApprovalSettings(); renderContractSettings(); renderContractCompliance();
+  renderPresentationSettings(); renderApprovalSettings(); renderItemTypeSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');
 }

@@ -3460,3 +3460,45 @@ dialog label textarea {
 .editor-check-line { color: var(--secondary-TextColor); line-height: 1.6; }
 .editor-check-line.is-error { color: var(--danger-Color); }
 .editor-check-line.is-warning { color: var(--warning-Color); }
+
+/* 업무 유형. 무엇이 따라오고 무엇이 안 따라오는지를 나란히 둔다 — 이 선을 긋지 않으면
+   "유형만 추가하면 다 된다"는 기대가 생기고, 기대가 깨지는 지점이 매번 다르다. */
+.item-type-origin {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--spacing-1);
+}
+
+.split-note {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-1);
+}
+
+.note-block {
+  padding: var(--spacing-1_5);
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+}
+
+.note-block.absent {
+  border-style: dashed;
+  color: var(--tertiary-TextColor);
+}
+
+.note-block h4 {
+  margin: 0 0 var(--spacing-1);
+  font-size: var(--small-FontSize);
+  font-weight: 600;
+}
+
+.note-block.absent h4 { color: var(--tertiary-TextColor); }
+
+.note-block ul {
+  margin: 0;
+  padding-left: var(--spacing-2);
+  font-size: var(--small-FontSize);
+  color: var(--secondary-TextColor);
+}
+
+.note-block.absent ul { color: var(--tertiary-TextColor); }
