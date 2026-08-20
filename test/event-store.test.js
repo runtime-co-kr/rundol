@@ -84,6 +84,47 @@ async function main() {
   for (const line of lines) JSON.parse(line);
   assert.strictEqual(fs.readFileSync(path.join(concurrentRoot, segments[0]), 'utf8').split(/\r?\n/u).filter(Boolean).length, 500);
 
+  // 샤드 파일명은 프로젝트 키와 클라이언트 식별자를 하이픈으로 잇는다. 둘 다 하이픈을
+  // 담을 수 있으므로 서로 다른 짝이 같은 이름을 만들 수 있고, 그때는 파일을 보고
+  // 구분할 방법이 없다 — 이름이 같기 때문이다.
+  //
+  // 해소 방안은 구분자를 바꾸는 것이 아니라 이름을 정하는 시점에 막는 것으로 정했다.
+  // 구분자를 바꾸면 이미 쌓인 샤드의 이름이 달라져 지난 기록을 고쳐 쓰게 되고, 그것은
+  // 이 제품이 하지 않기로 한 일이다.
+  {
+    // a + b-c 와 a-b + c 는 둘 다 a-b-c 를 만든다.
+    const collision = eventStore.shardPrefixCollision([
+      { project: 'a', clientId: 'b-c' },
+      { project: 'a-b', clientId: 'c' }
+    ]);
+    assert(collision, '겹치는 짝을 잡지 못했습니다.');
+    assert.strictEqual(collision.key, 'a-b-c');
+    assert.deepStrictEqual(collision.first, { project: 'a', clientId: 'b-c' });
+    assert.deepStrictEqual(collision.second, { project: 'a-b', clientId: 'c' });
+
+    // 같은 짝이 두 번 나오는 것은 겹침이 아니다. 같은 클라이언트가 같은 프로젝트에
+    // 여러 번 등장하는 것은 정상이고, 이것을 겹침으로 세면 등록이 통째로 막힌다.
+    assert.strictEqual(eventStore.shardPrefixCollision([
+      { project: 'memo', clientId: 'laptop' },
+      { project: 'memo', clientId: 'laptop' }
+    ]), null);
+
+    // 하이픈이 있어도 경계가 다르면 겹치지 않는다.
+    assert.strictEqual(eventStore.shardPrefixCollision([
+      { project: 'a-b', clientId: 'c-d' },
+      { project: 'a', clientId: 'b-c' }
+    ]), null);
+
+    assert.strictEqual(eventStore.shardPrefixCollision([]), null);
+    assert.strictEqual(eventStore.shardPrefixCollision([{ project: 'only', clientId: 'one' }]), null);
+
+    // 겹침 판정이 실제로 등록을 막는지는 협업 저장소가 확인한다. 판정만 맞고 부르는
+    // 곳이 없으면 이름은 여전히 겹친 채 만들어진다.
+    const store = fs.readFileSync(path.join(root, 'src', 'collaboration-store.js'), 'utf8');
+    assert(store.includes('shardPrefixCollision'), '등록 경로가 겹침을 확인하지 않습니다.');
+    assert(store.includes('RDL-EVENT-010'), '겹침 거절이 진단 코드를 밝히지 않습니다.');
+  }
+
   process.stdout.write('event store tests passed\n');
 }
 
