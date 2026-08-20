@@ -128,6 +128,7 @@ function validateOverride(name, parent, child, source) {
     validateOnFailOverride(name, step, overridden, source);
     validateVerificationOverride(name, step, overridden, source);
     validateRetrySafetyOverride(name, step, overridden, source);
+    validateAllowOverride(name, step, overridden, source);
     if (step.human && !overridden.human) throw new Error(`${source}: ${name}의 사람 게이트를 제거할 수 없습니다: ${step.id}`);
   }
   // 부모 스텝의 상대 순서는 유지되어야 한다. 사이에 새 스텝을 끼우는 것은 허용된다.
@@ -210,6 +211,70 @@ function assertPolicyMonotonic(name, parent, child, source) {
     if (!Number.isInteger(to)) throw new Error(`${source}: ${name}의 ${key}는 정수여야 합니다: ${parent.id}`);
     const loosened = direction === 'higher' ? to < from : to > from;
     if (loosened) throw new Error(`${source}: ${name}의 ${key}를 완화할 수 없습니다: ${parent.id} (${from} -> ${to})`);
+  }
+}
+
+// 파이프 허용정책. 프로젝트 모드 하나로는 부족하다 — 같은 프로젝트 안에서도 문서를
+// 쓰는 구간과 그것을 밖으로 내보내는 구간은 되돌릴 수 있는 정도가 다르다.
+//
+// 동시에 구간마다 자유롭게 정할 수 있으면 프로젝트 모드는 선언에 그친다. "이 프로젝트는
+// 사람만"이라 적어 두고 스텝마다 풀어 두는 것이 가능하면 모드는 아무것도 보장하지 않는다.
+// 그래서 모드가 바닥이고 스텝은 그 위에서 조이기만 한다.
+//
+// 조임 방향이 손잡이마다 다르다. 검증자 수는 클수록 조이고 허용 실행 주체는 적을수록
+// 조인다. 하나의 비교로 전부 판정하려 하면 반드시 한쪽이 뒤집힌다.
+const ALLOW_DIRECTION = Object.freeze({
+  executors: 'subset',
+  humanGate: 'gate',
+  minValidators: 'higher',
+  requireDiversity: 'enable'
+});
+const HUMAN_GATE_RANK = Object.freeze({ optional: 0, required: 1 });
+
+function validateAllowOverride(name, parent, child, source) {
+  if (!parent.allow) return;
+  if (!child.allow) throw new Error(`${source}: ${name}의 허용정책을 제거할 수 없습니다: ${parent.id}`);
+  for (const key of Object.keys(parent.allow)) {
+    const direction = ALLOW_DIRECTION[key];
+    if (!direction) throw new Error(`${source}: ${name}의 허용정책 ${key}에 조임 방향이 선언되지 않았습니다: ${parent.id}`);
+    const from = parent.allow[key];
+    const to = child.allow[key];
+    if (to === undefined) throw new Error(`${source}: ${name}의 ${key}를 제거할 수 없습니다: ${parent.id}`);
+    if (direction === 'subset') {
+      const allowed = new Set(Array.isArray(from) ? from : []);
+      for (const value of Array.isArray(to) ? to : []) {
+        // 허용 주체를 늘리는 것은 푸는 일이다. 부모가 허락하지 않은 주체를 자식이
+        // 들이면, 바닥이 막아 둔 실행 경로가 스텝 하나로 열린다.
+        if (!allowed.has(value)) throw new Error(`${source}: ${name}의 ${key}에 허용되지 않은 주체를 더할 수 없습니다: ${parent.id} (${value})`);
+      }
+      continue;
+    }
+    if (direction === 'gate') {
+      const fromRank = HUMAN_GATE_RANK[from];
+      const toRank = HUMAN_GATE_RANK[to];
+      if (toRank === undefined) throw new Error(`${source}: ${name}의 ${key} 값이 유효하지 않습니다: ${parent.id} (${to})`);
+      if (toRank < fromRank) throw new Error(`${source}: ${name}의 ${key}를 완화할 수 없습니다: ${parent.id} (${from} -> ${to})`);
+      continue;
+    }
+    if (direction === 'enable') {
+      if (from === true && to !== true) throw new Error(`${source}: ${name}의 ${key}를 끌 수 없습니다: ${parent.id}`);
+      continue;
+    }
+    if (!Number.isInteger(from)) continue;
+    if (!Number.isInteger(to)) throw new Error(`${source}: ${name}의 ${key}는 정수여야 합니다: ${parent.id}`);
+    if (to < from) throw new Error(`${source}: ${name}의 ${key}를 완화할 수 없습니다: ${parent.id} (${from} -> ${to})`);
+  }
+}
+
+// 모드가 정한 바닥을 스텝 허용정책이 어기지 않는지 본다. 바닥은 판정에만 쓰고 스텝에
+// 저장하지 않는다 — 저장하면 모드를 바꿨을 때 굳어 버린 옛 바닥이 스텝에 남는다.
+function assertAllowWithinFloor(name, step, floor, source) {
+  if (!floor || !step.allow) return;
+  if (Number.isInteger(floor.validators) && Number.isInteger(step.allow.minValidators) && step.allow.minValidators < floor.validators) {
+    throw new Error(`${source}: ${name}의 ${step.id}가 바닥보다 검증자를 적게 요구합니다: 바닥 ${floor.validators}, 시도 ${step.allow.minValidators}`);
+  }
+  if (floor.requireAdapterDiversity === true && step.allow.requireDiversity !== true) {
+    throw new Error(`${source}: ${name}의 ${step.id}가 바닥이 요구한 다양성을 끕니다.`);
   }
 }
 
@@ -486,4 +551,4 @@ function substituteArgs(args, context) {
   }));
 }
 
-module.exports = { BUILTIN, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };
+module.exports = { BUILTIN, ALLOW_DIRECTION, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };
