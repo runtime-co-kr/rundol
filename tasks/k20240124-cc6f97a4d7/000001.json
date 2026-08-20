@@ -2940,7 +2940,7 @@
         },
         "AC-002": {
           "text": "세션이 쓸 실행 단위가 정해진다 - next·step 반복인지 drive 한 번인지",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "세션과 드라이버 사이의 소유권 교대가 언제 일어나는지 밝힌다",
@@ -2953,7 +2953,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:56.370Z",
-      "updatedAt": "2026-08-20T20:08:37.090Z",
+      "updatedAt": "2026-08-20T20:08:40.978Z",
       "statusChangedAt": "2026-08-20T20:08:33.033Z",
       "externalRefs": [],
       "project": "rundol"
