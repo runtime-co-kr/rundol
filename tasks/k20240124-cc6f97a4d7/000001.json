@@ -3399,7 +3399,7 @@
         },
         "AC-002": {
           "text": "저장 전에 검사 결과를 미리 볼 수 있다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "base revision 충돌이 편집 내용을 잃지 않고 처리된다",
@@ -3412,7 +3412,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:04.080Z",
-      "updatedAt": "2026-08-20T22:00:47.527Z",
+      "updatedAt": "2026-08-20T22:08:47.466Z",
       "statusChangedAt": "2026-08-20T20:06:00.399Z",
       "externalRefs": [],
       "project": "rundol"
