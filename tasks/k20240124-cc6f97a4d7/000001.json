@@ -2624,6 +2624,50 @@
       "statusChangedAt": "2026-08-20T15:10:53.971Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-A77R7G5M": {
+      "title": "승인 모드와 파이프 허용정책을 구현한다",
+      "summary": "네 승인 모드를 절차·승인·위임 손잡이의 조합으로 구현하고, 파이프별 허용정책에 기존 오버라이드 단조성 검증을 적용한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-020"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "네 모드가 프리셋으로 선택되고 파이프가 그보다 조일 수만 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "모드를 푸는 변경이 contract-change 결정 없이는 저장되지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "위임 불가 티어가 어느 모드에서도 열리지 않음이 시험으로 고정된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "AI만 모드에서 승인이 사전 위임 없이는 기록되지 않는다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "npm test와 rdl check --strict가 모두 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:11:31.132Z",
+      "updatedAt": "2026-08-20T15:11:31.132Z",
+      "statusChangedAt": "2026-08-20T15:11:31.132Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
