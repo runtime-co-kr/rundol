@@ -2407,7 +2407,7 @@
         },
         "AC-002": {
           "text": "파이프별 허용정책의 필드와 판정 의미가 REQ에 정의된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "하위 계층이 조일 수만 있다는 단조성이 승인 모드와 파이프 정책에 적용됨이 규정된다",
@@ -2424,7 +2424,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:01.195Z",
-      "updatedAt": "2026-08-20T17:45:21.117Z",
+      "updatedAt": "2026-08-20T17:45:25.645Z",
       "statusChangedAt": "2026-08-20T17:41:07.565Z",
       "externalRefs": [],
       "project": "rundol"
