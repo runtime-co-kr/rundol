@@ -3295,12 +3295,12 @@
         },
         "AC-003": {
           "text": "빈 블록에 무엇을 쓰는 자리인지 안내가 뜬다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:27.408Z",
-      "updatedAt": "2026-08-20T22:00:08.725Z",
+      "updatedAt": "2026-08-20T22:00:13.711Z",
       "statusChangedAt": "2026-08-20T18:23:49.672Z",
       "externalRefs": [],
       "project": "rundol"
