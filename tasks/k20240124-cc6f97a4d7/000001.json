@@ -3187,12 +3187,12 @@
         },
         "AC-003": {
           "text": "블록을 끌 때 놓일 자리가 표시된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:46.609Z",
-      "updatedAt": "2026-08-20T21:59:47.456Z",
+      "updatedAt": "2026-08-20T21:59:52.163Z",
       "statusChangedAt": "2026-08-20T18:11:46.312Z",
       "externalRefs": [],
       "project": "rundol"
