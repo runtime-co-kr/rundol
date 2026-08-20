@@ -3443,7 +3443,7 @@
         },
         "AC-003": {
           "text": "배포물에 제3자 라이선스 고지가 포함된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "발행되는 명령줄 패키지의 실행 의존성이 늘지 않는다",
@@ -3452,7 +3452,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:10.054Z",
-      "updatedAt": "2026-08-20T22:01:02.513Z",
+      "updatedAt": "2026-08-20T22:08:55.883Z",
       "statusChangedAt": "2026-08-20T18:30:55.163Z",
       "externalRefs": [],
       "project": "rundol"
