@@ -935,7 +935,8 @@
       "priority": "low",
       "links": [
         "PRD-001",
-        "TST-002"
+        "REQ-019",
+        "TST-009"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -950,7 +951,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:54.079Z",
-      "updatedAt": "2026-08-20T06:38:39.883Z",
+      "updatedAt": "2026-08-20T06:39:14.008Z",
       "statusChangedAt": "2026-08-20T06:37:27.636Z",
       "externalRefs": [],
       "project": "rundol"
