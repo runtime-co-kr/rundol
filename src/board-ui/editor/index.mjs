@@ -19,6 +19,7 @@ import { toMarkdown } from './to-markdown.mjs';
 import { blockHandle } from './block-handle.mjs';
 import { slashMenu } from './slash-menu.mjs';
 import { rundolInputRules } from './input-rules.mjs';
+import { linkPicker } from './link-picker.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -68,7 +69,10 @@ export function openEditor(mount, markdown, options = {}) {
         columnResizing(),
         tableEditing(),
         blockHandle(),
-        slashMenu()
+        slashMenu(),
+        // 링크 후보는 밖에서 받는다. 편집기가 저장소를 읽으면 브라우저에서 돌 수 없고,
+        // 보드는 이미 그 목록을 스냅샷으로 갖고 있다.
+        linkPicker({ candidates: options.linkCandidates || [] })
       ]
     }),
     dispatchTransaction(transaction) {

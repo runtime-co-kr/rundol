@@ -150,3 +150,64 @@
   border-radius: 4px;
   color: var(--accent-text, #9cc7ff);
 }
+
+/* 링크 선택기 --------------------------------------------------------- */
+
+.rdl-link-picker {
+  position: absolute;
+  z-index: 20;
+  min-width: 340px;
+  max-width: 520px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border, #2a2a33);
+  border-radius: 9px;
+  background: var(--surface-raised, #1c1c24);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.rdl-link-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #e6e6ea);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.rdl-link-item:hover,
+.rdl-link-item.is-active { background: var(--surface-hover, #2a2a36); }
+
+.rdl-link-kind {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 11px;
+  background: var(--surface-sunken, #24242e);
+  color: var(--text-muted, #8a8a99);
+}
+.rdl-link-kind-document { color: var(--link, #9cc7ff); }
+.rdl-link-kind-member { color: var(--link-embed, #c7a0ff); }
+
+.rdl-link-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 대상이 없는 링크. 저장한 뒤가 아니라 지금 보여야 고칠 사람이 아직 여기 있다. */
+.ProseMirror .wiki-link.is-unresolved,
+.ProseMirror .wiki-embed.is-unresolved {
+  color: var(--danger, #ff9c9c);
+  border-bottom-style: dotted;
+  text-decoration: underline wavy var(--danger, #ff9c9c) 1px;
+  text-underline-offset: 3px;
+}
