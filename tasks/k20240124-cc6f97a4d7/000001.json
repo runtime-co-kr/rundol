@@ -2444,7 +2444,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "설정 화면의 진입·사용자 흐름·바인딩·상태가 SCR에 정의된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "항목별 상속 출처와 덮어쓰기 여부가 화면 바인딩에 규정된다",
@@ -2469,7 +2469,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:36.780Z",
-      "updatedAt": "2026-08-20T16:22:15.958Z",
+      "updatedAt": "2026-08-20T16:22:21.225Z",
       "statusChangedAt": "2026-08-20T16:22:15.958Z",
       "externalRefs": [],
       "project": "rundol"
