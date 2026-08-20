@@ -67,6 +67,7 @@ require('./packages.test');
 require('./board-data.test');
 require('./board-presentation.test');
 require('./board-ui.test');
+require('./document-roundtrip.test');
 require('./worker-contract.test');
 require('./worker-contract-purity.test');
 require('./surface-leak.test');

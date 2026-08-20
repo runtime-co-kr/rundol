@@ -311,6 +311,27 @@ function inputError(message) {
 // 브랜치 경계이며, 그 둘은 시계에 의존하지 않으므로 그대로 남는다. "지금 누가 이
 // 문서를 열어 두었다"는 신호는 중앙 권위 없이는 관측 시점에 이미 낡은 값이었다.
 
+/**
+ * 원본 파일과 새 본문으로 저장할 파일 전체를 만든다. 파일을 읽지도 쓰지도 않는다.
+ *
+ * 이 계산이 따로 서 있는 이유는 정리가 아니라 시험 가능성이다. 편집하지 않은 문서를
+ * 저장했을 때 바이트가 그대로인지는 저장 경로 전체를 돌리지 않고는 확인할 수 없었고,
+ * 그래서 확인되지 않았다. 떼어 두면 저장소의 정본 문서 전체를 한 번에 통과시켜
+ * 볼 수 있다 — document-roundtrip.test.js가 그 일을 한다.
+ */
+function composeDocumentFile(original, nextBody) {
+  // 닫는 --- 뒤의 빈 줄까지 함께 잡는다. 본문만 다듬고 이 자리를 버리면 손대지 않은
+  // 문서도 저장할 때마다 빈 줄 하나가 사라져, 실제 변경과 구분되지 않는 diff가 남는다.
+  const match = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)((?:\r?\n)*)/u.exec(original);
+  if (!match) inputError('표준 frontmatter가 없는 문서는 Board에서 수정할 수 없습니다.');
+  // 스냅샷의 본문은 줄바꿈이 \n으로 정규화되어 있다. 그대로 쓰면 CRLF 문서는 한 글자도
+  // 고치지 않아도 전 줄이 바뀐 diff가 된다. 그 문서가 쓰던 줄바꿈으로 되돌려 쓴다.
+  const eol = match[1].includes('\r\n') ? '\r\n' : '\n';
+  const trimmed = String(nextBody == null ? '' : nextBody).replace(/\r\n/g, '\n').replace(/^\s+|\s+$/g, '');
+  const restored = eol === '\r\n' ? trimmed.replace(/\n/g, '\r\n') : trimmed;
+  return `${match[1]}${match[2]}${restored}${eol}`;
+}
+
 function updateDocumentBody(root, projectKey, documentId, body) {
   const project = selectProject(workspaceLayout(root), projectKey, true);
   const current = listDocuments(project).find((item) => item.id === documentId);
@@ -321,18 +342,10 @@ function updateDocumentBody(root, projectKey, documentId, body) {
   const file = path.resolve(project.root, current.file);
   if (!file.startsWith(`${path.resolve(project.root)}${path.sep}`)) inputError('프로젝트 경로 밖의 문서는 수정할 수 없습니다.');
   const original = fs.readFileSync(file, 'utf8');
-  // 닫는 --- 뒤의 빈 줄까지 함께 잡는다. 본문만 다듬고 이 자리를 버리면 손대지 않은
-  // 문서도 저장할 때마다 빈 줄 하나가 사라져, 실제 변경과 구분되지 않는 diff가 남는다.
-  const match = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)((?:\r?\n)*)/u.exec(original);
-  if (!match) inputError('표준 frontmatter가 없는 문서는 Board에서 수정할 수 없습니다.');
-  // 스냅샷의 본문은 줄바꿈이 \n으로 정규화되어 있다. 그대로 쓰면 CRLF 문서는 한 글자도
-  // 고치지 않아도 전 줄이 바뀐 diff가 된다. 그 문서가 쓰던 줄바꿈으로 되돌려 쓴다.
-  const eol = match[1].includes('\r\n') ? '\r\n' : '\n';
-  const trimmed = nextBody.replace(/\r\n/g, '\n').replace(/^\s+|\s+$/g, '');
-  const restored = eol === '\r\n' ? trimmed.replace(/\n/g, '\r\n') : trimmed;
+  const composed = composeDocumentFile(original, nextBody);
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs.writeFileSync(temporary, `${match[1]}${match[2]}${restored}${eol}`, 'utf8');
+    fs.writeFileSync(temporary, composed, 'utf8');
     fs.renameSync(temporary, file);
     const checked = checkWorkspace(root, { project: projectKey, strict: true, skipProfilePolicy: true });
     if (checked.summary.errors) throw new Error(checked.diagnostics.find((item) => item.severity === 'error').message);
@@ -636,4 +649,4 @@ function startBoard(start, options) {
   });
 }
 
-module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, attentionItems, createBoardServer, startBoard };
+module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, attentionItems, composeDocumentFile, createBoardServer, startBoard };
