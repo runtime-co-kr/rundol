@@ -2009,7 +2009,7 @@
         },
         "AC-003": {
           "text": "로그 상한 판정이 UTF-8 바이트를 세고 다국어 로그로 그것을 증명한다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "개입 계측의 이름이 실제 측정 대상과 일치한다",
@@ -2022,7 +2022,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T09:06:57.693Z",
-      "updatedAt": "2026-08-20T09:31:37.429Z",
+      "updatedAt": "2026-08-20T09:31:39.707Z",
       "statusChangedAt": "2026-08-20T09:07:06.650Z",
       "externalRefs": [],
       "project": "rundol"
