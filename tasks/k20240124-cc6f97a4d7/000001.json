@@ -2566,7 +2566,7 @@
         },
         "AC-002": {
           "text": "test 유형이 데이터 정의로 표현되고 하드코딩 분기가 제거된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "이관 전후로 기존 태스크 집합의 진단 결과가 동일함이 회귀 시험으로 고정된다",
@@ -2583,7 +2583,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:45.676Z",
-      "updatedAt": "2026-08-20T23:25:02.834Z",
+      "updatedAt": "2026-08-20T23:25:07.259Z",
       "statusChangedAt": "2026-08-20T23:24:58.498Z",
       "externalRefs": [],
       "project": "rundol"
