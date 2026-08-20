@@ -2851,7 +2851,7 @@
         },
         "AC-003": {
           "text": "개입할 런이 없으면 아무것도 출력하지 않는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "--json이 훅과 드라이버가 함께 쓸 수 있는 고정 형태로 나온다",
@@ -2864,7 +2864,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:13.833Z",
-      "updatedAt": "2026-08-20T15:34:57.677Z",
+      "updatedAt": "2026-08-20T15:35:02.532Z",
       "statusChangedAt": "2026-08-20T15:34:47.169Z",
       "externalRefs": [],
       "project": "rundol"
