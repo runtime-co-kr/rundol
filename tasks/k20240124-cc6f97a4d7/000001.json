@@ -2677,7 +2677,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "cancelled",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -2696,10 +2696,15 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:11:36.243Z",
-      "updatedAt": "2026-08-20T15:19:01.215Z",
-      "statusChangedAt": "2026-08-20T15:11:36.243Z",
+      "updatedAt": "2026-08-20T15:41:07.883Z",
+      "statusChangedAt": "2026-08-20T15:41:07.883Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "cancellation": {
+        "reason": "TASK-WF2A7VM7과 같은 내용의 중복입니다. 앞서 만든 것이 성공했는데 출력이 깨져 실패로 보고 다시 만들었습니다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-20T15:41:07.401Z"
+      }
     },
     "TASK-3AZRRM7C": {
       "title": "[계측] 사람과 에이전트를 실제로 구분해 개입 지표를 살린다",
