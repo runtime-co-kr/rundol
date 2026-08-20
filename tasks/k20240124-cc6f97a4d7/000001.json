@@ -3323,6 +3323,42 @@
       "statusChangedAt": "2026-08-20T17:56:33.098Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-7X2AXYM6": {
+      "title": "코드 블록의 언어를 고르고 다이어그램을 미리 본다",
+      "summary": "mermaid 블록 16개가 정본에 있고 읽기 화면은 이미 그린다. 편집 중에는 글자로만 보여 고친 결과를 확인하려면 저장하고 나가야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "low",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "코드 블록의 언어를 목록에서 고를 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "mermaid 블록이 편집기 안에서 그려진다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "표에서 파생된 다이어그램이 표와 어긋나면 편집 중에 드러난다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:56:58.310Z",
+      "updatedAt": "2026-08-20T17:56:58.310Z",
+      "statusChangedAt": "2026-08-20T17:56:58.310Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
