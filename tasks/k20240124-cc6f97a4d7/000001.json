@@ -2195,12 +2195,12 @@
         },
         "AC-004": {
           "text": "발견된 위반 문서가 정리되어 시험이 통과한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:08:29.359Z",
-      "updatedAt": "2026-08-20T15:15:11.676Z",
+      "updatedAt": "2026-08-20T15:15:15.851Z",
       "statusChangedAt": "2026-08-20T15:08:29.359Z",
       "externalRefs": [],
       "project": "rundol"
