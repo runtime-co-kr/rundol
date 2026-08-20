@@ -2944,7 +2944,7 @@
         },
         "AC-003": {
           "text": "세션과 드라이버 사이의 소유권 교대가 언제 일어나는지 밝힌다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "클라이언트별 복제 없이 SKILL.md 하나로 유지된다",
@@ -2953,7 +2953,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:56.370Z",
-      "updatedAt": "2026-08-20T20:08:40.978Z",
+      "updatedAt": "2026-08-20T20:08:46.223Z",
       "statusChangedAt": "2026-08-20T20:08:33.033Z",
       "externalRefs": [],
       "project": "rundol"
