@@ -3407,12 +3407,12 @@
         },
         "AC-004": {
           "text": "frontmatter가 편집 대상이 아님이 화면에 드러난다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:04.080Z",
-      "updatedAt": "2026-08-20T22:00:41.614Z",
+      "updatedAt": "2026-08-20T22:00:47.527Z",
       "statusChangedAt": "2026-08-20T20:06:00.399Z",
       "externalRefs": [],
       "project": "rundol"
