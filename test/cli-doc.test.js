@@ -29,10 +29,33 @@ assert(help.includes('rdl sync watch --client-id <id> [--interval <seconds>]'), 
 for (const line of ['rdl sync --client-id <id>', 'rdl sync watch --client-id <id>']) {
   assert(help.includes(line), `필수 인자가 usage에 없습니다: ${line}`);
 }
-for (const args of [['sync', '--project', 'rundol'], ['sync', 'watch', '--project', 'rundol', '--once']]) {
-  const refused = spawnSync(process.execPath, [cli].concat(args), { cwd: root, encoding: 'utf8' });
-  assert.strictEqual(refused.status, 2, `--client-id 없이 성공했습니다: rdl ${args.join(' ')}`);
-  assert(refused.stderr.includes('--client-id'), '거부 사유가 어느 인자인지 밝혀야 합니다.');
+// 거부는 갓 만든 작업공간에서 잰다. 이 기계에 붙은 것에 기대면 개발자 기계에서만
+// 통과하고, CI의 새 체크아웃에서는 작업공간을 못 찾아 다른 이유로 실패한다.
+{
+  const os = require('os');
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-cli-doc-'));
+  try {
+    const env = Object.assign({}, process.env, { RUNDOL_HOME: path.join(temporary, 'runtime') });
+    const setup = (program, args) => {
+      const done = spawnSync(program, args, { cwd: temporary, encoding: 'utf8', env });
+      assert.strictEqual(done.status, 0, `${program} ${args.join(' ')}\n${done.stdout}\n${done.stderr}`);
+    };
+    setup('git', ['init', '-b', 'main']);
+    setup('git', ['config', 'user.name', 'Rundol Test']);
+    setup('git', ['config', 'user.email', 'rundol@example.test']);
+    fs.writeFileSync(path.join(temporary, 'README.md'), '# cli doc\n', 'utf8');
+    setup('git', ['add', 'README.md']);
+    setup('git', ['commit', '-m', 'initial']);
+    setup(process.execPath, [cli, 'init', 'crm', '--name', 'CRM', '--profile', 'lean', '--root', temporary, '--json']);
+
+    for (const args of [['sync', '--project', 'crm'], ['sync', 'watch', '--project', 'crm', '--once']]) {
+      const refused = spawnSync(process.execPath, [cli].concat(args, ['--root', temporary]), { cwd: root, encoding: 'utf8', env });
+      assert.strictEqual(refused.status, 2, `--client-id 없이 성공했습니다: rdl ${args.join(' ')}\n${refused.stdout}${refused.stderr}`);
+      assert(refused.stderr.includes('--client-id'), `거부 사유가 어느 인자인지 밝혀야 합니다: ${refused.stderr}`);
+    }
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 }
 
 // 사람 표면과 고급 표면은 다른 대상을 위한 목록이다. 실행 식별자·임대·어댑터가
