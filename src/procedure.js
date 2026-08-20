@@ -168,6 +168,51 @@ function thresholdValue(step, key) {
   return null;
 }
 
+// 조임 방향은 필드마다 다르다. 검증자와 정족수는 커질수록 조이고, 허용 반박과
+// 기권은 작아질수록 조이며, 다양성 요구는 켜는 것이 조인다. 하나의 비교로 전부
+// 판정하려 하면 반드시 한쪽이 뒤집힌다.
+//
+// 목록에 없는 정책 필드는 통과시키지 않고 거부한다. 조용히 빠지면 새 손잡이가
+// 생길 때마다 그것만 단조성 밖에 남고, 남았다는 사실은 아무도 모른다.
+const POLICY_DIRECTION = Object.freeze({
+  validators: 'higher',
+  quorum: 'higher',
+  maxRefuted: 'lower',
+  maxAbstain: 'lower',
+  refutedThreshold: 'lower',
+  abstainThreshold: 'lower',
+  requireAdapterDiversity: 'enable'
+});
+
+function verifyPolicy(step) {
+  return (step.verify && step.verify.policy) || null;
+}
+
+// 검증 정책은 verify.policy 안에 산다. 예전 판정은 step.verify[key]를 봤고 그
+// 자리에는 값이 없었으므로, 검증자도 정족수도 반박 상한도 전부 검사를 받지 않고
+// 지나갔다. 완화가 통과한다는 것을 시험으로 고정한 뒤에 이 판정을 들였다.
+function assertPolicyMonotonic(name, parent, child, source) {
+  const parentPolicy = verifyPolicy(parent);
+  if (!parentPolicy) return;
+  const childPolicy = verifyPolicy(child);
+  if (!childPolicy) throw new Error(`${source}: ${name}의 검증 정책을 제거할 수 없습니다: ${parent.id}`);
+  for (const key of Object.keys(parentPolicy)) {
+    const direction = POLICY_DIRECTION[key];
+    if (!direction) throw new Error(`${source}: ${name}의 검증 정책 ${key}에 조임 방향이 선언되지 않았습니다: ${parent.id}`);
+    const from = parentPolicy[key];
+    const to = childPolicy[key];
+    if (to === undefined) throw new Error(`${source}: ${name}의 ${key}를 제거할 수 없습니다: ${parent.id}`);
+    if (direction === 'enable') {
+      if (from === true && to !== true) throw new Error(`${source}: ${name}의 ${key}를 끌 수 없습니다: ${parent.id}`);
+      continue;
+    }
+    if (!Number.isInteger(from)) continue;
+    if (!Number.isInteger(to)) throw new Error(`${source}: ${name}의 ${key}는 정수여야 합니다: ${parent.id}`);
+    const loosened = direction === 'higher' ? to < from : to > from;
+    if (loosened) throw new Error(`${source}: ${name}의 ${key}를 완화할 수 없습니다: ${parent.id} (${from} -> ${to})`);
+  }
+}
+
 function validateVerificationOverride(name, parent, child, source) {
   const childLenses = new Set(lensIds(child));
   for (const lens of lensIds(parent)) {
@@ -181,6 +226,7 @@ function validateVerificationOverride(name, parent, child, source) {
       throw new Error(`${source}: ${name}의 ${key} 상한을 완화할 수 없습니다: ${parent.id}`);
     }
   }
+  assertPolicyMonotonic(name, parent, child, source);
 }
 
 function operationPlaceholderCount(step) {

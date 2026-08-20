@@ -58,6 +58,40 @@ function assertOverrideRejected(parentStep, childStep, pattern) {
   assert.throws(() => validateOverride('safe-flow', parent, child, 'fixture'), pattern);
 }
 
+// 검증 정책은 verify.policy 안에 산다. 예전 판정은 step.verify[key]를 보았고 그 자리에는
+// 값이 없었으므로 검증자도 정족수도 반박 상한도 전부 검사를 지나쳐 갔다. 완화가 통과하던
+// 것을 여기서 고정한다 — 승인 모드가 이 단조성 위에 서기 때문에, 뚫린 채로 두면 바닥을
+// 선언해 놓고 스텝에서 검증자를 내리는 길이 남는다.
+{
+  const base = { validators: 3, quorum: 3, maxRefuted: 0, maxAbstain: 0, requireAdapterDiversity: true };
+  const withPolicy = (policy) => ({ steps: [{ id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'], policy } }] });
+  const tightParent = withPolicy(base);
+  const loosen = (patch) => Object.assign({}, base, patch);
+
+  // 방향은 필드마다 다르다. 하나의 비교로 전부 판정하면 반드시 한쪽이 뒤집힌다.
+  assert.throws(() => validateOverride('f', tightParent, withPolicy(loosen({ validators: 1 })), 'fixture'), /validators/u, '검증자를 내릴 수 없어야 합니다');
+  assert.throws(() => validateOverride('f', tightParent, withPolicy(loosen({ quorum: 1 })), 'fixture'), /quorum/u, '정족수를 내릴 수 없어야 합니다');
+  assert.throws(() => validateOverride('f', tightParent, withPolicy(loosen({ maxRefuted: 5 })), 'fixture'), /maxRefuted/u, '허용 반박을 올릴 수 없어야 합니다');
+  assert.throws(() => validateOverride('f', tightParent, withPolicy(loosen({ maxAbstain: 5 })), 'fixture'), /maxAbstain/u, '허용 기권을 올릴 수 없어야 합니다');
+  assert.throws(() => validateOverride('f', tightParent, withPolicy(loosen({ requireAdapterDiversity: false })), 'fixture'), /requireAdapterDiversity/u, '다양성 요구를 끌 수 없어야 합니다');
+
+  // 정책 자체를 지우는 것도 완화다.
+  assert.throws(
+    () => validateOverride('f', tightParent, { steps: [{ id: 'verify', executor: 'adapter', verify: { lenses: ['satisfaction-v1'] } }] }, 'fixture'),
+    /검증 정책을 제거/u
+  );
+
+  // 조이는 방향은 통과해야 한다. 전부 막으면 단조성이 아니라 동결이다.
+  validateOverride('f', tightParent, withPolicy(loosen({ validators: 5 })), 'fixture');
+  validateOverride('f', tightParent, withPolicy(loosen({ quorum: 4 })), 'fixture');
+  validateOverride('f', tightParent, withPolicy(base), 'fixture');
+
+  // 방향이 선언되지 않은 필드는 조용히 빠지지 않는다. 빠지면 새 손잡이가 생길 때마다
+  // 그것만 단조성 밖에 남고, 남았다는 사실은 아무도 모른다.
+  const mystery = withPolicy({ validators: 3, mysteryKnob: 1 });
+  assert.throws(() => validateOverride('f', mystery, mystery, 'fixture'), /조임 방향이 선언되지 않았습니다/u);
+}
+
 // Inheritance is monotonic: a project layer may tighten safety, never remove it.
 assertOverrideRejected(
   { id: 'gate', gate: { command: 'check', args: ['REQ-001', '--strict'] }, onFail: { goto: 'gate', maxAttempts: 3, carry: ['finding'] } },
