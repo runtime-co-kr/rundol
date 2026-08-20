@@ -2155,12 +2155,12 @@
         },
         "AC-005": {
           "text": "rdl check --strict가 오류 없이 통과한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:15:00.695Z",
+      "updatedAt": "2026-08-20T15:15:05.650Z",
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
@@ -2950,6 +2950,50 @@
       "createdAt": "2026-08-20T15:15:00.936Z",
       "updatedAt": "2026-08-20T15:15:00.936Z",
       "statusChangedAt": "2026-08-20T15:15:00.936Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-CFS127VF": {
+      "title": "[하네스] 사람이 없는 동안 런을 미는 드라이버",
+      "summary": "rdl run drive는 --scheduled가 daemon을 띄우지 않는다고 못박아 트리거를 바깥에 뒀다. 그 바깥을 런돌이 상주 프로세스 하나로 채운다. tick과 원장은 그대로 두고 몰 수 있는 런을 고르는 순회만 얹는다. OS 스케줄러는 이 프로세스를 부팅 때 한 번 띄우는 유닛 하나로 줄어든다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-014"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "몰 수 있는 런의 판정이 원장 fold만으로 결정된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "드라이버가 사람 경계와 sync 경계 앞에서 멈춘다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "커서가 전진하지 않은 런을 다시 밀지 않는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "하나의 상주 프로세스가 여러 런을 순회한다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "재부팅 복구가 OS 유닛 하나로 끝난다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:15:05.386Z",
+      "updatedAt": "2026-08-20T15:15:05.386Z",
+      "statusChangedAt": "2026-08-20T15:15:05.386Z",
       "externalRefs": [],
       "project": "rundol"
     }
