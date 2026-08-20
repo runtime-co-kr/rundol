@@ -48,6 +48,19 @@ const RULES = Object.freeze({
   'RDL-IMPL-017': { document: 'REQ-034', functionId: 'HRN-02' },
   'RDL-IMPL-018': { document: 'REQ-034', functionId: 'HRN-02' },
   'RDL-IMPL-023': { document: 'REQ-034', functionId: 'HRN-02' },
+  // 유형별 계약도 같은 검사의 소관이다. REQ-034가 "각 기능의 유형별 필드를 모두
+  // 검사한다"이므로, 시험 문서의 시나리오 표와 화면·모델 문서의 다이어그램 규칙은
+  // 별도 규칙이 아니라 그 유형의 계약이 무엇인지를 말하는 조항이다.
+  'RDL-SCENARIO-001': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCENARIO-002': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCENARIO-003': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCENARIO-004': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCREEN-001': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCREEN-002': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCREEN-003': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-SCREEN-004': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-MODEL-001': { document: 'REQ-034', functionId: 'HRN-02' },
+  'RDL-MODEL-002': { document: 'REQ-034', functionId: 'HRN-02' },
   // 계산형 기능 추적성: 기능 식별자를 REQ와 TST가 함께 덮는지
   'RDL-IMPL-012': { document: 'REQ-036', functionId: 'HRN-04' },
   // 구현 준비도 태스크 게이트: 태스크가 구현에 들어가도 되는지
