@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { REGULAR_TYPES, DEFAULT_POLICIES, DEFAULT_SECTIONS } = require('./document-profile');
+const { normalizeItemTypes, mergeItemTypes, BUILTIN_ITEM_TYPES } = require('./item-type');
 
 const DOCUMENT_TYPE_KEYS = ['charter', 'prd', 'requirement', 'architecture', 'screen', 'model', 'interface', 'decision', 'standard', 'test', 'runbook', 'glossary', 'clipping'];
 const DOCUMENT_STATE_KEYS = ['draft', 'proposed', 'active', 'review', 'approved', 'deprecated', 'archived', 'unread'];
@@ -42,6 +43,11 @@ const GRANDFATHERED_POLICY_FIELDS = new Set(['profiles.policy', 'profiles.sectio
 // 다른 자리에 넣는다. 그룹 이름과 겹치지 않아야 두 모양이 섞이지 않는다.
 const SCALAR_KEYS = Object.freeze(['approval']);
 
+// 최상위 맵. 키가 열려 있어 표시 그룹의 고정 키 검증에 넣을 수 없고, 항목의 모양도
+// 라벨·설명·순서가 아니다. 검증은 유형 모듈이 이미 갖고 있으므로 위임한다 — 같은
+// 판정을 여기서 다시 쓰면 두 곳이 갈라지는 날 어느 쪽이 맞는지 알 수 없다.
+const MAP_KEYS = Object.freeze(['itemTypes']);
+
 // 승인 모드는 이름 하나가 조합 전체를 정한다. 조합의 일부를 여기서 적을 수 있으면
 // 이름이 뜻을 잃고 "AI 우선인데 검증자가 하나"인 프로젝트가 생긴다. 그래서 이 자리는
 // 이름만 받고 손잡이 값을 받지 않는다.
@@ -78,6 +84,7 @@ const PRESENTATION_GROUPS = {
 };
 const DEFAULT_PRESENTATION = {
   schemaVersion: 1,
+  itemTypes: BUILTIN_ITEM_TYPES,
   documentTypes: {
     charter: { label: '프로젝트 헌장', description: '프로젝트의 목표, 범위와 거버넌스', order: 0 },
     prd: { label: '제품 요구사항', description: '제품 목표, 사용자 가치와 범위', order: 10 },
@@ -232,9 +239,15 @@ function readConfig(file) {
   try { value = JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) { throw new Error(`${file}: 올바른 JSON이 아닙니다: ${error.message}`); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${file}: 설정 루트는 객체여야 합니다.`);
-  const allowed = ['schemaVersion'].concat(SCALAR_KEYS, Object.keys(PRESENTATION_GROUPS));
+  const allowed = ['schemaVersion'].concat(SCALAR_KEYS, MAP_KEYS, Object.keys(PRESENTATION_GROUPS));
   for (const field of Object.keys(value)) if (!allowed.includes(field)) throw new Error(`${file}: 지원하지 않는 필드입니다: ${field}`);
   validateApproval(value.approval, file);
+  // 유형 정의는 형태 판정을 여기서 지난다. 읽는 시점에 거부하지 않으면 잘못된 정의가
+  // 병합까지 흘러가고, 그때 나는 오류는 어느 파일 탓인지 말하지 못한다.
+  if (value.itemTypes !== undefined) {
+    try { normalizeItemTypes(value.itemTypes); }
+    catch (error) { throw new Error(`${file}: ${error.message}`); }
+  }
   // 경계 판정이 허용 필드 판정보다 먼저 돈다. 나중에 돌면 경계 이름이 "지원하지
   // 않는 필드"라는 엉뚱한 이름으로 거부되고, 그 메시지를 받은 사용자는 철자를
   // 고치려 든다. 판수도 보지 않는다 — 보면 판수를 올리는 것이 잠금 해제로 보인다.
@@ -279,6 +292,10 @@ function mergePresentation(target, source) {
   // 최상위 스칼라도 계층을 탄다. 그룹만 합치면 작업공간이 깐 바닥이 프로젝트에
   // 닿지 않고, 바닥은 선언했는데 아무것도 막지 않는 상태가 된다.
   if (source.approval) target.approval = Object.assign({}, target.approval, source.approval);
+  // 유형은 맵이다. 통째로 덮으면 프로젝트가 유형 하나를 더하려고 상위 전부를 다시
+  // 적어야 한다. 제약은 종류 단위로 덮는다 — 항목 단위면 하위가 제약 하나를 적는
+  // 순간 나머지 넷이 사라진다.
+  if (source.itemTypes) target.itemTypes = mergeItemTypes([target.itemTypes || {}, source.itemTypes]);
   for (const group of Object.keys(PRESENTATION_GROUPS)) {
     for (const [key, entry] of Object.entries(source[group] || {})) target[group][key] = Object.assign({}, target[group][key], entry);
   }
@@ -477,7 +494,7 @@ function renderProjectBoardConfig() {
 module.exports = {
   DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
   TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, DEFAULT_PRESENTATION,
-  BOUNDARY_KEYS, POLICY_FIELDS, SCALAR_KEYS, APPROVAL_MODE_NAMES,
+  BOUNDARY_KEYS, POLICY_FIELDS, SCALAR_KEYS, MAP_KEYS, APPROVAL_MODE_NAMES,
   readConfig, mergePresentation, loadBoardPresentation, computeOrigins, policyDifferences,
   resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile, savePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig

@@ -173,4 +173,52 @@ try {
   assert.strictEqual(where({ priorities: { low: { disabled: true } } }, { priorities: { low: {} } }), 'priorities.low.disabled', '표식을 떼는 것도 정책입니다');
 }
 
+// 업무 유형은 최상위 맵이다. 표시 그룹에 넣지 않는 이유는 그쪽이 라벨·설명·순서만
+// 받기 때문이고, 유형 정의의 검증은 유형 모듈이 이미 갖고 있어 거기 위임한다.
+{
+  const { BUILTIN_ITEM_TYPES } = require('../src/item-type');
+  const file = path.join(os.tmpdir(), 'rundol-item-types.json');
+
+  // 내장이 병합의 바닥이다. 없으면 파일이 아무것도 안 적었을 때 유형이 하나도 없고,
+  // 그러면 모든 태스크가 "정의에 없는 유형"이 된다.
+  assert.deepStrictEqual(
+    Object.keys(DEFAULT_PRESENTATION.itemTypes).sort(),
+    Object.keys(BUILTIN_ITEM_TYPES).sort(),
+    '내장 유형이 기본 표시에 실려야 합니다'
+  );
+
+  // 맵이므로 하위가 새 키를 더하면 상위 키와 함께 남는다. 통째로 덮으면 유형 하나를
+  // 더하려고 상위 전부를 다시 적어야 한다.
+  const added = mergePresentation(JSON.parse(JSON.stringify(DEFAULT_PRESENTATION)), {
+    schemaVersion: 1,
+    itemTypes: { spike: { label: '스파이크', constraints: {} } }
+  });
+  assert.ok(added.itemTypes.spike, '하위가 더한 유형이 남아야 합니다');
+  assert.ok(added.itemTypes.test, '상위 유형이 함께 남아야 합니다');
+
+  // 제약은 종류 단위로 덮는다. 항목 단위면 하위가 제약 하나를 적는 순간 나머지가 사라진다.
+  const tweaked = mergePresentation(JSON.parse(JSON.stringify(DEFAULT_PRESENTATION)), {
+    schemaVersion: 1,
+    itemTypes: { test: { constraints: { exempt: [] } } }
+  });
+  assert.deepStrictEqual(tweaked.itemTypes.test.constraints.exempt, [], '덮은 제약이 반영되어야 합니다');
+  assert.ok(tweaked.itemTypes.test.constraints.unique, '덮지 않은 제약이 남아야 합니다');
+  assert.ok(tweaked.itemTypes.test.constraints.requiresLink, '덮지 않은 제약이 남아야 합니다');
+
+  // 잘못된 정의는 읽는 시점에 거부한다. 병합까지 흘러가면 그때 나는 오류는 어느 파일
+  // 탓인지 말하지 못한다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, itemTypes: { x: { constraints: { mystery: {} } } } }), 'utf8');
+  assert.throws(() => readConfig(file), /mystery/u, '카탈로그 밖 제약이 거부되어야 합니다');
+
+  // 조건식은 규칙 언어로 가는 문이다. 받는 순간 규칙을 읽으려면 규칙 언어를 먼저 읽어야 한다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, itemTypes: { x: { constraints: { unique: { fields: ['a'], releasedBy: ['$ne'] } } } } }), 'utf8');
+  assert.throws(() => readConfig(file), /조건식/u, '조건식 파라미터가 거부되어야 합니다');
+
+  // 식별자는 저장값이다. 표시 문구가 들어가면 표기를 바꾸는 순간 저장된 정의가 깨진다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, itemTypes: { '스파이크': { constraints: {} } } }), 'utf8');
+  assert.throws(() => readConfig(file), /라틴 소문자/u);
+
+  fs.rmSync(file, { force: true });
+}
+
 process.stdout.write('board presentation tests passed\n');

@@ -15,7 +15,25 @@ const { BUILTIN_ITEM_TYPES, normalizeItemTypes } = require('./item-type');
 
 // 내장 정의도 파일 정의와 같은 정규화를 지난다. 건너뛰면 내장에만 있는 형태 오류가
 // 영원히 잡히지 않고, 판정 경로가 둘로 갈린다. 값이 바뀌지 않으므로 한 번만 돈다.
-const NORMALIZED_ITEM_TYPES = normalizeItemTypes(BUILTIN_ITEM_TYPES);
+const NORMALIZED_BUILTIN_ITEM_TYPES = normalizeItemTypes(BUILTIN_ITEM_TYPES);
+
+// 유형 정의는 정책 층에서 온다. 설정을 읽지 못하는 상황 — 프로젝트가 없거나 파일이
+// 깨졌거나 — 에서는 내장으로 떨어진다. 여기서 던지면 설정 하나 때문에 검사 전체가
+// 멈추고, 그러면 사람은 무엇이 잘못됐는지 보기도 전에 도구를 잃는다.
+//
+// 정규화를 여기서 한 번 더 도는 이유는 병합 결과가 파일에서 온 값을 담기 때문이다.
+// 읽는 시점에 이미 한 번 걸렀지만, 병합이 계층을 겹치면서 만든 조합은 그때 보지 못한
+// 것이다 — 각 계층이 옳아도 합친 것이 옳다는 보장은 없다.
+function resolveItemTypes(root, projectKey) {
+  if (!projectKey) return NORMALIZED_BUILTIN_ITEM_TYPES;
+  try {
+    const presentation = loadBoardPresentation(root, projectKey);
+    if (!presentation || !presentation.itemTypes) return NORMALIZED_BUILTIN_ITEM_TYPES;
+    return normalizeItemTypes(presentation.itemTypes);
+  } catch (error) {
+    return NORMALIZED_BUILTIN_ITEM_TYPES;
+  }
+}
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness, implementationTrace } = require('./implementation-contract');
 const { runGit } = require('./git');
@@ -197,10 +215,9 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
   return checkTaskEntries(list, parsed.tasks, {
     taskIds, taskFile, registry, memberIds, stakeholderIds,
     kinds: TASK_KINDS, results: TEST_RESULTS, testedDocuments,
-    // 유형 정의는 아직 내장뿐이다. 정책 층에서 읽어 오는 배선은 별도이며, 그때까지
-    // 내장을 넘겨 판정이 도는 상태를 유지한다 — 넘기지 않으면 모든 태스크가
-    // "정의에 없는 유형"이 된다.
-    itemTypes: NORMALIZED_ITEM_TYPES,
+    // 유형 정의는 정책 층에서 온다. 이제 board.json에 유형을 적으면 코드를 고치지
+    // 않고도 새 유형이 판정을 받는다.
+    itemTypes: resolveItemTypes(root, projectKey),
     // 면제는 게이트 이름으로 판정한다. 게이트는 함수이며 해석기가 면제 목록에 없는
     // 것만 부른다 — 판정하고 결과를 감추는 것이 아니라 판정 자체를 돌지 않는다.
     //
