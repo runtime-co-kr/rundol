@@ -3483,7 +3483,7 @@
         },
         "AC-002": {
           "text": "밝히지 않으면 agent로 떨어져 승인 근거 자격을 얻지 못한다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "device 클라이언트로 쓴 댓글이 자동으로 human이 되지 않음이 시험으로 고정된다",
@@ -3500,7 +3500,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T18:13:37.064Z",
-      "updatedAt": "2026-08-20T23:45:36.834Z",
+      "updatedAt": "2026-08-20T23:45:40.796Z",
       "statusChangedAt": "2026-08-20T18:13:37.064Z",
       "externalRefs": [],
       "project": "rundol"
