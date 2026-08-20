@@ -3107,6 +3107,42 @@
       "statusChangedAt": "2026-08-20T16:25:47.449Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-MP46F6ZZ": {
+      "title": "새 편집기 경로를 왕복 시험으로 잠근다",
+      "summary": "ProseMirror 경로가 정본 113개를 바이트 동일로 왕복하는 것을 확인했으나 시험으로 잠기지 않았다. 뒤에 무엇을 만들다 깨져도 알 수 없다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정본 문서 전체가 새 편집기 경로에서 열었다 저장해도 바이트 동일임을 시험이 확인한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "강제 직렬화 경로의 wikilink·자산 embed·mermaid 보존이 고정값으로 남는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "npm test에 등록되어 회귀를 막는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:55:40.873Z",
+      "updatedAt": "2026-08-20T17:55:40.873Z",
+      "statusChangedAt": "2026-08-20T17:55:40.873Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
