@@ -20,6 +20,9 @@ import { blockHandle } from './block-handle.mjs';
 import { slashMenu } from './slash-menu.mjs';
 import { rundolInputRules } from './input-rules.mjs';
 import { linkPicker } from './link-picker.mjs';
+import { toolbar } from './toolbar.mjs';
+import { placeholder } from './placeholder.mjs';
+import { ListItemView } from './list-item-view.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -72,9 +75,15 @@ export function openEditor(mount, markdown, options = {}) {
         slashMenu(),
         // 링크 후보는 밖에서 받는다. 편집기가 저장소를 읽으면 브라우저에서 돌 수 없고,
         // 보드는 이미 그 목록을 스냅샷으로 갖고 있다.
-        linkPicker({ candidates: options.linkCandidates || [] })
+        linkPicker({ candidates: options.linkCandidates || [] }),
+        toolbar(),
+        placeholder()
       ]
     }),
+    // 체크 상자를 눌러 상태를 바꾸려면 항목이 자기 DOM을 가져야 한다.
+    nodeViews: {
+      list_item: (node, editorView, getPos) => new ListItemView(node, editorView, getPos)
+    },
     dispatchTransaction(transaction) {
       view.updateState(view.state.apply(transaction));
       if (options.onChange) options.onChange(current());

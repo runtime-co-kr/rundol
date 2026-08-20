@@ -211,3 +211,69 @@
   text-decoration: underline wavy var(--danger, #ff9c9c) 1px;
   text-underline-offset: 3px;
 }
+
+/* 선택 툴바 ----------------------------------------------------------- */
+
+.rdl-toolbar {
+  position: absolute;
+  display: none;
+  gap: 2px;
+  z-index: 21;
+  padding: 4px;
+  border: 1px solid var(--border, #2a2a33);
+  border-radius: 8px;
+  background: var(--surface-raised, #1c1c24);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.rdl-toolbar-button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-primary, #e6e6ea);
+  font-size: 13px;
+  cursor: pointer;
+}
+.rdl-toolbar-button:hover { background: var(--surface-hover, #2a2a36); }
+.rdl-toolbar-button.is-active { background: var(--accent, #4a6a9a); color: #fff; }
+.rdl-toolbar-button.is-bold { font-weight: 800; }
+.rdl-toolbar-button.is-italic { font-style: italic; }
+.rdl-toolbar-button.is-strike { text-decoration: line-through; }
+.rdl-toolbar-button.is-code { font-family: Consolas, "D2Coding", monospace; font-size: 12px; }
+
+/* 빈 블록 안내 -------------------------------------------------------- */
+
+/* 문서에 글자를 넣지 않는다. 넣으면 그것이 선택·복사·직렬화를 전부 만난다. */
+.ProseMirror .rdl-placeholder::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--text-muted, #5c5c6a);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.ProseMirror .rdl-placeholder { position: relative; }
+
+/* 체크 목록 ----------------------------------------------------------- */
+
+.ProseMirror li.rdl-task-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  list-style: none;
+  margin-left: -1.2em;
+}
+.rdl-task-box {
+  flex: none;
+  color: var(--text-muted, #8a8a99);
+  font-size: 1.05em;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+}
+.rdl-task-box:hover { color: var(--text-primary, #e6e6ea); }
+.ProseMirror li.rdl-task-item.is-checked .rdl-task-box { color: var(--accent, #4a6a9a); }
+.ProseMirror li.rdl-task-item.is-checked .rdl-list-content { color: var(--text-muted, #8a8a99); }
+.rdl-list-content { flex: 1 1 auto; min-width: 0; }
