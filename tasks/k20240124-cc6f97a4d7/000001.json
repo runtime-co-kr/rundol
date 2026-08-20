@@ -873,7 +873,7 @@
         "PRD-001",
         "ADR-019",
         "REQ-041",
-        "TST-002"
+        "TST-017"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -888,7 +888,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:41.875Z",
-      "updatedAt": "2026-08-20T06:41:53.770Z",
+      "updatedAt": "2026-08-20T06:42:17.488Z",
       "statusChangedAt": "2026-08-20T06:39:47.023Z",
       "externalRefs": [],
       "project": "rundol"
