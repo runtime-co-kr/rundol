@@ -2410,6 +2410,56 @@
       "statusChangedAt": "2026-08-20T15:10:01.195Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-EN53KZZ0": {
+      "title": "Board 설정 화면을 정본화한다",
+      "summary": "정책 층 설정을 Board에서 편집하는 화면을 SCR로 확정한다. 경계 층은 화면에 등장하지 않고, 상속 출처(내장/Workspace/프로젝트)가 항목마다 구분되어야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-020",
+        "ADR-021",
+        "ADR-012"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "설정 화면의 진입·사용자 흐름·바인딩·상태가 SCR에 정의된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "항목별 상속 출처와 덮어쓰기 여부가 화면 바인딩에 규정된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "경계 층 항목이 화면에 등장하지 않음이 디자인에 없는 것으로 명시된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "정책 변경 시 결정 기록을 요구하는 흐름이 전이로 표현된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "업무 유형 정의에서 목록·필터·입력·연결이 파생되는 범위와 그 경계가 화면에 규정된다",
+          "done": false
+        },
+        "AC-006": {
+          "text": "각 기능 ID에 대응하는 TST 시나리오가 존재하고 rdl check --strict가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:10:36.780Z",
+      "updatedAt": "2026-08-20T15:10:36.780Z",
+      "statusChangedAt": "2026-08-20T15:10:36.780Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
