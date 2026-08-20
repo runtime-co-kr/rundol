@@ -3081,7 +3081,7 @@
         },
         "AC-003": {
           "text": "작성 주체가 사람인지 에이전트인지 Client 유형에서 파생되어 지워지지 않는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "AI가 쓴 댓글은 승인 근거 자격을 갖지 않는다",
@@ -3090,7 +3090,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:49:58.363Z",
-      "updatedAt": "2026-08-20T16:25:33.430Z",
+      "updatedAt": "2026-08-20T16:25:38.035Z",
       "statusChangedAt": "2026-08-20T15:50:12.763Z",
       "externalRefs": [],
       "project": "rundol"
