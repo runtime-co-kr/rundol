@@ -2460,6 +2460,50 @@
       "statusChangedAt": "2026-08-20T15:10:36.780Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-4K0PTECS": {
+      "title": "정책 층 로더와 Workspace 상속을 구현한다",
+      "summary": "board.json이 정책 층 값을 소유하도록 확장하고 내장→Workspace→프로젝트 상속을 구현한다. 경계 층 값이 저장되면 거부한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-020"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정책 층 값이 board.json에서 읽히고 3계층으로 병합된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "경계 층 값을 board.json에 두면 로드 시점에 거부된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "정책 변경이 contract-change 결정으로 원장에 남는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "기존 board.json이 그대로 동작한다는 회귀 시험이 있다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "npm test와 rdl check --strict가 모두 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:10:41.326Z",
+      "updatedAt": "2026-08-20T15:10:41.326Z",
+      "statusChangedAt": "2026-08-20T15:10:41.326Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
