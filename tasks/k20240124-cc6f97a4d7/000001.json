@@ -2948,12 +2948,12 @@
         },
         "AC-004": {
           "text": "클라이언트별 복제 없이 SKILL.md 하나로 유지된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:56.370Z",
-      "updatedAt": "2026-08-20T20:08:46.223Z",
+      "updatedAt": "2026-08-20T20:08:50.596Z",
       "statusChangedAt": "2026-08-20T20:08:33.033Z",
       "externalRefs": [],
       "project": "rundol"
