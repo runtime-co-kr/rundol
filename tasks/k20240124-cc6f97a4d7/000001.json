@@ -3139,7 +3139,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "정본 문서 전체가 새 편집기 경로에서 열었다 저장해도 바이트 동일임을 시험이 확인한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "강제 직렬화 경로의 wikilink·자산 embed·mermaid 보존이 고정값으로 남는다",
@@ -3152,7 +3152,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:40.873Z",
-      "updatedAt": "2026-08-20T17:57:58.585Z",
+      "updatedAt": "2026-08-20T18:00:48.687Z",
       "statusChangedAt": "2026-08-20T17:57:58.585Z",
       "externalRefs": [],
       "project": "rundol"
