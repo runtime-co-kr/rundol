@@ -3251,6 +3251,42 @@
       "statusChangedAt": "2026-08-20T17:56:22.185Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-F1CRPS7K": {
+      "title": "인라인 서식과 목록 조작을 손으로 할 수 있게 한다",
+      "summary": "단축키는 있으나 눈에 보이는 길이 없다. 수용 기준의 체크 상자도 눌러서 바꿀 수 없다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "글자를 고르면 서식 도구 막대가 뜬다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "체크 목록의 상자를 눌러 상태를 바꿀 수 있다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "빈 블록에 무엇을 쓰는 자리인지 안내가 뜬다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:56:27.408Z",
+      "updatedAt": "2026-08-20T17:56:27.408Z",
+      "statusChangedAt": "2026-08-20T17:56:27.408Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
