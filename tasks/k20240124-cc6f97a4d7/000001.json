@@ -3452,6 +3452,50 @@
       "statusChangedAt": "2026-08-20T17:57:10.054Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-X41SFK10": {
+      "title": "댓글 작성 주체를 클라이언트 유형에서 추정하지 않는다",
+      "summary": "device 클라이언트로 AI가 쓴 댓글이 workerKind human, canGroundApproval true로 기록된다. ADR-020이 금지한 순환 근거가 열린다. 작성 주체를 호출자가 밝히게 하고 없으면 agent로 떨어뜨린다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-020"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "작성 주체가 클라이언트 유형에서 추정되지 않고 호출자가 밝힌다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "밝히지 않으면 agent로 떨어져 승인 근거 자격을 얻지 못한다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "device 클라이언트로 쓴 댓글이 자동으로 human이 되지 않음이 시험으로 고정된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "이미 기록된 댓글의 판정이 바뀌지 않는다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "npm test와 rdl check --strict가 모두 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T18:13:37.064Z",
+      "updatedAt": "2026-08-20T18:13:37.064Z",
+      "statusChangedAt": "2026-08-20T18:13:37.064Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
