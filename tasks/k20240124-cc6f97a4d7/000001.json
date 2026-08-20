@@ -2187,7 +2187,7 @@
         },
         "AC-002": {
           "text": "wikilink·block anchor·한글 표·mermaid·CRLF가 고정값으로 남는다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "npm test에 등록되어 회귀를 막는다",
@@ -2200,7 +2200,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:08:29.359Z",
-      "updatedAt": "2026-08-20T15:15:02.665Z",
+      "updatedAt": "2026-08-20T15:15:07.658Z",
       "statusChangedAt": "2026-08-20T15:08:29.359Z",
       "externalRefs": [],
       "project": "rundol"
