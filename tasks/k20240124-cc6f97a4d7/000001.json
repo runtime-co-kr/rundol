@@ -2732,6 +2732,36 @@
       "statusChangedAt": "2026-08-20T15:11:39.968Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-QCRHT0RJ": {
+      "title": "[계측] 태스크에 결박되지 않은 행위 41%를 줄인다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "미결박 행위 비율이 10% 이하다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "미결박이 생기는 명령이 무엇인지 계산으로 나온다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:11:44.179Z",
+      "updatedAt": "2026-08-20T15:11:44.179Z",
+      "statusChangedAt": "2026-08-20T15:11:44.179Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
