@@ -546,6 +546,20 @@ async function main() {
   const { recordTokens, debugSummary } = require('../src/debug');
   const { resolveAction, recordAction } = require('../src/action');
   const { inferTaskId } = require('../src/state');
+
+  // 행위 기록은 기본으로 켠다. --debug일 때만 기록하면 평상시 사용이 계측되지 않고,
+  // 그러면 편익 기준선을 낼 수 없다 — 재려고 만든 계측이 재야 할 때 꺼져 있었다.
+  //
+  // 기록은 아무것도 막지 않는다. 프로젝트를 못 정하거나 로그를 못 쓰는 상황에서도
+  // 명령은 그대로 끝나야 한다. 계측이 없는 것이 명령이 안 되는 것보다 낫다.
+  function note(scope, action, extra) {
+    try {
+      recordAction(scope.root, Object.assign({
+        action, actualExecutor: 'cli', project: scope.project,
+        taskId: inferTaskId(scope.root, scope.project)
+      }, extra || {}));
+    } catch (_) { /* 계측 실패는 명령의 결과를 바꾸지 않는다 */ }
+  }
   const { migrateSettings, saveSettings } = require('../src/settings');
   const { attachWorkspace, repairWorkspace, detachWorkspace } = require('../src/attach');
   const { branchBoundaryStatus, installBranchBoundary } = require('../src/branch-boundary');
@@ -741,6 +755,9 @@ async function main() {
     result.diagnostics = filterDiagnostics(result.diagnostics, options);
     result.summary.errors = result.diagnostics.filter((item) => item.severity === 'error').length;
     result.summary.warnings = result.diagnostics.filter((item) => item.severity === 'warning').length;
+    // 검사는 왕복의 일부다. 사람이 몇 번 돌렸는지가 개입 횟수에 들어가야 "완료까지
+    // 몇 번 손댔나"가 나온다. 검사만 빼면 그 수치는 실제보다 좋게 나온다.
+    note(options, 'test.run', { artifactId: options.artifactId || null });
     if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else printText(result);
     return result.summary.errors > 0 ? 1 : 0;
@@ -792,7 +809,11 @@ async function main() {
   if (command === 'save') {
     const options = parseOperationArgs(argv);
     if (options.positional.length > 0) throw new Error('rdl save는 위치 인수를 사용하지 않습니다.');
-    printOperation(saveState(options.root, options), options.json);
+    const saved = saveState(options.root, options);
+    // 저장은 이미 자기 결박을 정한다. 그 결과를 그대로 계측에 실어 추론을 두 번
+    // 하지 않는다 — 두 번 하면 두 답이 갈릴 수 있고, 그때 어느 쪽이 참인지 모른다.
+    note(options, 'task.update', { taskId: saved.task || null, artifactId: null });
+    printOperation(saved, options.json);
     return 0;
   }
   if (command === 'watch') {
@@ -822,6 +843,9 @@ async function main() {
       } while (true);
       return 0;
     }
+    // 감시 모드는 세지 않는다. 사람이 한 번 걸어 두면 스스로 도는 것이라, 세면
+    // 개입 횟수가 사람이 손댄 횟수가 아니라 흐른 시간이 된다.
+    note(options, 'task.update', { artifactId: null });
     printOperation(syncState(options.root, options), options.json);
     return 0;
   }
@@ -1115,7 +1139,7 @@ async function main() {
         externalRefs: []
       });
       printOperation(result, options.json);
-      if (DEBUG_CONTEXT) recordAction(options.root, { action: 'task.create', actualExecutor: 'cli', taskId: result.taskId });
+      note(options, 'task.create', { taskId: result.taskId });
       return 0;
     }
     if (subcommand === 'acceptance') {
@@ -1123,7 +1147,7 @@ async function main() {
       if (options.done === options.undone) throw new Error('--done 또는 --undone 중 하나가 필요합니다.');
       const result = taskAcceptance(options.root, options.positional[0], options.positional[1], options.done, options.project);
       printOperation(result, options.json);
-      if (DEBUG_CONTEXT) recordAction(options.root, { action: 'task.acceptance', actualExecutor: 'cli', taskId: options.positional[0] });
+      note(options, 'task.acceptance', { taskId: options.positional[0] });
       return 0;
     }
     if (options.positional.length !== 1) throw new Error('rdl task set에는 TASK-ID 하나가 필요합니다.');
@@ -1182,7 +1206,7 @@ async function main() {
     if (Object.keys(changes).length === 0) throw new Error('--status, --owner, --result, --round, --link, --unlink 또는 --external-ref 중 하나가 필요합니다.');
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);
-    if (DEBUG_CONTEXT) recordAction(options.root, { action: 'task.update', actualExecutor: 'cli', taskId: options.positional[0] });
+    note(options, 'task.update', { taskId: options.positional[0] });
     return 0;
   }
   if (command === 'doc') {
@@ -1269,7 +1293,7 @@ async function main() {
     printOperation(result, options.json);
     // 문서를 만드는 일도 어느 작업의 일이다. 결박을 비워 두면 계측이 태스크 명령만
     // 세게 되고, 그 수치는 왕복이 아니라 "태스크를 만든 그 한 번"이 된다.
-    if (DEBUG_CONTEXT) recordAction(options.root, { action: 'document.create', actualExecutor: 'cli', artifactId: result.id, taskId: inferTaskId(options.root, options.project) });
+    note(options, 'document.create', { artifactId: result.id });
     return 0;
   }
   if (command === 'action') {

@@ -21,6 +21,32 @@ function logFile(start, projectKey) {
   return path.join(project.root, '.rundol', 'logs', 'debug.jsonl');
 }
 
+// 로그는 진단이지 정본이 아니다. 무제한으로 자라게 두면 계측을 기본으로 켜는 순간
+// 로컬 디스크를 조용히 먹는다. 상한에 닿으면 오래된 줄부터 버린다 — 편익 계측은
+// 최근 흐름을 보는 일이라 앞부분이 사라져도 답이 달라지지 않는다.
+const MAX_LOG_BYTES = 2 * 1024 * 1024;
+const KEEP_RATIO = 0.7;
+
+function trimLog(file) {
+  let size;
+  try { size = fs.statSync(file).size; } catch (_) { return; }
+  if (size <= MAX_LOG_BYTES) return;
+  const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  // 줄 수가 아니라 바이트로 자른다. 줄 길이가 고르지 않아 줄 수로 자르면 상한이
+  // 지켜지지 않는다.
+  const budget = Math.floor(MAX_LOG_BYTES * KEEP_RATIO);
+  const kept = [];
+  let used = 0;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    used += lines[index].length + 1;
+    if (used > budget) break;
+    kept.unshift(lines[index]);
+  }
+  const temporary = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, kept.length ? `${kept.join('\n')}\n` : '', 'utf8');
+  fs.renameSync(temporary, file);
+}
+
 function appendDebug(start, event) {
   const file = logFile(start, event && event.project);
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -28,6 +54,7 @@ function appendDebug(start, event) {
   delete safe.prompt;
   delete safe.content;
   fs.appendFileSync(file, `${JSON.stringify(safe)}\n`, 'utf8');
+  trimLog(file);
   return { file, event: safe };
 }
 
@@ -114,4 +141,4 @@ function debugSummary(start, project) {
   };
 }
 
-module.exports = { appendDebug, recordTokens, debugSummary, humanInterventionSummary };
+module.exports = { appendDebug, recordTokens, debugSummary, humanInterventionSummary, MAX_LOG_BYTES };

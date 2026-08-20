@@ -5,6 +5,8 @@
 
 const assert = require('assert');
 const { spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { humanInterventionSummary } = require('../src/debug');
 
@@ -65,5 +67,36 @@ const summary = JSON.parse(result.stdout);
 assert(summary.humanInterventions, 'debug summary에 humanInterventions가 없습니다.');
 assert(Object.prototype.hasOwnProperty.call(summary.humanInterventions, 'medianHumanTurns'));
 assert(Array.isArray(summary.humanInterventions.tasks));
+
+// 로그는 진단이지 정본이 아니다. 상한이 없으면 계측을 기본으로 켜는 순간 로컬
+// 디스크를 조용히 먹는다. 상한에 닿으면 오래된 줄부터 버려야 하고, 그 판정은
+// 줄 수가 아니라 바이트여야 한다 — 줄 길이가 고르지 않기 때문이다.
+{
+  const { appendDebug, MAX_LOG_BYTES } = require('../src/debug');
+  assert.strictEqual(typeof MAX_LOG_BYTES, 'number');
+  assert(MAX_LOG_BYTES > 0 && MAX_LOG_BYTES <= 8 * 1024 * 1024, `상한이 비정상입니다: ${MAX_LOG_BYTES}`);
+
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-log-cap-'));
+  try {
+    const logs = path.join(workspace, '.rundol', 'logs');
+    fs.mkdirSync(logs, { recursive: true });
+    const file = path.join(logs, 'debug.jsonl');
+    // 상한을 넘기는 분량을 미리 채운다. appendDebug 한 번이 잘라내야 한다.
+    const filler = `${JSON.stringify({ at: 'x', type: 'action', pad: 'y'.repeat(400) })}\n`;
+    fs.writeFileSync(file, filler.repeat(Math.ceil(MAX_LOG_BYTES / filler.length) + 200), 'utf8');
+    assert(fs.statSync(file).size > MAX_LOG_BYTES, '시험 준비가 상한을 넘기지 못했습니다.');
+
+    fs.writeFileSync(path.join(workspace, '.rundol', 'workspace.yaml'), 'schemaVersion: 1\n', 'utf8');
+    appendDebug(workspace, { type: 'action', action: 'test.run', actualExecutor: 'cli' });
+
+    const after = fs.statSync(file).size;
+    assert(after <= MAX_LOG_BYTES, `상한을 넘겼습니다: ${after}`);
+    const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    // 방금 쓴 줄은 남아야 한다. 새 줄을 버리면 계측이 최신을 잃는다.
+    assert(lines[lines.length - 1].includes('test.run'), '가장 최근 기록이 잘려 나갔습니다.');
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+}
 
 process.stdout.write('human intervention tests passed\n');
