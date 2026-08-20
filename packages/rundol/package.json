@@ -1,6 +1,6 @@
 {
   "name": "rundol",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "Integrated Rundol distribution",
   "license": "Apache-2.0",
   "repository": {
@@ -29,7 +29,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rundol/cli": "0.37.0",
-    "@rundol/node": "0.37.0"
+    "@rundol/cli": "0.38.0",
+    "@rundol/node": "0.38.0"
   }
 }

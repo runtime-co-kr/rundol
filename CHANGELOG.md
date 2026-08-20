@@ -2,9 +2,11 @@
 
 이 문서는 사용자에게 영향을 주는 Rundol 변경을 기록한다. 버전 분류와 tag 규칙은 [버전과 릴리스 정책](docs/RELEASES.md)을 따른다.
 
-## [미출시]
+## [0.38.0] - 2026-08-21
 
-정본 문서에 그림을 넣을 수 있게 한다. 넣을 수 없으면 없는 기능이었다.
+세 가지가 함께 들어온다. 정본 문서에 그림을 넣을 수 있게 되고, 태스크에 댓글이 붙고, 무엇이 개입을 기다리는지 한 번에 물을 수 있게 된다. 셋 다 "없으면 그 기능이 아예 없는 것과 같았던" 자리를 채운다.
+
+새 명령이 다섯이라 minor를 올린다. 없어지는 명령은 없고 저장 파일도 바뀌지 않으므로 옮겨가며 할 일이 없다.
 
 ### 무엇이 개입을 기다리는지 한 번에 묻는다
 
@@ -48,10 +50,21 @@ SVG는 벡터라 줄이지 않는다. GIF와 WebP는 한계를 넘으면 거절�
 
 자산은 문서와 같은 브랜치에 둔다. 브랜치를 나누면 문서와 그림이 다른 커밋에 있게 되어 "이 판의 그림"이 없어지고, 검사가 다른 브랜치의 파일을 판정할 수 없어 끊긴 참조를 잡지 못한다. clone 크기가 걱정이면 `--filter=blob:none`이나 sparse-checkout으로 받는 쪽에서 정한다. Git LFS는 쓰지 않는다 — 체크아웃에 네트워크가 필요해 로컬 우선 운영과 폐쇄망 사용을 동시에 깬다.
 
+### prerelease 배포 경로가 실제로 동작한다
+
+[버전과 릴리스 정책](docs/RELEASES.md)은 "검증 전 배포는 `0.18.0-rc.1`처럼 prerelease를 사용한다"고 적어 두었지만, 그 경로는 한 번도 밟힌 적이 없었고 두 군데가 막고 있었다.
+
+`npm publish`의 기본 dist-tag는 버전이 prerelease여도 `latest`다. 릴리스 워크플로에 `--tag`가 없었으므로, `0.38.0-rc.1`을 그대로 올렸다면 `npm install -g rundol`을 하는 모든 사용자가 검증 전 판을 받았을 것이다. 이제 버전이 dist-tag를 정한다 — 하이픈이 있으면 `next`, 없으면 `latest`다. rc를 원하는 설치자는 `rundol@next`로 명시한다.
+
+그리고 시험 하나가 버전 형식을 `^\d+\.\d+\.\d+$`로 손수 다시 정의해 prerelease를 거부하고 있었다. 형식의 정본은 릴리스 검사의 `SEMVER_PATTERN`이며 그것은 prerelease를 허용한다. 같은 물음에 판정자가 둘이면 언젠가 어긋나고, 실제로 어긋난 쪽이 문서가 약속한 것을 막았다.
+
 ### 새 명령
 
 - `rdl asset add <파일경로> [--project <key>] [--as <이름>] [--max-edge <px>] [--doc <ARTIFACT-ID>]`
 - `rdl asset list [--project <key>]`
+- `rdl task comment <TASK-ID> <내용> --client-id <id> [--member <MEMBER-ID>] [--project <key>]`
+- `rdl task comments [TASK-ID] [--project <key>]`
+- `rdl run pending [--project <key>]` (고급 명령)
 
 ## [0.37.0] - 2026-08-20
 
