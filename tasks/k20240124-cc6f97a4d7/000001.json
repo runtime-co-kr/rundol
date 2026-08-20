@@ -3335,12 +3335,12 @@
         },
         "AC-003": {
           "text": "해결되지 않은 자산 참조가 편집 중에 보인다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:33.098Z",
-      "updatedAt": "2026-08-20T23:29:03.788Z",
+      "updatedAt": "2026-08-20T23:29:07.382Z",
       "statusChangedAt": "2026-08-20T23:20:36.675Z",
       "externalRefs": [],
       "project": "rundol"
