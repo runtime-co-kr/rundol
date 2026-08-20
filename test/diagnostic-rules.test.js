@@ -69,7 +69,7 @@ const allCodes = fs.readdirSync(sourceRoot)
 
 const measured = coverage(allCodes);
 assert(measured.total > 200, `진단 코드 수가 예상보다 적습니다: ${measured.total}`);
-assert(measured.mapped >= 125, `연결된 코드가 줄었습니다: ${measured.mapped}`);
+assert(measured.mapped >= 124, `연결된 코드가 줄었습니다: ${measured.mapped}`);
 
 // 소관이 확정된 계열은 빠짐없이 덮여야 한다. 한 계열 안에서 몇 개만 붙어 있으면
 // 역방향 계산이 "이 요구가 영향을 주는 진단"을 실제보다 적게 답한다.

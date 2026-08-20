@@ -117,14 +117,16 @@ function testEndToEndThroughTheCli() {
     assert(created.ok, created.err);
     assert.strictEqual(created.json.task.kind, 'test');
     assert.strictEqual(created.json.task.result, null);
-    // 구현 준비도는 구현을 시작해도 되는지를 묻는 게이트다. 실행 태스크는 대상이 아니다.
+    // 구현 준비도는 이제 저장하지 않는다. 링크에서 결정되는 값이라 저장하면 링크가
+    // 바뀌어도 갱신 경로가 없어 조용히 어긋난다(REQ-047). 실행 태스크든 일반 태스크든
+    // 저장 결과에 그 필드가 없어야 한다.
     assert.strictEqual(created.json.task.implementationReadiness, undefined);
     const id = created.json.taskId;
 
     const normal = run(workspace, ['task', 'add', '일반 작업', '--owner', 'MEMBER-001', '--link', 'TST-001', '--acceptance', '구현한다.']);
     assert(normal.ok, normal.err);
     assert.strictEqual(normal.json.task.kind, 'normal');
-    assert.strictEqual(normal.json.task.implementationReadiness, 'atomic-v1');
+    assert.strictEqual(normal.json.task.implementationReadiness, undefined, '계산되는 값을 저장하면 안 됩니다.');
     const rejected = run(workspace, ['task', 'set', normal.json.taskId, '--result', 'pass']);
     assert(!rejected.ok && /테스트 태스크가 아니면/u.test(rejected.err), rejected.err);
 

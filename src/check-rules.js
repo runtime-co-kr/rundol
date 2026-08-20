@@ -318,11 +318,24 @@ function checkTaskEntries(list, tasks, context) {
       if (roundOwners.has(key)) diagnostic(list, { code: 'RDL-TASK-032', category: 'task', file: taskFile, artifactId: taskId, target: tested[0], message: `${tested[0]}의 ${round}차 검증 태스크가 둘 이상입니다: ${roundOwners.get(key)}에 이미 있음` });
       else roundOwners.set(key, taskId);
     }
-    const implementationLinked = (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
-    if (task.implementationReadiness && task.implementationReadiness !== 'atomic-v1') diagnostic(list, { code: 'RDL-IMPL-023', category: 'implementation', file: taskFile, artifactId: taskId, message: `지원하지 않는 구현 준비도 계약입니다: ${task.implementationReadiness}` });
-    if (task.status === 'done' && implementationLinked && task.implementationReadiness === 'atomic-v1') {
+    // 구현 준비도는 저장된 값이 아니라 링크에서 계산한다. 저장하면 링크가 바뀌어도
+    // 갱신 경로가 없어 조용히 어긋나고, 그때 게이트는 낡은 값으로 판정한다.
+    //
+    // 검증 실행 태스크는 대상이 아니다. 구현하지 않고 이미 있는 시험 문서의 시나리오를
+    // 밟을 뿐이라, 걸어두면 실행 기록마다 요구 문서를 끌고 다니게 된다.
+    //
+    // 옛 태스크에 남은 값은 읽되 보지 않는다. 지난 기록을 고쳐 쓰지 않는 것이 원칙이고,
+    // 그 값으로 진단하면 이관하지 않은 저장소가 갑자기 실패한다.
+    //
+    // 게이트가 도는 조건은 연결된 문서가 실제로 원자 계약을 선언했는지다. 저장된
+    // 필드는 그 선언의 사본이었고, 사본은 원본이 바뀌어도 따라가지 않아 어긋났다.
+    // 원본을 직접 보면 그 어긋남이 생길 자리가 없다. 계약을 쓰지 않는 프로젝트는
+    // 예전처럼 이 게이트의 대상이 아니다 — 쓰지 않기로 한 것을 위반으로 세지 않는다.
+    const implementationReady = kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
+    if (task.status === 'done' && implementationReady) {
       const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
-      for (const issue of readiness(linked)) diagnostic(list, {
+      const declaresAtomic = linked.some((doc) => doc.frontmatter && doc.frontmatter.data && doc.frontmatter.data.implementationContract === 'atomic-v1');
+      for (const issue of (declaresAtomic ? readiness(linked) : [])) diagnostic(list, {
         code: issue.code, category: 'implementation', severity: issue.severity, file: taskFile,
         artifactId: taskId, target: issue.target || issue.artifactId || null, message: issue.message
       });

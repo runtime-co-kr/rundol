@@ -47,7 +47,6 @@ const RULES = Object.freeze({
   'RDL-IMPL-016': { document: 'REQ-034', functionId: 'HRN-02' },
   'RDL-IMPL-017': { document: 'REQ-034', functionId: 'HRN-02' },
   'RDL-IMPL-018': { document: 'REQ-034', functionId: 'HRN-02' },
-  'RDL-IMPL-023': { document: 'REQ-034', functionId: 'HRN-02' },
   // 유형별 계약도 같은 검사의 소관이다. REQ-034가 "각 기능의 유형별 필드를 모두
   // 검사한다"이므로, 시험 문서의 시나리오 표와 화면·모델 문서의 다이어그램 규칙은
   // 별도 규칙이 아니라 그 유형의 계약이 무엇인지를 말하는 조항이다.
