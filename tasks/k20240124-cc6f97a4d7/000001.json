@@ -2792,6 +2792,36 @@
       "statusChangedAt": "2026-08-20T15:12:01.326Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-FJXT8R3J": {
+      "title": "[자산] 자산 총량 임계를 두고 문서 브랜치 비대화를 막는다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "low",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "자산 총량이 임계를 넘으면 진단이 난다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "임계값이 실측에서 나온 근거를 갖는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:12:05.349Z",
+      "updatedAt": "2026-08-20T15:12:05.349Z",
+      "statusChangedAt": "2026-08-20T15:12:05.349Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
