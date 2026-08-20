@@ -85,3 +85,45 @@ for (const code of allCodes) {
 }
 
 process.stdout.write(`diagnostic rule tests passed (${measured.mapped}/${measured.total} 연결)\n`);
+
+// 진단이 무엇이 없는지만 말하면 사람은 무엇을 붙여야 하는지를 다시 조사해야 한다.
+// 실측에서 태스크 하나를 닫는 데 드는 왕복의 상당수가 그 조사였고, 어느 문서가 그
+// 기능을 덮는지는 이미 계산되는 값이므로 진단이 함께 들고 나가야 한다.
+{
+  const { validateTaskImplementationReadiness } = require('../src/implementation-contract');
+  const coverage = { 'WRK-01': { REQ: ['REQ-048'], TST: ['TST-020'] } };
+
+  function frontmatter(id, ids) {
+    return { data: { id, implementationContract: 'atomic-v1', functionIds: ids }, body: '', bodyStartLine: 1 };
+  }
+
+  // TST만 연결한 태스크: 어느 REQ가 그 기능을 덮는지 알려야 한다.
+  const missingReq = validateTaskImplementationReadiness(
+    [{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['WRK-01']) }],
+    { coverage }
+  );
+  const req = missingReq.find((item) => item.code === 'RDL-IMPL-020');
+  assert(req, 'REQ 누락을 진단해야 합니다.');
+  assert(req.message.includes('REQ-048'), `어느 REQ가 덮는지 알려야 합니다: ${req.message}`);
+
+  // REQ만 연결한 태스크: 어느 TST가 그 기능을 검증하는지 알려야 한다.
+  const missingTst = validateTaskImplementationReadiness(
+    [{ id: 'REQ-048', source: '', frontmatter: frontmatter('REQ-048', ['WRK-01']) }],
+    { coverage }
+  );
+  const tst = missingTst.find((item) => item.code === 'RDL-IMPL-021');
+  assert(tst, 'TST 누락을 진단해야 합니다.');
+  assert(tst.message.includes('TST-020'), `어느 TST가 덮는지 알려야 합니다: ${tst.message}`);
+
+  // 덮는 문서를 모르면 추측하지 않는다. 없는 안내를 붙이면 사람이 그것을 찾으러 간다.
+  const unknown = validateTaskImplementationReadiness(
+    [{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['ZZZ-99']) }],
+    { coverage }
+  );
+  const silent = unknown.find((item) => item.code === 'RDL-IMPL-020');
+  assert(!silent.message.includes('덮는 문서'), `모르는 기능에 안내를 지어내면 안 됩니다: ${silent.message}`);
+
+  // coverage를 주지 않으면 예전 그대로 동작한다. 안내는 덧붙임이지 계약 변경이 아니다.
+  const bare = validateTaskImplementationReadiness([{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['WRK-01']) }]);
+  assert(bare.some((item) => item.code === 'RDL-IMPL-020'), '안내 없이도 진단은 나와야 합니다.');
+}

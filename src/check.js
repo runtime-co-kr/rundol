@@ -12,7 +12,7 @@ const { validateDocumentDiagram } = require('./document-diagram');
 const { validateTestDocument } = require('./test-contract');
 const { TASK_KINDS, TEST_RESULTS, testedDocuments } = require('./tasks');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
-const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness } = require('./implementation-contract');
+const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness, implementationTrace } = require('./implementation-contract');
 const { runGit } = require('./git');
 const { readCommitBindings } = require('./task-commits');
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
@@ -135,12 +135,19 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
     return 0;
   }
   const taskIds = Object.keys(parsed.tasks).filter((taskId) => !projectKey || parsed.tasks[taskId].project === projectKey);
+  // 기능별로 어느 문서가 덮는지는 이미 계산되는 값이다. 준비도 판정이 "REQ가 없다"에서
+  // 멈추면 사람은 어느 REQ를 붙여야 하는지 다시 조사해야 하고, 실측에서 태스크 하나를
+  // 닫는 데 드는 왕복의 상당수가 그 조사였다.
+  const coverage = {};
+  for (const entry of implementationTrace(uniqueDocuments(Array.from(registry.values()))).entries) {
+    coverage[entry.functionId] = entry.artifacts;
+  }
   // 읽기는 여기서 끝났다. 아래 판정은 값만 본다 — 종류·판정 목록과 검증 문서 추출,
   // 구현 준비도 판정은 각자 다른 모듈이 갖고 있으므로 위임으로 넘긴다.
   return checkTaskEntries(list, parsed.tasks, {
     taskIds, taskFile, registry, memberIds, stakeholderIds,
     kinds: TASK_KINDS, results: TEST_RESULTS, testedDocuments,
-    readiness: validateTaskImplementationReadiness
+    readiness: (linked) => validateTaskImplementationReadiness(linked, { coverage })
   });
 }
 

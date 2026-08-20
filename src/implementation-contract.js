@@ -206,7 +206,7 @@ function validateImplementationTrace(artifactInput, options) {
   return { trace, issues };
 }
 
-function validateTaskImplementationReadiness(artifactInput) {
+function validateTaskImplementationReadiness(artifactInput, options) {
   const artifacts = (artifactInput || []).map((artifact) => ({
     id: artifact.id,
     type: String(artifact.id || '').slice(0, 3),
@@ -219,12 +219,23 @@ function validateTaskImplementationReadiness(artifactInput) {
   const implementationArtifacts = artifacts.filter((artifact) => IMPLEMENTATION_TYPES.includes(artifact.type));
   const requirements = implementationArtifacts.filter((artifact) => artifact.type === 'REQ');
   const tests = implementationArtifacts.filter((artifact) => artifact.type === 'TST');
-  if (requirements.length === 0) issues.push({ code: 'RDL-IMPL-020', severity: 'error', message: '구현 준비도 대상 태스크에는 REQ 문서가 필요합니다.' });
-  if (tests.length === 0) issues.push({ code: 'RDL-IMPL-021', severity: 'error', message: '구현 준비도 대상 태스크에는 TST 문서가 필요합니다.' });
+  // 무엇이 없는지만 말하면 사람은 무엇을 붙여야 하는지를 다시 조사해야 한다. 실측에서
+  // 태스크 하나를 닫는 데 드는 왕복의 상당수가 그 조사였다. 어느 문서가 그 기능을
+  // 덮는지는 이미 계산되는 값이므로 진단이 함께 들고 나간다.
+  const coverage = (options && options.coverage) || null;
+  const suggest = (ids, type) => {
+    if (!coverage || !ids.length) return '';
+    const found = unique(ids.flatMap((id) => (coverage[id] && coverage[id][type]) || []));
+    return found.length ? ` 이 기능을 덮는 문서: ${found.join(', ')}` : '';
+  };
+
+  const linkedIds = unique(implementationArtifacts.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
+  if (requirements.length === 0) issues.push({ code: 'RDL-IMPL-020', severity: 'error', message: `구현 준비도 대상 태스크에는 REQ 문서가 필요합니다.${suggest(linkedIds, 'REQ')}` });
+  if (tests.length === 0) issues.push({ code: 'RDL-IMPL-021', severity: 'error', message: `구현 준비도 대상 태스크에는 TST 문서가 필요합니다.${suggest(linkedIds, 'TST')}` });
   for (const artifact of implementationArtifacts) for (const issue of validateImplementationDocument(artifact, { implementation: true })) issues.push(Object.assign({ artifactId: artifact.id }, issue));
   const requiredIds = unique(requirements.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
   const testedIds = new Set(tests.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
-  for (const id of requiredIds) if (!testedIds.has(id)) issues.push({ code: 'RDL-IMPL-022', severity: 'error', target: id, message: `태스크의 REQ 기능 ID를 연결된 TST가 검증하지 않습니다: ${id}` });
+  for (const id of requiredIds) if (!testedIds.has(id)) issues.push({ code: 'RDL-IMPL-022', severity: 'error', target: id, message: `태스크의 REQ 기능 ID를 연결된 TST가 검증하지 않습니다: ${id}.${suggest([id], 'TST')}` });
   return issues;
 }
 
