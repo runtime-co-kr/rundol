@@ -2278,12 +2278,12 @@
         },
         "AC-003": {
           "text": "본문 wikilink 소실이 검사로 드러난다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:02.628Z",
-      "updatedAt": "2026-08-20T22:00:36.306Z",
+      "updatedAt": "2026-08-20T23:49:45.169Z",
       "statusChangedAt": "2026-08-20T15:09:02.628Z",
       "externalRefs": [],
       "project": "rundol"
