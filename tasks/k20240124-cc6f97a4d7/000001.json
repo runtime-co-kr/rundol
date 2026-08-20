@@ -1576,7 +1576,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "implementationReadiness 필드 없이도 RDL-IMPL 진단이 같게 나온다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "옛 값이 남은 태스크를 읽어도 오류가 나지 않는다",
@@ -1585,7 +1585,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T01:48:48.593Z",
-      "updatedAt": "2026-08-20T06:15:35.245Z",
+      "updatedAt": "2026-08-20T06:31:11.126Z",
       "statusChangedAt": "2026-08-20T06:15:35.245Z",
       "externalRefs": [],
       "project": "rundol",
