@@ -2504,6 +2504,51 @@
       "statusChangedAt": "2026-08-20T15:10:41.326Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-0EA3MGQW": {
+      "title": "제약 해석기를 구현하고 test 유형을 데이터로 옮긴다",
+      "summary": "제약 카탈로그 5종의 해석기를 만들고, check-rules.js의 kind==='test' 분기 일곱을 유형 정의로 이관한다. 기존 검사 결과가 동일해야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-021",
+        "ADR-012"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "제약 종류 5종의 해석기가 구현되고 각각 진단 코드를 갖는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "test 유형이 데이터 정의로 표현되고 하드코딩 분기가 제거된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "이관 전후로 기존 태스크 집합의 진단 결과가 동일함이 회귀 시험으로 고정된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "코드 변경 없이 새 유형을 추가할 수 있음이 시험으로 증명된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "npm test와 rdl check --strict가 모두 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:10:45.676Z",
+      "updatedAt": "2026-08-20T15:10:45.676Z",
+      "statusChangedAt": "2026-08-20T15:10:45.676Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
