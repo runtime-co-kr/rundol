@@ -1883,7 +1883,7 @@
         },
         "AC-002": {
           "text": "IMPL과 PROFILE 계열 진단이 모두 정본 문서를 지목한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "정본 문서에서 영향받는 진단 코드를 역방향으로 계산할 수 있다.",
@@ -1892,7 +1892,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T22:26:18.582Z",
-      "updatedAt": "2026-08-20T01:54:36.927Z",
+      "updatedAt": "2026-08-20T01:54:39.035Z",
       "statusChangedAt": "2026-08-19T22:26:18.582Z",
       "externalRefs": [],
       "project": "rundol"
