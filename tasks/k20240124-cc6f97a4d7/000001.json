@@ -3050,6 +3050,44 @@
       "statusChangedAt": "2026-08-20T15:42:10.704Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-TMWS9XDM": {
+      "title": "[기능] 태스크에 댓글을 달아 세션 간 소통 자리를 만든다",
+      "summary": "두 세션이 같은 저장소에서 도는데 서로에게 말을 걸 수단이 없다. 오늘만 세 번 부딪혔다 — 남의 doing 태스크 코드를 커밋했고, 같은 태스크를 중복 생성했고, 미커밋 ADR을 손대도 되는지 알 수 없었다. ADR-020이 코멘트 도입 시의 제약을 이미 정해 두었다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "태스크에 댓글을 달고 읽을 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "댓글이 append-only 이벤트 원장에 쌓이고 동시 작성이 Git 병합으로 풀린다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "작성 주체가 사람인지 에이전트인지 Client 유형에서 파생되어 지워지지 않는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "AI가 쓴 댓글은 승인 근거 자격을 갖지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:49:58.363Z",
+      "updatedAt": "2026-08-20T15:49:58.363Z",
+      "statusChangedAt": "2026-08-20T15:49:58.363Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
