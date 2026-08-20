@@ -2427,7 +2427,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "mid",
       "kind": "normal",
       "result": null,
@@ -2435,7 +2435,10 @@
       "links": [
         "ADR-020",
         "ADR-021",
-        "ADR-012"
+        "ADR-012",
+        "REQ-060",
+        "SCR-003",
+        "TST-032"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -2466,8 +2469,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:36.780Z",
-      "updatedAt": "2026-08-20T15:10:36.780Z",
-      "statusChangedAt": "2026-08-20T15:10:36.780Z",
+      "updatedAt": "2026-08-20T16:22:15.958Z",
+      "statusChangedAt": "2026-08-20T16:22:15.958Z",
       "externalRefs": [],
       "project": "rundol"
     },
