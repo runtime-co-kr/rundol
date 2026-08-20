@@ -2274,7 +2274,7 @@
         },
         "AC-002": {
           "text": "골든 테스트의 wikilink 고정값이 통과 상태로 유지된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "본문 wikilink 소실이 검사로 드러난다",
@@ -2283,7 +2283,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:02.628Z",
-      "updatedAt": "2026-08-20T22:00:31.593Z",
+      "updatedAt": "2026-08-20T22:00:36.306Z",
       "statusChangedAt": "2026-08-20T15:09:02.628Z",
       "externalRefs": [],
       "project": "rundol"
