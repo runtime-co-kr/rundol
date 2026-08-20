@@ -3227,12 +3227,12 @@
         },
         "AC-003": {
           "text": "표 안에서도 별칭 구분자가 셀을 쪼개지 않는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:51.972Z",
-      "updatedAt": "2026-08-20T21:59:59.768Z",
+      "updatedAt": "2026-08-20T23:49:41.677Z",
       "statusChangedAt": "2026-08-20T18:15:28.197Z",
       "externalRefs": [],
       "project": "rundol"
