@@ -3183,7 +3183,7 @@
         },
         "AC-002": {
           "text": "메뉴가 텍스트·목록·고급 묶음으로 나뉜다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "블록을 끌 때 놓일 자리가 표시된다",
@@ -3192,7 +3192,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:46.609Z",
-      "updatedAt": "2026-08-20T21:59:43.557Z",
+      "updatedAt": "2026-08-20T21:59:47.456Z",
       "statusChangedAt": "2026-08-20T18:11:46.312Z",
       "externalRefs": [],
       "project": "rundol"
