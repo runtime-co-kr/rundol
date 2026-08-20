@@ -2936,7 +2936,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "SKILL.md가 런의 조회·시작·재개·승인 경로를 명시한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "세션이 쓸 실행 단위가 정해진다 - next·step 반복인지 drive 한 번인지",
@@ -2953,7 +2953,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:56.370Z",
-      "updatedAt": "2026-08-20T20:08:33.033Z",
+      "updatedAt": "2026-08-20T20:08:37.090Z",
       "statusChangedAt": "2026-08-20T20:08:33.033Z",
       "externalRefs": [],
       "project": "rundol"
