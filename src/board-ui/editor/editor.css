@@ -1,0 +1,101 @@
+/* 편집기 표면. 색은 보드 테마 토큰을 그대로 받아 쓰고, 여기서는 배치만 정한다.
+   토큰이 없는 곳(데모 페이지 등)에서도 읽히도록 대체값을 둔다. */
+
+.ProseMirror { outline: none; }
+.ProseMirror-hideselection *::selection { background: transparent; }
+
+/* 블록 손잡이 --------------------------------------------------------- */
+
+.rdl-block-handle {
+  position: absolute;
+  display: none;
+  gap: 2px;
+  align-items: center;
+  height: 1.75em;
+  z-index: 5;
+  /* 보이고 안 보이고는 플러그인이 정한다. CSS의 :hover로 정하면 손잡이가 놓인
+     왼쪽 여백은 편집 영역 밖이라, 손잡이를 누르러 가는 순간 투명해진다. */
+  transition: opacity 120ms ease;
+}
+
+.rdl-block-add,
+.rdl-block-grip {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted, #8a8a99);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rdl-block-add:hover,
+.rdl-block-grip:hover {
+  background: var(--surface-raised, #24242e);
+  color: var(--text-primary, #e6e6ea);
+}
+.rdl-block-grip { cursor: grab; font-size: 12px; letter-spacing: -1px; }
+.rdl-block-grip:active { cursor: grabbing; }
+
+/* 삽입 메뉴 ----------------------------------------------------------- */
+
+.rdl-block-menu {
+  position: absolute;
+  display: none;
+  z-index: 20;
+  min-width: 208px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border, #2a2a33);
+  border-radius: 9px;
+  background: var(--surface-raised, #1c1c24);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.rdl-block-menu-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #e6e6ea);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.rdl-block-menu-item:hover { background: var(--surface-hover, #2a2a36); }
+.rdl-block-menu-hint {
+  color: var(--text-muted, #7a7a88);
+  font-size: 11.5px;
+  font-family: Consolas, "D2Coding", monospace;
+  white-space: nowrap;
+}
+
+/* 선택된 블록 --------------------------------------------------------- */
+
+.ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid var(--accent, #4a6a9a);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* wikilink는 한 덩어리다. 가운데를 지울 수 없다는 것이 눈에 보여야 한다. */
+.ProseMirror .wiki-link,
+.ProseMirror .wiki-embed {
+  padding: 0 1px;
+  border-bottom: 1px dashed currentcolor;
+  cursor: default;
+}
+.ProseMirror .wiki-link { color: var(--link, #9cc7ff); }
+.ProseMirror .wiki-embed { color: var(--link-embed, #c7a0ff); }

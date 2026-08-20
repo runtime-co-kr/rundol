@@ -34,6 +34,22 @@
     "mermaid": "^11.12.2"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "esbuild": "^0.28.2",
+    "prosemirror-commands": "^1.7.2",
+    "prosemirror-gapcursor": "^1.4.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-list": "^1.5.1",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-view": "^1.42.2",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "remark-wiki-link": "^2.0.1",
+    "typescript": "^7.0.2",
+    "unified": "^11.0.5"
   }
 }
