@@ -2618,7 +2618,7 @@
         },
         "AC-004": {
           "text": "업무 유형 정의에서 목록·필터·입력·연결이 파생된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "npm test와 rdl check --strict가 모두 통과한다",
@@ -2627,7 +2627,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:53.886Z",
-      "updatedAt": "2026-08-20T16:27:25.614Z",
+      "updatedAt": "2026-08-20T19:07:20.976Z",
       "statusChangedAt": "2026-08-20T16:27:16.791Z",
       "externalRefs": [],
       "project": "rundol"
