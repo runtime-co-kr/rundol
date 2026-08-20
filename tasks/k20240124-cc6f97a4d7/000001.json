@@ -2001,7 +2001,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "폐기한 문서 소프트 임대가 CLI·보드 문서에서 사용 가능한 기능으로 남아 있지 않다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "같은 호출 안의 중복 링크 입력이 한 번만 남는다",
@@ -2022,7 +2022,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T09:06:57.693Z",
-      "updatedAt": "2026-08-20T09:07:06.650Z",
+      "updatedAt": "2026-08-20T09:31:35.198Z",
       "statusChangedAt": "2026-08-20T09:07:06.650Z",
       "externalRefs": [],
       "project": "rundol"
