@@ -2626,12 +2626,12 @@
         },
         "AC-005": {
           "text": "npm test와 rdl check --strict가 모두 통과한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:53.886Z",
-      "updatedAt": "2026-08-20T23:57:12.299Z",
+      "updatedAt": "2026-08-20T23:57:16.688Z",
       "statusChangedAt": "2026-08-20T16:27:16.791Z",
       "externalRefs": [],
       "project": "rundol"
