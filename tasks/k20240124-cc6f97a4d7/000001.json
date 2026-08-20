@@ -2698,6 +2698,40 @@
       "statusChangedAt": "2026-08-20T15:11:36.243Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-3AZRRM7C": {
+      "title": "[계측] 사람과 에이전트를 실제로 구분해 개입 지표를 살린다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "행위 기록이 호출한 Client를 담는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "Client type이 agent면 사람 개입으로 세지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "PRD-001 1차 편익 지표 1번에 실측값을 적을 수 있다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:11:39.968Z",
+      "updatedAt": "2026-08-20T15:11:39.968Z",
+      "statusChangedAt": "2026-08-20T15:11:39.968Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
