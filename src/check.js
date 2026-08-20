@@ -21,20 +21,17 @@ const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
 const { normalizeDecisionEvent, decisionEnvelope } = require('./decision');
 const { normalizeDelegationEvent, delegationEnvelope } = require('./delegation');
 const { normalizeApprovalEvent, approvalEnvelope } = require('./approval');
-const { isDocumentUid, duplicateUids } = require('./document-identity');
+const { duplicateUids } = require('./document-identity');
 const workspaceApi = require('./workspace');
 const { workspaceLayout, listProjects } = workspaceApi;
 // 판정부는 값만 보고 답한다. 여기서 읽고, 저기서 판정한다 — 그래야 보드와 워커
 // 어댑터가 같은 판정 함수를 부를 수 있다.
 const {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS,
-  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments,
+  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, checkDocumentMetadata, ID_PATTERN, REQUIRED_FIELDS,
   governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask
 } = require('./check-rules');
 
-const REQUIRED_FIELDS = ['id', 'type', 'kind', 'title', 'description', 'owner', 'state', 'tags', 'aliases', 'related'];
-const ID_PATTERN = /^[A-Z]{3}-\d{3,}$/;
-const FILE_PATTERN = /^[A-Z]{3}-\d{3,}-(?=.*[\uAC00-\uD7A3])[\uAC00-\uD7A3A-Za-z0-9]+(?:-[\uAC00-\uD7A3A-Za-z0-9]+)*\.md$/u;
 // 새 식별자는 문서와 같은 8자 규칙이고, 옛 26자 식별자도 계속 읽는다 — 지난 기록을
 // 고쳐 쓰지 않는 것이 원칙이므로 이관 전 저장소도 그대로 동작해야 한다.
 const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/;
@@ -49,9 +46,6 @@ const LEGACY_DOCUMENT_CODES = new Map([
   ['SPC', { hint: 'REQ 또는 관점별 설계문서로 이전하세요.', blocking: true }],
   ['API', { hint: '`rdl doc migrate --apply`가 IFC로 옮깁니다. 유형 이름만 바뀌었습니다.', blocking: false }]
 ]);
-const NON_CANONICAL_CODES = new Set(['NTE']);
-const REQUIRED_TAG_NAMESPACES = ['rundol/', 'artifact/', 'domain/', 'feature/'];
-const NOTE_TAG_NAMESPACES = ['rundol/'];
 
 function relative(root, file) {
   return path.relative(root, file).split(path.sep).join('/');
@@ -297,50 +291,17 @@ function checkLegacyWorkspace(start, options, scope) {
     else fileRegistry.set(vaultDoc.fileStem, vaultDoc);
   }
 
+  // 읽기는 여기서 끝났다. 아래 판정은 값만 본다 — 파일 이름도 값으로 넘긴다.
+  const delegates = {
+    boundary: (meta) => validateBoundaryMetadata(meta),
+    implementation: (doc) => validateImplementationDocument(doc, options)
+  };
   for (const doc of documents) {
-    if (!doc.frontmatter) {
-      diagnostic(diagnostics, { code: 'RDL-DOC-001', file: doc.relativeFile, message: 'YAML frontmatter가 없습니다.' });
-      continue;
-    }
-    const meta = doc.frontmatter.data;
-    const artifactId = typeof meta.id === 'string' ? meta.id : null;
+    const artifactId = checkDocumentMetadata(diagnostics, doc, path.basename(doc.file), delegates);
+    if (!doc.frontmatter) continue;
     doc.id = artifactId;
     canonicalDocuments.push(doc);
-    for (const field of REQUIRED_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(meta, field) || meta[field] === '' || meta[field] === null) diagnostic(diagnostics, { code: 'RDL-DOC-002', file: doc.relativeFile, line: doc.frontmatter.locations[field] || 2, artifactId, message: `필수 메타 필드가 없습니다: ${field}` });
-    }
-    if (!artifactId || !ID_PATTERN.test(artifactId)) diagnostic(diagnostics, { code: 'RDL-DOC-003', file: doc.relativeFile, line: doc.frontmatter.locations.id || 2, artifactId, message: `문서 ID는 3자리 코드와 3자리 이상 숫자여야 합니다: ${artifactId || '(없음)'}` });
-    if (!FILE_PATTERN.test(path.basename(doc.file))) diagnostic(diagnostics, { code: 'RDL-DOC-004', file: doc.relativeFile, artifactId, message: '파일명은 <3자리 코드>-<번호>-<한글 제목>.md 형식이어야 합니다.' });
-    if (artifactId && !path.basename(doc.file).startsWith(`${artifactId}-`)) diagnostic(diagnostics, { code: 'RDL-DOC-005', file: doc.relativeFile, artifactId, message: `파일명의 ID가 frontmatter ID와 다릅니다: ${path.basename(doc.file)}` });
-    if (typeof meta.title === 'string' && /[A-Za-z]/.test(meta.title)) diagnostic(diagnostics, { code: 'RDL-DOC-006', file: doc.relativeFile, line: doc.frontmatter.locations.title, artifactId, message: '문서 title은 한글 중심으로 작성하고 영문 약어는 description 또는 본문에서 설명하세요.' });
-    const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
-    if (aliases[0] !== artifactId) diagnostic(diagnostics, { code: 'RDL-DOC-007', file: doc.relativeFile, line: doc.frontmatter.locations.aliases, artifactId, message: 'aliases의 첫 값은 문서 ID와 같아야 합니다.' });
-    // 조인 키는 번호가 아니라 uid다. 형식이 어긋난 값은 조용히 무시하면 그 문서가
-    // 조인에서 사라지므로 진단한다. 부여 자체가 없는 것은 아직 마이그레이션하지
-    // 않은 문서일 수 있어 경고로 둔다.
-    if (meta.uid === undefined) diagnostic(diagnostics, { code: 'RDL-DOC-014', severity: 'warning', file: doc.relativeFile, artifactId, message: '문서 고유 식별자(uid)가 없습니다. rdl doc identity --apply로 부여하세요.' });
-    else if (!isDocumentUid(meta.uid)) diagnostic(diagnostics, { code: 'RDL-DOC-015', file: doc.relativeFile, line: doc.frontmatter.locations.uid, artifactId, message: `문서 고유 식별자 형식이 잘못되었습니다: ${meta.uid}` });
-    const tags = Array.isArray(meta.tags) ? meta.tags : [];
-    const requiredNamespaces = NON_CANONICAL_CODES.has(typeof artifactId === 'string' ? artifactId.slice(0, 3) : '') ? NOTE_TAG_NAMESPACES : REQUIRED_TAG_NAMESPACES;
-    for (const namespace of requiredNamespaces) if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) diagnostic(diagnostics, { code: 'RDL-DOC-008', file: doc.relativeFile, line: doc.frontmatter.locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
-    for (const issue of validateBoundaryMetadata(meta)) diagnostic(diagnostics, {
-      code: issue.code,
-      category: 'granularity',
-      file: doc.relativeFile,
-      line: doc.frontmatter.locations[issue.field] || 2,
-      artifactId,
-      message: issue.message
-    });
-    for (const issue of validateImplementationDocument(doc, options)) diagnostic(diagnostics, {
-      code: issue.code,
-      category: 'implementation',
-      severity: issue.severity,
-      file: doc.relativeFile,
-      line: issue.line || doc.frontmatter.locations.implementationContract || 2,
-      artifactId,
-      target: issue.target || null,
-      message: issue.message
-    });
+    const aliases = Array.isArray(doc.frontmatter.data.aliases) ? doc.frontmatter.data.aliases : [];
     if (artifactId) {
       for (const alias of [artifactId].concat(aliases)) {
         if (registry.has(alias) && registry.get(alias) !== doc) diagnostic(diagnostics, { code: 'RDL-DOC-009', file: doc.relativeFile, artifactId, target: alias, message: `중복 ID 또는 alias입니다: ${alias}` });

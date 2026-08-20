@@ -13,6 +13,17 @@
 
 const { ruleSource } = require('./diagnostic-rules');
 
+const REQUIRED_FIELDS = ['id', 'type', 'kind', 'title', 'description', 'owner', 'state', 'tags', 'aliases', 'related'];
+const ID_PATTERN = /^[A-Z]{3}-\d{3,}$/u;
+const FILE_PATTERN = /^[A-Z]{3}-\d{3,}-(?=.*[가-힣])[가-힣A-Za-z0-9]+(?:-[가-힣A-Za-z0-9]+)*\.md$/u;
+const NON_CANONICAL_CODES = new Set(['NTE']);
+const REQUIRED_TAG_NAMESPACES = ['rundol/', 'artifact/', 'domain/', 'feature/'];
+const NOTE_TAG_NAMESPACES = ['rundol/'];
+// 조인 키의 형식 판정. 정체성 모듈이 아니라 규칙 쪽에 두는 이유는, 이것이 값 하나를
+// 보고 옳고 그름을 말하는 규칙이기 때문이다. 저장·부여는 정체성 모듈의 일이고
+// 그 모듈은 파일을 읽으므로, 판정이 거기 있으면 판정도 함께 파일에 묶인다.
+const DOCUMENT_UID = /^[0-9A-HJKMNP-TV-Z]{8}$/u;
+
 const GOVERNANCE_HEADINGS = ['미션', '목표', '범위', '역할', '프로젝트 팀원', '이해관계자', '책임 매트릭스', '의사결정과 에스컬레이션', '위험과 제약', '협업 리듬', '완료 정의'];
 const GOVERNANCE_BLOCK_FIELDS = {
   ROLE: ['미션', '결정권', '주요 산출물', '에스컬레이션'],
@@ -128,6 +139,67 @@ function checkReference(list, fileRegistry, artifactRegistry, sourceDoc, rawValu
   }
 }
 
+function isDocumentUid(value) {
+  return DOCUMENT_UID.test(String(value || ''));
+}
+
+/**
+ * 문서 하나의 메타데이터 판정. 이미 읽어 둔 문서 값과 파일 이름만 보고 답한다.
+ *
+ * 파일을 여는 일은 호출자가 이미 끝냈다. 여기서 다시 열면 같은 문서를 두 번 읽게
+ * 되고, 그보다 나쁘게는 이 판정이 파일 시스템에 묶여 보드나 워커 어댑터가 같은
+ * 판정을 부를 수 없게 된다.
+ *
+ * 경계 계약과 구현 계약 판정은 각자 순수 모듈이 갖고 있으므로 그대로 위임한다.
+ */
+function checkDocumentMetadata(list, doc, fileName, delegates) {
+  if (!doc.frontmatter) {
+    diagnostic(list, { code: 'RDL-DOC-001', file: doc.relativeFile, message: 'YAML frontmatter가 없습니다.' });
+    return null;
+  }
+  const meta = doc.frontmatter.data;
+  const artifactId = typeof meta.id === 'string' ? meta.id : null;
+  const locations = doc.frontmatter.locations;
+
+  for (const field of REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(meta, field) || meta[field] === '' || meta[field] === null) {
+      diagnostic(list, { code: 'RDL-DOC-002', file: doc.relativeFile, line: locations[field] || 2, artifactId, message: `필수 메타 필드가 없습니다: ${field}` });
+    }
+  }
+  if (!artifactId || !ID_PATTERN.test(artifactId)) diagnostic(list, { code: 'RDL-DOC-003', file: doc.relativeFile, line: locations.id || 2, artifactId, message: `문서 ID는 3자리 코드와 3자리 이상 숫자여야 합니다: ${artifactId || '(없음)'}` });
+  if (!FILE_PATTERN.test(fileName)) diagnostic(list, { code: 'RDL-DOC-004', file: doc.relativeFile, artifactId, message: '파일명은 <3자리 코드>-<번호>-<한글 제목>.md 형식이어야 합니다.' });
+  if (artifactId && !fileName.startsWith(`${artifactId}-`)) diagnostic(list, { code: 'RDL-DOC-005', file: doc.relativeFile, artifactId, message: `파일명의 ID가 frontmatter ID와 다릅니다: ${fileName}` });
+  if (typeof meta.title === 'string' && /[A-Za-z]/u.test(meta.title)) diagnostic(list, { code: 'RDL-DOC-006', file: doc.relativeFile, line: locations.title, artifactId, message: '문서 title은 한글 중심으로 작성하고 영문 약어는 description 또는 본문에서 설명하세요.' });
+
+  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
+  if (aliases[0] !== artifactId) diagnostic(list, { code: 'RDL-DOC-007', file: doc.relativeFile, line: locations.aliases, artifactId, message: 'aliases의 첫 값은 문서 ID와 같아야 합니다.' });
+
+  // 조인 키는 번호가 아니라 uid다. 형식이 어긋난 값은 조용히 무시하면 그 문서가
+  // 조인에서 사라지므로 진단한다. 부여 자체가 없는 것은 아직 이관하지 않은 문서일
+  // 수 있어 경고로 둔다.
+  if (meta.uid === undefined) diagnostic(list, { code: 'RDL-DOC-014', severity: 'warning', file: doc.relativeFile, artifactId, message: '문서 고유 식별자(uid)가 없습니다. rdl doc identity --apply로 부여하세요.' });
+  else if (!isDocumentUid(meta.uid)) diagnostic(list, { code: 'RDL-DOC-015', file: doc.relativeFile, line: locations.uid, artifactId, message: `문서 고유 식별자 형식이 잘못되었습니다: ${meta.uid}` });
+
+  const tags = Array.isArray(meta.tags) ? meta.tags : [];
+  const namespaces = NON_CANONICAL_CODES.has(typeof artifactId === 'string' ? artifactId.slice(0, 3) : '') ? NOTE_TAG_NAMESPACES : REQUIRED_TAG_NAMESPACES;
+  for (const namespace of namespaces) {
+    if (!tags.some((tag) => typeof tag === 'string' && tag.startsWith(namespace))) {
+      diagnostic(list, { code: 'RDL-DOC-008', file: doc.relativeFile, line: locations.tags, artifactId, message: `필수 태그 namespace가 없습니다: ${namespace}` });
+    }
+  }
+
+  for (const issue of delegates.boundary(meta)) {
+    diagnostic(list, { code: issue.code, category: 'granularity', file: doc.relativeFile, line: locations[issue.field] || 2, artifactId, message: issue.message });
+  }
+  for (const issue of delegates.implementation(doc)) {
+    diagnostic(list, {
+      code: issue.code, category: 'implementation', severity: issue.severity, file: doc.relativeFile,
+      line: issue.line || locations.implementationContract || 2, artifactId, target: issue.target || null, message: issue.message
+    });
+  }
+  return artifactId;
+}
+
 function referenceFromTask(list, registry, taskFile, taskId, value) {
   const parts = String(value).split('#');
   const targetDoc = resolveArtifact(registry, parts[0]);
@@ -139,7 +211,8 @@ function referenceFromTask(list, registry, taskFile, taskId, value) {
 }
 
 module.exports = {
-  GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS,
-  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments,
-  governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask
+  GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS, REQUIRED_FIELDS, ID_PATTERN, FILE_PATTERN,
+  NON_CANONICAL_CODES, REQUIRED_TAG_NAMESPACES, NOTE_TAG_NAMESPACES,
+  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
+  governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkReference, referenceFromTask
 };

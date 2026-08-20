@@ -32,10 +32,28 @@ for (const namespace of ['artifact/', 'domain/', 'feature/']) {
   assert.ok(!tags.some((tag) => tag.startsWith(namespace)), `NTE는 비정규 노트이므로 ${namespace} 태그를 갖지 않습니다.`);
 }
 
-// the reduced namespace requirement is what lets that template pass RDL-DOC-008
-const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
-assert.match(check, /NON_CANONICAL_CODES\s*=\s*new Set\(\['NTE'\]\)/u);
-assert.match(check, /NOTE_TAG_NAMESPACES\s*=\s*\['rundol\/'\]/u);
+// the reduced namespace requirement is what lets that template pass RDL-DOC-008.
+// 판정과 그 상수는 check-rules로 옮겼다 — 값만 보고 답하는 규칙이므로 읽기 계층에
+// 남을 이유가 없었다. 소스를 문자열로 확인하는 대신 판정을 직접 불러 확인한다.
+const { NON_CANONICAL_CODES, NOTE_TAG_NAMESPACES, REQUIRED_TAG_NAMESPACES, checkDocumentMetadata } = require('../src/check-rules');
+assert.ok(NON_CANONICAL_CODES.has('NTE'), 'NTE는 비정규 유형이어야 합니다.');
+assert.deepStrictEqual(NOTE_TAG_NAMESPACES, ['rundol/']);
+assert.ok(REQUIRED_TAG_NAMESPACES.length > NOTE_TAG_NAMESPACES.length, '비정규 유형의 태그 요구가 더 적어야 합니다.');
+
+// 규칙이 실제로 그렇게 판정하는지 본다. 상수만 맞고 판정이 다르면 아무 의미가 없다.
+function noteDoc(id, docTags) {
+  return {
+    relativeFile: `inbox/${id}-메모.md`,
+    frontmatter: { locations: {}, data: { id, type: 'document', kind: 'note', title: '메모', description: '설명', owner: 'x', state: 'draft', tags: docTags, aliases: [id], related: [] } }
+  };
+}
+const noDelegates = { boundary: () => [], implementation: () => [] };
+const noteIssues = [];
+checkDocumentMetadata(noteIssues, noteDoc('NTE-001', ['rundol/artifact']), 'NTE-001-메모.md', noDelegates);
+assert.ok(!noteIssues.some((item) => item.code === 'RDL-DOC-008'), 'NTE는 rundol/ 태그 하나로 충분해야 합니다.');
+const requirementIssues = [];
+checkDocumentMetadata(requirementIssues, noteDoc('REQ-999', ['rundol/artifact']), 'REQ-999-메모.md', noDelegates);
+assert.ok(requirementIssues.some((item) => item.code === 'RDL-DOC-008'), '정규 유형은 태그 namespace를 더 요구해야 합니다.');
 
 // the published standard states that notes are non-canonical
 const standard = fs.readFileSync(path.join(repository, 'docs', 'DOCUMENT-STANDARD.md'), 'utf8');
