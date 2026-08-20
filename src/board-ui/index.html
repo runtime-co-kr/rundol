@@ -7,6 +7,7 @@
   <title>Rundol Workspace</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/editor.css">
 </head>
 <body>
   <!-- 브랜드는 왼쪽 패널이 갖고, 그 패널은 화면 맨 위에서 시작한다. 헤더는 그 오른쪽
@@ -68,6 +69,7 @@
       <section id="document-view" class="view" hidden>
         <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
         <article id="document-body" class="markdown-body"></article>
+        <div id="document-editor-surface" class="document-editor-surface" hidden></div>
         <textarea id="document-editor" class="document-editor" hidden aria-label="Markdown 문서 편집"></textarea>
       </section>
 
@@ -184,6 +186,7 @@
   <script src="/dompurify.js"></script>
   <script src="/marked.js"></script>
   <script src="/mermaid.js"></script>
+  <script src="/editor.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

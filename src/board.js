@@ -164,6 +164,26 @@ function asset(response, file, type, token) {
   response.end(body);
 }
 
+// 문서 편집기 번들. 다른 화면 자산과 달리 만들어진 것이라 없을 수 있다 —
+// 설치 없이 tarball만 푼 경우다. 그때 500으로 죽으면 보드 전체가 안 뜬 것처럼
+// 보이므로, 404로 돌려주고 화면이 원문 편집기로 물러나게 둔다.
+function generatedAsset(response, file, type) {
+  const target = path.join(UI_ROOT, 'generated', file);
+  if (!fs.existsSync(target)) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    response.end('editor bundle not built');
+    return;
+  }
+  const body = fs.readFileSync(target);
+  response.writeHead(200, {
+    'Content-Type': `${type}; charset=utf-8`,
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  response.end(body);
+}
+
 function dependencyAsset(response, modulePath) {
   const body = fs.readFileSync(require.resolve(modulePath));
   response.writeHead(200, {
@@ -471,6 +491,8 @@ function createBoardServer(start, options) {
       if (request.method === 'GET' && url.pathname === '/app.js') return asset(response, 'app.js', 'application/javascript', token);
       if (request.method === 'GET' && url.pathname === '/style.css') return asset(response, 'style.css', 'text/css', token);
       if (request.method === 'GET' && url.pathname === '/theme.css') return asset(response, 'theme.css', 'text/css', token);
+      if (request.method === 'GET' && url.pathname === '/editor.js') return generatedAsset(response, 'entry.js', 'application/javascript');
+      if (request.method === 'GET' && url.pathname === '/editor.css') return generatedAsset(response, 'entry.css', 'text/css');
       if (request.method === 'GET' && url.pathname === '/mermaid.js') return dependencyAsset(response, 'mermaid/dist/mermaid.min.js');
       if (request.method === 'GET' && url.pathname === '/marked.js') return packageAsset(response, 'marked', 'lib/marked.umd.js');
       if (request.method === 'GET' && url.pathname === '/dompurify.js') return dependencyAsset(response, 'dompurify/dist/purify.min.js');

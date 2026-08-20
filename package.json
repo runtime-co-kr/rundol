@@ -18,13 +18,15 @@
   "type": "commonjs",
   "scripts": {
     "skill:install": "node scripts/install-global-skill.js --force",
+    "build:editor": "node scripts/build-editor.js",
     "check:fixture": "node bin/rdl.js check --root test/fixtures/workspace",
     "test": "node test/run.js",
     "test:packages": "node test/packages.test.js",
     "test:install": "node test/install.test.js && node test/tarball-compat.test.js",
     "typecheck": "tsc --noEmit",
     "version:check": "node scripts/version-check.js",
-    "release:check": "npm run version:check && npm run typecheck && npm test && npm run test:install"
+    "release:check": "npm run version:check && npm run typecheck && npm test && npm run test:install",
+    "prepare": "node scripts/build-editor.js"
   },
   "engines": {
     "node": ">=20"

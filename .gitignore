@@ -12,3 +12,4 @@ packages/cli/dist/
 .agents/
 
 tmp/
+src/board-ui/generated/

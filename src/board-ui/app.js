@@ -518,7 +518,7 @@ function renderContext(item, kind) {
   }
 }
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
-  renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+  closeBlockEditor(); renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('document-editor-surface').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 // 무엇이 막혀 있는지가 목록에서 가장 먼저 읽혀야 한다. 사람 대기(blocker)는 값으로 있었지만
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
@@ -764,7 +764,7 @@ function renderSyncStatus() {
 // revision까지 최신이 되어 저장이 남의 변경을 조용히 덮어쓴다. 이건 안전 문제라 어떤
 // 경로에서도 어기지 않는다. 반면 태스크 변경이 큐에 있는 동안의 폴링은 낙관적 표시를
 // 지우는 표시 문제이고, 저장 직후 새 revision을 받는 경로는 오히려 갈아끼워야 한다.
-function isDocumentEditing() { return !el('document-editor').hidden; }
+function isDocumentEditing() { return Boolean(blockEditor) || !el('document-editor').hidden; }
 function isEditing() { return isDocumentEditing() || state.pendingTasks.size > 0; }
 async function loadSnapshot(silent, options) {
   try {
@@ -1000,14 +1000,63 @@ el('new-task').addEventListener('click', () => { el('task-id').textContent = 'NE
 function renderEditAvailability() {
   el('edit-document').disabled = false;
 }
+// 블록 편집기가 실려 있으면 그것으로 연다. 번들이 없으면(설치 없이 tarball만 푼
+// 경우) 원문 편집기로 물러난다 — 편집을 못 하게 되는 것보다 낫다.
+let blockEditor = null;
+
+// 링크 선택기가 쓸 후보. 스냅샷에 이미 있는 것을 모양만 바꾼다.
+function linkCandidates() {
+  const documents = (state.snapshot.documents || []).map((item) => ({
+    id: item.id,
+    title: item.title || item.id,
+    // Obsidian link 대상은 alias가 아니라 실제 파일명이다.
+    target: String(item.file || '').replace(/^.*\//u, '').replace(/\.md$/u, ''),
+    alias: item.id,
+    kind: 'document'
+  })).filter((item) => item.target);
+  // 사람은 문서가 아니라 project.md의 block anchor를 가리킨다. 역할과 이해관계자도
+  // 같은 방식으로 연결되므로 셋을 함께 넣는다.
+  const groups = state.snapshot.people || {};
+  const people = [].concat(groups.members || [], groups.roles || [], groups.stakeholders || []).map((person) => ({
+    id: person.id,
+    title: person.name || person.id,
+    target: `project#^${person.id}`,
+    alias: person.name || person.id,
+    kind: 'member'
+  }));
+  return documents.concat(people);
+}
+
+function closeBlockEditor() {
+  if (!blockEditor) return;
+  blockEditor.destroy();
+  blockEditor = null;
+  el('document-editor-surface').replaceChildren();
+  el('document-editor-surface').hidden = true;
+}
+
 function enterEditing(item) {
-  el('document-editor').value = item.body;
   el('document-body').hidden = true;
-  el('document-editor').hidden = false;
   el('edit-document').hidden = true;
   el('cancel-document-edit').hidden = false;
   el('save-document').hidden = false;
+
+  closeBlockEditor();
+  if (window.RundolEditor) {
+    el('document-editor').hidden = true;
+    el('document-editor-surface').hidden = false;
+    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates() });
+    blockEditor.view.focus();
+    return;
+  }
+  el('document-editor').value = item.body;
+  el('document-editor').hidden = false;
   el('document-editor').focus();
+}
+
+// 저장할 본문. 편집기가 열려 있으면 손대지 않은 블록은 원문 조각 그대로 돌아온다.
+function editingBody() {
+  return blockEditor ? blockEditor.getMarkdown() : el('document-editor').value;
 }
 el('edit-document').addEventListener('click', async () => {
   const item = state.snapshot.documents.find((value) => value.id === state.selected);
@@ -1022,11 +1071,12 @@ el('cancel-document-edit').addEventListener('click', () => { renderDocument(stat
 el('save-document').addEventListener('click', async () => {
   const item = state.snapshot.documents.find((value) => value.id === state.selected);
   if (!item) return;
-  const draft = el('document-editor').value;
+  const draft = editingBody();
   try {
     const saved = await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: draft, clientId: state.snapshot.client && state.snapshot.client.id }) });
     // 저장은 편집의 끝이다. 편집기를 열어둔 채 스냅샷을 불러오면 isEditing() 가드에
     // 걸려 갱신이 통째로 건너뛰어지고, 다음 저장이 오래된 revision으로 나가 409가 난다.
+    closeBlockEditor();
     el('document-editor').hidden = true;
     state.rejectedDraft = null;
     await loadSnapshot(true);

@@ -29,15 +29,15 @@
   border: none;
   border-radius: 5px;
   background: transparent;
-  color: var(--text-muted, #8a8a99);
+  color: var(--tertiary-TextColor, #8a8a99);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
 }
 .rdl-block-add:hover,
 .rdl-block-grip:hover {
-  background: var(--surface-raised, #24242e);
-  color: var(--text-primary, #e6e6ea);
+  background: var(--surface-raised-BackgroundColor, #24242e);
+  color: var(--primary-TextColor, #e6e6ea);
 }
 .rdl-block-grip { cursor: grab; font-size: 12px; letter-spacing: -1px; }
 .rdl-block-grip:active { cursor: grabbing; }
@@ -52,10 +52,10 @@
   max-height: 340px;
   overflow-y: auto;
   padding: 5px;
-  border: 1px solid var(--border, #2a2a33);
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
   border-radius: 9px;
-  background: var(--surface-raised, #1c1c24);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  box-shadow: var(--medium-BoxShadow, 0 12px 32px rgb(0 0 0 / 45%));
 }
 
 .rdl-block-menu-item {
@@ -68,15 +68,15 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-primary, #e6e6ea);
+  color: var(--primary-TextColor, #e6e6ea);
   font: inherit;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
-.rdl-block-menu-item:hover { background: var(--surface-hover, #2a2a36); }
+.rdl-block-menu-item:hover { background: var(--ui-hover-OverlayColor, #2a2a36); }
 .rdl-block-menu-hint {
-  color: var(--text-muted, #7a7a88);
+  color: var(--tertiary-TextColor, #7a7a88);
   font-size: 11.5px;
   font-family: Consolas, "D2Coding", monospace;
   white-space: nowrap;
@@ -85,7 +85,7 @@
 /* 선택된 블록 --------------------------------------------------------- */
 
 .ProseMirror .ProseMirror-selectednode {
-  outline: 2px solid var(--accent, #4a6a9a);
+  outline: 2px solid var(--accent-BackgroundColor, #4a6a9a);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -97,14 +97,14 @@
   border-bottom: 1px dashed currentcolor;
   cursor: default;
 }
-.ProseMirror .wiki-link { color: var(--link, #9cc7ff); }
-.ProseMirror .wiki-embed { color: var(--link-embed, #c7a0ff); }
+.ProseMirror .wiki-link { color: var(--accent-TextColor, #9cc7ff); }
+.ProseMirror .wiki-embed { color: var(--info-Color, #c7a0ff); }
 
 /* 메뉴 묶음 머리 ------------------------------------------------------ */
 
 .rdl-block-menu-group {
   padding: 8px 10px 4px;
-  color: var(--text-muted, #7a7a88);
+  color: var(--tertiary-TextColor, #7a7a88);
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: .08em;
@@ -118,7 +118,7 @@
   position: absolute;
   height: 2px;
   border-radius: 2px;
-  background: var(--accent, #4a6a9a);
+  background: var(--accent-BackgroundColor, #4a6a9a);
   pointer-events: none;
   z-index: 6;
 }
@@ -132,23 +132,23 @@
   max-height: 320px;
   overflow-y: auto;
   padding: 5px;
-  border: 1px solid var(--border, #2a2a33);
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
   border-radius: 9px;
-  background: var(--surface-raised, #1c1c24);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  box-shadow: var(--medium-BoxShadow, 0 12px 32px rgb(0 0 0 / 45%));
 }
 .rdl-slash-empty {
   padding: 10px;
-  color: var(--text-muted, #7a7a88);
+  color: var(--tertiary-TextColor, #7a7a88);
   font-size: 12.5px;
 }
-.rdl-block-menu-item.is-active { background: var(--surface-hover, #2a2a36); }
+.rdl-block-menu-item.is-active { background: var(--ui-hover-OverlayColor, #2a2a36); }
 
 /* 메뉴를 여는 슬래시는 글이 아니라 명령이다. 그렇게 보여야 한다. */
 .rdl-slash-token {
-  background: var(--surface-raised, #24242e);
+  background: var(--surface-raised-BackgroundColor, #24242e);
   border-radius: 4px;
-  color: var(--accent-text, #9cc7ff);
+  color: var(--accent-TextColor, #9cc7ff);
 }
 
 /* 링크 선택기 --------------------------------------------------------- */
@@ -161,10 +161,10 @@
   max-height: 320px;
   overflow-y: auto;
   padding: 5px;
-  border: 1px solid var(--border, #2a2a33);
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
   border-radius: 9px;
-  background: var(--surface-raised, #1c1c24);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  box-shadow: var(--medium-BoxShadow, 0 12px 32px rgb(0 0 0 / 45%));
 }
 
 .rdl-link-item {
@@ -176,14 +176,14 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-primary, #e6e6ea);
+  color: var(--primary-TextColor, #e6e6ea);
   font: inherit;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
 .rdl-link-item:hover,
-.rdl-link-item.is-active { background: var(--surface-hover, #2a2a36); }
+.rdl-link-item.is-active { background: var(--ui-hover-OverlayColor, #2a2a36); }
 
 .rdl-link-kind {
   flex: none;
@@ -191,11 +191,11 @@
   border-radius: 4px;
   font-family: Consolas, "D2Coding", monospace;
   font-size: 11px;
-  background: var(--surface-sunken, #24242e);
-  color: var(--text-muted, #8a8a99);
+  background: var(--surface-03-BackgroundColor, #24242e);
+  color: var(--tertiary-TextColor, #8a8a99);
 }
-.rdl-link-kind-document { color: var(--link, #9cc7ff); }
-.rdl-link-kind-member { color: var(--link-embed, #c7a0ff); }
+.rdl-link-kind-document { color: var(--accent-TextColor, #9cc7ff); }
+.rdl-link-kind-member { color: var(--info-Color, #c7a0ff); }
 
 .rdl-link-title {
   overflow: hidden;
@@ -206,9 +206,9 @@
 /* 대상이 없는 링크. 저장한 뒤가 아니라 지금 보여야 고칠 사람이 아직 여기 있다. */
 .ProseMirror .wiki-link.is-unresolved,
 .ProseMirror .wiki-embed.is-unresolved {
-  color: var(--danger, #ff9c9c);
+  color: var(--danger-Color, #ff9c9c);
   border-bottom-style: dotted;
-  text-decoration: underline wavy var(--danger, #ff9c9c) 1px;
+  text-decoration: underline wavy var(--danger-Color, #ff9c9c) 1px;
   text-underline-offset: 3px;
 }
 
@@ -220,10 +220,10 @@
   gap: 2px;
   z-index: 21;
   padding: 4px;
-  border: 1px solid var(--border, #2a2a33);
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
   border-radius: 8px;
-  background: var(--surface-raised, #1c1c24);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  box-shadow: var(--medium-BoxShadow, 0 8px 24px rgb(0 0 0 / 45%));
 }
 
 .rdl-toolbar-button {
@@ -233,12 +233,12 @@
   border: none;
   border-radius: 5px;
   background: transparent;
-  color: var(--text-primary, #e6e6ea);
+  color: var(--primary-TextColor, #e6e6ea);
   font-size: 13px;
   cursor: pointer;
 }
-.rdl-toolbar-button:hover { background: var(--surface-hover, #2a2a36); }
-.rdl-toolbar-button.is-active { background: var(--accent, #4a6a9a); color: #fff; }
+.rdl-toolbar-button:hover { background: var(--ui-hover-OverlayColor, #2a2a36); }
+.rdl-toolbar-button.is-active { background: var(--accent-BackgroundColor, #4a6a9a); color: #fff; }
 .rdl-toolbar-button.is-bold { font-weight: 800; }
 .rdl-toolbar-button.is-italic { font-style: italic; }
 .rdl-toolbar-button.is-strike { text-decoration: line-through; }
@@ -250,7 +250,7 @@
 .ProseMirror .rdl-placeholder::before {
   content: attr(data-placeholder);
   position: absolute;
-  color: var(--text-muted, #5c5c6a);
+  color: var(--tertiary-TextColor, #5c5c6a);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -267,13 +267,83 @@
 }
 .rdl-task-box {
   flex: none;
-  color: var(--text-muted, #8a8a99);
+  color: var(--tertiary-TextColor, #8a8a99);
   font-size: 1.05em;
   line-height: 1.4;
   cursor: pointer;
   user-select: none;
 }
-.rdl-task-box:hover { color: var(--text-primary, #e6e6ea); }
-.ProseMirror li.rdl-task-item.is-checked .rdl-task-box { color: var(--accent, #4a6a9a); }
-.ProseMirror li.rdl-task-item.is-checked .rdl-list-content { color: var(--text-muted, #8a8a99); }
+.rdl-task-box:hover { color: var(--primary-TextColor, #e6e6ea); }
+.ProseMirror li.rdl-task-item.is-checked .rdl-task-box { color: var(--accent-BackgroundColor, #4a6a9a); }
+.ProseMirror li.rdl-task-item.is-checked .rdl-list-content { color: var(--tertiary-TextColor, #8a8a99); }
 .rdl-list-content { flex: 1 1 auto; min-width: 0; }
+
+/* 편집 표면을 읽기 화면과 같게 --------------------------------------- */
+
+/* 편집으로 들어갔을 때 글자가 움직이면 사람은 자기가 무엇을 눌렀는지 잠깐 잃는다.
+   .markdown-body와 같은 크기·간격·색을 쓴다. 값이 아니라 같은 토큰을 쓰는 이유는
+   읽기 화면이 바뀔 때 편집 화면만 남지 않게 하기 위해서다. */
+
+.ProseMirror {
+  width: 100%;
+  padding: var(--spacing-3) 0;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--primary-TextColor, #e6e6ea);
+}
+
+.ProseMirror h2 {
+  margin-top: var(--spacing-4);
+  padding-bottom: var(--spacing-1);
+  border-bottom: 1px solid var(--divider-BorderColor);
+}
+
+.ProseMirror pre {
+  overflow: auto;
+  padding: var(--spacing-2);
+  border-radius: var(--medium-BorderRadius);
+  background: var(--surface-code-BackgroundColor);
+}
+
+.ProseMirror code { color: var(--code-TextColor); }
+
+.ProseMirror blockquote {
+  margin: var(--spacing-3) 0;
+  padding: var(--spacing-0_5) var(--spacing-2);
+  border-left: 3px solid var(--accent-BackgroundColor);
+  color: var(--secondary-TextColor);
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--small-BorderRadius);
+  border: 1px solid var(--surface-01-BorderColor);
+}
+
+.ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  padding: var(--spacing-1);
+  border: 1px solid var(--divider-BorderColor);
+  vertical-align: top;
+}
+.ProseMirror th { background: var(--surface-02-BackgroundColor); text-align: left; }
+
+/* 모서리와 글자 크기도 보드의 것을 쓴다 */
+.rdl-block-menu,
+.rdl-slash-menu,
+.rdl-link-picker { border-radius: var(--large-BorderRadius, 12px); }
+.rdl-toolbar { border-radius: var(--medium-BorderRadius, 8px); }
+.rdl-block-add,
+.rdl-block-grip,
+.rdl-toolbar-button { border-radius: var(--small-BorderRadius, 6px); }
+.rdl-block-menu-item,
+.rdl-link-item { border-radius: var(--small-BorderRadius, 6px); font-size: var(--small-FontSize, 13px); }
+.rdl-block-menu-group { font-size: var(--caption-FontSize, 12px); }
+.rdl-block-menu-hint,
+.rdl-link-kind { font-size: var(--caption-FontSize, 12px); }
