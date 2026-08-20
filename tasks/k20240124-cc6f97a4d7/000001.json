@@ -2517,7 +2517,7 @@
         },
         "AC-002": {
           "text": "경계 층 값을 board.json에 두면 로드 시점에 거부된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "정책 변경이 contract-change 결정으로 원장에 남는다",
@@ -2534,7 +2534,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:41.326Z",
-      "updatedAt": "2026-08-20T17:59:35.775Z",
+      "updatedAt": "2026-08-20T17:59:41.264Z",
       "statusChangedAt": "2026-08-20T15:10:41.326Z",
       "externalRefs": [],
       "project": "rundol"
