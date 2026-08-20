@@ -1841,7 +1841,8 @@
       "round": null,
       "links": [
         "SCR-002",
-        "TST-016"
+        "TST-016",
+        "REQ-039"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -1860,7 +1861,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T17:11:48.132Z",
-      "updatedAt": "2026-08-19T23:05:03.328Z",
+      "updatedAt": "2026-08-20T06:18:36.169Z",
       "statusChangedAt": "2026-08-19T23:05:03.328Z",
       "externalRefs": [],
       "project": "rundol"
