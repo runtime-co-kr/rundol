@@ -77,6 +77,13 @@ require('./task-link.test');
 require('./asset.test');
 require('./comment.test');
 require('./diagnostic-rules.test');
+// 편집기 시험은 remark(ESM 전용)를 동적 import로 읽으므로 promise를 내보낸다.
+// 아래 사슬에 얹지 않고 따로 두는 이유는 순서가 아니라 격리다 — 앞 시험이 넘어지면
+// 사슬에 얹힌 것들은 아예 돌지 않고, 돌지 않은 시험은 통과한 시험과 구분되지 않는다.
+require('./editor-roundtrip.test').catch((error) => {
+  process.stderr.write(`${error.stack || error.message}\n`);
+  process.exitCode = 1;
+});
 
 require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./author-fanout.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),
