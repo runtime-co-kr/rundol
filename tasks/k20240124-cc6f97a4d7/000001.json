@@ -2355,7 +2355,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "제약 종류 5종의 파라미터와 판정 의미가 REQ에 기능 ID별로 정의된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "업무 유형 정의 스키마가 REQ에 규정된다",
@@ -2376,7 +2376,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:56.449Z",
-      "updatedAt": "2026-08-20T17:40:14.415Z",
+      "updatedAt": "2026-08-20T17:40:19.421Z",
       "statusChangedAt": "2026-08-20T17:35:09.240Z",
       "externalRefs": [],
       "project": "rundol"
