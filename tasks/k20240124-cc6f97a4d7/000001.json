@@ -3073,7 +3073,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "태스크에 댓글을 달고 읽을 수 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "댓글이 append-only 이벤트 원장에 쌓이고 동시 작성이 Git 병합으로 풀린다",
@@ -3090,7 +3090,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:49:58.363Z",
-      "updatedAt": "2026-08-20T15:58:04.855Z",
+      "updatedAt": "2026-08-20T16:25:29.143Z",
       "statusChangedAt": "2026-08-20T15:50:12.763Z",
       "externalRefs": [],
       "project": "rundol"
