@@ -28,7 +28,8 @@ const { workspaceLayout, listProjects } = workspaceApi;
 // 어댑터가 같은 판정 함수를 부를 수 있다.
 const {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS,
-  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, checkDocumentMetadata, checkTaskEntries, ID_PATTERN, REQUIRED_FIELDS,
+  headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, ID_PATTERN, REQUIRED_FIELDS,
+  checkDocumentMetadata, checkCharterMetadata, checkContractViolations, checkTaskEntries,
   governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask
 } = require('./check-rules');
 
@@ -367,20 +368,8 @@ function checkLegacyWorkspace(start, options, scope) {
 }
 
 function checkProjectCharter(diagnostics, root, project) {
-  const doc = inspectMarkdown(project.charter, root);
-  if (!doc.frontmatter) {
-    diagnostic(diagnostics, { code: 'RDL-PROJECT-001', category: 'governance', file: doc.relativeFile, message: 'project.md에 YAML frontmatter가 필요합니다.' });
-    return;
-  }
-  const meta = doc.frontmatter.data;
-  const expectedId = `project:${project.key}`;
-  for (const field of REQUIRED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(meta, field) || meta[field] === '' || meta[field] === null) diagnostic(diagnostics, { code: 'RDL-PROJECT-002', category: 'governance', file: doc.relativeFile, line: doc.frontmatter.locations[field] || 2, artifactId: expectedId, message: `project.md 필수 메타 필드가 없습니다: ${field}` });
-  }
-  if (meta.id !== expectedId) diagnostic(diagnostics, { code: 'RDL-PROJECT-003', category: 'governance', file: doc.relativeFile, line: doc.frontmatter.locations.id || 2, artifactId: meta.id, message: `project.md id는 ${expectedId}여야 합니다.` });
-  if (meta.type !== 'project') diagnostic(diagnostics, { code: 'RDL-PROJECT-004', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md type은 project여야 합니다.' });
-  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
-  if (aliases[0] !== expectedId) diagnostic(diagnostics, { code: 'RDL-PROJECT-005', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md aliases의 첫 값은 프로젝트 ID여야 합니다.' });
+  // 읽기는 이 한 줄이고 나머지는 값 판정이다.
+  checkCharterMetadata(diagnostics, inspectMarkdown(project.charter, root), project.key);
 }
 
 // 파일 단위 검사가 이미 보고하는 코드. fold가 같은 것을 다시 세지 않게 한다.
@@ -823,18 +812,10 @@ function checkDocumentProfile(diagnostics, layout, project, settings) {
     if (settings.skipProfilePolicy) return;
     const artifacts = projectArtifacts(project);
     const evaluation = evaluateDocumentContract(validation.profile, artifacts);
-    const severity = evaluation.enforcement === 'checkpoint' && settings.strict ? 'error' : 'warning';
     // 흡수 진단(006·007·010·011)은 없앴다. 제목 문자열만 보고 내용을 보지 않아 빈 제목
     // 여섯 줄로도 통과했고, 나중에 그 유형을 켜면 옮기라고 알려주는 경로도 없었다.
-    const codes = {
-      'required-missing': 'RDL-PROFILE-002',
-      'recommended-missing': 'RDL-PROFILE-003',
-      'disabled-present': 'RDL-PROFILE-004'
-    };
-    for (const violation of evaluation.violations) diagnostic(diagnostics, {
-      code: codes[violation.code] || 'RDL-PROFILE-009', category: 'profile', severity: violation.code === 'recommended-missing' ? 'warning' : severity,
-      file: relative(layout.root, project.charter), project: project.key, target: violation.type,
-      message: violation.message
+    checkContractViolations(diagnostics, evaluation, {
+      file: relative(layout.root, project.charter), project: project.key, strict: settings.strict
     });
     // 예전 계약이 갖고 있던 값은 지금 아무 데서도 읽지 않는다. 지우지 않고 남겨 두되,
     // 남아 있다는 사실과 옮길 자리는 알려야 한다. 모르면 영영 그대로 남는다.

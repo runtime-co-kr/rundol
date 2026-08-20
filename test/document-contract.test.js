@@ -78,18 +78,42 @@ try {
 }
 
 // 흡수 진단은 코드에서 사라져야 한다. 남겨 두면 평가기가 만들지 않는 위반을 기다린다.
+// 위반을 진단으로 옮기는 표는 check-rules로 갔다 — 평가 결과만 보고 코드와 심각도를
+// 입히는 일이라 읽기 계층에 남을 이유가 없었다.
 {
-  const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
+  const { CONTRACT_VIOLATION_CODES } = require('../src/check-rules');
+  const codes = Object.values(CONTRACT_VIOLATION_CODES);
   for (const code of ['RDL-PROFILE-006', 'RDL-PROFILE-007', 'RDL-PROFILE-010', 'RDL-PROFILE-011']) {
-    assert.ok(!check.includes(code), `${code}은 흡수와 함께 제거되어야 합니다.`);
+    assert.ok(!codes.includes(code), `${code}은 흡수와 함께 제거되어야 합니다.`);
   }
-  assert.ok(check.includes("'disabled-present': 'RDL-PROFILE-004'"), '사용 안 함 위반은 남아야 합니다.');
+  assert.strictEqual(CONTRACT_VIOLATION_CODES['disabled-present'], 'RDL-PROFILE-004', '사용 안 함 위반은 남아야 합니다.');
+  assert.strictEqual(CONTRACT_VIOLATION_CODES['required-missing'], 'RDL-PROFILE-002');
+  assert.strictEqual(CONTRACT_VIOLATION_CODES['recommended-missing'], 'RDL-PROFILE-003');
 }
 
 // 권장 누락은 강제 수준과 무관하게 언제나 경고다. 차단하면 권장이 아니라 필수가 된다.
+// 소스에 그 삼항이 있는지가 아니라 실제로 그렇게 판정하는지를 본다.
 {
-  const check = fs.readFileSync(path.join(repository, 'src', 'check.js'), 'utf8');
-  assert.ok(check.includes("violation.code === 'recommended-missing' ? 'warning' : severity"), '권장 누락은 언제나 경고여야 합니다.');
+  const { checkContractViolations } = require('../src/check-rules');
+  const evaluation = {
+    enforcement: 'checkpoint',
+    violations: [
+      { code: 'required-missing', type: 'REQ', message: '필수' },
+      { code: 'recommended-missing', type: 'ADR', message: '권장' },
+      { code: 'disabled-present', type: 'SCR', message: '사용 안 함' }
+    ]
+  };
+  const strict = [];
+  checkContractViolations(strict, evaluation, { file: 'project.md', project: 'x', strict: true });
+  const bySeverity = Object.fromEntries(strict.map((item) => [item.code, item.severity]));
+  assert.strictEqual(bySeverity['RDL-PROFILE-003'], 'warning', '권장 누락은 언제나 경고여야 합니다.');
+  assert.strictEqual(bySeverity['RDL-PROFILE-002'], 'error', '차단 수준에서 필수 누락은 오류여야 합니다.');
+  assert.strictEqual(bySeverity['RDL-PROFILE-004'], 'error', '차단 수준에서 사용 안 함 위반은 오류여야 합니다.');
+
+  // 권고 수준에서는 셋 모두 경고다. 강제 수준이 낮은데 막으면 그 수준의 뜻이 없어진다.
+  const advisory = [];
+  checkContractViolations(advisory, Object.assign({}, evaluation, { enforcement: 'advisory' }), { file: 'project.md', project: 'x', strict: true });
+  assert.ok(advisory.every((item) => item.severity === 'warning'), '권고 수준에서는 막지 않아야 합니다.');
 }
 
 // 흡수 처분은 유형마다 따로 세운 결정이다. 계약을 저장할 때마다 보내온 값으로 통째

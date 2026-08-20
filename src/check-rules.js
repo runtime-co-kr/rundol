@@ -200,6 +200,52 @@ function checkDocumentMetadata(list, doc, fileName, delegates) {
   return artifactId;
 }
 
+/**
+ * 프로젝트 헌장의 메타데이터 판정. 이미 읽어 둔 문서 값과 프로젝트 키만 본다.
+ *
+ * 일반 문서와 규칙이 다른 이유는 헌장이 유형이 아니라 프로젝트 자체이기 때문이다.
+ * 식별자가 프로젝트 키에서 파생하고, 파일 이름 규칙도 적용되지 않는다.
+ */
+function checkCharterMetadata(list, doc, projectKey) {
+  if (!doc.frontmatter) {
+    diagnostic(list, { code: 'RDL-PROJECT-001', category: 'governance', file: doc.relativeFile, message: 'project.md에 YAML frontmatter가 필요합니다.' });
+    return;
+  }
+  const meta = doc.frontmatter.data;
+  const locations = doc.frontmatter.locations;
+  const expectedId = `project:${projectKey}`;
+  for (const field of REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(meta, field) || meta[field] === '' || meta[field] === null) {
+      diagnostic(list, { code: 'RDL-PROJECT-002', category: 'governance', file: doc.relativeFile, line: locations[field] || 2, artifactId: expectedId, message: `project.md 필수 메타 필드가 없습니다: ${field}` });
+    }
+  }
+  if (meta.id !== expectedId) diagnostic(list, { code: 'RDL-PROJECT-003', category: 'governance', file: doc.relativeFile, line: locations.id || 2, artifactId: meta.id, message: `project.md id는 ${expectedId}여야 합니다.` });
+  if (meta.type !== 'project') diagnostic(list, { code: 'RDL-PROJECT-004', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md type은 project여야 합니다.' });
+  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
+  if (aliases[0] !== expectedId) diagnostic(list, { code: 'RDL-PROJECT-005', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md aliases의 첫 값은 프로젝트 ID여야 합니다.' });
+}
+
+// 계약 평가 결과를 진단으로 옮기는 표. 평가 자체는 계약 모듈이 하고 여기서는
+// 그 결과에 코드와 심각도를 입힌다. 권장 누락만 경고로 남기는 이유는, 권장은
+// 없어도 되는 것이고 강제 수준이 무엇이든 그 성질이 바뀌지 않기 때문이다.
+const CONTRACT_VIOLATION_CODES = Object.freeze({
+  'required-missing': 'RDL-PROFILE-002',
+  'recommended-missing': 'RDL-PROFILE-003',
+  'disabled-present': 'RDL-PROFILE-004'
+});
+
+function checkContractViolations(list, evaluation, context) {
+  const severity = evaluation.enforcement === 'checkpoint' && context.strict ? 'error' : 'warning';
+  for (const violation of evaluation.violations) {
+    diagnostic(list, {
+      code: CONTRACT_VIOLATION_CODES[violation.code] || 'RDL-PROFILE-009',
+      category: 'profile',
+      severity: violation.code === 'recommended-missing' ? 'warning' : severity,
+      file: context.file, project: context.project, target: violation.type, message: violation.message
+    });
+  }
+}
+
 const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/u;
 // 완료와 반려는 둘 다 종료지만 게이트가 다르다. 완료는 수용조건과 검증 증거를,
 // 반려는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
@@ -315,6 +361,7 @@ module.exports = {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS, REQUIRED_FIELDS, ID_PATTERN, FILE_PATTERN,
   NON_CANONICAL_CODES, REQUIRED_TAG_NAMESPACES, NOTE_TAG_NAMESPACES,
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
-  TASK_ID_PATTERN, ALLOWED_TASK_STATES, REQUIRED_TASK_FIELDS,
-  governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkTaskEntries, checkReference, referenceFromTask
+  TASK_ID_PATTERN, ALLOWED_TASK_STATES, REQUIRED_TASK_FIELDS, CONTRACT_VIOLATION_CODES,
+  governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
+  checkContractViolations, checkTaskEntries, checkReference, referenceFromTask
 };
