@@ -3143,7 +3143,7 @@
         },
         "AC-002": {
           "text": "강제 직렬화 경로의 wikilink·자산 embed·mermaid 보존이 고정값으로 남는다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "npm test에 등록되어 회귀를 막는다",
@@ -3152,7 +3152,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:40.873Z",
-      "updatedAt": "2026-08-20T18:00:48.687Z",
+      "updatedAt": "2026-08-20T18:00:54.107Z",
       "statusChangedAt": "2026-08-20T17:57:58.585Z",
       "externalRefs": [],
       "project": "rundol"
