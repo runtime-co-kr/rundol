@@ -2322,6 +2322,50 @@
       "statusChangedAt": "2026-08-20T15:09:49.689Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-90FKP245": {
+      "title": "업무 유형 제약 카탈로그를 정본화한다",
+      "summary": "ADR-021의 제약 카탈로그 5종(fields/requiresLink/requiredWhen/unique/exempt)과 유형 정의 스키마를 REQ와 TST로 확정한다. test 유형이 남김없이 표현되는지가 판정 기준이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-021"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "제약 종류 5종의 파라미터와 판정 의미가 REQ에 기능 ID별로 정의된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "업무 유형 정의 스키마가 REQ에 규정된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "현재 test 유형의 규칙 여섯이 카탈로그로 남김없이 표현됨이 문서로 대조된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "진단 코드가 유형이 아니라 제약 종류에 붙는 규칙이 REQ에 규정된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "각 기능 ID에 대응하는 TST 시나리오가 존재하고 rdl check --strict가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:09:56.449Z",
+      "updatedAt": "2026-08-20T15:09:56.449Z",
+      "statusChangedAt": "2026-08-20T15:09:56.449Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
