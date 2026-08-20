@@ -3155,3 +3155,137 @@ dialog label textarea {
   color: var(--secondary-TextColor);
   font-size: var(--small-FontSize);
 }
+
+/* 표시 규칙 — 일곱 그룹과 값별 출처. 출처를 색에만 싣지 않는 이유는 흑백과
+   색각 차이에서 계층 정보가 통째로 사라지기 때문이다. 채움 개수가 정본이고
+   색은 보조다. */
+.presentation-groups {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.presentation-group h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  margin: 0 0 var(--spacing-1);
+  font-size: var(--body-FontSize);
+}
+
+.presentation-group .group-count {
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+  font-weight: 400;
+}
+
+.presentation-rows {
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  overflow: hidden;
+}
+
+.presentation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  padding: var(--spacing-1_5) var(--spacing-2);
+  border-bottom: 1px solid var(--hairline-BorderColor);
+}
+
+.presentation-row:last-child { border-bottom: 0; }
+
+.presentation-row.origin-row-workspace,
+.presentation-row.origin-row-project { background: var(--surface-02-BackgroundColor); }
+
+.presentation-row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.presentation-row-main small {
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
+}
+
+.origin {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex: none;
+}
+
+.origin-bars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.origin-bars i {
+  display: block;
+  width: 6px;
+  height: 14px;
+  border-radius: var(--min-BorderRadius);
+  background: var(--surface-03-BackgroundColor);
+  border: 1px solid var(--hairline-BorderColor);
+}
+
+.origin-bars i.on {
+  background: var(--secondary-TextColor);
+  border-color: var(--secondary-TextColor);
+}
+
+.origin-project .origin-bars i.on {
+  background: var(--accent-BorderColor);
+  border-color: var(--accent-BorderColor);
+}
+
+.origin-label {
+  color: var(--secondary-TextColor);
+  font-size: var(--caption-FontSize);
+  white-space: nowrap;
+}
+
+.origin-project .origin-label { color: var(--accent-TextColor); }
+
+/* 경계 층. 조작 요소를 두지 않는 것이 이 구역의 구현이므로 단추도 입력도 없다.
+   점선 테두리로 "여기는 만지는 곳이 아니다"를 형태로 말한다. */
+.boundary-block {
+  border-top: 1px solid var(--divider-BorderColor);
+  padding-top: var(--spacing-3);
+}
+
+.boundary-block h3 {
+  margin: 0 0 var(--spacing-1);
+  font-size: var(--body-FontSize);
+}
+
+.boundary-block > p {
+  margin: 0 0 var(--spacing-2);
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
+  max-width: 68ch;
+}
+
+.boundary-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-1);
+}
+
+.boundary-item {
+  display: grid;
+  gap: 2px;
+  padding: var(--spacing-1_5);
+  border: 1px dashed var(--surface-01-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  color: var(--tertiary-TextColor);
+}
+
+.boundary-item strong {
+  color: var(--secondary-TextColor);
+  font-weight: 500;
+}
+
+.boundary-item small { font-size: var(--small-FontSize); }

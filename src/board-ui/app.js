@@ -1213,19 +1213,71 @@ function renderContractSettings() {
   for (const row of document.querySelectorAll('[data-contract-type]')) syncContractRow(row);
   refreshProfileState();
 }
+// 표시 그룹은 일곱인데 화면은 문서 유형 하나만 그리고 있었다. 나머지 여섯은
+// board.json에 정의가 있는데도 파일을 직접 열어야만 보였다 — 정의가 있는 것과
+// 보이는 것은 다르다.
+const PRESENTATION_GROUP_LABELS = {
+  documentTypes: '문서 유형',
+  documentStates: '문서 상태',
+  policyStates: '정책 상태',
+  enforcementLevels: '강제 수준',
+  taskStatuses: '태스크 상태',
+  priorities: '우선순위',
+  profiles: '프로필'
+};
+// 값 하나가 어느 계층에서 왔는지는 병합 결과가 아니라 계층별 원본이 답한다.
+// 값을 견주면 상위와 같은 값을 명시한 경우를 상속으로 잘못 읽는다 — 그 둘은
+// 상위가 바뀔 때 다르게 행동하므로 같게 다루면 안 된다.
+function presentationOrigin(sources, group, key) {
+  const project = sources && sources.project && sources.project[group];
+  if (project && Object.prototype.hasOwnProperty.call(project, key)) return 'project';
+  const workspace = sources && sources.workspace && sources.workspace[group];
+  if (workspace && Object.prototype.hasOwnProperty.call(workspace, key)) return 'workspace';
+  return 'builtin';
+}
+const ORIGIN_LABELS = { builtin: '내장', workspace: 'Workspace', project: '이 프로젝트' };
+// 채움 개수가 계층이다. 색만으로 구분하면 흑백 인쇄와 색각 차이에서 정보가 사라진다.
+function originIndicator(origin) {
+  const filled = { builtin: 1, workspace: 2, project: 3 }[origin];
+  const cells = [1, 2, 3].map((step) => `<i class="${step <= filled ? 'on' : ''}"></i>`).join('');
+  return `<span class="origin origin-${origin}" title="${escapeHtml(ORIGIN_LABELS[origin])}에서 온 값"><span class="origin-bars">${cells}</span><span class="origin-label">${escapeHtml(ORIGIN_LABELS[origin])}</span></span>`;
+}
+// 되돌릴 수 없는 관문은 설정이 아니다. 잠긴 항목으로 두면 언젠가 잠금을 푸는
+// 요청을 부르므로 목록에 넣지 않고, 대신 왜 없는지만 읽기 전용으로 남긴다.
+const BOUNDARY_ITEMS = [
+  ['패키지 배포와 릴리스 태그', '되돌릴 수 없고 이 머신을 벗어난다'],
+  ['병합 요청 병합', '되돌릴 수 없고 공유 상태를 바꾼다'],
+  ['게이트 우회', '게이트를 끌 수 있으면 게이트가 아니다'],
+  ['정지하지 않은 런의 강제 인수', '다른 주체의 권한을 덮는다'],
+  ['소유권과 연산의 강제 해소', '다른 주체의 권한을 덮는다'],
+  ['위임 부여', '권한을 넘기는 행위는 위임으로 넘길 수 없다'],
+  ['사람 게이트 제거', '하위 계층은 조일 수만 있다'],
+  ['승인의 리비전 결박 해제', '풀면 지난 승인이 다른 내용에 붙는다']
+];
 function renderPresentationSettings() {
   let section = el('presentation-settings');
   if (!section) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header><h2>문서 표시 규칙</h2><p>어떤 문서 타입을 어떤 이름과 순서로 보여줄지 정합니다. 설정 파일이라 여기서는 바꾸지 않고 <code>board.json</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><div id="presentation-types" class="presentation-types"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header><h2>표시 규칙</h2><p>화면에 보이는 말과 순서입니다. 저장값이 아니라 표시이므로 판정에 영향이 없습니다. 아직 여기서 바꾸지 않고 <code>board.json</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><div id="presentation-groups" class="presentation-groups"></div><div id="presentation-boundary" class="boundary-block"></div></div></section>');
     section = el('presentation-settings');
   }
   const presentation = state.snapshot.presentation;
   const inherited = presentation.inheritance;
+  const sources = presentation.sources;
   el('presentation-inheritance').innerHTML = `<span class="inheritance-node active">내장 기본값</span><span>→</span><span class="inheritance-node ${inherited.workspace.configured ? 'active' : ''}">Workspace board.json</span><span>→</span><span class="inheritance-node ${inherited.project.configured ? 'active' : ''}">프로젝트 board.json</span>`;
   // 어느 파일을 열어야 하는지 알려주는 게 이 화면의 전부다. 경로를 tooltip에만 두면 찾을 수 없다.
   el('presentation-source').innerHTML = [['Workspace', inherited.workspace], ['프로젝트', inherited.project]]
     .map(([label, item]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd><code>${escapeHtml(item.file)}</code><small>${item.configured ? '이 파일이 값을 덮어쓰고 있습니다.' : '아직 없어 상위 값을 그대로 씁니다.'}</small></dd></div>`).join('');
-  el('presentation-types').innerHTML = Object.entries(presentation.documentTypes).sort((left, right) => left[1].order - right[1].order).map(([kind, item]) => `<article><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(kind)} · ${escapeHtml(item.description)}</small></article>`).join('');
+  el('presentation-groups').innerHTML = Object.keys(PRESENTATION_GROUP_LABELS).map((group) => {
+    const entries = Object.entries(presentation[group] || {}).sort((left, right) => (left[1].order || 0) - (right[1].order || 0));
+    if (!entries.length) return '';
+    const overridden = entries.filter(([key]) => presentationOrigin(sources, group, key) !== 'builtin').length;
+    const rows = entries.map(([key, item]) => {
+      const origin = presentationOrigin(sources, group, key);
+      return `<div class="presentation-row origin-row-${origin}"><div class="presentation-row-main"><strong>${escapeHtml(item.label || key)}</strong><small><code>${escapeHtml(key)}</code>${item.description ? ' · ' + escapeHtml(item.description) : ''}</small></div>${originIndicator(origin)}</div>`;
+    }).join('');
+    return `<section class="presentation-group"><h3>${escapeHtml(PRESENTATION_GROUP_LABELS[group])}<span class="group-count">${entries.length}개${overridden ? ' · ' + overridden + '개 덮음' : ''}</span></h3><div class="presentation-rows">${rows}</div></section>`;
+  }).join('');
+  el('presentation-boundary').innerHTML = `<h3>여기 없는 것</h3><p>아래는 되돌릴 수 없는 행위의 관문입니다. 잠긴 항목으로 두지 않고 설정에서 뺐습니다 — 잠긴 항목은 언젠가 잠금을 푸는 요청을 부르지만, 없는 항목은 그 대상이 되지 않습니다.</p><div class="boundary-list">${BOUNDARY_ITEMS.map(([name, why]) => `<div class="boundary-item"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(why)}</small></div>`).join('')}</div>`;
 }
 // 계약 준수. 규칙을 정하는 화면은 있었는데 그 규칙이 지켜지는지 보는 화면이 없었다.
 // 여기 쓰는 값은 전부 스냅샷에 이미 실려 오던 것이라 새로 계산하지 않는다.
