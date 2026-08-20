@@ -2095,7 +2095,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "Obsidian embed가 참조 검사에서 문서 링크로 오인되지 않는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "docs/assets/ 규약이 있고 해결되지 않은 자산 참조를 진단이 잡는다",
@@ -2112,7 +2112,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T14:15:48.753Z",
-      "updatedAt": "2026-08-20T15:02:37.375Z",
+      "updatedAt": "2026-08-20T15:02:49.579Z",
       "statusChangedAt": "2026-08-20T15:02:37.375Z",
       "externalRefs": [],
       "project": "rundol"
