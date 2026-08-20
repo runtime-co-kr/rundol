@@ -3654,12 +3654,15 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "kind": "normal",
       "result": null,
       "round": null,
-      "links": [],
+      "links": [
+        "REQ-059",
+        "TST-031"
+      ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
@@ -3677,8 +3680,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T22:00:56.164Z",
-      "updatedAt": "2026-08-20T22:00:56.164Z",
-      "statusChangedAt": "2026-08-20T22:00:56.164Z",
+      "updatedAt": "2026-08-20T22:01:09.192Z",
+      "statusChangedAt": "2026-08-20T22:01:09.192Z",
       "externalRefs": [],
       "project": "rundol"
     },
