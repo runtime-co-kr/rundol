@@ -2695,7 +2695,7 @@
         },
         "AC-003": {
           "text": "위임 불가 티어가 어느 모드에서도 열리지 않음이 시험으로 고정된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "AI만 모드에서 승인이 사전 위임 없이는 기록되지 않는다",
@@ -2708,7 +2708,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:11:31.132Z",
-      "updatedAt": "2026-08-20T18:33:30.105Z",
+      "updatedAt": "2026-08-20T18:33:34.374Z",
       "statusChangedAt": "2026-08-20T18:33:30.105Z",
       "externalRefs": [],
       "project": "rundol"
