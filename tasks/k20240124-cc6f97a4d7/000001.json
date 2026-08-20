@@ -2699,7 +2699,7 @@
         },
         "AC-004": {
           "text": "AI만 모드에서 승인이 사전 위임 없이는 기록되지 않는다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "npm test와 rdl check --strict가 모두 통과한다",
@@ -2708,7 +2708,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:11:31.132Z",
-      "updatedAt": "2026-08-20T18:46:29.990Z",
+      "updatedAt": "2026-08-20T18:46:34.577Z",
       "statusChangedAt": "2026-08-20T18:33:30.105Z",
       "externalRefs": [],
       "project": "rundol"
