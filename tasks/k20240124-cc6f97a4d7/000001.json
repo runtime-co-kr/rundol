@@ -2593,7 +2593,7 @@
         },
         "AC-003": {
           "text": "경계 층 항목이 화면에 나타나지 않는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "업무 유형 정의에서 목록·필터·입력·연결이 파생된다",
@@ -2606,7 +2606,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:53.886Z",
-      "updatedAt": "2026-08-20T16:27:21.201Z",
+      "updatedAt": "2026-08-20T16:27:25.614Z",
       "statusChangedAt": "2026-08-20T16:27:16.791Z",
       "externalRefs": [],
       "project": "rundol"
