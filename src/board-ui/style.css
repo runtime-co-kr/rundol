@@ -2055,10 +2055,23 @@ body.view-tasks.board-mode #board {
   color: var(--accent-TextColor);
 }
 
+/* 편집·저장은 문서의 오른쪽 위 모서리에 둔다. 제목 아래에 두면 문서를 읽어
+   내려가는 눈길이 매번 그 줄을 지나야 하고, 읽는 동안에도 계속 자리를 차지한다.
+   머리글이 sticky이므로 스크롤해도 따라온다. */
 .reader-actions {
+  position: absolute;
+  top: var(--spacing-2);
+  right: 0;
   display: flex;
   gap: var(--spacing-1);
-  margin-top: var(--spacing-2);
+}
+
+/* 제목과 설명이 버튼 아래로 흘러 들어가지 않게 자리를 비운다. */
+.reader-heading > :not(.reader-actions) { padding-right: 190px; }
+
+@media (max-width: 720px) {
+  .reader-actions { position: static; margin-top: var(--spacing-2); }
+  .reader-heading > :not(.reader-actions) { padding-right: 0; }
 }
 
 .document-editor {

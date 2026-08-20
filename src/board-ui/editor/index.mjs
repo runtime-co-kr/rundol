@@ -29,6 +29,29 @@ function hardBreak(state, dispatch) {
   return true;
 }
 
+// 목록에서 엔터를 치면 같은 종류의 항목이 이어져야 한다.
+//
+// splitListItem은 새 항목을 만들지만 attrs를 물려주지 않는다. 그래서 체크 목록에서
+// 엔터를 치면 다음 줄이 `- [ ]`가 아니라 `-`가 되어, 수용 기준을 쓰다가 한 줄만
+// 체크 상자를 잃는다. itemAttrs 인자는 이 버전에서 새 항목에 닿지 않으므로
+// 나뉜 뒤에 직접 붙인다.
+function splitListItemKeepingKind(state, dispatch) {
+  const item = state.selection.$from.node(-1);
+  const wasTask = item && item.type === schema.nodes.list_item && item.attrs.checked !== null;
+  return splitListItem(schema.nodes.list_item)(state, (tr) => {
+    if (wasTask) {
+      const $pos = tr.selection.$from;
+      for (let depth = $pos.depth; depth > 0; depth -= 1) {
+        if ($pos.node(depth).type !== schema.nodes.list_item) continue;
+        // 새 항목은 아직 끝나지 않은 일이다. 체크된 채로 시작하면 안 된다.
+        tr.setNodeMarkup($pos.before(depth), undefined, { checked: false });
+        break;
+      }
+    }
+    if (dispatch) dispatch(tr.scrollIntoView());
+  });
+}
+
 function editorKeymap() {
   return {
     'Mod-z': undo,
@@ -37,7 +60,9 @@ function editorKeymap() {
     'Mod-b': toggleMark(schema.marks.strong),
     'Mod-i': toggleMark(schema.marks.em),
     'Mod-`': toggleMark(schema.marks.code),
-    Enter: splitListItem(schema.nodes.list_item),
+    // 빈 항목에서는 나뉘지 않는다. 그때는 목록에서 빠져나오는 것이 사람이 기대하는
+    // 동작이다 — 목록을 끝내려고 엔터를 두 번 치는 손버릇이 그것이다.
+    Enter: chainCommands(splitListItemKeepingKind, liftListItem(schema.nodes.list_item)),
     'Shift-Enter': chainCommands(exitCode, hardBreak),
     Tab: goToNextCell(1),
     'Shift-Tab': goToNextCell(-1),
