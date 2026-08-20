@@ -2371,12 +2371,12 @@
         },
         "AC-005": {
           "text": "각 기능 ID에 대응하는 TST 시나리오가 존재하고 rdl check --strict가 통과한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:56.449Z",
-      "updatedAt": "2026-08-20T17:40:34.339Z",
+      "updatedAt": "2026-08-20T17:40:38.570Z",
       "statusChangedAt": "2026-08-20T17:35:09.240Z",
       "externalRefs": [],
       "project": "rundol"
