@@ -2191,7 +2191,7 @@
         },
         "AC-003": {
           "text": "npm test에 등록되어 회귀를 막는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "발견된 위반 문서가 정리되어 시험이 통과한다",
@@ -2200,7 +2200,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:08:29.359Z",
-      "updatedAt": "2026-08-20T15:15:07.658Z",
+      "updatedAt": "2026-08-20T15:15:11.676Z",
       "statusChangedAt": "2026-08-20T15:08:29.359Z",
       "externalRefs": [],
       "project": "rundol"
