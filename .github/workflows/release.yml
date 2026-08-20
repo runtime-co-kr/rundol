@@ -44,6 +44,11 @@ jobs:
       # Dependency order: core and protocol first, then the packages that
       # depend on them, then the integrated distribution. Versions already on
       # the registry are skipped so a re-run is safe.
+      #
+      # dist-tag는 버전이 정한다. npm publish의 기본값은 버전이 prerelease여도
+      # latest이므로, --tag 없이 0.38.0-rc.1을 올리면 npm i -g rundol을 하는
+      # 모든 사용자가 검증 전 판을 받는다. prerelease는 next로 보내고 latest는
+      # 정식판만 차지한다 — 설치자가 rc를 원하면 rundol@next로 명시한다.
       - name: Publish packages
         run: |
           set -euo pipefail
@@ -54,6 +59,10 @@ jobs:
               echo "skip     $name@$version (already published)"
               continue
             fi
-            echo "publish  $name@$version"
-            npm publish "./packages/$dir" --provenance --access public
+            case "$version" in
+              *-*) tag=next ;;
+              *)   tag=latest ;;
+            esac
+            echo "publish  $name@$version (dist-tag: $tag)"
+            npm publish "./packages/$dir" --provenance --access public --tag "$tag"
           done

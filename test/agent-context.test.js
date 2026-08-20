@@ -6,6 +6,9 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { commandCatalog, listTasks, agentContext } = require('../src/agent-context');
+// 버전 형식의 정본은 릴리스 검사가 갖는다. 여기서 손으로 다시 쓰면 판정자가
+// 둘이 되고, 실제로 어긋났다 — 좁게 쓴 쪽이 문서가 약속한 prerelease를 막았다.
+const { SEMVER_PATTERN } = require('../scripts/version-check');
 
 const repository = path.resolve(__dirname, '..');
 const cli = path.join(repository, 'bin', 'rdl.js');
@@ -28,7 +31,7 @@ try {
   const help = spawnSync(process.execPath, [cli, '--help'], { cwd: repository, encoding: 'utf8' });
   assert.strictEqual(help.status, 0, help.stderr || help.stdout);
   const catalog = commandCatalog(help.stdout);
-  assert.match(catalog.version, /^\d+\.\d+\.\d+$/u);
+  assert.match(catalog.version, SEMVER_PATTERN);
   assert(catalog.commands.length > 40, `명령 수가 비정상입니다: ${catalog.commands.length}`);
   const taskList = catalog.commands.find((entry) => entry.command === 'task list');
   assert(taskList, 'rdl task list가 카탈로그에 없습니다.');
