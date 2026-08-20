@@ -489,7 +489,8 @@
         "ARC-002",
         "REQ-010",
         "REQ-011",
-        "TST-002"
+        "TST-002",
+        "TST-003"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -508,7 +509,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:39:25.987Z",
-      "updatedAt": "2026-08-13T22:41:35.376Z",
+      "updatedAt": "2026-08-20T06:18:34.037Z",
       "statusChangedAt": "2026-08-13T22:41:35.376Z",
       "externalRefs": [],
       "project": "rundol"
