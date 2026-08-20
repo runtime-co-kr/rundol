@@ -2452,7 +2452,7 @@
         },
         "AC-003": {
           "text": "경계 층 항목이 화면에 등장하지 않음이 디자인에 없는 것으로 명시된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "정책 변경 시 결정 기록을 요구하는 흐름이 전이로 표현된다",
@@ -2469,7 +2469,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:36.780Z",
-      "updatedAt": "2026-08-20T16:22:26.557Z",
+      "updatedAt": "2026-08-20T16:22:31.571Z",
       "statusChangedAt": "2026-08-20T16:22:15.958Z",
       "externalRefs": [],
       "project": "rundol"
