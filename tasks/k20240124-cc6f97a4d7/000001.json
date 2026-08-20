@@ -3479,7 +3479,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "작성 주체가 클라이언트 유형에서 추정되지 않고 호출자가 밝힌다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "밝히지 않으면 agent로 떨어져 승인 근거 자격을 얻지 못한다",
@@ -3500,7 +3500,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T18:13:37.064Z",
-      "updatedAt": "2026-08-20T18:13:37.064Z",
+      "updatedAt": "2026-08-20T23:45:36.834Z",
       "statusChangedAt": "2026-08-20T18:13:37.064Z",
       "externalRefs": [],
       "project": "rundol"
