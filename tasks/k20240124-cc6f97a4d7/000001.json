@@ -3530,6 +3530,44 @@
       "statusChangedAt": "2026-08-20T18:22:32.089Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-9EP70BR1": {
+      "title": "[제품] 가치제안 축과 세일즈 서사를 정리한다",
+      "summary": "측정 제품이 아니라 거버넌스 제품으로 팔고 측정은 루프 안에 있어서 딸려오는 것으로 둔다. 경쟁 도구는 GitHub만 읽어 귀속을 추론하지만 Rundol은 실행 시점에 기록한다 — AgenTag 같은 연구가 행동 지문으로 추론하는 것이 그 증거다. 근거로 쓸 외부 연구: METR 2025 무작위 대조 시험에서 실측 19% 느림 대 자가보고 20% 빠름, DORA 2025 처리량 개선 대 안정성 악화, 2026 재작업률 2% 미만 팀이 7.3%.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "고통 언어로 쓴 축 정의가 있고 각 축에 Rundol 자체 실측값이 붙는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "경쟁 도구가 원리적으로 못 하는 것이 한 문장으로 서 있다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "고객이 자기 저장소를 재볼 수 있는 자가진단 경로가 있다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "세일즈 축이 로드맵을 정하지 않는다는 경계가 명시된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T18:22:51.997Z",
+      "updatedAt": "2026-08-20T18:22:51.997Z",
+      "statusChangedAt": "2026-08-20T18:22:51.997Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
