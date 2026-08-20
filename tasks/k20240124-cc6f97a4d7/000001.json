@@ -3215,6 +3215,42 @@
       "statusChangedAt": "2026-08-20T17:55:51.972Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-CSR5C452": {
+      "title": "표를 편집기에서 다룬다",
+      "summary": "정본 문서에 표가 242개 있고 MOD와 SCR에서는 표가 다이어그램의 정본이다. 지금은 열 너비만 조절되고 행·열을 더하거나 정렬을 바꿀 길이 없다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "행과 열을 더하고 지울 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "열 정렬 세 가지를 바꿀 수 있고 저장한 파일에 반영된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "열을 끌어 순서를 바꿀 수 있다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:56:22.185Z",
+      "updatedAt": "2026-08-20T17:56:22.185Z",
+      "statusChangedAt": "2026-08-20T17:56:22.185Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
