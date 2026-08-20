@@ -3395,7 +3395,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "삽입 메뉴 맨 위에 이 문서에 아직 없는 계약 절이 뜬다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "저장 전에 검사 결과를 미리 볼 수 있다",
@@ -3412,7 +3412,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:04.080Z",
-      "updatedAt": "2026-08-20T20:06:00.399Z",
+      "updatedAt": "2026-08-20T22:00:41.614Z",
       "statusChangedAt": "2026-08-20T20:06:00.399Z",
       "externalRefs": [],
       "project": "rundol"
@@ -3604,6 +3604,47 @@
       "createdAt": "2026-08-20T18:29:32.361Z",
       "updatedAt": "2026-08-20T18:29:32.361Z",
       "statusChangedAt": "2026-08-20T18:29:32.361Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-V2QC8NMN": {
+      "title": "[검사] version:check가 선언과 잠금의 내부 의존 불일치를 잡는다",
+      "summary": "0.38.0 판올림에서 npm version --workspaces가 워크스페이스 버전만 올리고 내부 의존 핀은 이전 버전에 둔 채 각 워크스페이스에 레지스트리 사본을 박았다. version:check는 통과했고 npm install은 No matching version으로 죽었다. 0.37.0 CHANGELOG가 이 검사에 대해 내부 의존이 선언과 잠금에서 갈리지 않는지 본다고 적었으나 실제로는 갈린 상태를 통과시킨다. 0.36.0이 태그까지 달고 버려진 것이 같은 계열이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-024",
+        "TST-014"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "선언의 내부 의존 버전과 잠금 파일의 내부 의존 버전이 다르면 version:check가 실패한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "워크스페이스 안에 박힌 레지스트리 사본을 검사가 드러낸다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "판올림 뒤 npm ci가 성공하는 상태만 version:check를 통과한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "재현 시험이 오염된 잠금 파일로 검사가 실패하는 것을 고정한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T22:00:41.021Z",
+      "updatedAt": "2026-08-20T22:00:41.021Z",
+      "statusChangedAt": "2026-08-20T22:00:41.021Z",
       "externalRefs": [],
       "project": "rundol"
     }
