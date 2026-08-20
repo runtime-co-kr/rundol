@@ -2525,7 +2525,7 @@
         },
         "AC-004": {
           "text": "기존 board.json이 그대로 동작한다는 회귀 시험이 있다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "npm test와 rdl check --strict가 모두 통과한다",
@@ -2534,7 +2534,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:41.326Z",
-      "updatedAt": "2026-08-20T17:59:41.264Z",
+      "updatedAt": "2026-08-20T17:59:47.344Z",
       "statusChangedAt": "2026-08-20T15:10:41.326Z",
       "externalRefs": [],
       "project": "rundol"
