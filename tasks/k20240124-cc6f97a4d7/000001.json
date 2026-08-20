@@ -3215,7 +3215,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "골뱅이를 입력하면 프로젝트 문서와 멤버 목록이 뜨고 고르면 링크 노드가 들어간다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "대상이 없는 링크가 편집 중에 구분되어 보인다",
@@ -3228,7 +3228,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:51.972Z",
-      "updatedAt": "2026-08-20T18:15:28.197Z",
+      "updatedAt": "2026-08-20T21:59:55.900Z",
       "statusChangedAt": "2026-08-20T18:15:28.197Z",
       "externalRefs": [],
       "project": "rundol"
