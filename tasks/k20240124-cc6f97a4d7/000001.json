@@ -2107,12 +2107,12 @@
         },
         "AC-004": {
           "text": "어느 문서도 참조하지 않는 자산을 진단이 잡는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T14:15:48.753Z",
-      "updatedAt": "2026-08-20T15:02:58.411Z",
+      "updatedAt": "2026-08-20T15:03:02.922Z",
       "statusChangedAt": "2026-08-20T15:02:37.375Z",
       "externalRefs": [],
       "project": "rundol"
