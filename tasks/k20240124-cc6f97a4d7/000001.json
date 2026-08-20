@@ -3447,12 +3447,12 @@
         },
         "AC-004": {
           "text": "발행되는 명령줄 패키지의 실행 의존성이 늘지 않는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:10.054Z",
-      "updatedAt": "2026-08-20T22:00:57.299Z",
+      "updatedAt": "2026-08-20T22:01:02.513Z",
       "statusChangedAt": "2026-08-20T18:30:55.163Z",
       "externalRefs": [],
       "project": "rundol"
@@ -3679,6 +3679,46 @@
       "createdAt": "2026-08-20T22:00:56.164Z",
       "updatedAt": "2026-08-20T22:00:56.164Z",
       "statusChangedAt": "2026-08-20T22:00:56.164Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-T74PV2E2": {
+      "title": "[하네스] 손상된 샤드 하나가 kind 전체 읽기를 막지 않게 한다",
+      "summary": "eventStore.readEvents는 run 스코프 kind에만 파일 필터로 격리를 준다. assignment·comment·verdict·decision·delegation·approval 여섯은 격리가 없어, 어느 클라이언트 샤드든 첫 malformed JSON 행에서 읽기 호출 전체가 던진다. 할당에서는 대가가 특히 큰데, 읽기가 실패하면 겹침 판정이 열린 할당을 하나도 보지 못하고 두 워커를 같은 파일에 붙일 수 있다. 지금은 빈 목록으로 삼키는 것보다 던지는 쪽이 안전해 그대로 두었다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ARC-003"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "한 샤드의 손상이 같은 kind의 다른 샤드 읽기를 막지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "손상된 샤드가 조용히 사라지지 않고 진단으로 드러난다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "격리가 특정 kind의 예외가 아니라 저장소 공통 성질이 된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "재현 시험이 샤드 하나를 훼손한 뒤 나머지가 읽히는 것을 고정한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T22:01:02.716Z",
+      "updatedAt": "2026-08-20T22:01:02.716Z",
+      "statusChangedAt": "2026-08-20T22:01:02.716Z",
       "externalRefs": [],
       "project": "rundol"
     }
