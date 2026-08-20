@@ -2691,12 +2691,12 @@
         },
         "AC-002": {
           "text": "같은 기계에서 세 번 연속 실행해도 통과한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:11:36.243Z",
-      "updatedAt": "2026-08-20T15:18:57.040Z",
+      "updatedAt": "2026-08-20T15:19:01.215Z",
       "statusChangedAt": "2026-08-20T15:11:36.243Z",
       "externalRefs": [],
       "project": "rundol"
