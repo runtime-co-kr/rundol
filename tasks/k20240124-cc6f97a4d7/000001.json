@@ -1984,6 +1984,48 @@
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
+    },
+    "TASK-YQ2S74T8": {
+      "title": "외부 검토가 낸 0.36 잔여 결함 여섯을 닫는다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "폐기한 문서 소프트 임대가 CLI·보드 문서에서 사용 가능한 기능으로 남아 있지 않다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "같은 호출 안의 중복 링크 입력이 한 번만 남는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "로그 상한 판정이 UTF-8 바이트를 세고 다국어 로그로 그것을 증명한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "개입 계측의 이름이 실제 측정 대상과 일치한다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "타입 검사와 잠금 무결성 검사가 릴리즈 게이트 안에 있다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T09:06:57.693Z",
+      "updatedAt": "2026-08-20T09:06:57.693Z",
+      "statusChangedAt": "2026-08-20T09:06:57.693Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
