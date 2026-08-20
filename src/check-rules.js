@@ -357,11 +357,14 @@ function referenceFromTask(list, registry, taskFile, taskId, value) {
   }
 }
 
+// FILE_PATTERN, TASK_ID_PATTERN, REQUIRED_TASK_FIELDS는 내보내지 않는다. 이 안의
+// 판정만 쓰는 값이고, 내보내면 밖에서 같은 규칙을 다시 구현할 길이 열린다 — 판정을
+// 한 곳에 모은 이유가 그것이었다.
 module.exports = {
-  GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS, REQUIRED_FIELDS, ID_PATTERN, FILE_PATTERN,
+  GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS, REQUIRED_FIELDS, ID_PATTERN,
   NON_CANONICAL_CODES, REQUIRED_TAG_NAMESPACES, NOTE_TAG_NAMESPACES,
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
-  TASK_ID_PATTERN, ALLOWED_TASK_STATES, REQUIRED_TASK_FIELDS, CONTRACT_VIOLATION_CODES,
+  ALLOWED_TASK_STATES, CONTRACT_VIOLATION_CODES,
   governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
   checkContractViolations, checkTaskEntries, checkReference, referenceFromTask
 };

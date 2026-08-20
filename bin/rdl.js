@@ -545,6 +545,7 @@ async function main() {
   const { readConflict, resolveConflict, clearConflict } = require('../src/conflict');
   const { recordTokens, debugSummary } = require('../src/debug');
   const { resolveAction, recordAction } = require('../src/action');
+  const { inferTaskId } = require('../src/state');
   const { migrateSettings, saveSettings } = require('../src/settings');
   const { attachWorkspace, repairWorkspace, detachWorkspace } = require('../src/attach');
   const { branchBoundaryStatus, installBranchBoundary } = require('../src/branch-boundary');
@@ -1266,7 +1267,9 @@ async function main() {
     // 만들 수 없었다 — supersedes·delegationId에 이은 세 번째 같은 누락이다.
     const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes, functionIds: options.functionIds, grouped: options.grouped, reason: options.reason });
     printOperation(result, options.json);
-    if (DEBUG_CONTEXT) recordAction(options.root, { action: 'document.create', actualExecutor: 'cli', artifactId: result.id });
+    // 문서를 만드는 일도 어느 작업의 일이다. 결박을 비워 두면 계측이 태스크 명령만
+    // 세게 되고, 그 수치는 왕복이 아니라 "태스크를 만든 그 한 번"이 된다.
+    if (DEBUG_CONTEXT) recordAction(options.root, { action: 'document.create', actualExecutor: 'cli', artifactId: result.id, taskId: inferTaskId(options.root, options.project) });
     return 0;
   }
   if (command === 'action') {

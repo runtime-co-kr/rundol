@@ -1138,4 +1138,24 @@ function migrateTaskStorage(start, options) {
   }
 }
 
-module.exports = { initState, refreshState, saveState, taskSet, taskAcceptance, taskUpdate, taskCreate, syncState, migrateTaskStorage, stateConfig: workspaceStateConfig, canonicalJson, prepareProjectState, syncProjectState, transitionRuns, preflightSyncClient };
+// 계측을 위한 가벼운 결박 추론. 저장의 결박은 강제 수준을 보고 막거나 물어야 하지만,
+// 기록은 아무것도 막지 않으므로 못 정하면 그냥 비운다.
+//
+// 이것이 필요한 이유는 계측이 새고 있었기 때문이다. 행위 서른다섯 건 중 스물아홉이
+// 어느 작업의 일인지 몰랐고, 그래서 "할당부터 검수까지 사람이 몇 번 개입했나"를
+// 셀 수 없었다. 문서를 쓰고 검사하고 저장하는 행위가 전부 집계 밖이었다.
+function inferTaskId(start, projectKey) {
+  try {
+    const config = workspaceStateConfig(start, projectKey);
+    if (!config.project) return null;
+    const store = readTaskStore(path.join(config.worktree, config.taskRelative));
+    const ladder = derivationLadder(config, {}, store.tasks || {});
+    const resolved = ladder.find((source) => source.taskId);
+    return resolved ? resolved.taskId : null;
+  } catch (_) {
+    // 추론에 실패해도 명령을 막지 않는다. 계측이 없는 것이 명령이 안 되는 것보다 낫다.
+    return null;
+  }
+}
+
+module.exports = { initState, refreshState, saveState, taskSet, taskAcceptance, taskUpdate, taskCreate, syncState, migrateTaskStorage, stateConfig: workspaceStateConfig, canonicalJson, prepareProjectState, syncProjectState, transitionRuns, preflightSyncClient, inferTaskId };

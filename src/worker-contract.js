@@ -201,14 +201,15 @@ function verifyReport(assignment, report) {
   return { decision, blocks, humanReasons };
 }
 
+// literalPrefix와 ASSIGNMENT_FIELDS는 내보내지 않는다. patternsOverlap과
+// missingAssignmentFields가 안에서 쓰는 값이고, 밖에서 부를 일이 없는데 내보내면
+// 그것도 계약이 되어 바꿀 때마다 밖을 확인해야 한다.
 module.exports = {
   matchesPath,
-  literalPrefix,
   patternsOverlap,
   assignmentOverlaps,
   missingAssignmentFields,
   unclaimedAcceptance,
   verifyReport,
-  ContractViolation,
-  ASSIGNMENT_FIELDS
+  ContractViolation
 };
