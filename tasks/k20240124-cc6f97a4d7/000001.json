@@ -2116,6 +2116,52 @@
       "statusChangedAt": "2026-08-20T15:02:37.375Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-VZVS0J0F": {
+      "title": "설정 자유도 축과 업무 유형 엔진을 결정으로 닫는다",
+      "summary": "AI/휴먼 병합 운영에서 설정 자유도를 가역성 기준으로 나누고, 업무 유형을 데이터로 정의하는 엔진 방식을 ADR로 확정한다. ADR-003의 board.json 제약 개정을 포함한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-003",
+        "ADR-012",
+        "ADR-016"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "자유도 기준을 가역성으로 두고 경계·정책·내용 3층을 규정한 ADR이 active로 존재한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "ADR-003의 board.json 표시 전용 제약과 Workspace 계약 상속 배제가 개정 결정으로 닫힌다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "업무 유형을 데이터로 정의하는 방식과 제약 카탈로그를 정한 ADR이 active로 존재한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "승인 모드 4종이 기존 절차·승인·위임 손잡이의 조합으로 정의된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl check --strict가 오류 없이 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:03:53.896Z",
+      "updatedAt": "2026-08-20T15:03:53.896Z",
+      "statusChangedAt": "2026-08-20T15:03:53.896Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
