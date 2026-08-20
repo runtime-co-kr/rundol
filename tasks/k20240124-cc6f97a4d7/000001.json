@@ -3255,7 +3255,7 @@
         },
         "AC-002": {
           "text": "열 정렬 세 가지를 바꿀 수 있고 저장한 파일에 반영된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "열을 끌어 순서를 바꿀 수 있다",
@@ -3264,7 +3264,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:22.185Z",
-      "updatedAt": "2026-08-20T22:00:18.637Z",
+      "updatedAt": "2026-08-20T22:00:22.725Z",
       "statusChangedAt": "2026-08-20T18:57:47.238Z",
       "externalRefs": [],
       "project": "rundol"
