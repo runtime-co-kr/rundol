@@ -3287,7 +3287,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "글자를 고르면 서식 도구 막대가 뜬다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "체크 목록의 상자를 눌러 상태를 바꿀 수 있다",
@@ -3300,7 +3300,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:27.408Z",
-      "updatedAt": "2026-08-20T18:23:49.672Z",
+      "updatedAt": "2026-08-20T22:00:04.198Z",
       "statusChangedAt": "2026-08-20T18:23:49.672Z",
       "externalRefs": [],
       "project": "rundol"
