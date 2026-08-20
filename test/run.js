@@ -56,6 +56,7 @@ require('./run-ledger.test');
 require('./run-cli.test');
 require('./run-pending.test');
 require('./session.test');
+require('./save-lock.test');
 require('./harness-settings.test');
 require('./sync-finalization.test');
 require('./verify.test');
