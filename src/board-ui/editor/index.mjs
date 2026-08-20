@@ -23,6 +23,7 @@ import { linkPicker } from './link-picker.mjs';
 import { toolbar } from './toolbar.mjs';
 import { placeholder } from './placeholder.mjs';
 import { ListItemView } from './list-item-view.mjs';
+import { tableControls } from './table-controls.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -102,7 +103,8 @@ export function openEditor(mount, markdown, options = {}) {
         // 보드는 이미 그 목록을 스냅샷으로 갖고 있다.
         linkPicker({ candidates: options.linkCandidates || [] }),
         toolbar(),
-        placeholder()
+        placeholder(),
+        tableControls()
       ]
     }),
     // 체크 상자를 눌러 상태를 바꾸려면 항목이 자기 DOM을 가져야 한다.

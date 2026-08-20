@@ -347,3 +347,85 @@
 .rdl-block-menu-group { font-size: var(--caption-FontSize, 12px); }
 .rdl-block-menu-hint,
 .rdl-link-kind { font-size: var(--caption-FontSize, 12px); }
+
+/* 표 손잡이 ----------------------------------------------------------- */
+
+.rdl-table-handle {
+  position: absolute;
+  display: none;
+  z-index: 6;
+  border-radius: var(--min-BorderRadius, 4px);
+  background: var(--surface-03-BackgroundColor, #24242e);
+  cursor: pointer;
+}
+.rdl-table-handle:hover { background: var(--accent-BackgroundColor, #4a6a9a); }
+.rdl-table-row-handle { width: 10px; cursor: grab; }
+.rdl-table-col-handle { height: 10px; cursor: grab; }
+.rdl-table-handle:active { cursor: grabbing; }
+
+/* 셀 경계에 뜨는 끼워넣기 단추. 손잡이와 자리를 나눠 갖는다 —
+   같은 자리에 두면 "이 열을 지운다"와 "여기에 넣는다"가 서로를 가린다. */
+.rdl-table-insert {
+  position: absolute;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 7;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
+  border-radius: var(--round-BorderRadius, 999px);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  color: var(--accent-TextColor, #9cc7ff);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rdl-table-insert:hover {
+  background: var(--accent-BackgroundColor, #4a6a9a);
+  color: var(--on-accent-TextColor, #fff);
+}
+
+.rdl-table-group {
+  position: absolute;
+  display: none;
+  gap: 2px;
+  align-items: center;
+  z-index: 21;
+  padding: 4px;
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
+  border-radius: var(--medium-BorderRadius, 8px);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  box-shadow: var(--medium-BoxShadow, 0 8px 24px rgb(0 0 0 / 45%));
+}
+.rdl-table-button {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--small-BorderRadius, 6px);
+  background: transparent;
+  color: var(--primary-TextColor, #e6e6ea);
+  font-size: 12px;
+  cursor: pointer;
+}
+.rdl-table-button:hover { background: var(--ui-hover-OverlayColor, #2a2a36); }
+.rdl-table-button.is-danger:hover { background: var(--danger-Color, #c03d38); color: #fff; }
+.rdl-table-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--divider-BorderColor, #2a2a33);
+}
+
+/* 고른 셀. prosemirror-tables가 붙이는 클래스를 보드 색으로 칠한다. */
+.ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent-subtle-BackgroundColor, #1e1e3a);
+  opacity: .6;
+  pointer-events: none;
+}
+.ProseMirror td, .ProseMirror th { position: relative; }
