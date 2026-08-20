@@ -2574,7 +2574,7 @@
         },
         "AC-004": {
           "text": "코드 변경 없이 새 유형을 추가할 수 있음이 시험으로 증명된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "npm test와 rdl check --strict가 모두 통과한다",
@@ -2583,7 +2583,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:45.676Z",
-      "updatedAt": "2026-08-20T23:25:11.612Z",
+      "updatedAt": "2026-08-20T23:25:15.596Z",
       "statusChangedAt": "2026-08-20T23:24:58.498Z",
       "externalRefs": [],
       "project": "rundol"
