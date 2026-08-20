@@ -2151,7 +2151,7 @@
         },
         "AC-004": {
           "text": "승인 모드 4종이 기존 절차·승인·위임 손잡이의 조합으로 정의된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "rdl check --strict가 오류 없이 통과한다",
@@ -2160,7 +2160,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:14:55.527Z",
+      "updatedAt": "2026-08-20T15:15:00.695Z",
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
@@ -2183,7 +2183,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "정본 문서 전체가 편집 없는 저장에서 바이트 동일임을 시험이 확인한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "wikilink·block anchor·한글 표·mermaid·CRLF가 고정값으로 남는다",
@@ -2200,7 +2200,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:08:29.359Z",
-      "updatedAt": "2026-08-20T15:08:29.359Z",
+      "updatedAt": "2026-08-20T15:15:02.665Z",
       "statusChangedAt": "2026-08-20T15:08:29.359Z",
       "externalRefs": [],
       "project": "rundol"
@@ -2906,6 +2906,50 @@
       "createdAt": "2026-08-20T15:14:56.370Z",
       "updatedAt": "2026-08-20T15:14:56.370Z",
       "statusChangedAt": "2026-08-20T15:14:56.370Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-M0EJ7A89": {
+      "title": "[하네스] 세션 시작 훅이 대기 런을 드러낸다",
+      "summary": "스킬 지시문은 모델이 건너뛸 수 있어 결정론적 트리거가 못 된다. 하네스가 직접 실행하는 훅으로 대기 런을 세션 시작 시 컨텍스트에 넣는다. 훅은 트리거만 담고 판정은 전부 rdl이 한다 - 클라이언트마다 다른 훅 형식을 얇게 유지하는 유일한 방법이다. 남의 설정 파일을 병합하는 일이므로 되돌릴 수 있어야 하고 조용히 퇴화하면 안 된다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-038"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl skill install이 클라이언트 훅을 덮어쓰지 않고 병합한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "런돌이 넣은 구간만 표시되고 그것만 제거할 수 있다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "훅은 조회만 하고 런을 몰지 않는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "사용자가 직접 쓴 훅과 설정이 보존된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "설치가 실패하면 조용히 퇴화하지 않고 드러낸다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:15:00.936Z",
+      "updatedAt": "2026-08-20T15:15:00.936Z",
+      "statusChangedAt": "2026-08-20T15:15:00.936Z",
       "externalRefs": [],
       "project": "rundol"
     }
