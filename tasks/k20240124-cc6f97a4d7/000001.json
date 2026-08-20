@@ -2242,12 +2242,12 @@
         },
         "AC-004": {
           "text": "빌드 스텝 도입 여부와 그 비용이 결정문에 적힌다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:08:47.540Z",
-      "updatedAt": "2026-08-20T23:49:53.503Z",
+      "updatedAt": "2026-08-20T23:49:57.536Z",
       "statusChangedAt": "2026-08-20T15:08:47.540Z",
       "externalRefs": [],
       "project": "rundol"
