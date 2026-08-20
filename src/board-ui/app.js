@@ -459,6 +459,29 @@ function contextSelect(field, current, options) { return `<select class="context
 // 어디서 여느냐에 따라 다른 것이 보였다. 한 벌만 만들고 담는 그릇만 바꾼다.
 // 순서는 제목 → 속성 → 내용이다. 속성은 짧고 개수가 고정이라 위에서 한눈에 지나가고,
 // 길이를 알 수 없는 내용이 그 아래로 흐른다.
+// 태스크 댓글. 작성 주체를 지우지 않는 것이 이 화면의 계약이다 — 에이전트가 남긴
+// 것과 사람이 남긴 것이 같아 보이면, 승인 근거가 될 수 없다는 판정이 화면에서
+// 사라진다. 그래서 이름 옆에 종류를 붙이고 자격 없는 것은 그 사실을 표시한다.
+function commentSectionHtml(taskId) {
+  const all = (state.snapshot && state.snapshot.comments) || [];
+  const mine = all.filter((item) => item.taskId === taskId);
+  const list = mine.length
+    ? `<ol class="comment-list">${mine.map((item) => {
+      const agent = item.workerKind !== 'human';
+      const who = agent ? item.clientId : (item.member || item.clientId);
+      return `<li class="comment-item${agent ? ' agent' : ''}">`
+        + `<p class="comment-meta"><strong>${escapeHtml(who)}</strong>`
+        + `<span class="comment-kind">${agent ? '에이전트' : '사람'}</span>`
+        + `<time>${escapeHtml(String(item.recordedAt || '').replace('T', ' ').slice(0, 16))}</time></p>`
+        + `<div class="comment-body">${markdown(String(item.body || ''))}</div></li>`;
+    }).join('')}</ol>`
+    : '<p class="empty-state">아직 댓글이 없습니다.</p>';
+  const form = `<form class="comment-form" data-comment-form="${escapeHtml(taskId)}">`
+    + `<textarea name="body" rows="3" placeholder="이 태스크에 남길 말" aria-label="댓글 내용"></textarea>`
+    + `<div class="comment-form-actions"><button type="submit">댓글 남기기</button></div></form>`;
+  return list + form;
+}
+
 function taskDetailHtml(task, mode) {
   const members = [['', '미지정']].concat(state.snapshot.people.members.map((member) => [member.id, member.name]));
   const criteria = Object.entries(task.acceptanceCriteria || {});
@@ -503,6 +526,7 @@ function taskDetailHtml(task, mode) {
       : '<p class="empty-state">완료조건이 없습니다.</p>', criteria.length ? `${doneCount}/${criteria.length}` : ''),
     section('연결 문서', documents.length ? `<div class="card-grid">${documents.map(documentCard).join('')}</div>` : '<p class="empty-state">연결된 문서가 없습니다.</p>'),
     section('의존 태스크', dependencies.length ? `<div class="task-table">${dependencies.map(taskRow).join('')}</div>` : '<p class="empty-state">선행 태스크가 없습니다.</p>'),
+    section('댓글', commentSectionHtml(task.id), String(((state.snapshot && state.snapshot.comments) || []).filter((item) => item.taskId === task.id).length || '')),
     (task.externalRefs || []).length ? section('외부 참조', task.externalRefs.map((ref) => `<p>${escapeHtml(typeof ref === 'string' ? ref : JSON.stringify(ref))}</p>`).join('')) : ''
   ].filter(Boolean).join('');
 
@@ -830,6 +854,34 @@ document.addEventListener('click', (event) => { const button = event.target.clos
     }
     return setView('task', button.dataset.task);
   } });
+// 댓글 제출. 태스크 리비전을 싣지 않는 이유는 append-only라 남의 댓글을 덮을 수
+// 없기 때문이다. 리비전을 요구하면 두 사람이 동시에 쓸 때 한 명이 거절당하고,
+// 그러면 논의 때문에 논의가 막힌다.
+document.addEventListener('submit', async (event) => {
+  const form = event.target.closest('[data-comment-form]');
+  if (!form) return;
+  event.preventDefault();
+  const field = form.querySelector('[name="body"]');
+  const body = (field.value || '').trim();
+  if (!body) return message('댓글 내용을 입력하세요.', true);
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await api(`/api/tasks/${encodeURIComponent(form.dataset.commentForm)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify({ body })
+    });
+    field.value = '';
+    await loadSnapshot(true);
+    message('댓글을 남겼습니다.');
+  } catch (error) {
+    message(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.addEventListener('click', (event) => { const button = event.target.closest('[data-task-acceptance]'); if (!button) return; const task = state.snapshot.tasks.tasks.find((item) => item.id === state.selected); if (!task) return; const acceptanceCriteria = JSON.parse(JSON.stringify(task.acceptanceCriteria)); const criterion = acceptanceCriteria[button.dataset.taskAcceptance]; if (!criterion) return; criterion.done = !criterion.done; queueTaskUpdate(task, { acceptanceCriteria }); });
 document.addEventListener('change', async (event) => {
   const input = event.target.closest('[data-task-field]');
@@ -1060,8 +1112,65 @@ function frontmatterNotice() {
   return notice;
 }
 
+// 저장 전 검사. 서버가 같은 판정으로 답하므로 "저장을 눌러 봐야 아는" 상태가 없어진다.
+// 타자마다 부르면 검사가 초당 여러 번 도는데 rdl check는 몇 초가 걸린다. 손이
+// 멈춘 뒤에 한 번만 부른다.
+let checkTimer = null;
+let lastCheckedBody = null;
+function scheduleDocumentCheck(item) {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(() => runDocumentCheck(item), 1200);
+}
+async function runDocumentCheck(item) {
+  if (!blockEditor) return;
+  const body = blockEditor.getMarkdown();
+  if (body === lastCheckedBody) return;
+  lastCheckedBody = body;
+  try {
+    const result = await api(projectPath(`/documents/${encodeURIComponent(item.id)}/check`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify({ body })
+    });
+    renderDocumentCheck(result);
+  } catch (_) {
+    // 검사를 못 불렀다고 편집을 막지는 않는다. 저장 시점에 서버가 다시 본다.
+    renderDocumentCheck(null);
+  }
+}
+
+function renderDocumentCheck(result) {
+  const strip = el('document-check');
+  if (!strip) return;
+  if (!result) { strip.hidden = true; return; }
+  const list = result.diagnostics || [];
+  strip.hidden = false;
+  strip.className = `editor-check ${result.blocking ? 'is-blocking' : (list.length ? 'is-warning' : 'is-clear')}`;
+  if (!list.length) { strip.textContent = '검사 통과 — 지금 저장할 수 있습니다.'; return; }
+  strip.replaceChildren();
+  const head = document.createElement('strong');
+  head.textContent = result.blocking ? '저장을 막는 문제가 있습니다' : '저장은 되지만 볼 것이 있습니다';
+  strip.append(head);
+  for (const item of list.slice(0, 5)) {
+    const line = document.createElement('div');
+    line.className = `editor-check-line is-${item.severity}`;
+    line.textContent = `${item.code}${item.line ? ` (${item.line}줄)` : ''} ${item.message}`;
+    strip.append(line);
+  }
+  if (list.length > 5) {
+    const more = document.createElement('div');
+    more.className = 'editor-check-line';
+    more.textContent = `외 ${list.length - 5}건`;
+    strip.append(more);
+  }
+}
+
 function closeBlockEditor() {
   if (!blockEditor) return;
+  clearTimeout(checkTimer);
+  lastCheckedBody = null;
+  const strip = el('document-check');
+  if (strip) strip.hidden = true;
   blockEditor.destroy();
   blockEditor = null;
   el('document-editor-surface').replaceChildren();
@@ -1080,7 +1189,7 @@ async function enterEditing(item) {
     el('document-editor').hidden = true;
     el('document-editor-surface').hidden = false;
     el('document-editor-surface').append(frontmatterNotice());
-    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates(), contractSections: sectionsFor(item) });
+    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates(), contractSections: sectionsFor(item), onChange: () => scheduleDocumentCheck(item) });
     blockEditor.view.focus();
     return;
   }
@@ -1122,6 +1231,19 @@ el('save-document').addEventListener('click', async () => {
     // 저장이 거부돼도 편집기 내용은 남긴다. 여기서 지우면 작업이 사라진다.
     el('document-editor').value = draft;
     state.rejectedDraft = { id: item.id, body: draft };
+    // 충돌은 다른 거절과 다르다. 내용이 틀린 것이 아니라 바탕이 낡은 것이므로,
+    // 사람이 할 일이 "고쳐서 다시 저장"이 아니라 "무엇이 달라졌는지 보고 합치기"다.
+    // 그 차이를 말해 주지 않으면 사람은 같은 버튼을 다시 누르고 같은 답을 받는다.
+    if (/외부에서 변경/u.test(error.message)) {
+      renderDocumentCheck({
+        blocking: true,
+        diagnostics: [{
+          code: '409', severity: 'error', line: null,
+          message: '다른 곳에서 이 문서가 바뀌었습니다. 편집 내용은 그대로 두었습니다. 새 창에서 최신 내용을 보고 합친 뒤 저장하세요.'
+        }]
+      });
+      return message('문서가 외부에서 변경되어 저장하지 않았습니다. 편집 내용은 그대로 있습니다.', true);
+    }
     message(`${error.message} 편집 내용은 편집기에 그대로 있습니다.`, true);
   }
 });

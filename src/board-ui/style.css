@@ -3380,3 +3380,83 @@ dialog label textarea {
   color: var(--secondary-TextColor);
   font-size: var(--caption-FontSize);
 }
+
+/* 댓글. 작성 주체를 지우지 않는 것이 이 화면의 계약이다 — 에이전트가 남긴 것과
+   사람이 남긴 것이 같아 보이면, 승인 근거가 될 수 없다는 판정이 화면에서 사라진다.
+   그래서 종류를 이름 옆에 붙이고 에이전트 글에는 왼쪽 표시를 준다. */
+.comment-list {
+  display: grid;
+  gap: var(--spacing-1);
+  margin: 0 0 var(--spacing-1_5);
+  padding: 0;
+  list-style: none;
+}
+
+.comment-item {
+  padding: var(--spacing-1) var(--spacing-1_5);
+  border-radius: var(--small-BorderRadius);
+  background: var(--surface-02-BackgroundColor);
+  border-left: 3px solid transparent;
+}
+
+.comment-item.agent {
+  border-left-color: var(--secondary-TextColor);
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-1);
+  margin: 0 0 var(--spacing-0_5);
+  font-size: var(--caption-FontSize);
+  color: var(--secondary-TextColor);
+}
+
+.comment-kind {
+  padding: 0 var(--spacing-0_5);
+  border-radius: var(--small-BorderRadius);
+  background: var(--surface-03-BackgroundColor, var(--surface-02-BackgroundColor));
+  letter-spacing: .04em;
+}
+
+.comment-meta time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.comment-body > :first-child { margin-top: 0; }
+.comment-body > :last-child { margin-bottom: 0; }
+
+.comment-form {
+  display: grid;
+  gap: var(--spacing-0_5);
+}
+
+.comment-form textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
+.comment-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 저장 전 검사 결과. 저장을 눌러 봐야 아는 상태를 없애는 자리다. */
+.editor-check {
+  margin: var(--spacing-2) 0 0;
+  padding: var(--spacing-1) var(--spacing-1_5);
+  border: 1px solid var(--divider-BorderColor);
+  border-left-width: 3px;
+  border-radius: var(--small-BorderRadius);
+  background: var(--surface-02-BackgroundColor);
+  font-size: var(--caption-FontSize);
+}
+.editor-check.is-clear { border-left-color: var(--success-Color); color: var(--secondary-TextColor); }
+.editor-check.is-warning { border-left-color: var(--warning-Color); }
+.editor-check.is-blocking { border-left-color: var(--danger-Color); }
+.editor-check strong { display: block; margin-bottom: var(--spacing-0_5); }
+.editor-check-line { color: var(--secondary-TextColor); line-height: 1.6; }
+.editor-check-line.is-error { color: var(--danger-Color); }
+.editor-check-line.is-warning { color: var(--warning-Color); }

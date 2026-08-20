@@ -19,6 +19,7 @@
   "scripts": {
     "skill:install": "node scripts/install-global-skill.js --force",
     "build:editor": "node scripts/build-editor.js",
+    "build:licenses": "node scripts/build-licenses.js",
     "check:fixture": "node bin/rdl.js check --root test/fixtures/workspace",
     "test": "node test/run.js",
     "test:packages": "node test/packages.test.js",
@@ -26,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "version:check": "node scripts/version-check.js",
     "release:check": "npm run version:check && npm run typecheck && npm test && npm run test:install",
-    "prepare": "node scripts/build-editor.js"
+    "prepare": "node scripts/build-editor.js && node scripts/build-licenses.js"
   },
   "engines": {
     "node": ">=20"

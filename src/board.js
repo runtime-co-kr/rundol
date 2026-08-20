@@ -12,6 +12,7 @@ const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, shardFiles, clientId, TERMINAL_TASK_STATES } = require('./tasks');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus } = require('./collaboration-store');
+const { addComment, listComments } = require('./comment');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
@@ -293,12 +294,16 @@ function workspaceSnapshot(root, projectKey, search) {
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
   const contract = loadDocumentContract(root, project.key);
   const presentation = loadBoardPresentation(root, project.key);
+  // 댓글은 태스크와 다른 원장에 산다. 스냅숏에 함께 실어야 화면이 두 번 묻지 않고,
+  // 영역 revision을 따로 두어야 댓글만 늘었을 때 태스크 목록을 다시 그리지 않는다.
+  const comments = listComments(root, { project: project.key }).comments;
   const workspaceRevision = boardRevision(config);
   return {
     project: project.key,
     client: boardClient(root, project, clients),
     diagnostics: projectDiagnostics(root, project.key, `${workspaceRevision}:${entityRevision(documents)}`),
-    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(stripSources(presentation)) },
+    revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(stripSources(presentation)), comments: entityRevision(comments) },
+    comments,
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
@@ -354,6 +359,55 @@ function composeDocumentFile(original, nextBody) {
   const trimmed = String(nextBody == null ? '' : nextBody).replace(/\r\n/g, '\n').replace(/^\s+|\s+$/g, '');
   const restored = eol === '\r\n' ? trimmed.replace(/\n/g, '\r\n') : trimmed;
   return `${match[1]}${match[2]}${restored}${eol}`;
+}
+
+/**
+ * 저장하지 않고 검사만 한다.
+ *
+ * 지금까지 편집 결과가 계약을 지키는지 아는 방법은 저장해 보는 것뿐이었다. 저장이
+ * 실패하면 원본으로 되돌아가므로 파일은 안전하지만, 사람은 "저장을 눌러 봐야
+ * 아는" 상태에 놓인다. 고칠 것이 여럿이면 그 왕복을 여러 번 한다.
+ *
+ * 검사는 디스크를 읽으므로 내용을 어딘가에 두어야 한다. 저장 경로와 같은 자리에
+ * 쓰고 곧바로 되돌린다 — 다른 자리에 쓰면 그 파일은 프로젝트 밖이라 검사가 보지
+ * 않고, 보지 않은 검사는 저장했을 때와 다른 답을 낸다.
+ *
+ * 되돌리기는 finally에 둔다. 검사가 예외를 던지든 아니든 원본은 반드시 돌아와야 한다.
+ */
+function checkDocumentBody(root, projectKey, documentId, body) {
+  const project = selectProject(workspaceLayout(root), projectKey, true);
+  const current = listDocuments(project).find((item) => item.id === documentId);
+  if (!current) { const error = new Error('문서를 찾지 못했습니다.'); error.statusCode = 404; throw error; }
+  const nextBody = String(body.body == null ? '' : body.body);
+  if (Buffer.byteLength(nextBody, 'utf8') > 512 * 1024) inputError('문서 본문은 512KB를 넘을 수 없습니다.');
+  const file = path.resolve(project.root, current.file);
+  if (!file.startsWith(`${path.resolve(project.root)}${path.sep}`)) inputError('프로젝트 경로 밖의 문서는 검사할 수 없습니다.');
+
+  const original = fs.readFileSync(file, 'utf8');
+  const composed = composeDocumentFile(original, nextBody);
+  // 바뀐 것이 없으면 쓰지 않는다. 같은 내용을 썼다 되돌리는 것은 파일 시각만 흔든다.
+  if (composed === original) return summarizeDiagnostics(root, projectKey, current);
+  try {
+    fs.writeFileSync(file, composed, 'utf8');
+    return summarizeDiagnostics(root, projectKey, current);
+  } finally {
+    fs.writeFileSync(file, original, 'utf8');
+  }
+}
+
+// 이 문서에 걸린 진단만 추린다. 저장을 막는 것은 오류뿐이므로 등급을 함께 준다.
+function summarizeDiagnostics(root, projectKey, document) {
+  const checked = checkWorkspace(root, { project: projectKey, strict: true, skipProfilePolicy: true });
+  const mine = (checked.diagnostics || []).filter((item) =>
+    item.artifactId === document.id || (item.file && item.file.replace(/\\/g, '/').endsWith(document.file)));
+  return {
+    id: document.id,
+    blocking: mine.some((item) => item.severity === 'error'),
+    errors: checked.summary.errors,
+    diagnostics: mine.map((item) => ({
+      code: item.code, severity: item.severity, line: item.line || null, message: item.message
+    }))
+  };
 }
 
 function updateDocumentBody(root, projectKey, documentId, body) {
@@ -513,13 +567,15 @@ function createBoardServer(start, options) {
       const projectTaskMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks\/(TASK-[A-Za-z0-9-]+)$/u);
       const projectDocumentsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents$/u);
       const projectDocumentMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)$/u);
+      // 저장하지 않고 검사만 하는 자리. 문서 저장 경로와 나란히 두어 같은 판정을 쓴다.
+      const projectDocumentCheckMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/check$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
       const projectContractMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract$/u);
       const projectContractPlanMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract\/plan$/u);
       const projectPresentationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/presentation$/u);
-      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
+      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentCheckMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
       const requestedConfig = requestedProject ? boardConfig(config.root, requestedProject[1]) : config;
       if (request.method === 'GET' && projectMatch) {
         const summary = overview(config.root).projects.find((item) => item.key === projectMatch[1]);
@@ -572,6 +628,12 @@ function createBoardServer(start, options) {
         validateTaskAssignments(config.root, changes, projectTaskMatch[1]);
         return json(response, 200, taskUpdate(config.root, projectTaskMatch[2], changes, projectTaskMatch[1]));
       }
+      // 검사 자리가 저장 자리보다 먼저다. `/documents/:id` 정규식이 `/check`까지
+      // 삼키지는 않지만, 순서를 뒤집으면 나중에 경로가 하나 늘 때 조용히 가려진다.
+      if (request.method === 'POST' && projectDocumentCheckMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, checkDocumentBody(config.root, projectDocumentCheckMatch[1], decodeURIComponent(projectDocumentCheckMatch[2]), body));
+      }
       if (request.method === 'POST' && projectDocumentMatch) {
         const body = await requestBody(request);
         return json(response, 200, updateDocumentBody(config.root, projectDocumentMatch[1], decodeURIComponent(projectDocumentMatch[2]), body));
@@ -617,6 +679,21 @@ function createBoardServer(start, options) {
         requireBlockerConsistency(null, input);
         validateTaskAssignments(activeConfig.root, input, activeConfig.project);
         return json(response, 201, taskCreate(activeConfig.root, input));
+      }
+      // 댓글은 태스크 리비전을 요구하지 않는다. append-only라 남의 댓글을 덮을 수
+      // 없고, 리비전을 요구하면 두 사람이 동시에 쓸 때 한 명이 거절당한다 —
+      // 논의 때문에 논의가 막히는 구조가 된다.
+      const commentMatch = url.pathname.match(/^\/api\/tasks\/([A-Z0-9-]+)\/comments$/u);
+      if (request.method === 'POST' && commentMatch) {
+        const body = await requestBody(request);
+        const created = addComment(activeConfig.root, {
+          project: activeConfig.project, taskId: commentMatch[1], body: body.body,
+          clientId: identity.id, member: body.member
+        });
+        return json(response, 201, created);
+      }
+      if (request.method === 'GET' && commentMatch) {
+        return json(response, 200, listComments(activeConfig.root, { project: activeConfig.project, taskId: commentMatch[1] }));
       }
       if (request.method === 'POST' && taskMatch) {
         const body = await requestBody(request);

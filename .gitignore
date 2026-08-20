@@ -13,3 +13,4 @@ packages/cli/dist/
 
 tmp/
 src/board-ui/generated/
+THIRD-PARTY-LICENSES.txt
