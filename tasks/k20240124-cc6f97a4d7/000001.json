@@ -2242,6 +2242,42 @@
       "statusChangedAt": "2026-08-20T15:08:47.540Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-MXG8C05J": {
+      "title": "wikilink를 편집기가 아는 노드로 세운다",
+      "summary": "어떤 WYSIWYG를 어느 범위로 쓰든 재직렬화되는 구간의 [[...]]는 백슬래시로 이스케이프된다. 측정에서 본문 wikilink 80개 중 70개가 죽었고 rdl check는 아무 말도 하지 않았다. 선행: TASK-RA3Y3NBH의 방향 결정.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "문단을 재직렬화해도 wikilink가 이스케이프되지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "골든 테스트의 wikilink 고정값이 통과 상태로 유지된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "본문 wikilink 소실이 검사로 드러난다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:09:02.628Z",
+      "updatedAt": "2026-08-20T15:09:02.628Z",
+      "statusChangedAt": "2026-08-20T15:09:02.628Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
