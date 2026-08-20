@@ -111,7 +111,50 @@ const RULES = Object.freeze({
   'RDL-DEC-002': { document: 'REQ-040', functionId: 'DEC-02' },
   'RDL-DEC-020': { document: 'REQ-040', functionId: 'DEC-02' },
   'RDL-DEC-021': { document: 'REQ-040', functionId: 'DEC-02' },
-  'RDL-DEC-026': { document: 'REQ-040', functionId: 'DEC-02' }
+  'RDL-DEC-026': { document: 'REQ-040', functionId: 'DEC-02' },
+  // 위임 이벤트의 형식과 수임 주체 판정도 같은 결정의 소관이다
+  'RDL-DLG-010': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-011': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-012': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-013': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-014': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-015': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-016': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-017': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-018': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-020': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-021': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DLG-022': { document: 'REQ-040', functionId: 'DEC-02' },
+
+  // 검증 판정의 독립성: 한 검증기의 결과가 다른 검증기를 물들이지 않는지
+  'RDL-VERDICT-001': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-002': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-003': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-004': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-010': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-011': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-012': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-013': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-014': { document: 'REQ-042', functionId: 'HRN-07' },
+  'RDL-VERDICT-015': { document: 'REQ-042', functionId: 'HRN-07' },
+
+  // 브랜치와 worktree 경계: 무엇이 어느 ref를 소유하는가
+  'RDL-BRANCH-001': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-BRANCH-002': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-BRANCH-003': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-BRANCH-004': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-BRANCH-005': { document: 'REQ-037', functionId: 'HRN-05' },
+  // push 차단도 같은 경계를 지키는 장치다. 경계를 정한 문서가 하나이므로 소관도 하나다
+  'RDL-PUSH-001': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-PUSH-002': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-PUSH-003': { document: 'REQ-037', functionId: 'HRN-05' },
+
+  // 협업 클라이언트 등록: 실행 주체의 정체와 상태
+  'RDL-CLIENT-001': { document: 'REQ-019', functionId: 'COL-01' },
+  'RDL-CLIENT-002': { document: 'REQ-019', functionId: 'COL-01' },
+  'RDL-CLIENT-003': { document: 'REQ-019', functionId: 'COL-01' },
+  'RDL-CLIENT-004': { document: 'REQ-019', functionId: 'COL-01' },
+  'RDL-CLIENT-005': { document: 'REQ-019', functionId: 'COL-01' }
 });
 
 /** 진단 코드의 정본 문서. 모르는 코드는 null이며 추측하지 않는다. */

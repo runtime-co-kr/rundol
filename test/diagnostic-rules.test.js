@@ -69,13 +69,19 @@ const allCodes = fs.readdirSync(sourceRoot)
 
 const measured = coverage(allCodes);
 assert(measured.total > 200, `진단 코드 수가 예상보다 적습니다: ${measured.total}`);
-assert(measured.mapped >= 80, `연결된 코드가 줄었습니다: ${measured.mapped}`);
-// 계약 계열은 전부 덮였는지 확인한다. 나머지 계열은 아직 비어 있고, 그 사실을
-// 여기서 고정해 두어 다음 사람이 어디부터 채울지 알게 한다.
+assert(measured.mapped >= 115, `연결된 코드가 줄었습니다: ${measured.mapped}`);
+
+// 소관이 확정된 계열은 빠짐없이 덮여야 한다. 한 계열 안에서 몇 개만 붙어 있으면
+// 역방향 계산이 "이 요구가 영향을 주는 진단"을 실제보다 적게 답한다.
+const SETTLED = /^RDL-(IMPL|PROFILE|DLG|VERDICT|BRANCH|PUSH|CLIENT|DEC)-/u;
 for (const code of allCodes) {
-  if (/^RDL-(IMPL|PROFILE)-/u.test(code)) {
-    assert(ruleSource(code), `계약 계열인데 정본 문서가 없습니다: ${code}`);
-  }
+  if (SETTLED.test(code)) assert(ruleSource(code), `소관이 확정된 계열인데 정본 문서가 없습니다: ${code}`);
+}
+
+// 폐기한 기능의 진단은 붙이지 않는다. 없어진 규칙에 근거를 달면 그 문서를 읽고
+// 다시 살리려는 시도가 나온다.
+for (const code of allCodes) {
+  if (/^RDL-LEASE-/u.test(code)) assert.strictEqual(ruleSource(code), null, `폐기한 기능에 근거가 붙었습니다: ${code}`);
 }
 
 process.stdout.write(`diagnostic rule tests passed (${measured.mapped}/${measured.total} 연결)\n`);
