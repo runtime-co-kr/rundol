@@ -174,12 +174,28 @@ export function serializeBlock(node) {
  * @returns {{markdown: string, preserved: number, reserialized: number}}
  */
 export function toMarkdown(doc, sources) {
+  // Map은 삽입 순서를 지키므로 이 배열이 곧 원래 블록 순서다.
+  const originals = [...sources.keys()];
   const pieces = [];
   let preserved = 0;
   let reserialized = 0;
 
-  doc.forEach((node) => {
-    const original = sources.get(node);
+  // 객체가 같으면 손대지 않은 블록이다. 그런데 되돌리기는 역단계를 적용해 문서를
+  // 되돌리므로 내용이 같아도 노드는 새로 만들어진다. 객체만 보면 "고쳤다 되돌린"
+  // 블록이 영영 고친 블록으로 남아, 되돌렸는데도 diff가 생긴다.
+  // 그래서 내용이 같은 원본이 있으면 그것의 조각을 쓴다. 같은 자리를 먼저 보는
+  // 이유는 내용이 같은 블록이 문서에 여럿일 때 남의 자리 조각을 가져오지 않기 위해서다.
+  function originalFor(node, index) {
+    const direct = sources.get(node);
+    if (direct !== undefined) return direct;
+    const atIndex = originals[index];
+    if (atIndex && atIndex.eq(node)) return sources.get(atIndex);
+    for (const candidate of originals) if (candidate.eq(node)) return sources.get(candidate);
+    return undefined;
+  }
+
+  doc.forEach((node, _offset, index) => {
+    const original = originalFor(node, index);
     if (original === undefined) {
       pieces.push(serializeBlock(node));
       reserialized += 1;

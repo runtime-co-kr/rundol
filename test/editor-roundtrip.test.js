@@ -157,6 +157,16 @@ async function main() {
   assert.strictEqual(after.preserved, 3, `손대지 않은 블록 3개가 보존되어야 하는데 ${after.preserved}개입니다`);
   assert.ok(after.markdown.includes('| A | B |\n|---|---|\n| 1 | 2 |'), '손대지 않은 표가 원문 그대로 남지 않았습니다');
 
+  // 5. 되돌리기 — 내용이 같은 새 노드는 원문 조각을 되찾아야 한다.
+  //    history는 역단계를 적용해 문서를 되돌리므로 내용이 같아도 노드는 새로 만들어진다.
+  //    객체만 보면 고쳤다 되돌린 블록이 영영 고친 블록으로 남아, 되돌렸는데도 diff가 생긴다.
+  const children = [];
+  doc.forEach((node) => children.push(node.type.create(node.attrs, node.content, node.marks)));
+  const rebuilt = doc.type.schema.nodes.doc.create(null, children);
+  const restored = toMarkdown(rebuilt, sources);
+  assert.strictEqual(restored.reserialized, 0, `되돌린 뒤에도 다시 쓴 블록이 ${restored.reserialized}개 남습니다`);
+  assert.strictEqual(restored.markdown, sample, '되돌린 문서가 원문과 다릅니다');
+
   process.stdout.write(`editor roundtrip tests passed (정본 문서 ${checked}개, 고정값 ${FIXTURES.length}종)\n`);
 }
 
