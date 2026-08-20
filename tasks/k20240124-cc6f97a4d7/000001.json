@@ -2415,7 +2415,7 @@
         },
         "AC-004": {
           "text": "위임 불가 티어가 어느 모드에서도 열리지 않음이 규칙으로 표현된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "각 기능 ID에 대응하는 TST 시나리오가 존재하고 rdl check --strict가 통과한다",
@@ -2424,7 +2424,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:01.195Z",
-      "updatedAt": "2026-08-20T17:45:30.058Z",
+      "updatedAt": "2026-08-20T17:45:34.644Z",
       "statusChangedAt": "2026-08-20T17:41:07.565Z",
       "externalRefs": [],
       "project": "rundol"
