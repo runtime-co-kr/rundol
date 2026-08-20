@@ -2270,7 +2270,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "문단을 재직렬화해도 wikilink가 이스케이프되지 않는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "골든 테스트의 wikilink 고정값이 통과 상태로 유지된다",
@@ -2283,7 +2283,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:02.628Z",
-      "updatedAt": "2026-08-20T15:09:02.628Z",
+      "updatedAt": "2026-08-20T22:00:31.593Z",
       "statusChangedAt": "2026-08-20T15:09:02.628Z",
       "externalRefs": [],
       "project": "rundol"
