@@ -880,12 +880,12 @@
         },
         "AC-002": {
           "text": "채택 시 v2 canonical 변경 범위와 기존 이벤트 영향이 명세된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:41.875Z",
-      "updatedAt": "2026-08-20T06:41:49.646Z",
+      "updatedAt": "2026-08-20T06:41:51.729Z",
       "statusChangedAt": "2026-08-20T06:39:47.023Z",
       "externalRefs": [],
       "project": "rundol"
