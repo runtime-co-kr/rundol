@@ -2071,6 +2071,44 @@
       "statusChangedAt": "2026-08-20T09:21:28.703Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-X7N4JD1F": {
+      "title": "정본 문서에 이미지를 넣을 수 있게 한다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "Obsidian embed가 참조 검사에서 문서 링크로 오인되지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "docs/assets/ 규약이 있고 해결되지 않은 자산 참조를 진단이 잡는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "자산의 크기와 차원을 코덱 없이 재고 임계 초과를 진단이 잡는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "어느 문서도 참조하지 않는 자산을 진단이 잡는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T14:15:48.753Z",
+      "updatedAt": "2026-08-20T14:15:48.753Z",
+      "statusChangedAt": "2026-08-20T14:15:48.753Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
