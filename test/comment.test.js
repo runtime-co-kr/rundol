@@ -26,7 +26,14 @@ const cli = path.join(repository, 'bin', 'rdl.js');
 // 열린다.
 
 assert.strictEqual(workerKindOf('human'), 'human');
-assert.strictEqual(workerKindOf('device'), 'human');
+// device는 사람이 아니다. 기계의 종류이지 행위 주체가 아니라, 같은 데스크톱을 사람도
+// 쓰고 AI도 쓴다. 실제로 그렇게 터졌다 — AI가 device Client로 댓글을 남겼더니 사람이
+// 쓴 것으로 기록되고 승인 근거 자격까지 붙었다. 모르는 유형과 같은 처지이므로 같은
+// 규칙을 적용한다.
+assert.strictEqual(workerKindOf('device'), 'agent');
+// 사람이 근거 자격을 원하면 human 유형 Client를 등록한다. 그것이 자격을 얻는 길이고,
+// 기계 종류를 사람으로 올려세우는 것은 그 길이 아니다.
+assert.strictEqual(workerKindOf('human'), 'human');
 assert.strictEqual(workerKindOf('agent'), 'agent');
 assert.strictEqual(workerKindOf('service'), 'agent');
 // 모르는 유형은 에이전트로 본다. 사람으로 잘못 보면 근거 자격을 잘못 주지만,
@@ -45,7 +52,7 @@ function input(overrides) {
     taskId: 'TASK-ABCD1234',
     body: '  이어서 하시면 됩니다.  ',
     clientId: 'laptop-a',
-    clientType: 'device',
+    clientType: 'human',
     member: 'MEMBER-001',
     recordedAt: '2026-08-21T00:00:00.000Z'
   }, overrides);
@@ -138,7 +145,9 @@ try {
   setup('git', ['add', 'README.md']);
   setup('git', ['commit', '-m', 'initial']);
   json(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
-  json(['client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'device', '--owner', 'MEMBER-001']);
+  // 사람 사례는 human 유형으로 등록한다. device로 두면 이 시험이 "기계 종류를 사람으로
+  // 올려세운다"를 고정하게 되고, 그것이 바로 고친 결함이다.
+  json(['client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'human', '--owner', 'MEMBER-001']);
   json(['client', 'register', 'agent-a', '--name', '작업 에이전트', '--type', 'agent', '--owner', 'MEMBER-001']);
   const task = json(['task', 'add', '댓글 대상', '--project', 'crm', '--acceptance', '댓글이 달린다']);
 
@@ -261,8 +270,10 @@ const boardTask = JSON.parse(boardSetup(process.execPath, [cli, 'task', 'add', '
     const saved = (await created.json()).comment;
     assert.strictEqual(saved.taskId, boardTask);
     // 화면에서 왔다고 사람이 되는 것이 아니다. 주체는 Client 유형에서 파생한다.
-    assert.strictEqual(saved.workerKind, 'human', 'device 유형이 사람으로 파생되어야 합니다.');
-    assert.strictEqual(saved.canGroundApproval, true);
+    assert.strictEqual(saved.workerKind, 'agent', 'device 유형은 행위 주체를 담지 않으므로 에이전트로 떨어져야 합니다.');
+    // 자격도 함께 빠진다. 이 둘이 갈리면 "에이전트가 쓴 것으로 기록되는데 승인 근거는
+    // 된다"가 되어, 종류를 바로잡은 것이 아무것도 막지 못한다.
+    assert.strictEqual(saved.canGroundApproval, false, '에이전트가 쓴 댓글에 승인 근거 자격을 주면 안 됩니다.');
 
     const listed = await (await fetch(`${base}/api/tasks/${boardTask}/comments`)).json();
     assert.strictEqual(listed.count, 1);
