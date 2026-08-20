@@ -12,6 +12,8 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
            [--profile <name>] [--defaults] [--questions] [--primary-branch <name>] [--trait <name>] [--root <path>] [--json]
   rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
+  rdl session start [--session-id <id>] [--path <경로>] [--from <ref>] [--root <path>] [--json]
+  rdl session list|end [--session-id <id>] [--force] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
   rdl contract show|next|check|trace --project <key> [--json]
@@ -167,6 +169,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 | `rdl init` | Workspace와 첫 프로젝트 등록·브랜치·worktree 생성 | `rundol/workspace`, 프로젝트 브랜치 | 로컬 ref가 없고 `origin`이 있으면 fetch |
 | `rdl attach` | 원격 Workspace·프로젝트 브랜치를 연결 | `projects/*` linked worktree | fetch |
 | `rdl detach` | 선택 프로젝트 linked worktree 연결 해제 | linked worktree | 없음 |
+| `rdl session` | 세션별 코드 작업 공간 열기·조회·닫기 | 세션 worktree와 `session/<id>` 브랜치 | 없음 |
 | `rdl project add` | 기존 Workspace에 독립 프로젝트 추가 | settings·프로젝트 브랜치 | 대응 로컬 ref가 없고 `origin`이 있으면 fetch |
 | `rdl check` | 문서·메타·링크·거버넌스·태스크·Obsidian 설정 검사 | 없음 | 없음 |
 | `rdl git init` | 등록 프로젝트 브랜치 복구 또는 생성, worktree 연결, push 경계 설치 | ref·worktree·`.git/hooks/pre-push` | 로컬 ref가 없고 `origin`이 있으면 fetch |
@@ -317,6 +320,10 @@ Client는 사람 자체가 아니라 장치·Agent·Service 실행 주체다.
 
 선택한 프로젝트의 `project.md`, 설계문서와 태스크 원본 변경을 `rdl check --strict` 수준으로 검사한 뒤 `rdl: update workspace` 커밋을 만든다. 변경이 없으면 커밋하지 않는다.
 
+저장은 프로젝트 단위로 배타적이다. 프로젝트 worktree가 프로젝트마다 하나뿐이라 두 저장이 겹치면 뒤엣것의 스테이지가 앞엣것이 아직 커밋하지 못한 변경까지 담는다. `rdl session`으로 코드 작업 공간을 나눠도 이 자리는 갈리지 않는다 — 문서와 태스크는 공유하기로 한 것이므로 공유하는 자리를 직렬화한다.
+
+기다리지 않고 거절한다. 다른 저장이 쥐고 있으면 `RDL-SAVE-012`로 끝나며 누가 쥐고 있는지(pid)를 함께 말한다. 붙잡아 두면 그 세션이 통째로 멈추므로, 다시 부를지는 부르는 쪽이 정한다. 프로젝트가 다르면 서로 막지 않는다.
+
 ### `rdl sync`
 
 ```bash
@@ -342,6 +349,28 @@ projects/<project-key>/.rundol/state/pending/merge-conflicts.json
 강제 push와 공통 이력이 없는 브랜치의 자동 병합은 수행하지 않는다. `--project`를 생략한 전체 sync는 등록 목록을 순차 처리하는 독립 연산이며 하나의 원자적 Git 트랜잭션이 아니다.
 
 Rundol이 실행하는 HTTP Git 명령은 자체 호스팅 GitLab reverse proxy의 HTTP/2 reset을 피하기 위해 명령 단위로 `http.version=HTTP/1.1`을 사용한다. 사용자 전역 Git 설정은 바꾸지 않는다.
+
+## 세션 작업 공간
+
+한 기계에서 여러 AI 세션이 같은 저장소를 동시에 고칠 때, 나뉘어야 하는 것은 경로가 아니라 index와 HEAD다. 경로를 나눠도 `git add <내 파일>`은 그 파일에 들어 있는 남의 줄까지 함께 스테이지한다 — 한 작업 트리의 index가 하나이기 때문이다. `rdl session`은 세션마다 worktree와 브랜치를 하나씩 준다.
+
+```bash
+rdl session start            # session/<id8> 브랜치의 worktree를 열고 경로를 알려준다
+rdl session list             # 열려 있는 세션 작업 공간
+rdl session end              # 작업 공간을 닫는다. 브랜치는 남는다
+```
+
+세션 식별자는 발급하지 않고 받는다. 순서는 `--session-id`, 환경변수 `RUNDOL_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, 그리고 없으면 생성이다. 호스트가 자기 세션 식별자를 어디에 두는지는 호스트마다 다르므로, 새 AI 클라이언트는 어댑터가 `RUNDOL_SESSION_ID`를 채우면 Rundol을 고치지 않고 붙는다.
+
+브랜치 이름에 세션 식별자가 들어가는 이유는 추적이다. 커밋이 어느 세션의 일이었는지는 주석이 아니라 브랜치가 답한다 — 주석은 파일에 누적되고 같은 줄에서 충돌하지만, 브랜치는 이력에 한 번 남고 병합과 함께 사라진다. 그리고 브랜치가 서면 태스크 결박이 따라온다. 태스크에 `--external-ref branch=session/<id8>`을 붙이면 `rdl save`의 파생 사다리가 그 브랜치로 작업 묶음을 찾아 `Rundol-Task` 트레일러를 자동으로 단다.
+
+작업 공간은 저장소의 형제 경로에 만든다. 저장소 안에 두면 추적 제외를 따로 걸어야 하고, 그 규칙을 빠뜨린 한 번에 세션 트리 전체가 커밋된다. `--path`로 자리를 지정할 수 있다.
+
+`start`를 두 번 불러도 실패하지 않고 같은 자리를 알려준다. 세션은 끊겼다 이어지므로 재진입이 오류면 부르는 쪽이 상태를 따로 기억해야 한다. 다만 같은 세션을 다른 경로로 열려는 요청은 거부한다 — 받아 주면 한 브랜치가 두 작업 트리에 체크아웃되고, 그때부터 한쪽의 커밋이 다른 쪽 HEAD를 조용히 옮긴다.
+
+`end`는 커밋되지 않은 변경이 있으면 지우지 않는다. 세션이 끝난 것과 그 일이 끝난 것은 다르다. `--force`로 버릴 수 있으며 그때는 몇 건을 버렸는지 함께 알린다. 브랜치는 어느 경우에도 남는다 — 작업 공간을 닫는 것과 일을 버리는 것은 다른 결정이다. 아직 병합하지 않은 커밋 수를 `unmerged`로 함께 낸다. worktree가 사라지면 그 세션은 `list`에서 빠지므로, 닫는 자리에서 말하지 않으면 남은 작업을 아무도 다시 묻지 않는다.
+
+이 명령은 코드 작업 공간만 나눈다. 문서와 태스크는 `projects/<key>` linked worktree 하나를 공유하므로 `rdl save`와 `rdl task`는 세션을 나눠도 같은 자리에서 직렬로 돈다.
 
 ## 태스크
 

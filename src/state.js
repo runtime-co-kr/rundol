@@ -15,7 +15,7 @@ const { getClient } = require('./collaboration-store');
 const { readCollaboration } = require('./collaboration');
 const { newDocumentUid } = require('./document-identity');
 const { taskEnforcementFrom } = require('./document-profile');
-const { runtimeWorkspace } = require('./runtime');
+const { runtimeWorkspace, withProcessLock } = require('./runtime');
 const { installBranchBoundary, assertWorktreeBoundary } = require('./branch-boundary');
 
 function atomicWrite(file, content) {
@@ -719,7 +719,31 @@ function bindingReport(binding) {
   };
 }
 
+// 저장은 프로젝트 worktree 하나를 읽고, 고치고, 커밋한다. 그 worktree는 프로젝트마다
+// 하나뿐이므로 두 저장이 겹치면 뒤엣것의 `git add -A`가 앞엣것이 아직 커밋하지 못한
+// 변경까지 담는다. 세션을 worktree로 나눠도 이 자리는 갈리지 않는다 — 코드와 달리
+// 문서·태스크는 공유하기로 한 것이고(ADR-007), 공유하기로 한 자리는 직렬화해야 한다.
+//
+// 같은 기계 안이라 실제 배타가 가능하다. 원자적 생성과 프로세스 생존 확인이면 공통
+// 시계 없이 보장되며, 그것이 ADR-015가 문서 리스를 폐기하면서도 로컬 락은 남긴 이유다.
+// 기제는 runtime.js에 이미 있으므로 새로 검증할 것이 없다.
+//
+// 기다리지 않고 거절한다. 저장은 사람이나 세션이 지금 하려는 일이므로, 붙잡아 두면
+// 그 세션이 통째로 멈춘다. 누가 쥐고 있는지 말해 주면 다시 부를지는 부르는 쪽이 정한다.
 function saveProjectState(config, settings) {
+  const scope = config.project || 'workspace';
+  try {
+    return withProcessLock(runtimeWorkspace(config.root), `save-${scope}`, () => commitProjectState(config, settings));
+  } catch (error) {
+    if (!error || error.code !== 'RDL_PROCESS_LOCKED') throw error;
+    const holder = error.lock && error.lock.pid;
+    const locked = new Error(`RDL-SAVE-012: 같은 프로젝트를 다른 저장이 쓰고 있습니다: ${scope}${holder ? ` (pid ${holder})` : ''}. 그 저장이 끝난 뒤 다시 실행하세요.`);
+    locked.code = 'RDL-SAVE-012';
+    throw locked;
+  }
+}
+
+function commitProjectState(config, settings) {
   if (!refExists(config.root, config.ref)) initProjectState(config);
   ensureWorkspaceWorktree(config);
   const head = () => runGit(['rev-parse', 'HEAD'], { cwd: config.worktree }).stdout.trim().toLowerCase();

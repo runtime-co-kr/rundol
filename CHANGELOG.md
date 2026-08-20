@@ -39,6 +39,31 @@
 - `rdl assignment report <ASG-ID> --project <key> --client-id <id> --outcome <done|blocked|rejected> --report-schema <이름> --procedure-digest <digest>` (고급 명령)
 - `rdl assignment reports <ASG-ID> --project <key>` (고급 명령)
 - `rdl assignment verify <ASG-ID> --project <key> --client-id <id>` (고급 명령)
+- `rdl session start [--session-id <id>] [--path <경로>] [--from <ref>]`
+- `rdl session list`
+- `rdl session end [--session-id <id>] [--force]`
+
+### 같은 프로젝트를 두 저장이 동시에 쓰지 않는다
+
+프로젝트 worktree는 프로젝트마다 하나뿐이다. 두 저장이 겹치면 뒤엣것의 `git add -A`가 앞엣것이 아직 커밋하지 못한 변경까지 담는다. 세션을 worktree로 나눠도 이 자리는 갈리지 않는다 — 코드와 달리 문서와 태스크는 공유하기로 한 것이고, 공유하기로 한 자리는 직렬화해야 한다.
+
+`rdl save`가 프로젝트 단위 잠금을 잡는다. 같은 기계 안이라 원자적 생성과 프로세스 생존 확인으로 실제 배타가 되며, 그 기제는 이미 있던 것이라 새로 검증할 저장 형식이 없다.
+
+기다리지 않고 거절한다. `RDL-SAVE-012`로 끝나며 누가 쥐고 있는지 pid를 함께 말한다. 저장은 세션이 지금 하려는 일이므로 붙잡아 두면 그 세션이 통째로 멈춘다. 프로젝트가 다르면 서로 막지 않는다.
+
+### 세션마다 자기 작업 공간을 연다
+
+한 기계에서 AI 세션 여럿이 같은 저장소를 고치면 서로의 변경이 조용히 섞인다. 경로를 나눠도 막히지 않는다 — `git add <내 파일>`은 그 파일에 들어 있는 남의 줄까지 함께 스테이지하고, 한 작업 트리의 index는 하나이기 때문이다. 그래서 "누가 무엇을 고치는가"를 아무리 잘 나눠도 커밋 혼입은 남는다.
+
+`rdl session start`는 세션마다 worktree와 `session/<id8>` 브랜치를 하나씩 연다. index와 HEAD가 세션마다 갈리므로 남의 미커밋 변경이 내 커밋에 딸려 오지 않고, 시험이 도는 중에 소스가 바뀌지 않으며, 반쯤 쓰인 파일을 다른 세션이 실행하지 않는다.
+
+세션 식별자는 발급하지 않고 받는다. `--session-id`, `RUNDOL_SESSION_ID`, `CLAUDE_CODE_SESSION_ID` 순으로 보고 없으면 만든다. 호스트마다 식별자를 두는 자리가 다르므로 중립 변수를 앞에 둔다 — 새 클라이언트는 어댑터가 그 변수를 채우면 Rundol을 고치지 않고 붙는다.
+
+브랜치에 세션 식별자를 박는 이유는 추적이다. 커밋이 어느 세션의 일이었는지는 주석이 아니라 브랜치가 답해야 한다. 주석은 파일에 누적되고 같은 줄에서 충돌하지만 브랜치는 이력에 한 번 남고 병합과 함께 사라진다.
+
+`--force`를 쓰지 않는다. 기본 거부가 이 명령이 지키려는 바로 그 불변식이다 — 한 브랜치는 한 작업 트리에만 있어야 하고, 두 곳에 걸리면 한쪽의 커밋이 다른 쪽 HEAD를 조용히 옮긴다.
+
+코드 작업 공간만 나눈다. 문서와 태스크는 `projects/<key>` worktree 하나를 공유하므로 `rdl save`와 `rdl task`는 세션을 나눠도 같은 자리에서 직렬로 돈다.
 
 ## [0.38.0] - 2026-08-21
 
