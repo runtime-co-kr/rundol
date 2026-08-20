@@ -2687,7 +2687,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "네 모드가 프리셋으로 선택되고 파이프가 그보다 조일 수만 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "모드를 푸는 변경이 contract-change 결정 없이는 저장되지 않는다",
@@ -2708,7 +2708,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:11:31.132Z",
-      "updatedAt": "2026-08-20T18:33:34.374Z",
+      "updatedAt": "2026-08-20T18:46:29.990Z",
       "statusChangedAt": "2026-08-20T18:33:30.105Z",
       "externalRefs": [],
       "project": "rundol"
