@@ -2668,6 +2668,36 @@
       "statusChangedAt": "2026-08-20T15:11:31.132Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-NH1WXPEN": {
+      "title": "[결함] 동시성 시험이 느린 기계에서 시간 단언으로 넘어진다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "verify-concurrency 단언이 기계 속도가 아니라 겹침 자체를 본다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "같은 기계에서 세 번 연속 실행해도 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:11:36.243Z",
+      "updatedAt": "2026-08-20T15:11:36.243Z",
+      "statusChangedAt": "2026-08-20T15:11:36.243Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
