@@ -3496,6 +3496,40 @@
       "statusChangedAt": "2026-08-20T18:13:37.064Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-YXKM9BZD": {
+      "title": "[계측] 제약 발화 이력을 남겨 죽은 제약과 작동하는 제약을 가른다",
+      "summary": "진단 227개 중 무엇이 실제로 막고 있는지 아무도 모른다. 발화 이력이 없어 '한 번도 안 걸린 제약'과 '완벽해서 안 걸리는 제약'이 같아 보인다. 태스크 계약이 advisory라 RDL-TASK-* 37개는 걸려도 안 막는다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "어느 진단이 언제 몇 번 걸렸는지 조회할 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "우회된 제약과 그 사유가 함께 조회된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "한 번도 걸린 적 없는 제약을 목록으로 낼 수 있다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T18:22:32.089Z",
+      "updatedAt": "2026-08-20T18:22:32.089Z",
+      "statusChangedAt": "2026-08-20T18:22:32.089Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
