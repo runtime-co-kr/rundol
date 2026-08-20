@@ -2843,7 +2843,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "--project 없이 실행하면 워크스페이스에 등록된 모든 프로젝트의 런을 훑는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "결과가 waiting과 drivable로 갈리고 각 항목이 그 분류가 된 사유를 밝힌다",
@@ -2864,7 +2864,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:13.833Z",
-      "updatedAt": "2026-08-20T15:34:47.169Z",
+      "updatedAt": "2026-08-20T15:34:52.747Z",
       "statusChangedAt": "2026-08-20T15:34:47.169Z",
       "externalRefs": [],
       "project": "rundol"
