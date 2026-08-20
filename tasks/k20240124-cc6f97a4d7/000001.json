@@ -3287,6 +3287,42 @@
       "statusChangedAt": "2026-08-20T17:56:27.408Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-9HEHGRBE": {
+      "title": "자산 embed를 편집기의 1급 노드로 세운다",
+      "summary": "느낌표 위키링크 형태의 자산 참조가 지금은 텍스트와 링크 노드의 조합으로 우연히 왕복된다. 노드가 아니므로 편집 중에 쪼개질 수 있고 그림을 넣는 길도 없다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-052"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "느낌표 위키링크가 노드로 파싱되고 되쓰기에서 형태가 유지된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "편집기에 그림을 붙여넣으면 자산 디렉터리에 들어가고 참조가 생긴다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "해결되지 않은 자산 참조가 편집 중에 보인다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:56:33.098Z",
+      "updatedAt": "2026-08-20T17:56:33.098Z",
+      "statusChangedAt": "2026-08-20T17:56:33.098Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
