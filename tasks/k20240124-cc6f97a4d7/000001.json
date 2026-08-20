@@ -3291,7 +3291,7 @@
         },
         "AC-002": {
           "text": "체크 목록의 상자를 눌러 상태를 바꿀 수 있다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "빈 블록에 무엇을 쓰는 자리인지 안내가 뜬다",
@@ -3300,7 +3300,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:27.408Z",
-      "updatedAt": "2026-08-20T22:00:04.198Z",
+      "updatedAt": "2026-08-20T22:00:08.725Z",
       "statusChangedAt": "2026-08-20T18:23:49.672Z",
       "externalRefs": [],
       "project": "rundol"
