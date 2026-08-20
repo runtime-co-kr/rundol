@@ -66,7 +66,7 @@
       </section>
 
       <section id="document-view" class="view" hidden>
-        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><div id="document-lease" class="lease-banner"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
+        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
         <article id="document-body" class="markdown-body"></article>
         <textarea id="document-editor" class="document-editor" hidden aria-label="Markdown 문서 편집"></textarea>
       </section>
@@ -113,7 +113,6 @@
             <button data-settings-section="presentation-settings">문서 표시 규칙</button>
             <h2>Workspace</h2>
             <button data-settings-section="settings-clients">Clients</button>
-            <button data-settings-section="settings-leases">편집 임대</button>
           </nav>
           <div id="settings-panels" class="settings-panels">
             <section id="settings-appearance" class="settings-panel">
@@ -134,10 +133,6 @@
             <section id="settings-clients" class="settings-panel">
               <header><h2>Clients</h2><p>이 Workspace에 등록된 협업 실행 주체입니다. 등록과 삭제는 <code>rdl client</code> 명령이 담당하고 여기서는 활성 상태만 바꿉니다.</p></header>
               <div class="settings-body"><div id="clients" class="client-list"></div></div>
-            </section>
-            <section id="settings-leases" class="settings-panel">
-              <header><h2>편집 임대</h2><p>지금 누가 어떤 문서를 잡고 있는지 보여줍니다. 5분이 지나면 스스로 풀리므로 여기서 강제로 뺏지 않습니다.</p></header>
-              <div class="settings-body"><div id="leases" class="card-grid"></div></div>
             </section>
           </div>
         </div>

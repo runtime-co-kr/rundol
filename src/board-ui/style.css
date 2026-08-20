@@ -2048,21 +2048,8 @@ body.view-tasks.board-mode #board {
   color: var(--tertiary-TextColor);
 }
 
-/* 편집 점유 표시. 편집을 누르기 전에 보여야 30분 뒤 충돌을 막는다. */
-.lease-banner:empty {
-  display: none;
-}
-
-.lease-banner {
-  margin-top: var(--spacing-1_5);
-}
-
-.chip.lease-held {
-  border-color: color-mix(in srgb, var(--warning-Color) 45%, transparent);
-  color: var(--warning-Color);
-}
-
-.chip.lease-mine {
+/* 활성 Client 표시. 편집 점유 표시는 ADR-015로 폐기했다. */
+.chip.status-active {
   border-color: var(--accent-BorderColor);
   background: var(--accent-subtle-BackgroundColor);
   color: var(--accent-TextColor);

@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, heldLease: null, leaseTimer: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id' };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id' };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
 const TERMINAL_STATUSES = ['done', 'cancelled'];
@@ -518,7 +518,7 @@ function renderContext(item, kind) {
   }
 }
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
-  renderLeaseBanner(item.id); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+  renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 // 무엇이 막혀 있는지가 목록에서 가장 먼저 읽혀야 한다. 사람 대기(blocker)는 값으로 있었지만
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
@@ -990,33 +990,15 @@ el('task-status').addEventListener('change', async () => {
 // 한 줄 추가는 없앴다. 태스크에는 완료조건이 반드시 있어야 하고, 그걸 한 줄에 끼워 넣으면
 // 빠르지도 않으면서 대충 적게 만든다. 만드는 길은 다이얼로그 하나로 둔다.
 el('new-task').addEventListener('click', () => { el('task-id').textContent = 'NEW TASK'; el('task-title').value = ''; el('task-summary').value = ''; el('task-acceptance').value = ''; el('task-links').value = ''; el('task-status').value = 'todo'; state.newTaskBlocker = null; el('task-dialog').showModal(); el('task-title').focus(); });
-// ── 편집 lease ────────────────────────────────────────────
-// 저장 시점의 revision 검사만으로는 데이터는 지켜도 작업은 지키지 못한다.
-// 30분 편집한 뒤 거부되면 되돌릴 방법이 없으므로 시작 전에 lease를 잡는다.
-function leasePath(documentId, action) { return projectPath(`/leases/${encodeURIComponent(documentId)}/${action}`); }
-async function leaseAction(documentId, action) {
-  return api(leasePath(documentId, action), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
-    body: JSON.stringify({ clientId: state.snapshot.client.id })
-  });
-}
-function stopLeaseRenewal() { if (state.leaseTimer) clearInterval(state.leaseTimer); state.leaseTimer = null; }
-async function releaseLease() {
-  stopLeaseRenewal();
-  const held = state.heldLease;
-  state.heldLease = null;
-  if (held) try { await leaseAction(held, 'release'); } catch (error) { message(error.message, true); }
-}
-function documentHolder(documentId) {
-  return (state.snapshot.leases || []).find((item) => item.documentId === documentId && item.clientId !== state.snapshot.client.id) || null;
-}
-function renderLeaseBanner(documentId) {
-  const holder = documentHolder(documentId);
-  el('document-lease').innerHTML = holder
-    ? `<span class="chip lease-held">${escapeHtml(personName(holder.memberId) || holder.clientId)} 편집 중 · ${escapeHtml(holder.expiresAt)}까지</span>`
-    : (state.heldLease === documentId ? '<span class="chip lease-mine">내가 편집 중</span>' : '');
-  el('edit-document').disabled = Boolean(holder);
+// ── 편집 시작 ─────────────────────────────────────────────
+// 문서 편집 소프트 리스는 ADR-015로 폐기했다. 만료 시각에 기대는 배타는 중앙 권위
+// 없이 보장되지 않는데 화면은 그것을 잠금처럼 보여 주었고, 브라우저가 갱신 중 죽으면
+// 남은 5분이 남의 저장을 그동안 통째로 잠갔다.
+//
+// 지금 편집을 지키는 것은 저장 시점의 revision 비교다. 겹치는 작업은 할당 발급
+// 시점에 수정 가능 경로로 걸러지므로, 화면이 먼저 잡아 둘 것이 없다.
+function renderEditAvailability() {
+  el('edit-document').disabled = false;
 }
 function enterEditing(item) {
   el('document-editor').value = item.body;
@@ -1030,59 +1012,27 @@ function enterEditing(item) {
 el('edit-document').addEventListener('click', async () => {
   const item = state.snapshot.documents.find((value) => value.id === state.selected);
   if (!item) return;
-  // 등록되지 않은 Client는 lease를 만들 수 없다. 무엇을 해야 하는지 알려준다.
+  // 등록되지 않은 Client는 정본을 바꿀 수 없다. 무엇을 해야 하는지 알려준다.
   if (!state.snapshot.client.registered) {
     return message(`이 기기를 Client로 등록해야 협업 편집을 시작할 수 있습니다: rdl client register ${state.snapshot.client.id} --name "<이름>" --type device --owner <MEMBER-ID>`, true);
   }
-  const holder = documentHolder(item.id);
-  if (holder) return message(`${personName(holder.memberId) || holder.clientId}가 편집 중입니다. ${holder.expiresAt}까지 유효합니다.`, true);
-  // acquire는 자기 lease에도 실패한다. 브라우저가 갱신 중 죽으면 남은 lease 때문에
-  // 자기 문서를 5분간 못 여는 셈이므로, 내 것이 남아 있으면 갱신으로 이어받는다.
-  const mine = (state.snapshot.leases || []).find((lease) => lease.documentId === item.id && lease.clientId === state.snapshot.client.id);
-  try {
-    await leaseAction(item.id, mine ? 'renew' : 'acquire');
-    state.heldLease = item.id;
-    renderLeaseBanner(item.id);
-    stopLeaseRenewal();
-    // TTL이 5분이므로 그 절반마다 갱신한다. 브라우저가 닫히면 갱신이 멈춰 자동 만료된다.
-    state.leaseTimer = setInterval(() => {
-      leaseAction(item.id, 'renew').catch((error) => { message(`편집 임대 갱신 실패: ${error.message}`, true); stopLeaseRenewal(); });
-    }, 150000);
-    enterEditing(item);
-  } catch (error) {
-    message(error.message, true);
-  }
+  enterEditing(item);
 });
-el('cancel-document-edit').addEventListener('click', async () => { await releaseLease(); renderDocument(state.selected); });
-// sendBeacon은 헤더를 실을 수 없어 인증 토큰이 빠지고 서버가 403으로 버린다. 임대는
-// 풀리지 않은 채 TTL이 다 갈 때까지 남는다. keepalive fetch는 헤더를 그대로 보낸다.
-window.addEventListener('beforeunload', () => {
-  if (!state.heldLease) return;
-  fetch(leasePath(state.heldLease, 'release'), {
-    method: 'POST',
-    keepalive: true,
-    headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
-    body: JSON.stringify({ clientId: state.snapshot.client.id })
-  }).catch(() => {});
-});
+el('cancel-document-edit').addEventListener('click', () => { renderDocument(state.selected); });
 el('save-document').addEventListener('click', async () => {
   const item = state.snapshot.documents.find((value) => value.id === state.selected);
   if (!item) return;
   const draft = el('document-editor').value;
   try {
     const saved = await api(projectPath(`/documents/${encodeURIComponent(item.id)}`), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ baseRevision: item.revision, body: draft, clientId: state.snapshot.client && state.snapshot.client.id }) });
-    await releaseLease();
     // 저장은 편집의 끝이다. 편집기를 열어둔 채 스냅샷을 불러오면 isEditing() 가드에
     // 걸려 갱신이 통째로 건너뛰어지고, 다음 저장이 오래된 revision으로 나가 409가 난다.
     el('document-editor').hidden = true;
     state.rejectedDraft = null;
     await loadSnapshot(true);
-    // 남의 lease와 어긋난 저장도 통과시킨다. 막으면 브라우저가 죽어 남은 5분짜리
-    // lease가 그동안 저장을 통째로 잠근다. 대신 누구와 겹쳤는지는 반드시 알린다.
-    const notice = saved && saved.leaseNotice;
-    message(notice
-      ? `문서를 저장했습니다. ${personName(notice.memberId) || notice.holder}님이 같은 문서를 열어 두었습니다(${notice.expiresAt}까지). 변경 내용을 서로 확인하세요.`
-      : '문서를 저장하고 검증했습니다.', Boolean(notice));
+    // 동시 편집은 저장 시점의 revision 비교가 잡는다. 어긋나면 409와 함께 최신
+    // 내용이 돌아오므로 조용히 덮어쓰이는 경우는 없다.
+    message('문서를 저장하고 검증했습니다.');
   } catch (error) {
     // 저장이 거부돼도 편집기 내용은 남긴다. 여기서 지우면 작업이 사라진다.
     el('document-editor').value = draft;
@@ -1331,13 +1281,12 @@ function renderSettings() {
   const memberName = (id) => (members.find((item) => item.id === id) || {}).name || id || '미지정';
   el('clients').innerHTML = state.snapshot.clients.map((item) => {
     const self = item.id === state.snapshot.client.id;
-    return `<div class="setting-row"><div><strong>${escapeHtml(item.name)}${self ? ' <span class="chip">이 기기</span>' : ''}</strong><p>${escapeHtml(item.id)} · ${escapeHtml(item.type)} · ${escapeHtml(memberName(item.owner))}</p></div><div class="setting-control"><span class="chip ${item.status === 'active' ? 'lease-mine' : ''}">${escapeHtml(item.status)}</span><button data-client-toggle="${escapeHtml(item.id)}" data-client-status="${item.status === 'active' ? 'disabled' : 'active'}">${item.status === 'active' ? '비활성화' : '활성화'}</button></div></div>`;
+    return `<div class="setting-row"><div><strong>${escapeHtml(item.name)}${self ? ' <span class="chip">이 기기</span>' : ''}</strong><p>${escapeHtml(item.id)} · ${escapeHtml(item.type)} · ${escapeHtml(memberName(item.owner))}</p></div><div class="setting-control"><span class="chip ${item.status === 'active' ? 'status-active' : ''}">${escapeHtml(item.status)}</span><button data-client-toggle="${escapeHtml(item.id)}" data-client-status="${item.status === 'active' ? 'disabled' : 'active'}">${item.status === 'active' ? '비활성화' : '활성화'}</button></div></div>`;
   }).join('') || `<p class="empty-state">등록된 Client가 없습니다. <code>rdl client register ${escapeHtml(state.snapshot.client.id)} --name "&lt;이름&gt;" --type device --owner &lt;MEMBER-ID&gt;</code></p>`;
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
   // 임대는 운영 상태 화면에 있었지만 그 화면의 나머지(SYNC·ATTENTION)는 헤더·홈과 중복이고
   // WATCH는 빈 자리표시자였다. 임대는 Workspace 범위이므로 Clients 옆이 제자리다.
-  el('leases').innerHTML = state.snapshot.leases.map((item) => `<article class="entity-card"><strong>${escapeHtml(item.documentId)}</strong><small>${escapeHtml(documentHolder(item.documentId) || item.clientId)} · ${escapeHtml(relativeTime(item.expiresAt))} 만료</small></article>`).join('') || '<p class="empty-state">지금 편집 중인 문서가 없습니다.</p>';
   renderPresentationSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');

@@ -84,8 +84,6 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 ```text
   rdl client register <client-id> --name <name> --type <device|agent|service|human> --owner <MEMBER-ID> [--json]
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
-  rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
-  rdl lease list --project <key> [--json]
   rdl run start <절차이름> --project <key> --client-id <id> [--artifact-id <ARTIFACT-ID>] [--task <TASK-ID>] [--goal <목표>]
                 [--request-id <REQ-ID>] [--json]
   rdl run next --run <RUN-ID> --project <key> [--json]

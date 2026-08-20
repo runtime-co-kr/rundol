@@ -32,14 +32,13 @@ try {
   assert(fs.existsSync(path.join(temporary, 'projects', 'workspace', 'clients', 'client-laptop-a.yaml')));
   assert.strictEqual(rdl(['client', 'show', 'laptop-a']).owner, 'MEMBER-001');
 
-  const acquired = rdl(['lease', 'acquire', 'project:crm', '--project', 'crm', '--client-id', 'laptop-a']);
-  assert.strictEqual(acquired.type, 'lease.acquired');
-  const eventFile = path.join(temporary, 'projects', 'workspace', 'events', 'lease-crm-laptop-a-000001.jsonl');
-  assert(fs.existsSync(eventFile));
-  assert.strictEqual(rdl(['lease', 'list', '--project', 'crm']).leases.length, 1);
-  assert.strictEqual(rdl(['lease', 'renew', 'project:crm', '--project', 'crm', '--client-id', 'laptop-a']).type, 'lease.renewed');
-  assert.strictEqual(rdl(['lease', 'release', 'project:crm', '--project', 'crm', '--client-id', 'laptop-a']).type, 'lease.released');
-  assert.strictEqual(rdl(['lease', 'list', '--project', 'crm']).leases.length, 0);
+  // 문서 편집 소프트 리스는 ADR-015로 폐기했다. 중앙 권위 없이 만료 시각에 기대는
+  // 배타는 보장이 아니라 조언이었는데 명령은 잠금처럼 보였다. 폐기가 조용한 실종이
+  // 되지 않도록, 부르면 왜 없어졌는지와 무엇이 대신하는지를 알린다.
+  const retired = spawnSync(process.execPath, [cli, 'lease', 'list', '--project', 'crm', '--root', temporary, '--json'], { cwd: root, encoding: 'utf8' });
+  assert.notStrictEqual(retired.status, 0, '폐기한 명령이 성공하면 안 됩니다.');
+  assert(retired.stderr.includes('ADR-015'), `폐기 안내가 근거 문서를 가리켜야 합니다: ${retired.stderr}`);
+  assert(!fs.existsSync(path.join(temporary, 'projects', 'workspace', 'events', 'lease-crm-laptop-a-000001.jsonl')), '폐기한 경로가 이벤트를 만들면 안 됩니다.');
 
   const localState = path.join(temporary, 'projects', 'crm', '.rundol');
   assert(fs.existsSync(path.join(localState, 'state', 'tasks.json')));

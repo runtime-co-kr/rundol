@@ -166,8 +166,6 @@ function usageAdvanced() {
 Usage:
   rdl client register <client-id> --name <name> --type <device|agent|service|human> --owner <MEMBER-ID> [--json]
   rdl client list|show <client-id>|enable <client-id>|disable <client-id> [--json]
-  rdl lease acquire|renew|release <DOCUMENT-ID> --project <key> --client-id <id> [--json]
-  rdl lease list --project <key> [--json]
   rdl run start <절차이름> --project <key> --client-id <id> [--artifact-id <ARTIFACT-ID>] [--task <TASK-ID>] [--goal <목표>]
                 [--request-id <REQ-ID>] [--json]
   rdl run next --run <RUN-ID> --project <key> [--json]
@@ -551,7 +549,7 @@ async function main() {
   const { attachWorkspace, repairWorkspace, detachWorkspace } = require('../src/attach');
   const { branchBoundaryStatus, installBranchBoundary } = require('../src/branch-boundary');
   const { auditStructure, cleanupStructure } = require('../src/structure');
-  const { listClients, getClient, registerClient, setClientStatus, appendLease, listLeases } = require('../src/collaboration-store');
+  const { listClients, getClient, registerClient, setClientStatus } = require('../src/collaboration-store');
   if (command === 'init') {
     const options = parseOperationArgs(argv);
     if (options.positional.length > 1) throw new Error('rdl init에는 프로젝트 키를 하나만 지정할 수 있습니다.');
@@ -897,19 +895,11 @@ async function main() {
     }
     return 0;
   }
+  // 문서 편집 소프트 리스는 ADR-015로 폐기했다. 중앙 권위 없이 만료 시각에 기대는
+  // 배타는 보장이 아니라 조언인데 명령은 보장처럼 보였다. 명령을 남겨 두면 사람이
+  // 계속 그것을 잠금으로 읽는다. 문서 동시 편집은 이제 Git 병합이 판정한다.
   if (command === 'lease') {
-    const subcommand = argv.shift();
-    const options = parseOperationArgs(argv);
-    if (subcommand === 'list') {
-      if (options.positional.length) throw new Error('rdl lease list에는 위치 인수를 사용할 수 없습니다.');
-      printOperation(listLeases(options.root, options.project), options.json);
-    } else {
-      if (!['acquire', 'renew', 'release'].includes(subcommand)) throw new Error('지원하는 lease 하위 명령은 acquire, renew, release, list입니다.');
-      if (options.positional.length !== 1) throw new Error(`rdl lease ${subcommand}에는 DOCUMENT-ID 하나가 필요합니다.`);
-      if (!options.clientId) throw new Error('--client-id <id>가 필요합니다.');
-      printOperation(appendLease(options.root, subcommand, { project: options.project, clientId: options.clientId, documentId: options.positional[0] }), options.json);
-    }
-    return 0;
+    throw new Error('rdl lease는 폐기되었습니다. 문서 동시 편집은 Git 병합이 판정하며, 겹치는 작업은 할당 발급 시점에 수정 가능 경로로 걸러집니다. 근거는 ADR-015입니다.');
   }
   if (command === 'adapter') {
     const subcommand = argv.shift();
