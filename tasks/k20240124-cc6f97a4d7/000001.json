@@ -3012,6 +3012,44 @@
       "statusChangedAt": "2026-08-20T15:15:05.386Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-SYRMRN44": {
+      "title": "[검증] rdl verify를 실제 어댑터에 연결해 개념을 증명한다",
+      "summary": "엔진·렌즈·원장·동시성은 다 있는데 어댑터가 하나도 붙어 있지 않아 실제 실행 기록이 0건이다. 개념이 현실에서 서는지를 실물로 확인한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "harness.json 어댑터 설정 예시가 문서에 있고 그대로 따라 하면 동작한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "실제 판정자를 붙여 rdl verify가 한 번 이상 완주하고 원장에 기록이 남는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "Windows에서의 실행 환경 결정이 문서에 남는다 — 열지, WSL로 갈지, Job Object를 넣을지",
+          "done": false
+        },
+        "AC-004": {
+          "text": "렌즈 넷의 판정 결과가 사람이 읽고 쓸 만한지 실물로 확인된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:42:10.704Z",
+      "updatedAt": "2026-08-20T15:42:10.704Z",
+      "statusChangedAt": "2026-08-20T15:42:10.704Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
