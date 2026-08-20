@@ -944,12 +944,12 @@
         },
         "AC-002": {
           "text": "구분자 강화 또는 프로젝트 키 제약 중 해소 방안이 결정되어 적용된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:54.079Z",
-      "updatedAt": "2026-08-20T06:38:35.574Z",
+      "updatedAt": "2026-08-20T06:38:37.731Z",
       "statusChangedAt": "2026-08-20T06:37:27.636Z",
       "externalRefs": [],
       "project": "rundol"
