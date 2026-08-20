@@ -3077,7 +3077,7 @@
         },
         "AC-002": {
           "text": "댓글이 append-only 이벤트 원장에 쌓이고 동시 작성이 Git 병합으로 풀린다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "작성 주체가 사람인지 에이전트인지 Client 유형에서 파생되어 지워지지 않는다",
@@ -3090,7 +3090,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:49:58.363Z",
-      "updatedAt": "2026-08-20T16:25:29.143Z",
+      "updatedAt": "2026-08-20T16:25:33.430Z",
       "statusChangedAt": "2026-08-20T15:50:12.763Z",
       "externalRefs": [],
       "project": "rundol"
