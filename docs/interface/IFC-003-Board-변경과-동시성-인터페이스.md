@@ -41,13 +41,13 @@ related:
 | path | 요청 필수 필드 | 성공 |
 |---|---|---|
 | `POST /api/clients` | `id,name,type,owner` | `201` Client 등록 결과 |
-| `POST /api/clients/:clientId/enable|disable` | 없음 | `200 {id,status,changed,commit?}` |
+| `POST /api/clients/:clientId/enable\|disable` | 없음 | `200 {id,status,changed,commit?}` |
 | `POST /api/projects/:key/tasks` | `title,acceptanceCriteria`; 선택 `summary,status,priority,owner,reviewers,stakeholders,links,deps,externalRefs` | `201` task create 결과 |
 | `POST /api/projects/:key/tasks/:taskId` | `baseRevision`과 한 개 이상 변경 필드 | `200` task update 결과 |
 | `POST /api/projects/:key/documents/:documentId` | `baseRevision,body` | `200` 새 document entity |
 | `POST /api/projects/:key/contract/plan` | profile name/options | `200` 비파괴 impact plan |
 | `POST /api/projects/:key/contract` | `baseRevision`과 profile 변경 | `200` 증가한 contract revision |
-| `POST /api/projects/:key/leases/:documentId/acquire|renew|release` | `clientId` | `200` lease event 결과 |
+| `POST /api/projects/:key/leases/:documentId/acquire\|renew\|release` | `clientId` | `200` lease event 결과 |
 | `POST /api/projects/:key/refresh` | 없음 | `200` refresh 결과 |
 | `POST /api/projects/:key/sync` | 없음 | `200` origin fetch·merge·push 결과 |
 
