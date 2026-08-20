@@ -13,6 +13,14 @@ const { validateTestDocument } = require('./test-contract');
 const { TASK_KINDS, TEST_RESULTS, testedDocuments } = require('./tasks');
 const { BUILTIN_ITEM_TYPES, normalizeItemTypes } = require('./item-type');
 
+// 표 셀 안의 위키링크는 별칭 구분자를 `\|`로 적어야 한다. GFM이 표를 셀로 먼저
+// 쪼개므로, escape하지 않은 `|`는 링크 문법에 닿기도 전에 셀 경계가 되기 때문이다.
+// 그 escape를 링크 파서가 모르면 대상 이름 끝에 백슬래시가 붙어 "해결되지 않은
+// 링크"가 된다. 즉 GFM대로 옳게 쓴 문서가 검사에서 틀린 것이 된다.
+function unescapePipe(value) {
+  return String(value).replace(/\\\|/gu, '|');
+}
+
 // 내장 정의도 파일 정의와 같은 정규화를 지난다. 건너뛰면 내장에만 있는 형태 오류가
 // 영원히 잡히지 않고, 판정 경로가 둘로 갈린다. 값이 바뀌지 않으므로 한 번만 돈다.
 const NORMALIZED_BUILTIN_ITEM_TYPES = normalizeItemTypes(BUILTIN_ITEM_TYPES);
@@ -353,11 +361,27 @@ function checkLegacyWorkspace(start, options, scope) {
         }
       }
     }
+    // 이스케이프된 링크는 링크가 아니다. 그리고 아무도 그것을 손으로 적지 않는다.
+    //
+    // Markdown을 AST로 읽고 다시 쓰는 도구는 `[[`를 링크로 오해될 수 있는 글자로
+    // 보고 `\[\[`로 이스케이프한다. 그 순간 링크는 깨지는 것이 아니라 없는 것이 되고,
+    // 링크 규칙은 없는 것을 검사하지 않는다. 실측에서 정본 문서의 본문 링크가 그렇게
+    // 사라졌는데 검사는 오류 0으로 통과했다.
+    //
+    // 그래서 사라진 링크가 아니라 그 흔적을 센다. 흔적은 남는다.
+    for (const match of maskCode(doc.body).matchAll(/\\\[\\\[([^\]]+)\]\]/g)) {
+      const line = doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1;
+      diagnostic(diagnostics, {
+        code: 'RDL-LINK-007', category: 'link', severity: options.strict ? 'error' : 'warning',
+        file: doc.relativeFile, line, artifactId: doc.id, target: match[1],
+        message: `이스케이프된 Wiki link가 있습니다: \\[\\[${match[1]}]]. 편집 도구가 대괄호를 이스케이프하면 링크가 끊긴 것이 아니라 없는 것이 되어 다른 검사가 보지 못합니다.`
+      });
+    }
     // `!`가 앞에 붙으면 embed다. Obsidian에서 `[[REQ-001]]`은 문서를 가리키고
     // `![[diagram.png]]`는 자산을 끼워 넣는다. 둘을 같은 규칙으로 보면 이미지를
     // 넣는 순간 "해결되지 않은 문서 참조"가 되어 정본에 그림을 못 넣는다.
     for (const match of maskCode(doc.body).matchAll(/(!?)\[\[([^\]]+)\]\]/g)) {
-      const raw = `[[${match[2]}]]`;
+      const raw = `[[${unescapePipe(match[2])}]]`;
       const target = wikiTarget(raw);
       if (!target || target.id === 'tasks.json') continue;
       const line = doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1;
@@ -446,7 +470,7 @@ function checkLegacyWorkspace(start, options, scope) {
     // 정본 경로와 같은 규칙을 쓴다. 여기서만 embed를 문서 참조로 보면 같은 문서가
     // 어느 경로로 검사되었는지에 따라 다른 답을 받는다.
     for (const match of maskCode(doc.body).matchAll(/(!?)\[\[([^\]]+)\]\]/g)) {
-      const raw = `[[${match[2]}]]`;
+      const raw = `[[${unescapePipe(match[2])}]]`;
       const target = wikiTarget(raw);
       if (!target || target.id === 'tasks.json') continue;
       const line = doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1;

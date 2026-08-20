@@ -429,3 +429,45 @@
   pointer-events: none;
 }
 .ProseMirror td, .ProseMirror th { position: relative; }
+
+/* 코드 블록 ----------------------------------------------------------- */
+
+.rdl-code-block { position: relative; margin: var(--spacing-3) 0; }
+.rdl-code-block pre { margin: 0; }
+
+.rdl-code-bar {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.rdl-code-block:hover .rdl-code-bar,
+.rdl-code-bar:focus-within { opacity: 1; }
+
+.rdl-code-lang {
+  padding: 2px 6px;
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
+  border-radius: var(--small-BorderRadius, 6px);
+  background: var(--surface-raised-BackgroundColor, #1c1c24);
+  color: var(--tertiary-TextColor, #8a8a99);
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: var(--caption-FontSize, 12px);
+}
+
+/* mermaid는 코드가 아니라 그림이다. 코드 배경을 쓰지 않는 읽기 화면과 같게 둔다. */
+.rdl-code-preview {
+  margin-top: var(--spacing-1);
+  padding: var(--spacing-2);
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
+  border-radius: var(--medium-BorderRadius, 8px);
+  background: var(--surface-01-BackgroundColor, #131519);
+  overflow-x: auto;
+}
+.rdl-code-preview svg { display: block; width: auto; max-width: 100%; height: auto; }
+.rdl-code-preview.is-error {
+  color: var(--danger-Color, #ff9c9c);
+  font-size: var(--caption-FontSize, 12px);
+  white-space: pre-wrap;
+}

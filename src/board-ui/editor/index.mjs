@@ -25,6 +25,7 @@ import { placeholder } from './placeholder.mjs';
 import { ListItemView } from './list-item-view.mjs';
 import { tableControls } from './table-controls.mjs';
 import { imageDrop } from './image-drop.mjs';
+import { CodeBlockView } from './code-block-view.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -111,7 +112,9 @@ export function openEditor(mount, markdown, options = {}) {
     }),
     // 체크 상자를 눌러 상태를 바꾸려면 항목이 자기 DOM을 가져야 한다.
     nodeViews: {
-      list_item: (node, editorView, getPos) => new ListItemView(node, editorView, getPos)
+      list_item: (node, editorView, getPos) => new ListItemView(node, editorView, getPos),
+      // 코드 블록은 언어를 고르고 mermaid면 그린 것을 함께 본다.
+      code_block: (node, editorView, getPos) => new CodeBlockView(node, editorView, getPos)
     },
     dispatchTransaction(transaction) {
       view.updateState(view.state.apply(transaction));
