@@ -17,6 +17,8 @@ import { schema } from './schema.mjs';
 import { fromMarkdown } from './from-markdown.mjs';
 import { toMarkdown } from './to-markdown.mjs';
 import { blockHandle } from './block-handle.mjs';
+import { slashMenu } from './slash-menu.mjs';
+import { rundolInputRules } from './input-rules.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -57,12 +59,16 @@ export function openEditor(mount, markdown, options = {}) {
       doc,
       plugins: [
         history(),
+        // 입력 규칙이 단축키보다 먼저다. `- ` 같은 손버릇은 키맵이 가로채기 전에
+        // 걸려야 한다.
+        rundolInputRules(),
         keymap(editorKeymap()),
         keymap(baseKeymap),
         gapCursor(),
         columnResizing(),
         tableEditing(),
-        blockHandle()
+        blockHandle(),
+        slashMenu()
       ]
     }),
     dispatchTransaction(transaction) {

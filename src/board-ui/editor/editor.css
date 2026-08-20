@@ -99,3 +99,54 @@
 }
 .ProseMirror .wiki-link { color: var(--link, #9cc7ff); }
 .ProseMirror .wiki-embed { color: var(--link-embed, #c7a0ff); }
+
+/* 메뉴 묶음 머리 ------------------------------------------------------ */
+
+.rdl-block-menu-group {
+  padding: 8px 10px 4px;
+  color: var(--text-muted, #7a7a88);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.rdl-block-menu-group:first-child { padding-top: 4px; }
+
+/* 놓을 자리 표시선 ---------------------------------------------------- */
+
+.rdl-drop-line {
+  position: absolute;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent, #4a6a9a);
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* 슬래시 메뉴 --------------------------------------------------------- */
+
+.rdl-slash-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border, #2a2a33);
+  border-radius: 9px;
+  background: var(--surface-raised, #1c1c24);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+.rdl-slash-empty {
+  padding: 10px;
+  color: var(--text-muted, #7a7a88);
+  font-size: 12.5px;
+}
+.rdl-block-menu-item.is-active { background: var(--surface-hover, #2a2a36); }
+
+/* 메뉴를 여는 슬래시는 글이 아니라 명령이다. 그렇게 보여야 한다. */
+.rdl-slash-token {
+  background: var(--surface-raised, #24242e);
+  border-radius: 4px;
+  color: var(--accent-text, #9cc7ff);
+}
