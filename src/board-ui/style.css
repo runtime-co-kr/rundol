@@ -3302,3 +3302,69 @@ dialog label textarea {
 }
 
 .boundary-item small { font-size: var(--small-FontSize); }
+
+/* 승인 모드. 잠긴 카드는 흐리게만 두지 않고 왜 잠겼는지를 곁에 적는다 — 이유 없는
+   비활성은 사용자가 결함으로 읽는다. */
+.approval-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--spacing-1);
+  margin: var(--spacing-2) 0 var(--spacing-3);
+}
+
+.approval-mode {
+  display: grid;
+  gap: var(--spacing-0_5);
+  padding: var(--spacing-2);
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  background: var(--surface-01-BackgroundColor);
+}
+
+.approval-mode.current {
+  border-color: var(--accent-BorderColor);
+  background: var(--accent-subtle-BackgroundColor);
+}
+
+.approval-mode.locked {
+  background: var(--surface-02-BackgroundColor);
+  color: var(--tertiary-TextColor);
+}
+
+.approval-mode .mode-state {
+  font-size: var(--caption-FontSize);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tertiary-TextColor);
+}
+
+.approval-mode.current .mode-state { color: var(--accent-TextColor); }
+
+.approval-mode dl {
+  display: grid;
+  gap: 2px;
+  margin: var(--spacing-1) 0 0;
+  font-size: var(--small-FontSize);
+}
+
+.approval-mode dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-1);
+}
+
+.approval-mode dt { color: var(--tertiary-TextColor); }
+.approval-mode dd { margin: 0; color: var(--secondary-TextColor); }
+.approval-mode.locked dt, .approval-mode.locked dd { color: var(--tertiary-TextColor); }
+
+.approval-heading {
+  margin: var(--spacing-2) 0 var(--spacing-1);
+  font-size: var(--body-FontSize);
+}
+
+.approval-note {
+  margin: 0 0 var(--spacing-2);
+  font-size: var(--small-FontSize);
+  color: var(--secondary-TextColor);
+  max-width: 70ch;
+}

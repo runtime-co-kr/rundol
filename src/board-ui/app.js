@@ -1301,6 +1301,75 @@ const BOUNDARY_ITEMS = [
   ['사람 게이트 제거', '하위 계층은 조일 수만 있다'],
   ['승인의 리비전 결박 해제', '풀면 지난 승인이 다른 내용에 붙는다']
 ];
+// 승인 모드. 사람 게이트를 어디에 둘지가 처리량을 정한다 — 촘촘하게 깔면 사람은
+// 게이트를 읽지 않고 누르기 시작하고, 그 순간 통제도 함께 사라진다. 그래서 이 화면은
+// 신뢰의 눈금이 아니라 주의의 배분표로 읽혀야 한다.
+const APPROVAL_MODE_LABELS = {
+  'human-only': '사람만',
+  'ai-assisted': 'AI 혼합',
+  'ai-first': 'AI 우선',
+  'ai-only': 'AI만'
+};
+const APPROVAL_BASIS_LABELS = { read: '읽음', check: '검사', verdict: '판정', delegated: '위임됨' };
+
+function renderApprovalSettings() {
+  if (!el('approval-settings')) {
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 지금은 읽기 전용이며 <code>board.json</code>의 <code>approval</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
+  }
+  const snapshot = state.snapshot;
+  const catalog = snapshot.approvalCatalog;
+  // 모드 표가 없으면 옛 서버다. 빈 화면 대신 무엇이 없는지 말한다.
+  if (!catalog) {
+    el('approval-current').innerHTML = '<p class="empty-state">이 Board 서버는 승인 모드를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
+    el('approval-modes').innerHTML = '';
+    el('approval-pipes').innerHTML = '';
+    return;
+  }
+  const approval = (snapshot.presentation && snapshot.presentation.approval) || {};
+  const modes = catalog.modes;
+  const order = Object.keys(modes).sort((left, right) => modes[left].rank - modes[right].rank);
+  const chosen = approval.mode || catalog.defaultMode;
+  const floor = approval.floor || catalog.defaultFloor;
+
+  el('approval-current').innerHTML = [
+    ['이 프로젝트', chosen, approval.mode ? '이 프로젝트가 골랐습니다.' : '선언하지 않아 기본값을 씁니다.'],
+    ['Workspace 바닥', floor, approval.floor ? '이보다 푼 모드는 고를 수 없습니다.' : '선언하지 않아 제약하지 않습니다.']
+  ].map(([label, name, note]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd><strong>${escapeHtml(name ? (APPROVAL_MODE_LABELS[name] || name) : '없음')}</strong><small>${escapeHtml(note)}</small></dd></div>`).join('');
+
+  el('approval-modes').innerHTML = order.map((name) => {
+    const mode = modes[name];
+    // 바닥보다 푼 모드는 고를 수 없다. 잠긴 이유를 곁에 적지 않으면 사용자는 결함으로 읽는다.
+    const locked = floor && mode.rank > modes[floor].rank;
+    const state = locked ? '잠김 · 바닥보다 푼 쪽' : (name === chosen ? '현재' : '고를 수 있음');
+    const basis = (mode.basis || []).map((kind) => APPROVAL_BASIS_LABELS[kind] || kind).join(' · ');
+    return `<article class="approval-mode${name === chosen ? ' current' : ''}${locked ? ' locked' : ''}">`
+      + `<span class="mode-state">${escapeHtml(state)}</span>`
+      + `<strong>${escapeHtml(APPROVAL_MODE_LABELS[name] || name)}</strong>`
+      + `<dl><div><dt>사람 게이트</dt><dd>${mode.humanGate === 'required' ? '필수' : '없음'}</dd></div>`
+      + `<div><dt>검증자</dt><dd>${mode.policy.validators}</dd></div>`
+      + `<div><dt>정족수</dt><dd>${mode.policy.quorum}</dd></div>`
+      + `<div><dt>다양성</dt><dd>${mode.policy.requireAdapterDiversity ? '요구' : '—'}</dd></div>`
+      + `<div><dt>승인 근거</dt><dd>${escapeHtml(basis)}</dd></div>`
+      + `<div><dt>위임</dt><dd>${mode.requiresDelegation ? '사전 위임 필수' : '불필요'}</dd></div></dl></article>`;
+  }).join('');
+
+  // 바닥은 올리는 것이지 벽이 아니다. 이 사실을 화면이 말하지 않으면 사용자는 절차가
+  // 선언한 값과 실제 값이 다른 것을 결함으로 읽는다.
+  const effective = { validators: 0, quorum: 0, diversity: false };
+  for (const name of [floor, chosen].filter(Boolean)) {
+    const policy = modes[name] && modes[name].policy;
+    if (!policy) continue;
+    effective.validators = Math.max(effective.validators, policy.validators);
+    effective.quorum = Math.max(effective.quorum, policy.quorum);
+    effective.diversity = effective.diversity || policy.requireAdapterDiversity;
+  }
+  el('approval-pipes').innerHTML = '<h3 class="approval-heading">파이프에 적용되는 실효 바닥</h3>'
+    + `<p class="approval-note">모드와 바닥 중 <b>더 조인 쪽</b>이 이깁니다. 절차의 스텝이 이보다 낮은 값을 선언하고 있으면 거부하지 않고 여기까지 <b>끌어올립니다</b> — 거부하면 바닥을 까는 순간 기존 절차가 열리지 않고, 그러면 사람들은 바닥을 꺼 버립니다. 끌어올린 값은 해석 결과에만 있고 파일에는 쓰지 않으므로, 모드를 되돌리면 원래 값으로 돌아갑니다.</p>`
+    + `<div class="presentation-rows"><div class="presentation-row"><div class="presentation-row-main"><strong>최소 검증자</strong><small>스텝이 더 올릴 수 있고 내릴 수 없습니다</small></div><span class="origin-label">${effective.validators}명</span></div>`
+    + `<div class="presentation-row"><div class="presentation-row-main"><strong>정족수</strong><small>검증자를 넘지 않도록 함께 맞춥니다</small></div><span class="origin-label">${effective.quorum}명</span></div>`
+    + `<div class="presentation-row"><div class="presentation-row-main"><strong>어댑터 다양성</strong><small>켠 것은 스텝이 끌 수 없습니다</small></div><span class="origin-label">${effective.diversity ? '요구' : '요구 안 함'}</span></div></div>`;
+}
+
 function renderPresentationSettings() {
   let section = el('presentation-settings');
   if (!section) {
@@ -1384,7 +1453,7 @@ function renderSettings() {
   }).join('') || `<p class="empty-state">등록된 Client가 없습니다. <code>rdl client register ${escapeHtml(state.snapshot.client.id)} --name "&lt;이름&gt;" --type device --owner &lt;MEMBER-ID&gt;</code></p>`;
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
-  renderPresentationSettings(); renderContractSettings(); renderContractCompliance();
+  renderPresentationSettings(); renderApprovalSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');
 }
