@@ -3179,7 +3179,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "슬래시를 입력하면 삽입 메뉴가 열리고 이어 친 글자로 걸러진다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "메뉴가 텍스트·목록·고급 묶음으로 나뉜다",
@@ -3192,7 +3192,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:46.609Z",
-      "updatedAt": "2026-08-20T18:11:46.312Z",
+      "updatedAt": "2026-08-20T21:59:43.557Z",
       "statusChangedAt": "2026-08-20T18:11:46.312Z",
       "externalRefs": [],
       "project": "rundol"
