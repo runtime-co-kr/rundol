@@ -52,6 +52,8 @@ Usage:
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
+  rdl task comment <TASK-ID> <내용> --client-id <id> [--member <MEMBER-ID>] [--project <key>] [--json]
+  rdl task comments [TASK-ID] [--project <key>] [--json]
   rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
@@ -186,6 +188,7 @@ Usage:
   rdl run requests [--pending] [--json]
   rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
+  rdl run pending [--project <key>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -316,6 +319,21 @@ function summarizeEntry(value) {
     .filter(([, item]) => item !== undefined && item !== null && typeof item !== 'object')
     .map(([key, item]) => `${key}=${item}`)
     .join(' ');
+}
+// run pending은 세션이 열릴 때마다 돈다. 주의를 요구하는 런이 없으면 아무것도
+// 쓰지 않는다 — 매번 무언가를 뱉는 표면은 곧 읽히지 않고, 읽히지 않는 표면은
+// 없는 것과 같다. printOperation은 모든 키를 찍으므로 빈 결과에도 `waiting: 0건`을
+// 낸다. 그래서 자기 프린터를 갖는다.
+function printPendingRuns(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  const label = (entry) => `${entry.project} ${entry.runId}${entry.procedure ? ` (${entry.procedure})` : ''}`;
+  const lines = [];
+  for (const entry of result.waiting) lines.push(`대기 ${label(entry)} ${entry.reason} :: ${entry.command}`);
+  for (const entry of result.drivable) lines.push(`진행가능 ${label(entry)} :: ${entry.command}`);
+  // 읽지 못한 런은 사람 출력에서도 드러낸다. 감추면 깨진 런 하나가 조용히
+  // 사라지고, 그 사실을 아무도 모른다 — 이 목록을 만든 이유가 그것이다.
+  for (const entry of result.unreadable) lines.push(`읽기실패 ${entry.project} ${entry.runId} :: ${entry.detail}`);
+  for (const line of lines) process.stdout.write(`${line}\n`);
 }
 function printOperation(result, json) {
   if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
@@ -1058,9 +1076,13 @@ async function main() {
       if (options.positional.length !== 2 || options.positional[0] !== 'resume') throw new Error('rdl run request resume <REQ-ID> 형식이 필요합니다.');
       printOperation(await run.resumeRunRequest(options.root, options), options.json);
     } else if (subcommand === 'list') printOperation(run.listRunsCommand(options.root, options), options.json);
+    else if (subcommand === 'pending') {
+      if (options.positional.length) throw new Error('rdl run pending은 위치 인수를 사용하지 않습니다.');
+      printPendingRuns(require('../src/run-pending').pendingRuns(options.root, options), options.json);
+    }
     else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
-    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, log, procedures입니다.');
+    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, pending, log, procedures입니다.');
     return 0;
   }
   if (command === 'test') {
@@ -1074,7 +1096,7 @@ async function main() {
 
   if (command === 'task') {
     const subcommand = argv.shift();
-    if (!['add', 'set', 'list', 'acceptance', 'commits', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, commits, identity, migrate입니다.');
+    if (!['add', 'set', 'list', 'acceptance', 'commits', 'comment', 'comments', 'identity', 'migrate'].includes(subcommand)) throw new Error('지원하는 태스크 하위 명령은 add, set, list, acceptance, commits, comment, comments, identity, migrate입니다.');
     const options = parseOperationArgs(argv);
     if (subcommand === 'list') {
       if (options.positional.length) throw new Error('rdl task list에는 위치 인수를 사용할 수 없습니다.');
@@ -1091,6 +1113,44 @@ async function main() {
     // 어느 쪽이 사실인지 알 수 없기 때문이다.
     //
     // 작업 브랜치를 지워도 답이 남는다. 저장이 만든 커밋은 프로젝트 ref에 남기 때문이다.
+    if (subcommand === 'comment') {
+      if (options.positional.length !== 2) throw new Error('rdl task comment <TASK-ID> <내용>이 필요합니다.');
+      const { addComment } = require('../src/comment');
+      const result = addComment(options.root, {
+        project: options.project, taskId: options.positional[0], body: options.positional[1],
+        clientId: options.clientId, member: options.member
+      });
+      printOperation(result, options.json);
+      note(options, 'task.update', { taskId: options.positional[0] });
+      return 0;
+    }
+    // 태스크를 주면 그 태스크의 댓글을, 안 주면 어느 태스크에 논의가 있는지를
+    // 돌려준다. 목록 화면이 전체 원장을 읽지 않고도 "논의가 있는 태스크"를
+    // 표시할 수 있어야 한다.
+    if (subcommand === 'comments') {
+      const { listComments, summarizeComments } = require('../src/comment');
+      const result = options.positional.length
+        ? listComments(options.root, { project: options.project, taskId: options.positional[0] })
+        : summarizeComments(options.root, { project: options.project });
+      // 댓글은 읽으라고 만든 것이다. 일반 출력기는 중첩 객체를 한 줄로 펴는데,
+      // 그렇게 나온 대화는 아무도 안 읽는다. 기계용 출력은 --json이 담당한다.
+      if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      else if (result.comments) {
+        process.stdout.write(`${result.taskId} 댓글 ${result.count}건\n`);
+        for (const item of result.comments) {
+          const who = item.workerKind === 'human' ? `${item.member || item.clientId} (사람)` : `${item.clientId} (에이전트)`;
+          process.stdout.write(`\n  ${item.recordedAt}  ${who}\n`);
+          for (const line of String(item.body).split('\n')) process.stdout.write(`    ${line}\n`);
+        }
+        if (!result.count) process.stdout.write('  아직 댓글이 없습니다.\n');
+      } else {
+        process.stdout.write(`논의가 있는 태스크 ${result.taskCount}건 · 댓글 ${result.total}건\n`);
+        for (const item of result.tasks) {
+          process.stdout.write(`  ${item.taskId}  ${item.count}건 (사람 ${item.human} · 에이전트 ${item.agent})  마지막 ${item.lastAt}\n`);
+        }
+      }
+      return 0;
+    }
     if (subcommand === 'commits') {
       if (options.positional.length > 1) throw new Error('rdl task commits [TASK-ID] 형식이 필요합니다.');
       const { workspaceLayout, selectProject } = require('../src/workspace');

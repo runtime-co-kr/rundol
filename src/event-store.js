@@ -20,7 +20,10 @@ const KINDS = {
   driver: { flat: false, runScoped: true, pattern: new RegExp(`^driver-(${PART})-(${PART})-(${RUN_ID})-(\\d{6})\\.jsonl$`, 'u') },
   decision: { flat: false, pattern: new RegExp(`^decision-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
   delegation: { flat: false, pattern: new RegExp(`^delegation-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
-  approval: { flat: false, pattern: new RegExp(`^approval-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
+  approval: { flat: false, pattern: new RegExp(`^approval-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
+  // 태스크 댓글. 두 세션이 같은 태스크에 동시에 쓰므로 Client별 조각으로 나뉘고,
+  // append-only라 병합이 그대로 푼다.
+  comment: { flat: false, pattern: new RegExp(`^comment-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
 };
 
 function kindDefinition(kind) {

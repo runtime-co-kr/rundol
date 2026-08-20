@@ -47,6 +47,8 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
+  rdl task comment <TASK-ID> <내용> --client-id <id> [--member <MEMBER-ID>] [--project <key>] [--json]
+  rdl task comments [TASK-ID] [--project <key>] [--json]
   rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
   rdl context [--root <path>] [--project <key>] [--json]
@@ -103,6 +105,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run requests [--pending] [--json]
   rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
+  rdl run pending [--project <key>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -175,6 +178,14 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 `rdl watch`는 진단 관찰 명령이며 저장·병합·push를 반복하는 `rdl sync watch`와 별개입니다. `rdl watch --remote`의 `--remote`는 원격 이름을 받지 않는 boolean 플래그이고, 프로젝트·Workspace tip 관계만 관찰합니다. 스캔·원격 관찰 주기는 `harness.json`의 runtime settings를 사용합니다. `--once`에서도 문서 진단의 존재는 종료 상태를 바꾸지 않지만, 설정·락 오류 또는 안정된 스캔을 만들지 못한 경우에는 종료 코드 2를 반환합니다.
 
 `rdl run drive`는 `idempotent:true`로 pin된 절차만 실행합니다. 모든 실행 스텝은 `operation-id` 또는 `gate-recheck` 재시도 계약을 가져야 하고, 모든 gate는 닫힌 read-only `check` 인자 계약을 통과해야 합니다. 이 preflight가 실패하거나 client·ownership·scheduler 조건이 맞지 않으면 journal, lock, lease, event, child process를 만들기 전에 종료 코드 2로 거부합니다. `--scheduled`는 daemon을 시작하지 않으며 runtime settings의 scheduler client 일치 여부만 추가로 검사합니다. 사람 승인 또는 sync gate 앞에서는 성공 상태 `waiting_human`으로 멈추고 sync/push를 자동 실행하지 않습니다.
+
+`rdl run pending`은 "지금 누가 무엇을 해야 하는가"에 답합니다. `--project` 없이 실행하면 Workspace의 모든 프로젝트를 훑고, 준 경우에는 그 결과에 필터로 걸립니다. 런은 세 갈래로 갈립니다 — `waiting`은 사람만 풀 수 있는 것(사람 게이트, 정지, 소유권·operation 충돌, sync 대기), `drivable`은 기계가 이어 밀 수 있는 것, `driving`은 이미 유효한 driver lease나 살아 있는 drive 프로세스 잠금이 쥐고 있는 것입니다. `driving`은 `--json`에만 나옵니다. 이미 몰고 있는 런을 다시 몰라고 말하지 않기 위한 갈래이기 때문입니다.
+
+이 명령은 원장을 읽기만 합니다. `reconcile`을 부르지 않고 잠금도 잡지 않습니다 — 무엇이 주의를 요구하는지 묻는 행위가 원장을 바꾸면 안 됩니다. 정지 사유는 원장의 `haltReason`을 그대로 나르며 여기서 다시 정의하지 않습니다. 항목마다 그대로 붙여 실행할 수 있는 복구 명령이 따라오고, 충돌은 복구에 필요한 식별자를 함께 싣습니다.
+
+주의를 요구하는 런이 없으면 **아무것도 출력하지 않고** 0으로 끝납니다. 세션 시작 훅처럼 자주 도는 자리에서 쓰이므로 침묵이 계약입니다. Workspace를 찾지 못한 경우에도 사람 출력 없이 0으로 끝납니다 — Rundol 저장소가 아닌 곳에서 도는 것은 정상이고 "런이 없다"가 그 물음의 옳은 답입니다. Workspace는 있는데 읽지 못하면 종료 코드 2입니다. 런 하나가 손상돼도 나머지는 계속 보고하며, 그 런은 `unreadable`로 드러납니다.
+
+`rdl run list`와 다릅니다. `list`는 "이 프로젝트에 런이 무엇이 있는가"를 묻고 fold 전체를 돌려줍니다. `pending`은 판정과 다음 명령만 돌려줍니다.
 
 Operation 결과가 서로 다른 digest로 충돌하면 drive는 후보를 임의로 선택하지 않습니다. 현재 owner는 `rdl run operation resolve`로 기존 candidate event를 선택하며, 다른 active project-member agent/service는 `--force`가 있어야 합니다. 이 명령은 이미 기록된 결과를 적용할 뿐 작업을 다시 실행하지 않습니다.
 | `rdl conflict` | pending 충돌 조회·전략 해결·기록 정리 | 해결 커밋 또는 pending | 없음 |
