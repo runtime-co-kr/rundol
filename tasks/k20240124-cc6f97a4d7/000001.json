@@ -3491,7 +3491,7 @@
         },
         "AC-004": {
           "text": "이미 기록된 댓글의 판정이 바뀌지 않는다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "npm test와 rdl check --strict가 모두 통과한다",
@@ -3500,7 +3500,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T18:13:37.064Z",
-      "updatedAt": "2026-08-20T23:45:44.939Z",
+      "updatedAt": "2026-08-20T23:45:48.776Z",
       "statusChangedAt": "2026-08-20T18:13:37.064Z",
       "externalRefs": [],
       "project": "rundol"
