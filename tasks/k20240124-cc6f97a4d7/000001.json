@@ -2293,7 +2293,15 @@
       "result": null,
       "round": null,
       "links": [
-        "ADR-020"
+        "ADR-020",
+        "REQ-055",
+        "REQ-056",
+        "REQ-057",
+        "REQ-058",
+        "TST-027",
+        "TST-028",
+        "TST-029",
+        "TST-030"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -2320,7 +2328,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:49.689Z",
-      "updatedAt": "2026-08-20T15:31:21.287Z",
+      "updatedAt": "2026-08-20T15:41:14.214Z",
       "statusChangedAt": "2026-08-20T15:31:21.287Z",
       "externalRefs": [],
       "project": "rundol"
@@ -2603,12 +2611,15 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "kind": "normal",
       "result": null,
       "round": null,
-      "links": [],
+      "links": [
+        "REQ-043",
+        "TST-018"
+      ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
@@ -2622,8 +2633,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:53.971Z",
-      "updatedAt": "2026-08-20T15:10:53.971Z",
-      "statusChangedAt": "2026-08-20T15:10:53.971Z",
+      "updatedAt": "2026-08-20T15:41:12.959Z",
+      "statusChangedAt": "2026-08-20T15:41:12.959Z",
       "externalRefs": [],
       "project": "rundol"
     },
