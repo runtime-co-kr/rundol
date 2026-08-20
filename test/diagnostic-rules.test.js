@@ -16,7 +16,15 @@ const sourceRoot = path.resolve(__dirname, '..', 'src');
 assert.deepStrictEqual(ruleSource('RDL-IMPL-018'), { document: 'REQ-034', functionId: 'HRN-02' });
 assert.deepStrictEqual(ruleSource('RDL-IMPL-012'), { document: 'REQ-036', functionId: 'HRN-04' });
 assert.deepStrictEqual(ruleSource('RDL-PROFILE-002'), { document: 'REQ-026', functionId: 'DCP-02' });
-assert.strictEqual(ruleSource('RDL-TASK-019'), null);
+assert.deepStrictEqual(ruleSource('RDL-TASK-019'), { document: 'REQ-018', functionId: 'TSK-02' });
+// 같은 계열 안에서도 소관이 갈린다. 생성·전환·결박을 한 문서로 뭉치면 역방향
+// 계산이 "이 요구를 고치면 태스크 진단 전부가 흔들린다"는 쓸모없는 답을 낸다.
+assert.deepStrictEqual(ruleSource('RDL-TASK-002'), { document: 'REQ-017', functionId: 'TSK-01' });
+assert.deepStrictEqual(ruleSource('RDL-TASK-034'), { document: 'REQ-046', functionId: 'TSK-04' });
+assert.deepStrictEqual(ruleSource('RDL-DEC-021'), { document: 'REQ-040', functionId: 'DEC-02' });
+assert.deepStrictEqual(ruleSource('RDL-DEC-010'), { document: 'REQ-039', functionId: 'DEC-01' });
+// 소관을 확인하지 못한 것은 비워 둔다. 테스트 태스크 계열이 지금 그 자리다.
+assert.strictEqual(ruleSource('RDL-TASK-028'), null);
 assert.strictEqual(ruleSource('없는코드'), null);
 assert.strictEqual(ruleSource(undefined), null);
 
@@ -61,7 +69,7 @@ const allCodes = fs.readdirSync(sourceRoot)
 
 const measured = coverage(allCodes);
 assert(measured.total > 200, `진단 코드 수가 예상보다 적습니다: ${measured.total}`);
-assert(measured.mapped >= 29, `연결된 코드가 줄었습니다: ${measured.mapped}`);
+assert(measured.mapped >= 80, `연결된 코드가 줄었습니다: ${measured.mapped}`);
 // 계약 계열은 전부 덮였는지 확인한다. 나머지 계열은 아직 비어 있고, 그 사실을
 // 여기서 고정해 두어 다음 사람이 어디부터 채울지 알게 한다.
 for (const code of allCodes) {

@@ -10,9 +10,13 @@
 // 이 모듈은 값만 보고 답한다 — 코드 문자열을 받아 문서와 기능 식별자를 돌려줄 뿐이다.
 // 파일을 읽지 않으므로 명령줄과 보드와 지속적 통합이 같은 답을 얻는다.
 //
-// 지금 덮는 범위는 계약 계열 둘(IMPL, PROFILE)이다. 나머지 열 계열은 같은 방식으로
-// 채워 나간다. 모르는 코드에 억지로 문서를 붙이지 않는다 — 틀린 근거는 근거가
-// 없는 것보다 나쁘다.
+// 계열 전체를 한 덩어리로 붙이지 않는다. 같은 계열 안에서도 소관이 갈리기 때문이다 —
+// 태스크 계열은 생성·전환·결박 셋으로, 결정 계열은 요청·응답과 권한 경계 둘로 나뉜다.
+// 코드가 실제로 무엇을 판정하는지를 보고 나눠야 역방향 계산이 쓸모 있어진다.
+//
+// 모르는 코드에 억지로 문서를 붙이지 않는다 — 틀린 근거는 근거가 없는 것보다 나쁘고,
+// 그걸 보고 엉뚱한 문서를 고치게 된다. 테스트 태스크 계열(026~032)처럼 소관을 아직
+// 확인하지 못한 것은 비워 둔다.
 
 const RULES = Object.freeze({
   // 문서 계약 평가: 필수·권장·비활성 상태와 그 위반 판정
@@ -49,7 +53,65 @@ const RULES = Object.freeze({
   // 구현 준비도 태스크 게이트: 태스크가 구현에 들어가도 되는지
   'RDL-IMPL-020': { document: 'REQ-035', functionId: 'HRN-03' },
   'RDL-IMPL-021': { document: 'REQ-035', functionId: 'HRN-03' },
-  'RDL-IMPL-022': { document: 'REQ-035', functionId: 'HRN-03' }
+  'RDL-IMPL-022': { document: 'REQ-035', functionId: 'HRN-03' },
+
+  // 태스크 생성과 샤드 저장: 저장소를 읽고 태스크의 정체를 확인한다
+  'RDL-TASK-001': { document: 'REQ-017', functionId: 'TSK-01' },
+  'RDL-TASK-002': { document: 'REQ-017', functionId: 'TSK-01' },
+  'RDL-TASK-003': { document: 'REQ-017', functionId: 'TSK-01' },
+  'RDL-TASK-004': { document: 'REQ-017', functionId: 'TSK-01' },
+  'RDL-TASK-005': { document: 'REQ-017', functionId: 'TSK-01' },
+  'RDL-TASK-022': { document: 'REQ-017', functionId: 'TSK-01' },
+  // 태스크 상태와 완료 전환: 상태·담당·링크·완료조건·반려의 판정
+  'RDL-TASK-006': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-007': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-008': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-009': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-010': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-011': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-012': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-013': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-014': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-015': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-016': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-017': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-018': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-019': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-020': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-021': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-023': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-024': { document: 'REQ-018', functionId: 'TSK-02' },
+  'RDL-TASK-025': { document: 'REQ-018', functionId: 'TSK-02' },
+  // 작업의 태스크 결박: 커밋이 어느 태스크의 일인지
+  'RDL-TASK-031': { document: 'REQ-046', functionId: 'TSK-04' },
+  'RDL-TASK-033': { document: 'REQ-046', functionId: 'TSK-04' },
+  'RDL-TASK-034': { document: 'REQ-046', functionId: 'TSK-04' },
+
+  // 사람 결정 요청과 응답
+  'RDL-DEC-010': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-011': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-012': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-013': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-014': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-015': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-016': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-017': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-018': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-019': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-022': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-023': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-024': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-025': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-027': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-028': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-029': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-030': { document: 'REQ-039', functionId: 'DEC-01' },
+  'RDL-DEC-031': { document: 'REQ-039', functionId: 'DEC-01' },
+  // 결정 위임과 권한 경계: 그 주체가 이 결정을 할 수 있는가
+  'RDL-DEC-002': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DEC-020': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DEC-021': { document: 'REQ-040', functionId: 'DEC-02' },
+  'RDL-DEC-026': { document: 'REQ-040', functionId: 'DEC-02' }
 });
 
 /** 진단 코드의 정본 문서. 모르는 코드는 null이며 추측하지 않는다. */
