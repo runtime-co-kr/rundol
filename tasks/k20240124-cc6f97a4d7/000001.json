@@ -2366,6 +2366,50 @@
       "statusChangedAt": "2026-08-20T15:09:56.449Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-5RVMC7T6": {
+      "title": "승인 모드와 파이프 허용정책을 정본화한다",
+      "summary": "사람만·AI혼합·AI우선·AI만 네 모드를 기존 절차·승인·위임 손잡이의 조합으로 REQ에 확정하고, 파이프(절차 스텝)별 허용정책과 조이기 전용 단조성을 규정한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-020"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "네 모드가 사람 게이트·검증자 정책·승인 근거·위임 요구의 조합으로 REQ에 정의된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "파이프별 허용정책의 필드와 판정 의미가 REQ에 정의된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "하위 계층이 조일 수만 있다는 단조성이 승인 모드와 파이프 정책에 적용됨이 규정된다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "위임 불가 티어가 어느 모드에서도 열리지 않음이 규칙으로 표현된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "각 기능 ID에 대응하는 TST 시나리오가 존재하고 rdl check --strict가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:10:01.195Z",
+      "updatedAt": "2026-08-20T15:10:01.195Z",
+      "statusChangedAt": "2026-08-20T15:10:01.195Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
