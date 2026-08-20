@@ -166,7 +166,15 @@ const RULES = Object.freeze({
   'RDL-CLIENT-002': { document: 'REQ-019', functionId: 'COL-01' },
   'RDL-CLIENT-003': { document: 'REQ-019', functionId: 'COL-01' },
   'RDL-CLIENT-004': { document: 'REQ-019', functionId: 'COL-01' },
-  'RDL-CLIENT-005': { document: 'REQ-019', functionId: 'COL-01' }
+  'RDL-CLIENT-005': { document: 'REQ-019', functionId: 'COL-01' },
+
+  // 그림 자산: 참조 해결과 규격 한계. 들여오기(AST-03)는 절차라 진단을 내지 않고
+  // 그 자리에서 예외로 알리므로 여기 없다.
+  'RDL-ASSET-001': { document: 'REQ-052', functionId: 'AST-01' },
+  'RDL-ASSET-002': { document: 'REQ-053', functionId: 'AST-02' },
+  'RDL-ASSET-003': { document: 'REQ-053', functionId: 'AST-02' },
+  'RDL-ASSET-004': { document: 'REQ-053', functionId: 'AST-02' },
+  'RDL-ASSET-005': { document: 'REQ-053', functionId: 'AST-02' }
 });
 
 /** 진단 코드의 정본 문서. 모르는 코드는 null이며 추측하지 않는다. */

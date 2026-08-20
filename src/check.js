@@ -30,8 +30,53 @@ const {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS,
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, ID_PATTERN, REQUIRED_FIELDS,
   checkDocumentMetadata, checkCharterMetadata, checkContractViolations, checkTaskEntries,
-  governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask
+  governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask,
+  isAssetPath, maskCode, checkAssetReference, checkAssetInventory
 } = require('./check-rules');
+const { imageSize } = require('./image-header');
+
+// 자산 디렉터리를 읽어 값으로 만든다. 바이트를 읽는 일은 여기까지고, 그 값을
+// 보고 옳고 그름을 말하는 일은 판정부가 한다.
+//
+// 차원을 재려고 이미지를 디코딩하지 않는다 — 헤더 앞부분만 읽으면 네 형식 모두
+// 나오므로, 5MB 그림이 100장 있어도 읽는 것은 100 × 4KB다.
+const ASSET_HEADER_BYTES = 4096;
+
+function readAssets(documentsRoot, root) {
+  const assetsRoot = path.join(documentsRoot, 'assets');
+  const assets = new Map();
+  if (!fs.existsSync(assetsRoot)) return assets;
+  const walk = (directory, prefix) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      const target = path.join(directory, entry.name);
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) { walk(target, name); continue; }
+      if (!entry.isFile()) continue;
+      let bytes = 0;
+      let head = Buffer.alloc(0);
+      try {
+        bytes = fs.statSync(target).size;
+        const handle = fs.openSync(target, 'r');
+        try {
+          const buffer = Buffer.alloc(Math.min(ASSET_HEADER_BYTES, bytes));
+          fs.readSync(handle, buffer, 0, buffer.length, 0);
+          head = buffer;
+        } finally { fs.closeSync(handle); }
+      } catch (error) { head = Buffer.alloc(0); }
+      const size = imageSize(head) || {};
+      assets.set(name, {
+        name,
+        relativeFile: relative(root, target),
+        bytes,
+        format: size.format || null,
+        width: size.width || null,
+        height: size.height || null
+      });
+    }
+  };
+  walk(assetsRoot, '');
+  return assets;
+}
 
 // 태스크 식별자 규칙과 허용 상태는 판정 계층으로 옮겼다. 새 식별자는 문서와 같은
 // 8자 규칙이고 옛 26자 식별자도 계속 읽는다 — 지난 기록을 고쳐 쓰지 않는 것이
@@ -207,6 +252,14 @@ function checkLegacyWorkspace(start, options, scope) {
   const registry = new Map();
   const fileRegistry = new Map();
   const canonicalDocuments = [];
+  // 자산은 문서 뿌리 아래가 아니라 문서 디렉터리 아래에 있다. 프로젝트 범위에서
+  // documentsRoot는 프로젝트 뿌리라서 여기에 그대로 쓰면 자산 디렉터리를 못 찾고,
+  // 못 찾으면 진단이 조용히 아무것도 말하지 않는다.
+  const assets = readAssets((scope && scope.documents) || documentsRoot, root);
+  // 어느 자산이 실제로 쓰이는지는 문서를 다 훑어야 안다. 훑으면서 모아 두고
+  // 마지막에 한 번 판정한다 — 문서마다 판정하면 아직 안 본 문서가 참조하는
+  // 자산을 고아라고 말하게 된다.
+  const referencedAssets = new Set();
 
   for (const vaultDoc of vaultDocuments) {
     if (fileRegistry.has(vaultDoc.fileStem)) diagnostic(diagnostics, { code: 'RDL-DOC-010', category: 'link', file: vaultDoc.relativeFile, target: vaultDoc.fileStem, message: `Obsidian에서 모호한 중복 파일명입니다: ${vaultDoc.fileStem}` });
@@ -261,14 +314,23 @@ function checkLegacyWorkspace(start, options, scope) {
         }
       }
     }
-    for (const match of doc.body.matchAll(/\[\[([^\]]+)\]\]/g)) {
-      const raw = `[[${match[1]}]]`;
+    // `!`가 앞에 붙으면 embed다. Obsidian에서 `[[REQ-001]]`은 문서를 가리키고
+    // `![[diagram.png]]`는 자산을 끼워 넣는다. 둘을 같은 규칙으로 보면 이미지를
+    // 넣는 순간 "해결되지 않은 문서 참조"가 되어 정본에 그림을 못 넣는다.
+    for (const match of maskCode(doc.body).matchAll(/(!?)\[\[([^\]]+)\]\]/g)) {
+      const raw = `[[${match[2]}]]`;
       const target = wikiTarget(raw);
       if (!target || target.id === 'tasks.json') continue;
+      const line = doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1;
+      if (match[1] === '!' && isAssetPath(target.id)) {
+        referencedAssets.add(target.id);
+        checkAssetReference(diagnostics, { assets, target: target.id, sourceDoc: doc, artifactId: doc.id, line, strict: options.strict });
+        continue;
+      }
       const targetDoc = fileRegistry.get(target.id) || null;
       if (!targetDoc) {
         const aliasDoc = resolveArtifact(registry, target.id);
-        diagnostic(diagnostics, { code: aliasDoc ? 'RDL-LINK-006' : 'RDL-LINK-004', category: 'link', severity: options.strict ? 'error' : 'warning', file: doc.relativeFile, line: doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1, artifactId: doc.id, target: target.id, message: aliasDoc ? `본문 Wiki link는 실제 파일명을 대상으로 해야 합니다: [[${aliasDoc.fileStem}|${target.id}]]` : `본문에 해결되지 않은 Wiki link가 있습니다: ${target.id}` });
+        diagnostic(diagnostics, { code: aliasDoc ? 'RDL-LINK-006' : 'RDL-LINK-004', category: 'link', severity: options.strict ? 'error' : 'warning', file: doc.relativeFile, line, artifactId: doc.id, target: target.id, message: aliasDoc ? `본문 Wiki link는 실제 파일명을 대상으로 해야 합니다: [[${aliasDoc.fileStem}|${target.id}]]` : `본문에 해결되지 않은 Wiki link가 있습니다: ${target.id}` });
       }
       else if (target.anchor) {
         const exists = target.anchor.startsWith('^') ? targetDoc.blocks.has(target.anchor.slice(1)) : targetDoc.headings.has(headingKey(target.anchor));
@@ -342,20 +404,32 @@ function checkLegacyWorkspace(start, options, scope) {
       artifactId,
       message: 'DESIGN.md는 Rundol 정본이 아닙니다. 내용을 REQ, SCR, ARC, ADR 또는 연결된 태스크로 이전하세요. 필요한 유형이 사용 안 함이면 계약에서 상태를 먼저 바꾸세요.'
     });
-    for (const match of doc.body.matchAll(/\[\[([^\]]+)\]\]/g)) {
-      const raw = `[[${match[1]}]]`;
+    // 정본 경로와 같은 규칙을 쓴다. 여기서만 embed를 문서 참조로 보면 같은 문서가
+    // 어느 경로로 검사되었는지에 따라 다른 답을 받는다.
+    for (const match of maskCode(doc.body).matchAll(/(!?)\[\[([^\]]+)\]\]/g)) {
+      const raw = `[[${match[2]}]]`;
       const target = wikiTarget(raw);
       if (!target || target.id === 'tasks.json') continue;
+      const line = doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1;
+      if (match[1] === '!' && isAssetPath(target.id)) {
+        referencedAssets.add(target.id);
+        checkAssetReference(diagnostics, { assets, target: target.id, sourceDoc: doc, artifactId, line, strict: options.strict });
+        continue;
+      }
       const targetDoc = fileRegistry.get(target.id) || null;
       if (!targetDoc) {
         const aliasDoc = resolveArtifact(registry, target.id);
-        diagnostic(diagnostics, { code: aliasDoc ? 'RDL-LINK-006' : 'RDL-LINK-004', category: 'link', severity: options.strict ? 'error' : 'warning', file: doc.relativeFile, line: doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1, artifactId, target: target.id, message: aliasDoc ? `Vault Wiki link는 실제 파일명을 대상으로 해야 합니다: [[${aliasDoc.fileStem}|${target.id}]]` : `Vault에 해결되지 않은 Wiki link가 있습니다: ${target.id}` });
+        diagnostic(diagnostics, { code: aliasDoc ? 'RDL-LINK-006' : 'RDL-LINK-004', category: 'link', severity: options.strict ? 'error' : 'warning', file: doc.relativeFile, line, artifactId, target: target.id, message: aliasDoc ? `Vault Wiki link는 실제 파일명을 대상으로 해야 합니다: [[${aliasDoc.fileStem}|${target.id}]]` : `Vault에 해결되지 않은 Wiki link가 있습니다: ${target.id}` });
       } else if (target.anchor) {
         const exists = target.anchor.startsWith('^') ? targetDoc.blocks.has(target.anchor.slice(1)) : targetDoc.headings.has(headingKey(target.anchor));
         if (!exists) diagnostic(diagnostics, { code: 'RDL-LINK-005', category: 'link', severity: options.strict ? 'error' : 'warning', file: doc.relativeFile, line: doc.bodyStartLine + doc.body.slice(0, match.index).split(/\r?\n/).length - 1, artifactId, target: `${target.id}#${target.anchor}`, message: `Vault에 해결되지 않은 section link가 있습니다: ${target.id}#${target.anchor}` });
       }
     }
   }
+
+  // 문서를 다 훑은 뒤에 판정한다. 문서마다 판정하면 아직 안 본 문서가 참조하는
+  // 자산을 고아라고 말하게 된다.
+  checkAssetInventory(diagnostics, { assets, referenced: referencedAssets });
 
   const taskCount = checkTasks(diagnostics, root, taskPath, registry, memberIds, stakeholderIds, scope && scope.key);
   if (!scope) checkObsidian(diagnostics, root, canonicalDocuments.some((doc) => Array.isArray(doc.frontmatter.data.tags) && doc.frontmatter.data.tags.length > 0));

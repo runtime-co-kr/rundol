@@ -30,7 +30,12 @@
     "node": ">=20"
   },
   "dependencies": {
-    "mermaid": "^11.12.2"
+    "jpeg-js": "^0.4.4",
+    "mermaid": "^11.12.2",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

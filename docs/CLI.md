@@ -26,6 +26,8 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
   rdl check --structure [--root <path>] [--project <key>] [--json]
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
+  rdl asset add <파일경로> [--project <key>] [--as <이름>] [--max-edge <px>] [--doc <ARTIFACT-ID>] [--json]
+  rdl asset list [--project <key>] [--json]
   rdl skill install [--force] [--json]
   rdl settings migrate [--root <path>] [--json]
   rdl workspace show|check|sync|migrate [--root <path>] [--json]
@@ -501,6 +503,34 @@ rdl contract trace --project memo --json
 ```
 
 `--implementation`은 기능별 구현 계약과 연결된 TST를 완료 게이트로 검사한다. 추적성은 frontmatter의 기능 ID와 직접 문서 링크에서 실행 시 계산한다. `contract trace`의 `persistedIndex`는 항상 `false`이며 별도 INDEX·목록·카탈로그·추적표 문서를 정본으로 만들지 않는다.
+
+## 그림 자산
+
+정본 문서는 화면 갈무리와 도식을 담을 수 있다. 자산은 프로젝트 문서 디렉터리 아래 `assets/` 한 곳에 모이고, 문서와 같은 브랜치·같은 커밋에 들어간다. 브랜치도 worktree도 따로 두지 않는다 — 이미지는 별개의 책임이 아니라 그 문서의 일부이므로, 나누면 "이 판의 그림"이 없어지고 참조 무결성을 판정할 수도 없어진다.
+
+```bash
+rdl asset add ~/Desktop/화면.png --project memo
+rdl asset add ~/Desktop/photo.jpg --project memo --max-edge 1200 --as 대시보드
+rdl asset list --project memo --json
+```
+
+`asset add`는 긴 변이 한계(기본 1600px)를 넘으면 비율을 지켜 줄인다. PNG는 Node 내장 zlib으로, JPEG는 순수 JavaScript 코덱으로 처리하므로 네이티브 의존성이나 설치 스크립트가 늘지 않는다. SVG는 벡터라 줄이지 않는다. GIF와 WebP는 한계를 넘으면 거절하고 왜 못 줄이는지를 알린다 — 줄이지 못하는 것을 줄인 척하면 그 파일이 그대로 저장소에 남는다.
+
+한계 이하인 파일은 원본 바이트를 그대로 쓴다. 다시 인코딩하면 손대지 않아도 될 파일이 매번 다른 바이트가 되어 diff가 무의미해진다. 파일명은 소문자·붙임표로 정규화하고, 같은 이름이 있으면 덮지 않고 번호를 붙인다.
+
+결과의 `embed` 값을 문서에 그대로 붙여 넣는다.
+
+```markdown
+![[대시보드.png]]
+```
+
+`![[...]]`는 자산 embed이고 `[[...]]`는 문서 참조다. 검사는 둘을 다르게 판정한다 — 같은 규칙으로 보면 그림을 넣는 순간 해결되지 않은 문서 참조가 된다. 코드 스팬과 울타리 블록 안의 위키링크는 예시로 보고 판정하지 않으므로, 링크 문법을 설명하는 문서가 자기 예시 때문에 걸리지 않는다.
+
+`rdl check`는 자산에 대해 다섯 가지를 본다. 해결되지 않은 참조(`RDL-ASSET-001`, strict에서 오류), 용량 한계 초과(`RDL-ASSET-002`), 차원 한계 초과(`RDL-ASSET-003`), 형식을 알아보지 못한 파일(`RDL-ASSET-004`), 어느 문서도 참조하지 않는 자산(`RDL-ASSET-005`)이다. 뒤의 넷은 경고다 — 오류로 막으면 이미 쌓인 저장소가 판올림만으로 멈춘다.
+
+차원은 헤더 앞부분 4KB만 읽어 잰다. 디코딩하지 않으므로 5MB 그림이 100장 있어도 읽는 것은 400KB다.
+
+큰 바이너리(영상, 디자인 원본)는 정본에 넣지 않는다. Git LFS도 쓰지 않는다 — 체크아웃에 네트워크가 필요해 로컬 우선 운영과 폐쇄망 사용을 동시에 깨고, 한 번 들어간 것을 빼려면 히스토리를 다시 써야 한다.
 
 ## 합성 다이어그램
 

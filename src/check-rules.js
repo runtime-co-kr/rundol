@@ -12,6 +12,119 @@
 // 전이 의존까지 따라가며 이 경계를 지킨다.
 
 const { ruleSource } = require('./diagnostic-rules');
+const { isAssetPath } = require('./image-header');
+
+// 자산 한계. 이 값들은 취향이 아니라 저장소 규모에서 나온다 — 문서 93개 전체가
+// 780KB인 저장소에서 스크린샷 한 장이 그 절반을 차지하면, 방치했을 때 문서
+// 브랜치는 곧 그림 브랜치가 된다.
+//
+// 긴 변 한계를 2560으로 둔 이유는 레티나 화면 갈무리가 그 두 배로 찍히기 때문이다.
+// 사람이 문서에서 읽을 그림은 그 절반이면 충분하고, 넘으면 rdl asset add가
+// 자동으로 줄인다.
+const MAX_ASSET_BYTES = 512 * 1024;
+const MAX_ASSET_EDGE = 2560;
+
+/**
+ * 코드 구역을 같은 길이의 공백으로 덮는다. 줄 번호와 열 위치가 그대로 남아야
+ * 진단이 엉뚱한 줄을 지목하지 않으므로, 지우지 않고 덮는다.
+ *
+ * 코드 안의 `[[...]]`는 참조가 아니라 예시다. Obsidian도 코드 스팬 안의 링크를
+ * 걸지 않는다. 덮지 않으면 링크 문법을 설명하는 문서가 자기 예시 때문에 검사에
+ * 걸리고, 그러면 그 문법을 문서로 설명할 수 없게 된다.
+ */
+function maskCode(body) {
+  const blank = (match) => match.replace(/[^\n\r]/gu, ' ');
+  return String(body || '')
+    // 울타리 블록이 먼저다. 그 안의 백틱은 인라인 스팬이 아니다.
+    .replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\2[^\n]*$/gmu, blank)
+    .replace(/(`+)(?:[^`]|(?!\1)`)*\1/gu, blank);
+}
+
+/**
+ * 자산 embed가 실재하는 자산을 가리키는지 본다.
+ *
+ * 문서 참조와 자산 embed는 다른 것이다. `[[REQ-001]]`은 문서를 가리키고
+ * `![[diagram.png]]`는 자산을 가리킨다. 둘을 같은 규칙으로 보면 이미지를 넣는
+ * 순간 "해결되지 않은 문서 참조"가 되어 정본에 그림을 넣을 수 없게 된다.
+ */
+function checkAssetReference(list, values) {
+  const { assets, target, sourceDoc, artifactId, line, strict } = values;
+  const name = String(target || '');
+  if (assets.has(name)) return;
+  const suggestion = Array.from(assets.keys()).find((key) => key.toLowerCase() === name.toLowerCase());
+  diagnostic(list, {
+    code: 'RDL-ASSET-001',
+    category: 'link',
+    severity: strict ? 'error' : 'warning',
+    file: sourceDoc.relativeFile,
+    line: line || 1,
+    artifactId: artifactId || null,
+    target: name,
+    message: suggestion
+      ? `자산 참조의 대소문자가 실제 파일과 다릅니다: ${name} (실제: ${suggestion})`
+      : `해결되지 않은 자산 참조입니다: ${name}. rdl asset add로 넣으면 자산 디렉터리에 자리를 잡습니다.`
+  });
+}
+
+/**
+ * 자산 자체의 규격과 쓰임을 본다. 값만 받는다 — 바이트를 읽는 일은 호출자가 하고
+ * 여기서는 이미 잰 크기와 차원만 본다.
+ *
+ * 한 자산이 여러 진단에 걸릴 수 있다. 첫 진단에서 멈추지 않는 이유는, 크기만
+ * 알려주고 차원을 감추면 사람이 압축만 해 보고 다시 걸리기 때문이다.
+ */
+function checkAssetInventory(list, values) {
+  const { assets, referenced, limits } = values;
+  const maxBytes = (limits && limits.bytes) || MAX_ASSET_BYTES;
+  const maxEdge = (limits && limits.edge) || MAX_ASSET_EDGE;
+  for (const [name, asset] of assets) {
+    if (asset.bytes > maxBytes) {
+      diagnostic(list, {
+        code: 'RDL-ASSET-002',
+        category: 'structure',
+        severity: 'warning',
+        file: asset.relativeFile,
+        target: name,
+        message: `자산이 ${Math.round(asset.bytes / 1024)}KB로 한계 ${Math.round(maxBytes / 1024)}KB를 넘습니다. rdl asset add --max-edge <px>로 다시 넣으면 PNG와 JPEG는 자동으로 줄어듭니다.`
+      });
+    }
+    const longest = Math.max(asset.width || 0, asset.height || 0);
+    if (longest > maxEdge) {
+      diagnostic(list, {
+        code: 'RDL-ASSET-003',
+        category: 'structure',
+        severity: 'warning',
+        file: asset.relativeFile,
+        target: name,
+        message: `자산이 ${asset.width}x${asset.height}로 긴 변 한계 ${maxEdge}px를 넘습니다. 문서에서 읽을 그림은 그 절반이면 충분합니다.`
+      });
+    }
+    // 형식을 알아보지 못하는 파일은 그림이 아닐 수 있다. 자산 디렉터리는 문서가
+    // 참조하는 그림의 자리이므로, 알아보지 못한 것이 있으면 그 사실을 말한다.
+    if (!asset.format) {
+      diagnostic(list, {
+        code: 'RDL-ASSET-004',
+        category: 'structure',
+        severity: 'warning',
+        file: asset.relativeFile,
+        target: name,
+        message: '자산의 형식을 알아보지 못했습니다. 자산 디렉터리에는 문서가 참조하는 그림만 둡니다.'
+      });
+    }
+    // 아무 문서도 가리키지 않는 자산은 지워도 아무 일이 없다. 그런데 지워도 되는지
+    // 아무도 모르면 지우지 못하고, 그렇게 쌓인다.
+    if (!referenced.has(name)) {
+      diagnostic(list, {
+        code: 'RDL-ASSET-005',
+        category: 'structure',
+        severity: 'warning',
+        file: asset.relativeFile,
+        target: name,
+        message: '어느 문서도 참조하지 않는 자산입니다. 참조를 넣거나 파일을 지우세요.'
+      });
+    }
+  }
+}
 
 const REQUIRED_FIELDS = ['id', 'type', 'kind', 'title', 'description', 'owner', 'state', 'tags', 'aliases', 'related'];
 const ID_PATTERN = /^[A-Z]{3}-\d{3,}$/u;
@@ -378,6 +491,8 @@ module.exports = {
   NON_CANONICAL_CODES, REQUIRED_TAG_NAMESPACES, NOTE_TAG_NAMESPACES,
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
   ALLOWED_TASK_STATES, CONTRACT_VIOLATION_CODES,
+  MAX_ASSET_BYTES, MAX_ASSET_EDGE, isAssetPath, maskCode,
   governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
-  checkContractViolations, checkTaskEntries, checkReference, referenceFromTask
+  checkContractViolations, checkTaskEntries, checkReference, referenceFromTask,
+  checkAssetReference, checkAssetInventory
 };

@@ -73,6 +73,7 @@ require('./worker-contract-purity.test');
 require('./surface-leak.test');
 require('./human-intervention.test');
 require('./task-link.test');
+require('./asset.test');
 require('./diagnostic-rules.test');
 
 require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./author-fanout.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([

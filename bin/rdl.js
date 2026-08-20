@@ -31,6 +31,8 @@ Usage:
   rdl obsidian init [--root <path>] [--project <key>] [--force] [--json]
   rdl check --structure [--root <path>] [--project <key>] [--json]
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
+  rdl asset add <파일경로> [--project <key>] [--as <이름>] [--max-edge <px>] [--doc <ARTIFACT-ID>] [--json]
+  rdl asset list [--project <key>] [--json]
   rdl skill install [--force] [--json]
   rdl settings migrate [--root <path>] [--json]
   rdl workspace show|check|sync|migrate [--root <path>] [--json]
@@ -101,6 +103,9 @@ Options:
   --exclude      인접하지만 이 문서가 책임지지 않는 범위입니다. 여러 번 지정할 수 있습니다.
   --function-id  REQ·SCR·MOD·IFC·TST가 추적하는 기능 ID입니다. 여러 번 지정할 수 있습니다.
   --force        기존 개인 Obsidian 설정 또는 Rundol이 관리하지 않는 스킬도 덮어씁니다.
+  --max-edge     자산의 긴 변 한계 픽셀. 넘으면 비율을 지켜 줄입니다. 기본 1600.
+  --as           자산으로 넣을 때 쓸 이름. 생략하면 원본 파일명을 정규화합니다.
+  --doc          이 자산을 넣을 문서. 계측이 어느 문서 작업인지 기록합니다.
   --port <n>     Local board port. Defaults to an available random port.
   --no-open      Start the board without opening a browser.
 `;
@@ -241,7 +246,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -258,6 +263,9 @@ function parseOperationArgs(argv) {
       else if (value === '--summary') options.summary = argv[i];
       else if (value === '--result') options.result = argv[i] === 'none' ? null : argv[i];
       else if (value === '--round') options.round = parseRound(argv[i]);
+      else if (value === '--max-edge') options.maxEdge = argv[i];
+      else if (value === '--doc') options.doc = argv[i];
+      else if (value === '--as') options.as = argv[i];
       else if (value === '--reason') options.reason = argv[i];
       else if (value === '--grant-attempts') options.grantAttempts = argv[i];
       else if (value === '--share-unverified') options.shareUnverified = argv[i];
@@ -761,6 +769,23 @@ async function main() {
     if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else printText(result);
     return result.summary.errors > 0 ? 1 : 0;
+  }
+  if (command === 'asset') {
+    const subcommand = argv.shift();
+    const options = parseOperationArgs(argv);
+    const { addAsset, listAssets } = require('../src/asset');
+    if (subcommand === 'add') {
+      if (options.positional.length !== 1) throw new Error('rdl asset add <파일경로>가 필요합니다.');
+      const result = addAsset(options.root, options.positional[0], options);
+      printOperation(result, options.json);
+      note(options, 'document.edit', { artifactId: options.doc || null });
+      return 0;
+    }
+    if (subcommand === 'list') {
+      printOperation(listAssets(options.root, options), options.json);
+      return 0;
+    }
+    throw new Error('rdl asset add|list 중 하나가 필요합니다.');
   }
   if (command === 'cleanup') {
     const options = parseOperationArgs(argv);
