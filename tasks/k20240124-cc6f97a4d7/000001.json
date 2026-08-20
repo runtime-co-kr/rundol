@@ -2099,7 +2099,7 @@
         },
         "AC-002": {
           "text": "docs/assets/ 규약이 있고 해결되지 않은 자산 참조를 진단이 잡는다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "자산의 크기와 차원을 코덱 없이 재고 임계 초과를 진단이 잡는다",
@@ -2112,7 +2112,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T14:15:48.753Z",
-      "updatedAt": "2026-08-20T15:02:49.579Z",
+      "updatedAt": "2026-08-20T15:02:54.061Z",
       "statusChangedAt": "2026-08-20T15:02:37.375Z",
       "externalRefs": [],
       "project": "rundol"
