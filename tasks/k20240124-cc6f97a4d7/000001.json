@@ -3085,12 +3085,12 @@
         },
         "AC-004": {
           "text": "AI가 쓴 댓글은 승인 근거 자격을 갖지 않는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:49:58.363Z",
-      "updatedAt": "2026-08-20T16:25:38.035Z",
+      "updatedAt": "2026-08-20T16:25:42.640Z",
       "statusChangedAt": "2026-08-20T15:50:12.763Z",
       "externalRefs": [],
       "project": "rundol"
