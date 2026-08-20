@@ -2875,12 +2875,12 @@
         },
         "AC-005": {
           "text": "자동 시험이 두 분류의 판정과 침묵을 모두 잰다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:13.833Z",
-      "updatedAt": "2026-08-20T15:35:07.582Z",
+      "updatedAt": "2026-08-20T15:46:49.995Z",
       "statusChangedAt": "2026-08-20T15:34:47.169Z",
       "externalRefs": [],
       "project": "rundol"
