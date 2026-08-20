@@ -2315,7 +2315,7 @@
         },
         "AC-003": {
           "text": "정책 변경이 contract-change 결정으로 기록되는 경로가 REQ에 규정된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "경계 층 값이 board.json에 저장될 수 없음이 규칙으로 표현된다",
@@ -2328,7 +2328,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:09:49.689Z",
-      "updatedAt": "2026-08-20T15:41:25.129Z",
+      "updatedAt": "2026-08-20T15:41:30.638Z",
       "statusChangedAt": "2026-08-20T15:31:21.287Z",
       "externalRefs": [],
       "project": "rundol"
