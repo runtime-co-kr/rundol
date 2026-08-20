@@ -1225,15 +1225,12 @@ const PRESENTATION_GROUP_LABELS = {
   priorities: '우선순위',
   profiles: '프로필'
 };
-// 값 하나가 어느 계층에서 왔는지는 병합 결과가 아니라 계층별 원본이 답한다.
-// 값을 견주면 상위와 같은 값을 명시한 경우를 상속으로 잘못 읽는다 — 그 둘은
-// 상위가 바뀔 때 다르게 행동하므로 같게 다루면 안 된다.
-function presentationOrigin(sources, group, key) {
-  const project = sources && sources.project && sources.project[group];
-  if (project && Object.prototype.hasOwnProperty.call(project, key)) return 'project';
-  const workspace = sources && sources.workspace && sources.workspace[group];
-  if (workspace && Object.prototype.hasOwnProperty.call(workspace, key)) return 'workspace';
-  return 'builtin';
+// 출처는 로더가 계산해 스냅샷에 실어 준다. 화면이 다시 판정하면 같은 질문에
+// 두 답이 생기고, 둘이 갈라지는 날 어느 쪽이 맞는지 알 수 없다. 스냅샷에 없으면
+// 내장으로 읽는다 — 옛 스냅샷을 만난 화면이 빈 값을 그리지 않게.
+function presentationOrigin(origins, group, key) {
+  const entry = origins && origins[group] && origins[group][key];
+  return (entry && entry.entry) || 'builtin';
 }
 const ORIGIN_LABELS = { builtin: '내장', workspace: 'Workspace', project: '이 프로젝트' };
 // 채움 개수가 계층이다. 색만으로 구분하면 흑백 인쇄와 색각 차이에서 정보가 사라진다.
@@ -1262,7 +1259,7 @@ function renderPresentationSettings() {
   }
   const presentation = state.snapshot.presentation;
   const inherited = presentation.inheritance;
-  const sources = presentation.sources;
+  const origins = presentation.origins;
   el('presentation-inheritance').innerHTML = `<span class="inheritance-node active">내장 기본값</span><span>→</span><span class="inheritance-node ${inherited.workspace.configured ? 'active' : ''}">Workspace board.json</span><span>→</span><span class="inheritance-node ${inherited.project.configured ? 'active' : ''}">프로젝트 board.json</span>`;
   // 어느 파일을 열어야 하는지 알려주는 게 이 화면의 전부다. 경로를 tooltip에만 두면 찾을 수 없다.
   el('presentation-source').innerHTML = [['Workspace', inherited.workspace], ['프로젝트', inherited.project]]
@@ -1270,9 +1267,9 @@ function renderPresentationSettings() {
   el('presentation-groups').innerHTML = Object.keys(PRESENTATION_GROUP_LABELS).map((group) => {
     const entries = Object.entries(presentation[group] || {}).sort((left, right) => (left[1].order || 0) - (right[1].order || 0));
     if (!entries.length) return '';
-    const overridden = entries.filter(([key]) => presentationOrigin(sources, group, key) !== 'builtin').length;
+    const overridden = entries.filter(([key]) => presentationOrigin(origins, group, key) !== 'builtin').length;
     const rows = entries.map(([key, item]) => {
-      const origin = presentationOrigin(sources, group, key);
+      const origin = presentationOrigin(origins, group, key);
       return `<div class="presentation-row origin-row-${origin}"><div class="presentation-row-main"><strong>${escapeHtml(item.label || key)}</strong><small><code>${escapeHtml(key)}</code>${item.description ? ' · ' + escapeHtml(item.description) : ''}</small></div>${originIndicator(origin)}</div>`;
     }).join('');
     return `<section class="presentation-group"><h3>${escapeHtml(PRESENTATION_GROUP_LABELS[group])}<span class="group-count">${entries.length}개${overridden ? ' · ' + overridden + '개 덮음' : ''}</span></h3><div class="presentation-rows">${rows}</div></section>`;

@@ -14,7 +14,28 @@ const ENFORCEMENT_KEYS = ['advisory', 'checkpoint'];
 const TASK_STATUS_KEYS = ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'];
 const PRIORITY_KEYS = ['high', 'mid', 'low'];
 const PROFILE_KEYS = ['lean', 'product', 'service', 'platform', 'assured'];
-const ENTRY_FIELDS = ['label', 'description', 'order'];
+const ENTRY_FIELDS = ['label', 'description', 'order', 'disabled'];
+// 되돌릴 수 없는 관문의 이름. 화면에 두지 않는 것만으로는 파일로 우회하는 길이
+// 남는다 — 파일은 손으로 고칠 수 있고 병합으로도 흘러들어온다. 그래서 읽는
+// 시점에 거부한다. 무시하지 않는 이유는 무시가 최악이기 때문이다: 적은 사람은
+// 적용됐다고 믿고, 믿음과 실제가 어긋난 사실은 사고 뒤에야 드러난다.
+//
+// 이 목록은 허용 목록의 반대편이 아니라 그 자체로 완결이다. 여기 있는 이름이
+// 설정 파일 어디에 나오든 거부한다.
+const BOUNDARY_KEYS = Object.freeze([
+  'approvalRequired', 'humanGate', 'gateBypass', 'delegationGrant',
+  'forceTakeover', 'forceResolve', 'publish', 'prMerge', 'approvalRevisionBinding'
+]);
+// 정책 필드는 그룹마다 다르고 코드가 갖는다. 파일이 자기 허용 목록을 선언할 수
+// 있으면 아무 필드나 허용된다고 적으면 그만이다.
+//
+// 프로필의 policy와 sections는 이름을 얻기 전부터 정책 필드였다. 표시 항목 안에
+// 동작을 정하는 값이 형제로 앉는 형태가 이 파일에서 이미 쓰이고 있었다는 뜻이고,
+// 새 정책 필드도 같은 자리에 온다.
+const POLICY_FIELDS = Object.freeze({ profiles: ['policy', 'sections'] });
+// 판수 1 시절부터 저장되던 정책 필드. 이름을 뒤늦게 붙였다고 이미 있는 파일을
+// 거부할 수는 없다. 판수 요구는 이 집합 밖의 새 정책 필드에만 건다.
+const GRANDFATHERED_POLICY_FIELDS = new Set(['profiles.policy', 'profiles.sections']);
 // 표시 키의 옛 이름. 유형 이름을 바꾸면서 이관 경로를 함께 내지 않으면, 이름을 바꾼 것만으로
 // 이미 저장된 board.json이 "지원하지 않는 키"로 거부되어 기존 Workspace가 멈춘다.
 const LEGACY_GROUP_KEYS = { documentTypes: { api: 'interface' } };
@@ -136,6 +157,45 @@ function validateEntry(group, key, entry, file) {
   if (entry.label !== undefined && (typeof entry.label !== 'string' || !entry.label.trim())) throw new Error(`${file}: ${group}.${key}.label은 비어 있지 않은 문자열이어야 합니다.`);
   if (entry.description !== undefined && (typeof entry.description !== 'string' || !entry.description.trim())) throw new Error(`${file}: ${group}.${key}.description은 비어 있지 않은 문자열이어야 합니다.`);
   if (entry.order !== undefined && !Number.isInteger(entry.order)) throw new Error(`${file}: ${group}.${key}.order는 정수여야 합니다.`);
+  // 사용 안 함은 값이 아니라 항목의 상태다. 맵 병합에는 삭제가 없으므로 상속받은
+  // 키를 하위가 없애려면 없앤다고 적어야 한다 — 파일에서 빼면 "선언하지 않음"이
+  // 되어 상위 값이 그대로 내려온다. 없앴다는 판단이 파일에 남아야 나중에 왜
+  // 없앴는지 답할 수 있고, 정책 상태의 사용 안 함이 이미 같은 뜻으로 쓰인다.
+  if (entry.disabled !== undefined && entry.disabled !== true) throw new Error(`${file}: ${group}.${key}.disabled는 true만 쓸 수 있습니다. 되살리려면 그 줄을 지우세요.`);
+}
+
+// 경계 층 이름은 그룹이든 항목이든 필드든 어디에 나와도 거부한다. 대조는 정확히
+// 일치할 때만 한다 — 접두 일치를 쓰면 우연히 경계 이름으로 시작하는 정책 키가
+// 영원히 막힌다.
+function assertNoBoundaryKeys(value, file, path) {
+  if (!value || typeof value !== 'object') return;
+  for (const [key, child] of Object.entries(value)) {
+    if (BOUNDARY_KEYS.includes(key)) {
+      throw new Error(`${file}: ${path}${key}는 되돌릴 수 없는 관문이라 설정 대상이 아닙니다. 이 값은 파일로 바꿀 수 없습니다.`);
+    }
+    if (child && typeof child === 'object' && !Array.isArray(child)) assertNoBoundaryKeys(child, file, `${path}${key}.`);
+  }
+}
+
+// 값 하나가 어느 계층에서 왔는지는 병합 결과가 아니라 계층별 원본이 답한다. 값을
+// 견주면 상위와 같은 값을 명시한 경우를 상속으로 잘못 읽고, 그 둘은 상위가 바뀔
+// 때 다르게 행동하므로 같게 다루면 되돌리기라는 조작 자체가 성립하지 않는다.
+function computeOrigins(sources) {
+  const origins = {};
+  for (const group of Object.keys(PRESENTATION_GROUPS)) {
+    origins[group] = {};
+    const layers = [['builtin', sources.builtin], ['workspace', sources.workspace], ['project', sources.project]];
+    for (const [layer, config] of layers) {
+      const entries = (config && config[group]) || {};
+      for (const [key, entry] of Object.entries(entries)) {
+        const current = origins[group][key] || { entry: layer, fields: {} };
+        current.entry = layer;
+        for (const field of Object.keys(entry || {})) current.fields[field] = layer;
+        origins[group][key] = current;
+      }
+    }
+  }
+  return origins;
 }
 
 function readConfig(file) {
@@ -146,7 +206,27 @@ function readConfig(file) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${file}: 설정 루트는 객체여야 합니다.`);
   const allowed = ['schemaVersion'].concat(Object.keys(PRESENTATION_GROUPS));
   for (const field of Object.keys(value)) if (!allowed.includes(field)) throw new Error(`${file}: 지원하지 않는 필드입니다: ${field}`);
-  if (value.schemaVersion !== 1) throw new Error(`${file}: 지원하지 않는 board.json schemaVersion입니다: ${value.schemaVersion}`);
+  // 경계 판정이 허용 필드 판정보다 먼저 돈다. 나중에 돌면 경계 이름이 "지원하지
+  // 않는 필드"라는 엉뚱한 이름으로 거부되고, 그 메시지를 받은 사용자는 철자를
+  // 고치려 든다. 판수도 보지 않는다 — 보면 판수를 올리는 것이 잠금 해제로 보인다.
+  assertNoBoundaryKeys(value, file, '');
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error(`${file}: 지원하지 않는 board.json schemaVersion입니다: ${value.schemaVersion}`);
+  // 새 정책 필드는 판수 2를 선언한 파일에서만 받는다. 다만 프로필의 policy와
+  // sections는 판수 1 시절부터 유효했으므로 그대로 둔다 — 뒤늦게 정책 필드라는
+  // 이름을 붙였다고 이미 저장된 팀 프리셋을 거부하면, 이름 하나 바꾼 것만으로
+  // 남의 파일이 열리지 않는다. 이름은 새로 붙이되 판정은 그날 이후 것에만 건다.
+  if (value.schemaVersion === 1) {
+    for (const [group, fields] of Object.entries(POLICY_FIELDS)) {
+      for (const [key, entry] of Object.entries(value[group] || {})) {
+        for (const field of fields) {
+          if (GRANDFATHERED_POLICY_FIELDS.has(`${group}.${field}`)) continue;
+          if (entry && Object.prototype.hasOwnProperty.call(entry, field)) {
+            throw new Error(`${file}: ${group}.${key}.${field}는 정책 필드입니다. schemaVersion을 2로 올리세요.`);
+          }
+        }
+      }
+    }
+  }
   for (const [group, keys] of Object.entries(PRESENTATION_GROUPS)) {
     const entries = value[group] || {};
     if (!entries || typeof entries !== 'object' || Array.isArray(entries)) throw new Error(`${file}: ${group}는 객체여야 합니다.`);
@@ -189,6 +269,10 @@ function loadBoardPresentation(start, projectKey) {
   // 합쳐진 값만으로는 편집할 수 없다. 어떤 항목이 이 범위에서 덮인 것이고 어떤 것이
   // 위에서 내려온 것인지 구분해야, 지운다는 뜻과 같은 값으로 덮는다는 뜻이 갈린다.
   effective.sources = { builtin: clone(DEFAULT_PRESENTATION), workspace, project: projectOverride };
+  // 출처는 화면이 다시 계산하지 않는다. 합쳐진 값과 계층별 원본이 둘 다 여기
+  // 있으므로 판정도 여기서 끝내는 편이, 읽는 쪽마다 제 나름의 판정을 두는 것보다
+  // 낫다 — 판정이 흩어지면 화면과 검사가 다른 답을 낸다.
+  effective.origins = computeOrigins(effective.sources);
   return effective;
 }
 

@@ -103,4 +103,46 @@ try {
   fs.rmSync(bad, { force: true });
 }
 
+// 정책 층. 경계 층 이름은 파일 어디에 나와도 거부하고, 사용 안 함 표식은 상속을
+// 없애는 유일한 경로이며, 출처는 로더가 계산해 화면이 다시 판정하지 않게 한다.
+{
+  const file = path.join(os.tmpdir(), 'rundol-policy-layer.json');
+
+  // 경계 층은 화면에 없는 것만으로 못 막는다. 파일로 우회하는 길을 읽는 시점에 닫는다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, priorities: { high: { label: 'x', humanGate: false } } }), 'utf8');
+  assert.throws(() => readConfig(file), /되돌릴 수 없는 관문/u, '경계 층 키가 거부되어야 합니다');
+
+  // 판수를 올려도 열리지 않는다. 열리면 판수 올리기가 잠금 해제로 보인다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 2, priorities: { high: { label: 'x', gateBypass: true } } }), 'utf8');
+  assert.throws(() => readConfig(file), /되돌릴 수 없는 관문/u, '판수와 무관하게 거부되어야 합니다');
+
+  // 접두만 같은 이름은 경계가 아니다. 정확히 일치할 때만 막는다 — 접두 일치를 쓰면
+  // 우연히 경계 이름으로 시작하는 정책 키가 영원히 막힌다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, priorities: { humanGateStyle: { label: 'x' } } }), 'utf8');
+  assert.throws(() => readConfig(file), /지원하지 않는/u, '접두 일치는 허용 필드 판정으로 가야 합니다');
+
+  // 판수 2를 받는다. 판수 1도 그대로 유효하다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 2, priorities: { high: { label: '높음' } } }), 'utf8');
+  assert.strictEqual(readConfig(file).priorities.high.label, '높음');
+
+  // 프로필 policy는 판수 1 시절부터 있었다. 이름을 뒤늦게 붙였다고 남의 파일을 거부하면 안 된다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, profiles: { 'our-team': { label: '우리 팀', policy: { required: ['REQ'] } } } }), 'utf8');
+  assert.strictEqual(readConfig(file).profiles['our-team'].label, '우리 팀', '판수 1의 기존 프리셋이 계속 열려야 합니다');
+
+  // 사용 안 함은 참만 쓴다. 거짓을 허용하면 되살리는 뜻과 안 적은 뜻이 섞인다.
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, priorities: { high: { disabled: false } } }), 'utf8');
+  assert.throws(() => readConfig(file), /true만 쓸 수 있습니다/u);
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, priorities: { high: { disabled: true } } }), 'utf8');
+  assert.strictEqual(readConfig(file).priorities.high.disabled, true);
+
+  fs.rmSync(file, { force: true });
+
+  // 표식은 병합을 타고 남는다. 결과에서 지우면 상위에 원래 있었는지, 하위가 없앤
+  // 것인지를 구분할 수 없고 되돌리는 조작을 걸 자리도 없다.
+  const tombstoned = mergePresentation(JSON.parse(JSON.stringify(DEFAULT_PRESENTATION)), { schemaVersion: 1, priorities: { low: { disabled: true } } });
+  assert.strictEqual(tombstoned.priorities.low.disabled, true, '사용 안 함 표식이 병합 결과에 남아야 합니다');
+  assert.strictEqual(tombstoned.priorities.low.label, '낮음', '표식이 붙어도 상위 값은 남아야 합니다');
+  assert.strictEqual(tombstoned.priorities.high.disabled, undefined, '표식이 이웃 항목에 번지면 안 됩니다');
+}
+
 process.stdout.write('board presentation tests passed\n');
