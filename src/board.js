@@ -686,11 +686,32 @@ function createBoardServer(start, options) {
       const commentMatch = url.pathname.match(/^\/api\/tasks\/([A-Z0-9-]+)\/comments$/u);
       if (request.method === 'POST' && commentMatch) {
         const body = await requestBody(request);
-        const created = addComment(activeConfig.root, {
-          project: activeConfig.project, taskId: commentMatch[1], body: body.body,
-          clientId: identity.id, member: body.member
-        });
-        return json(response, 201, created);
+        // 작성자는 요청이 주장하는 값이 아니라 이 기기의 Client다. 요청이 정하게
+        // 두면 화면에서 아무 신원이나 적을 수 있고, 그 순간 작성 주체 파생이 무너진다.
+        //
+        // 구형 작업공간에는 Client 개념이 없다. 그런 곳에서는 누가 썼는지 남길 수
+        // 없으므로 받지 않는다 — 신원 없는 기록은 나중에 누구에게도 물을 수 없다.
+        const writerLayout = workspaceLayout(activeConfig.root);
+        if (writerLayout.schemaVersion < 6) {
+          return json(response, 409, { error: '댓글은 Client 신원이 필요합니다. rdl workspace migrate를 먼저 실행하세요.', code: 'workspace-too-old' });
+        }
+        const writer = boardClient(activeConfig.root, selectProject(writerLayout, activeConfig.project, true), listClients(activeConfig.root).clients);
+        try {
+          const created = addComment(activeConfig.root, {
+            project: activeConfig.project, taskId: commentMatch[1], body: body.body,
+            clientId: writer.id, member: body.member
+          });
+          return json(response, 201, created);
+        } catch (error) {
+          // 계약 위반은 서버 결함이 아니라 입력의 문제다. 500으로 내보내면 사람은
+          // 무엇을 고쳐야 하는지 모른 채 다시 누르고, 그 사이 원인은 로그에만 남는다.
+          if (error.name !== 'CommentViolation') throw error;
+          const help = error.code === 'unknown-client'
+            ? ` 이 기기를 먼저 등록하세요: rdl client register ${writer.id} --name "이름" --type device --owner MEMBER-001`
+            : '';
+          const status = ['unknown-client', 'inactive-client'].includes(error.code) ? 403 : 400;
+          return json(response, status, { error: `${error.message}${help}`, code: error.code });
+        }
       }
       if (request.method === 'GET' && commentMatch) {
         return json(response, 200, listComments(activeConfig.root, { project: activeConfig.project, taskId: commentMatch[1] }));

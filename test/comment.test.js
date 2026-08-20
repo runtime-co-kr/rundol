@@ -191,4 +191,95 @@ try {
   fs.rmSync(temporary, { recursive: true, force: true });
 }
 
-process.stdout.write('comment tests passed\n');
+// ── 보드 ─────────────────────────────────────────────────────────────────
+//
+// 명령줄로만 읽을 수 있는 댓글은 보드에서 일하는 사람에게 없는 것과 같다.
+// 세션 간 소통이 목적이었으므로, 보이지 않으면 기능이 아니라 껍데기다.
+//
+// 낡은 픽스처를 쓰지 않고 작업공간을 새로 만드는 이유는, 픽스처가 Client 개념이
+// 없던 시절의 것이라 여기서 재려는 것 자체가 없기 때문이다.
+
+const boardRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-comment-board-'));
+const boardEnv = Object.assign({}, process.env, { RUNDOL_HOME: path.join(boardRoot, 'runtime') });
+
+function boardSetup(program, args) {
+  const done = spawnSync(program, args, { cwd: boardRoot, encoding: 'utf8', env: boardEnv });
+  assert.strictEqual(done.status, 0, `${program} ${args.join(' ')}\n${done.stdout}\n${done.stderr}`);
+  return done.stdout;
+}
+
+boardSetup('git', ['init', '-b', 'main']);
+boardSetup('git', ['config', 'user.name', 'Rundol Test']);
+boardSetup('git', ['config', 'user.email', 'rundol@example.test']);
+fs.writeFileSync(path.join(boardRoot, 'README.md'), '# board comment\n', 'utf8');
+boardSetup('git', ['add', 'README.md']);
+boardSetup('git', ['commit', '-m', 'initial']);
+boardSetup(process.execPath, [cli, 'init', 'crm', '--name', 'CRM', '--profile', 'lean', '--root', boardRoot, '--json']);
+const boardTask = JSON.parse(boardSetup(process.execPath, [cli, 'task', 'add', '보드 댓글 대상', '--project', 'crm',
+  '--acceptance', '보드에서 댓글이 달린다', '--root', boardRoot, '--json'])).taskId;
+
+(async () => {
+  const { createBoardServer } = require('../src/board');
+  const board = createBoardServer(boardRoot, { project: 'crm', token: 'comment-test-token' });
+  await new Promise((resolve) => board.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${board.server.address().port}`;
+  try {
+    const snapshot = await (await fetch(`${base}/api/projects/crm/board-snapshot`)).json();
+    // 스냅숏이 댓글을 실어야 화면이 두 번 묻지 않는다.
+    assert(Array.isArray(snapshot.comments), '스냅숏에 comments가 없습니다.');
+    // 영역 revision이 따로 있어야 댓글만 늘었을 때 태스크 목록을 다시 그리지 않는다.
+    assert.strictEqual(typeof snapshot.revision.comments, 'string', 'comments 영역 revision이 없습니다.');
+
+    const post = (text) => fetch(`${base}/api/tasks/${boardTask}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': board.token },
+      body: JSON.stringify({ body: text })
+    });
+
+    // 쓰기에는 세션 토큰이 필요하다.
+    const denied = await fetch(`${base}/api/tasks/${boardTask}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: '토큰 없이' })
+    });
+    assert.notStrictEqual(denied.status, 201, '토큰 없이 댓글이 저장됐습니다.');
+
+    // 이 기기가 Client로 등록되지 않았으면 남길 수 없다. 신원 없는 기록은 나중에
+    // 누구에게도 물을 수 없기 때문이다. 다만 그것은 서버 결함이 아니므로 500이
+    // 아니라 무엇을 해야 하는지 알려주는 응답이어야 한다.
+    assert.strictEqual(snapshot.client.registered, false, '갓 만든 작업공간의 기기가 이미 등록돼 있습니다.');
+    const refused = await post('등록 전에 남긴 댓글');
+    assert.strictEqual(refused.status, 403, `등록되지 않은 기기에 403이 아닙니다: ${refused.status}`);
+    const detail = await refused.json();
+    assert.strictEqual(detail.code, 'unknown-client');
+    assert(detail.error.includes('rdl client register'), '무엇을 해야 하는지 알려야 합니다.');
+
+    // 등록하면 풀린다.
+    boardSetup(process.execPath, [cli, 'client', 'register', snapshot.client.id, '--name', '보드 시험 기기',
+      '--type', 'device', '--owner', 'MEMBER-001', '--root', boardRoot, '--json']);
+
+    const created = await post('보드에서 남긴 댓글입니다.');
+    assert.strictEqual(created.status, 201, `보드에서 댓글을 남기지 못했습니다: ${created.status}`);
+    const saved = (await created.json()).comment;
+    assert.strictEqual(saved.taskId, boardTask);
+    // 화면에서 왔다고 사람이 되는 것이 아니다. 주체는 Client 유형에서 파생한다.
+    assert.strictEqual(saved.workerKind, 'human', 'device 유형이 사람으로 파생되어야 합니다.');
+    assert.strictEqual(saved.canGroundApproval, true);
+
+    const listed = await (await fetch(`${base}/api/tasks/${boardTask}/comments`)).json();
+    assert.strictEqual(listed.count, 1);
+    assert.strictEqual(listed.comments[0].body, '보드에서 남긴 댓글입니다.');
+
+    // 다시 부른 스냅숏에 반영되어야 폴링으로 다른 세션의 댓글이 보인다.
+    const after = await (await fetch(`${base}/api/projects/crm/board-snapshot`)).json();
+    assert.strictEqual(after.comments.length, 1, '스냅숏이 새 댓글을 싣지 않았습니다.');
+    assert.notStrictEqual(after.revision.comments, snapshot.revision.comments, '댓글이 늘었는데 영역 revision이 그대로입니다.');
+  } finally {
+    board.server.close();
+  }
+})().then(() => {
+  process.stdout.write('comment tests passed\n');
+}).catch((error) => {
+  process.stderr.write(`${error && error.stack ? error.stack : error}\n`);
+  process.exitCode = 1;
+}).finally(() => {
+  fs.rmSync(boardRoot, { recursive: true, force: true });
+});

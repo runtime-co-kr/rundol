@@ -11,6 +11,11 @@ const { validateBoundaryMetadata } = require('./document-boundary');
 const { validateDocumentDiagram } = require('./document-diagram');
 const { validateTestDocument } = require('./test-contract');
 const { TASK_KINDS, TEST_RESULTS, testedDocuments } = require('./tasks');
+const { BUILTIN_ITEM_TYPES, normalizeItemTypes } = require('./item-type');
+
+// 내장 정의도 파일 정의와 같은 정규화를 지난다. 건너뛰면 내장에만 있는 형태 오류가
+// 영원히 잡히지 않고, 판정 경로가 둘로 갈린다. 값이 바뀌지 않으므로 한 번만 돈다.
+const NORMALIZED_ITEM_TYPES = normalizeItemTypes(BUILTIN_ITEM_TYPES);
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness, implementationTrace } = require('./implementation-contract');
 const { runGit } = require('./git');
@@ -192,6 +197,23 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
   return checkTaskEntries(list, parsed.tasks, {
     taskIds, taskFile, registry, memberIds, stakeholderIds,
     kinds: TASK_KINDS, results: TEST_RESULTS, testedDocuments,
+    // 유형 정의는 아직 내장뿐이다. 정책 층에서 읽어 오는 배선은 별도이며, 그때까지
+    // 내장을 넘겨 판정이 도는 상태를 유지한다 — 넘기지 않으면 모든 태스크가
+    // "정의에 없는 유형"이 된다.
+    itemTypes: NORMALIZED_ITEM_TYPES,
+    // 면제는 게이트 이름으로 판정한다. 게이트는 함수이며 해석기가 면제 목록에 없는
+    // 것만 부른다 — 판정하고 결과를 감추는 것이 아니라 판정 자체를 돌지 않는다.
+    //
+    // 완료 태스크에 검증 문서 연결을 요구하는 규칙이 여기로 옮겨 왔다. 전역이던 시절에는
+    // 결정 문서만 저작한 태스크가 수용조건을 다 채우고도 완료되지 못했다 — 결정 저작에는
+    // 검증 문서가 없기 때문이다. 이제 그 유형이 면제를 선언하면 규칙을 지우지 않고 풀린다.
+    gates: {
+      'done-requires-test-link': (task) => (
+        task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))
+          ? [{ code: 'RDL-TASK-019', message: 'done 태스크는 TST 문서를 연결해야 합니다.' }]
+          : []
+      )
+    },
     readiness: (linked) => validateTaskImplementationReadiness(linked, { coverage })
   });
 }

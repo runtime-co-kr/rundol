@@ -1,5 +1,7 @@
 'use strict';
 
+const { evaluateItemTypes, BUILTIN_ITEM_TYPES } = require('./item-type');
+
 // 검사의 판정부. 파일을 읽지 않고 이미 읽어 둔 값만 보고 진단을 만든다.
 //
 // 이 분리가 필요한 이유는 코드 정리가 아니라 답의 일치다. 같은 저장소 상태에서
@@ -374,11 +376,8 @@ const REQUIRED_TASK_FIELDS = ['title', 'summary', 'owner', 'reviewers', 'stakeho
  * 같은 판정을 부를 수 없어 자기 경로로 다시 구현하게 된다.
  */
 function checkTaskEntries(list, tasks, context) {
-  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, testedDocuments, readiness } = context;
+  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, itemTypes, gates, testedDocuments, readiness } = context;
   const dependencies = new Map();
-  // (검증 문서, 차수) 쌍의 주인을 기억해 두 번째를 잡는다. 저장 계층이 이미 막지만
-  // 병합으로 들어온 태스크는 그 경로를 거치지 않는다.
-  const roundOwners = new Map();
 
   for (const taskId of taskIds) {
     const task = tasks[taskId];
@@ -405,32 +404,14 @@ function checkTaskEntries(list, tasks, context) {
     if (task.cancellation && task.cancellation.decidedBy && !memberIds.has(task.cancellation.decidedBy)) diagnostic(list, { code: 'RDL-TASK-025', category: 'task', file: taskFile, artifactId: taskId, target: task.cancellation.decidedBy, message: `반려 결정자가 존재하지 않습니다: ${task.cancellation.decidedBy}` });
     const criteria = task.acceptanceCriteria && typeof task.acceptanceCriteria === 'object' ? Object.values(task.acceptanceCriteria) : [];
     if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
-    if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
-    if (task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))) diagnostic(list, { code: 'RDL-TASK-019', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크는 TST 문서를 연결해야 합니다.' });
-    // 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝났으므로 done이고 판정이
-    // fail이다. 저장 계층이 이미 막지만, 병합으로 들어온 태스크는 그 경로를 거치지
-    // 않으므로 검사가 같은 불변식을 다시 본다.
+    // 유형별 판정은 여기 없다. 유형이 데이터가 되면서 제약 해석기로 옮겼다 —
+    // 분기 일곱이 유형마다 늘어나던 자리이고, 고칠 곳을 하나라도 빠뜨리면 그 유형만
+    // 규칙 없이 통과하던 자리다.
+    //
+    // 판정을 태스크 하나씩 돌지 않고 다 모은 뒤 한 번에 도는 이유는 유일성 때문이다.
+    // 같은 조합이 둘인지는 집합 전체를 봐야 알 수 있어 태스크 하나만 보고 답할 수 없다.
     const kind = task.kind || 'normal';
-    const result = task.result === undefined ? null : task.result;
-    if (!kinds.includes(kind)) diagnostic(list, { code: 'RDL-TASK-026', category: 'task', file: taskFile, artifactId: taskId, target: kind, message: `지원하지 않는 태스크 종류입니다: ${kind} (${kinds.join(', ')})` });
-    if (result !== null && kind !== 'test') diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 판정을 둘 수 없습니다.' });
-    if (result !== null && kind === 'test' && !results.includes(result)) diagnostic(list, { code: 'RDL-TASK-027', category: 'task', file: taskFile, artifactId: taskId, target: String(result), message: `지원하지 않는 테스트 판정입니다: ${result} (${results.join(', ')})` });
-    if (kind === 'test' && task.status === 'done' && result === null) diagnostic(list, { code: 'RDL-TASK-028', category: 'task', file: taskFile, artifactId: taskId, message: '완료한 테스트 태스크에는 판정이 필요합니다.' });
-    // 차수 하나에 검증 문서 하나가 태스크 하나다. 여럿을 묶으면 판정이 하나뿐이라 어느
-    // 것이 실패했는지 알 수 없고, 없으면 무엇을 검증했는지 알 수 없다.
     const tested = testedDocuments(task);
-    if (kind === 'test' && tested.length !== 1) diagnostic(list, { code: 'RDL-TASK-029', category: 'task', file: taskFile, artifactId: taskId, message: `테스트 태스크는 검증한 TST 문서를 정확히 하나 연결해야 합니다: 현재 ${tested.length}건` });
-    const round = task.round === undefined ? null : task.round;
-    if (kind === 'test' && (!Number.isInteger(round) || round < 1)) diagnostic(list, { code: 'RDL-TASK-030', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크에는 1 이상의 정수 차수가 필요합니다.' });
-    if (kind !== 'test' && round !== null) diagnostic(list, { code: 'RDL-TASK-031', category: 'task', file: taskFile, artifactId: taskId, message: '테스트 태스크가 아니면 차수를 둘 수 없습니다.' });
-    if (kind === 'test' && task.status !== 'cancelled' && Number.isInteger(round) && tested.length === 1) {
-      const key = `${tested[0]}@${round}`;
-      // 재실행은 새 태스크가 아니라 같은 태스크의 판정이 바뀌는 일이다. 둘이 되면
-      // 어느 쪽이 그 차수의 결론인지 정해지지 않는다. 반려한 태스크는 자리를 비운다 —
-      // 붙잡으면 잘못 만든 것을 되돌릴 방법이 차수를 올리는 것뿐이게 된다.
-      if (roundOwners.has(key)) diagnostic(list, { code: 'RDL-TASK-032', category: 'task', file: taskFile, artifactId: taskId, target: tested[0], message: `${tested[0]}의 ${round}차 검증 태스크가 둘 이상입니다: ${roundOwners.get(key)}에 이미 있음` });
-      else roundOwners.set(key, taskId);
-    }
     // 구현 준비도는 저장된 값이 아니라 링크에서 계산한다. 저장하면 링크가 바뀌어도
     // 갱신 경로가 없어 조용히 어긋나고, 그때 게이트는 낡은 값으로 판정한다.
     //
@@ -470,6 +451,13 @@ function checkTaskEntries(list, tasks, context) {
     visited.add(id);
   }
   for (const id of taskIds) visit(id, []);
+  // 유형 제약은 집합을 다 모은 뒤에 판정한다. 해석기가 값만 받고 파일을 읽지 않으므로
+  // 검사기의 순수성이 유지되며, 유형이 늘어도 이 호출 하나는 그대로다.
+  const itemTasks = {};
+  for (const id of taskIds) itemTasks[id] = tasks[id];
+  for (const issue of evaluateItemTypes(itemTasks, itemTypes || BUILTIN_ITEM_TYPES, { gates })) {
+    diagnostic(list, Object.assign({ category: 'task', file: taskFile }, issue));
+  }
   return taskIds.length;
 }
 

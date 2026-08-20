@@ -476,7 +476,13 @@ const REPRODUCTION = [
 // RDLITEMRULE13 일곱이 모두 대응하는 제약으로 잡힌다.
 {
   for (const line of REPRODUCTION) {
-    assert(CURRENT_RULES.includes(`'${line.legacy}'`), `현재 검사기에 없는 코드를 표에 적었습니다: ${line.legacy}`);
+    // 이관 전에는 이 단언이 "검사기에 그 코드가 아직 있는가"를 물었다. 이관이 끝난
+    // 지금은 없는 것이 정상이므로 그대로 두면 이관을 성공시킨 것이 시험을 깨뜨린다.
+    //
+    // 그래서 묻는 것을 바꾼다. 표에 적은 옛 코드가 실재했는지는 이관 동등성 시험이
+    // 참조 구현으로 지키고, 여기서는 표 자체의 형태만 본다 — 옛 코드 이름이 지워진
+    // 뒤에도 무엇에서 무엇으로 옮겼는지는 남아야 한다.
+    assert(/^RDL-(TASK|IMPL)-\d{3}$/u.test(line.legacy), `옛 코드 형식이 아닙니다: ${line.legacy}`);
     assert(CONSTRAINT_KINDS.includes(line.constraint), `카탈로그 밖의 제약으로 옮겼습니다: ${line.constraint}`);
   }
   assert.strictEqual(REPRODUCTION.length, 7);
