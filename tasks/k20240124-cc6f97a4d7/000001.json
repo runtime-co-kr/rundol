@@ -2859,7 +2859,9 @@
       "result": null,
       "round": null,
       "links": [
-        "ADR-014"
+        "ADR-014",
+        "REQ-061",
+        "TST-035"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -2886,7 +2888,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:14:13.833Z",
-      "updatedAt": "2026-08-20T15:46:49.995Z",
+      "updatedAt": "2026-08-20T17:39:54.056Z",
       "statusChangedAt": "2026-08-20T15:34:47.169Z",
       "externalRefs": [],
       "project": "rundol"
