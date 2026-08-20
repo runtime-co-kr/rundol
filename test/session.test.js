@@ -44,6 +44,26 @@ assert.throws(() => session.normalizeSessionId('   '), /잘못된 세션 식별�
   }
 }
 
+// 생존을 말해 줄 프로세스도 받는다. 없으면 없다고 답해야 한다 — rdl 자신의 pid로
+// 채우면 명령이 끝나는 순간 죽은 세션이 되고, "모른다"가 "죽었다"로 바뀐다.
+{
+  const saved = session.SESSION_PID_ENV.map((name) => [name, process.env[name]]);
+  for (const [name] of saved) delete process.env[name];
+  assert.deepStrictEqual(session.resolveSessionPid(), { pid: null, source: null });
+  process.env.CLAUDE_PID = '4242';
+  assert.deepStrictEqual(session.resolveSessionPid(), { pid: 4242, source: 'CLAUDE_PID' });
+  process.env.RUNDOL_SESSION_PID = '777';
+  assert.strictEqual(session.resolveSessionPid().source, 'RUNDOL_SESSION_PID');
+  // 값이 pid가 아니면 없는 것으로 읽는다. 0이나 음수를 그대로 실으면 생존 확인이
+  // 무의미한 값을 묻게 된다.
+  process.env.RUNDOL_SESSION_PID = '0';
+  assert.strictEqual(session.resolveSessionPid().source, 'CLAUDE_PID');
+  for (const [name, value] of saved) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+}
+
 // ── worktree 계약 ────────────────────────────────────────────────────────
 
 const temporary = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-session-')));
@@ -69,9 +89,23 @@ git(['commit', '--quiet', '-m', 'init']);
 
 const SID = 'aabbccdd-1111-2222-3333-444455556666';
 
+// 등록은 잠금 디렉터리에 남으므로 런타임 홈을 격리한다. 격리하지 않으면 이 시험이
+// 실제 작업에 쓰는 잠금 자리에 쓰게 된다.
+const savedEnv = ['RUNDOL_HOME'].concat(session.SESSION_PID_ENV).map((name) => [name, process.env[name]]);
+process.env.RUNDOL_HOME = path.join(temporary, 'runtime');
+for (const name of session.SESSION_PID_ENV) delete process.env[name];
+process.env.CLAUDE_PID = String(process.pid);
+
 try {
   const created = session.startSession(repository, { sessionId: SID });
   assert.strictEqual(created.action, 'created');
+  // 세션은 명령보다 오래 산다. 그래서 등록은 놓지 않고 남고, 생존은 호스트가 알려준
+  // pid가 답한다.
+  assert.strictEqual(created.registered, true);
+  assert.strictEqual(created.sessionPid, process.pid);
+  assert.strictEqual(created.sessionPidSource, 'CLAUDE_PID');
+  assert.ok(fs.existsSync(session.sessionLockFile(repository, 'aabbccdd')), '등록은 잠금 파일로 남는다');
+  assert.deepStrictEqual(session.sessionLiveness(repository, 'aabbccdd'), { pid: process.pid, alive: true });
   assert.strictEqual(created.short, 'aabbccdd');
   assert.strictEqual(created.branch, 'session/aabbccdd');
   assert.strictEqual(created.sessionIdSource, 'argument');
@@ -104,7 +138,17 @@ try {
     const again = session.startSession(repository, { sessionId: 'eeff0011-9999' });
     assert.strictEqual(again.action, 'reused');
     assert.ok(sameDir(again.path, custom), '지정하지 않으면 이미 열린 자리가 답이다');
+
+    // 둘이 함께 있는 상태. "나 말고 누가 있나"에 답하려면 이 목록이 정확해야 하고,
+    // 오늘 난 사고는 전부 이 물음을 아무도 시작할 때 묻지 않아서 났다.
+    const both = session.listSessions(repository).sessions;
+    assert.strictEqual(both.length, 2, `동시 세션 둘을 다 본다: ${both.map((s) => s.short).join(',')}`);
+    assert.deepStrictEqual(both.map((s) => s.alive), [true, true]);
+    const live = require('../src/run-pending').liveSessions(repository);
+    assert.strictEqual(live.length, 2, '조회 표면도 같은 답을 낸다');
+
     session.endSession(repository, { sessionId: 'eeff0011-9999' });
+    assert.strictEqual(session.listSessions(repository).sessions.length, 1, '닫으면 목록에서 빠진다');
   }
 
   // 목록은 저장이 아니라 계산이다. 세션 worktree 안에서 물어도 본 저장소를 찾는다.
@@ -113,6 +157,8 @@ try {
     assert.strictEqual(listed.root, repository, `본 저장소를 찾는다: ${from}`);
     assert.strictEqual(listed.sessions.length, 1);
     assert.strictEqual(listed.sessions[0].branch, 'session/aabbccdd');
+    assert.strictEqual(listed.sessions[0].alive, true, '붙어 있는 세션은 살아 있다고 답한다');
+    assert.strictEqual(listed.sessions[0].sessionPid, process.pid);
   }
 
   // 세션이 만든 커밋. 작업 공간을 닫아도 이건 남아야 하고, 남았다는 사실이
@@ -137,7 +183,16 @@ try {
   // 브랜치는 남는다. 작업 공간을 닫는 것과 일을 버리는 것은 다른 결정이다.
   assert.strictEqual(git(['rev-parse', '--verify', '--quiet', 'refs/heads/session/aabbccdd']).length, 40);
 
+  assert.strictEqual(ended.unregistered, true, '닫으면 등록도 거둔다');
+  assert.deepStrictEqual(session.sessionLiveness(repository, 'aabbccdd'), { pid: null, alive: null },
+    '등록이 없는 것과 죽은 것은 다르게 답한다');
+
   assert.throws(() => session.endSession(repository, { sessionId: SID }), /열려 있는 세션 worktree가 없습니다/u);
+
+  for (const [name, value] of savedEnv) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

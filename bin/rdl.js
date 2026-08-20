@@ -356,6 +356,11 @@ function printPendingRuns(result, json) {
   // 읽지 못한 런은 사람 출력에서도 드러낸다. 감추면 깨진 런 하나가 조용히
   // 사라지고, 그 사실을 아무도 모른다 — 이 목록을 만든 이유가 그것이다.
   for (const entry of result.unreadable) lines.push(`읽기실패 ${entry.project} ${entry.runId} :: ${entry.detail}`);
+  // 혼자면 말하지 않는다. 둘 이상일 때만 주의를 요구하며, 그때는 각자 어느 작업
+  // 공간에 있는지까지 말한다 — 같은 트리에 있는 세션과 나뉘어 있는 세션은 위험이
+  // 다르고, 경로가 그 차이를 드러내는 유일한 값이다.
+  const sessions = result.sessions || [];
+  if (sessions.length > 1) lines.push(`동시세션 ${sessions.length}건 :: ${sessions.map((entry) => `${entry.short}(${entry.path})`).join(' ')}`);
   for (const line of lines) process.stdout.write(`${line}\n`);
 }
 function printOperation(result, json) {

@@ -17,6 +17,7 @@ const ledger = require('./run-ledger');
 const driverLease = require('./driver-lease');
 const runtime = require('./runtime');
 const { findWorkspaceRoot, workspaceLayout, listProjects } = require('./workspace');
+const session = require('./session');
 
 // 사유의 정본은 원장이다. HALT_REASONS(src/run-ledger.js)를 여기서 다시
 // 정의하지 않고 fold가 준 haltReason을 그대로 나른다.
@@ -173,13 +174,16 @@ function item(project, fold, verdict) {
  */
 function pendingRuns(start, options) {
   const settings = options || {};
-  const empty = { workspace: null, waiting: [], drivable: [], driving: [], unreadable: [] };
+  const empty = { workspace: null, waiting: [], drivable: [], driving: [], unreadable: [], sessions: [] };
 
   // 작업공간이 없는 것과 깨진 것은 다르다. 없는 곳에서 훅이 도는 것은 정상이며
   // "런이 없다"가 그 물음의 옳은 답이다. 깨진 것은 findWorkspaceRoot 다음에서
   // 던져 호출자가 2로 끝내게 둔다.
   let root;
-  try { root = findWorkspaceRoot(start); } catch (error) { return empty; }
+  // 작업공간을 못 찾아도 세션은 답한다. 세션 worktree에는 projects/가 없으므로 여기서
+  // 접으면, 정작 격리된 세션이 "나 말고 누가 있나"를 물을 수 없다 — 그 물음은 Rundol
+  // 작업공간이 아니라 Git만 있으면 답할 수 있다.
+  try { root = findWorkspaceRoot(start); } catch (error) { return Object.assign(empty, { sessions: liveSessions(start) }); }
   const layout = workspaceLayout(root);
 
   const all = listProjects(layout);
@@ -207,7 +211,30 @@ function pendingRuns(start, options) {
       result[verdict.bucket].push(item(project, fold, verdict));
     }
   }
+  result.sessions = liveSessions(layout.root);
   return result;
 }
 
-module.exports = { classifyRun, pendingRuns };
+/**
+ * 이 작업공간에 지금 붙어 있는 세션. 런과 같은 물음의 다른 축이다 — 무엇을 해야
+ * 하는가 옆에 누가 같이 있는가가 있어야 한다.
+ *
+ * 오늘 난 사고는 전부 사후에 발견됐다. 시험이 멈춰서, 구문 오류가 나서, 자기 작업이
+ * 이미 커밋돼 있어서 알았다. 시작할 때 아무도 몰랐다는 것이 공통점이고, 이 줄이
+ * 채우려는 자리가 그것이다.
+ *
+ * 읽기만 한다. 등록은 rdl session start가 하고 여기서는 잠금 파일을 읽을 뿐이다 —
+ * 조회가 등록을 겸하면 무엇이 주의를 요구하는지 묻는 행위가 상태를 바꾼다.
+ */
+function liveSessions(root) {
+  try {
+    return session.listSessions(root).sessions.filter((item) => item.alive === true)
+      .map((item) => ({ short: item.short, branch: item.branch, path: item.path, sessionPid: item.sessionPid }));
+  } catch (error) {
+    // 세션을 읽지 못한 것이 런을 못 읽은 것으로 번지면 안 된다. 이 줄은 곁들이는
+    // 정보이므로, 없으면 없는 채로 런의 답을 낸다.
+    return [];
+  }
+}
+
+module.exports = { classifyRun, pendingRuns, liveSessions };
