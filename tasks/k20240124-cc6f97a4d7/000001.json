@@ -1879,7 +1879,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "진단 객체가 규칙의 정본 문서를 가리키는 필드를 갖는다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "IMPL과 PROFILE 계열 진단이 모두 정본 문서를 지목한다.",
@@ -1892,7 +1892,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-19T22:26:18.582Z",
-      "updatedAt": "2026-08-19T22:26:18.582Z",
+      "updatedAt": "2026-08-20T01:54:36.927Z",
       "statusChangedAt": "2026-08-19T22:26:18.582Z",
       "externalRefs": [],
       "project": "rundol"
