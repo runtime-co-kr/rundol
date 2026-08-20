@@ -3179,6 +3179,42 @@
       "statusChangedAt": "2026-08-20T17:55:46.609Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-TQEN4X0R": {
+      "title": "편집기에서 문서 링크를 고르고 대상 존재를 본다",
+      "summary": "wikilink가 편집기의 1급 노드가 되어 target과 alias를 들고 있다. 그 위에 고르는 UI를 얹으면 오타 링크가 저장 후가 아니라 입력 중에 드러난다. Crepe에는 대응이 없는 기능이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "골뱅이를 입력하면 프로젝트 문서와 멤버 목록이 뜨고 고르면 링크 노드가 들어간다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "대상이 없는 링크가 편집 중에 구분되어 보인다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "표 안에서도 별칭 구분자가 셀을 쪼개지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:55:51.972Z",
+      "updatedAt": "2026-08-20T17:55:51.972Z",
+      "statusChangedAt": "2026-08-20T17:55:51.972Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
