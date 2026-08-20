@@ -2202,6 +2202,46 @@
       "statusChangedAt": "2026-08-20T15:08:29.359Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-RA3Y3NBH": {
+      "title": "Board 문서 편집을 블록 단위로 올릴지 결정한다",
+      "summary": "노션식 블록 편집 UI 제안. 측정 결과 remark 왕복은 정본 문서 97개 중 91개를 다시 쓰고 본문 wikilink 80개 중 70개를 죽이는데 rdl check는 통과한다. 문서 범위·블록 범위·미도입 셋 중 하나를 골라야 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "측정 근거가 정본 노트로 남아 다음 세션이 다시 재지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "문서 범위·블록 범위·미도입 중 하나를 ADR로 닫는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "선택이 정본 마크다운 포맷 통제권에 주는 영향이 결정문에 적힌다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "빌드 스텝 도입 여부와 그 비용이 결정문에 적힌다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:08:47.540Z",
+      "updatedAt": "2026-08-20T15:08:47.540Z",
+      "statusChangedAt": "2026-08-20T15:08:47.540Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
