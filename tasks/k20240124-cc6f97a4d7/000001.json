@@ -3568,6 +3568,40 @@
       "statusChangedAt": "2026-08-20T18:22:51.997Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-PZBJCEB7": {
+      "title": "[문서] 일하는 사람이 문서를 열었을 때 첫 화면에 내용이 보이게 한다",
+      "summary": "실측: 첫 실질 내용까지 평균 34줄로 화면 한 장을 머리말이 다 쓴다. 그다음 만나는 것이 배경인데, 일하러 온 사람이 찾는 것은 요구사항·수용 기준·범위다. 기능별 계약이 문서의 29~38%를 차지하는데 그 슬롯의 13~21%는 40자 이하다. 세 가지가 필요하다 — 머리말 접기, 섹션 순서 재배치, 한 줄 슬롯의 표 강등.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "문서를 열면 첫 화면에서 실질 내용이 시작된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "일하러 온 사람이 찾는 것(요구·수용 기준·범위)이 배경보다 앞에 온다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "한 줄로 끝나는 슬롯이 섹션 대신 표의 한 칸이 된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T18:29:32.361Z",
+      "updatedAt": "2026-08-20T18:29:32.361Z",
+      "statusChangedAt": "2026-08-20T18:29:32.361Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
