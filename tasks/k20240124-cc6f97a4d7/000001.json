@@ -2549,6 +2549,81 @@
       "statusChangedAt": "2026-08-20T15:10:45.676Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-3CE8QJXY": {
+      "title": "Board에 정책 층 설정 화면을 구현한다",
+      "summary": "SCR에 정의된 설정 화면을 board-ui에 구현한다. 상속 출처 표시와 업무 유형 정의에서의 화면 파생을 포함한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "ADR-020",
+        "ADR-021"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "정책 층 항목을 Board에서 편집하고 저장할 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "항목마다 상속 출처와 덮어쓰기 여부가 표시된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "경계 층 항목이 화면에 나타나지 않는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "업무 유형 정의에서 목록·필터·입력·연결이 파생된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "npm test와 rdl check --strict가 모두 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:10:53.886Z",
+      "updatedAt": "2026-08-20T15:10:53.886Z",
+      "statusChangedAt": "2026-08-20T15:10:53.886Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-WF2A7VM7": {
+      "title": "[결함] 동시성 시험이 느린 기계에서 시간 단언으로 넘어진다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "verify-concurrency 단언이 기계 속도가 아니라 겹침 자체를 본다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "느린 기계에서 세 번 연속 실행해도 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T15:10:53.971Z",
+      "updatedAt": "2026-08-20T15:10:53.971Z",
+      "statusChangedAt": "2026-08-20T15:10:53.971Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
