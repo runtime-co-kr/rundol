@@ -2139,7 +2139,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "자유도 기준을 가역성으로 두고 경계·정책·내용 3층을 규정한 ADR이 active로 존재한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "ADR-003의 board.json 표시 전용 제약과 Workspace 계약 상속 배제가 개정 결정으로 닫힌다",
@@ -2160,7 +2160,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:15:05.650Z",
+      "updatedAt": "2026-08-20T15:29:15.410Z",
       "statusChangedAt": "2026-08-20T15:04:04.713Z",
       "externalRefs": [],
       "project": "rundol"
