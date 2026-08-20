@@ -3143,6 +3143,42 @@
       "statusChangedAt": "2026-08-20T17:55:40.873Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-X1D2F07X": {
+      "title": "블록 삽입을 슬래시 입력과 묶음 메뉴로 넓힌다",
+      "summary": "+ 버튼과 12종 삽입 메뉴는 섰다. 손을 키보드에서 떼지 않고 넣는 길과, 끌어 옮길 때 어디에 놓이는지 보이는 표시가 없다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-011"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "슬래시를 입력하면 삽입 메뉴가 열리고 이어 친 글자로 걸러진다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "메뉴가 텍스트·목록·고급 묶음으로 나뉜다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "블록을 끌 때 놓일 자리가 표시된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T17:55:46.609Z",
+      "updatedAt": "2026-08-20T17:55:46.609Z",
+      "statusChangedAt": "2026-08-20T17:55:46.609Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
