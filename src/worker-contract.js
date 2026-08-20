@@ -262,6 +262,181 @@ function verifyReport(assignment, report) {
   return { decision, blocks, humanReasons };
 }
 
+// ── 발급 판정 ────────────────────────────────────────────────────────────
+
+/**
+ * 발급 요청을 저장할 본문으로 만들거나 거부 사유를 돌려준다.
+ *
+ * 저장소를 읽어야 아는 것은 호출자가 값으로 만들어 넘긴다 — 절차 고정 결과는
+ * `pinned`로, 정규 문서가 선언한 기능 ID와 열린 할당은 `context`로. 판정이
+ * 조회를 시작하면 표면마다 답이 갈린다.
+ *
+ * 순서는 고정이다. 여러 사유가 동시에 성립할 때 어느 것을 돌려줄지가 호출 순서에
+ * 따라 달라지면 같은 요청이 표면마다 다른 사유를 받는다. acceptReport가 세운
+ * 규율과 같다.
+ *
+ * 식별자와 발급 시각은 본문이 아니다. 그것들은 저장의 사실이지 판정의 입력이
+ * 아니며, 본문에서 빼야 같은 요청이 언제나 같은 바이트를 낸다.
+ */
+function composeAssignment(request, pinned, context) {
+  const input = request || {};
+  const scope = context || {};
+  const none = { missing: [], unknownFunctionIds: [], overlaps: [] };
+
+  const missing = missingAssignmentFields(input);
+  // 기능 ID만 빠진 것을 따로 가르는 이유는 REQ-048이 그 규칙을 다른 규칙과 별도로
+  // 두었기 때문이다 — 근거 없는 작업을 만들지 않는다는 목적이 다르다. 두 코드가
+  // 같은 한 번의 호출 결과를 나눠 읽으므로 판정자는 여전히 하나이고, missing은
+  // 어느 쪽이든 그 호출의 전체 결과다.
+  if (missing.length === 1 && missing[0] === 'functionIds') {
+    return Object.assign({}, none, { code: 'missing-function-id', missing });
+  }
+  if (missing.length) return Object.assign({}, none, { code: 'missing-field', missing });
+
+  const declared = new Set((scope.declaredFunctionIds || []).map((id) => String(id)));
+  const unknownFunctionIds = input.functionIds.map((id) => String(id)).filter((id) => !declared.has(id));
+  if (unknownFunctionIds.length) return Object.assign({}, none, { code: 'unknown-function-id', unknownFunctionIds });
+
+  // 절차는 이름이 아니라 다이제스트로 고정된다. 고정하지 못한 채 발급하면 나중에
+  // 절차 본문이 바뀌었을 때 워커가 무엇을 따랐는지 말할 수 없다.
+  if (!pinned || emptyValue(pinned.digest) || emptyValue(pinned.name)) {
+    return Object.assign({}, none, { code: 'procedure-unpinnable' });
+  }
+
+  const overlaps = assignmentOverlaps(input.allowedPaths, scope.openAssignments);
+  if (overlaps.length) return Object.assign({}, none, { code: 'path-overlap', overlaps });
+
+  return {
+    goal: String(input.goal),
+    acceptance: input.acceptance.map((item) => ({ id: String(item.id), text: String(item.text) })),
+    functionIds: input.functionIds.map((id) => String(id)),
+    allowedPaths: input.allowedPaths.map((path) => String(path)),
+    forbidden: input.forbidden.map((item) => String(item)),
+    procedure: { name: String(pinned.name), revision: pinned.revision, digest: String(pinned.digest) },
+    reportSchema: String(input.reportSchema),
+    assignee: { kind: input.assignee.kind, id: String(input.assignee.id) }
+  };
+}
+
+// ── 원장 접기 ────────────────────────────────────────────────────────────
+
+const WORK_EVENT_TYPES = new Set(['assignment.issued', 'assignment.rejected', 'assignment.closed', 'report.submitted', 'report.rejected', 'report.verified']);
+
+/**
+ * 두 클라이언트의 조각이 임의 순서로 병합되므로 순서의 정본이 필요하다.
+ * `clientId`가 아니라 `eventId`로 가르는 이유는 한 클라이언트가 같은 밀리초에
+ * 둘을 쓸 수 있기 때문이다.
+ */
+function orderWorkEvents(events) {
+  return (Array.isArray(events) ? events.slice() : []).sort((left, right) => {
+    const a = String((left || {}).recordedAt || '');
+    const b = String((right || {}).recordedAt || '');
+    if (a !== b) return a < b ? -1 : 1;
+    return String((left || {}).eventId || '') < String((right || {}).eventId || '') ? -1 : 1;
+  });
+}
+
+/**
+ * 할당 원장을 접는다. 상태는 저장하지 않고 매번 다시 계산한다 — 추가 전용
+ * 원장에서 지난 사건을 고칠 수 없으므로, 대체와 닫힘은 계산으로만 표현된다.
+ *
+ * 거부는 기록되지만 상태를 만들지 않는다. `assignment.rejected`에 `assignmentId`가
+ * 없는 것이 그 사실의 표현이며, 그래서 부분 발급이 남지 않는다.
+ *
+ * 조각 하나가 깨져도 던지지 않는다. 던지면 깨진 조각 하나가 프로젝트 전체 목록을
+ * 감추고, 그 사실을 아무도 모른다.
+ */
+function foldAssignments(events) {
+  const assignments = new Map();
+  const rejections = [];
+  const diagnostics = [];
+
+  for (const event of orderWorkEvents(events)) {
+    const record = event || {};
+    if (!WORK_EVENT_TYPES.has(record.type)) {
+      diagnostics.push({ code: 'RDL-ASG-901', severity: 'warning', eventId: record.eventId || null, message: `알 수 없는 할당 사건 유형입니다: ${record.type || '(없음)'}` });
+      continue;
+    }
+    if (record.type === 'assignment.rejected' || record.type === 'report.rejected') {
+      rejections.push(record);
+      continue;
+    }
+
+    if (record.type === 'assignment.issued') {
+      if (assignments.has(record.assignmentId)) {
+        diagnostics.push({ code: 'RDL-ASG-902', severity: 'error', eventId: record.eventId || null, message: `같은 식별자로 두 번 발급됐습니다: ${record.assignmentId}` });
+        continue;
+      }
+      assignments.set(record.assignmentId, {
+        id: record.assignmentId,
+        goal: record.goal,
+        acceptance: record.acceptance || [],
+        functionIds: record.functionIds || [],
+        allowedPaths: record.allowedPaths || [],
+        forbidden: record.forbidden || [],
+        procedure: record.procedure || null,
+        reportSchema: record.reportSchema,
+        assignee: record.assignee || null,
+        state: 'open',
+        taskId: record.taskId === undefined ? null : record.taskId,
+        issuedBy: record.issuedBy || null,
+        issuedAt: record.recordedAt || null,
+        closedReason: null,
+        closedAt: null,
+        reports: []
+      });
+      continue;
+    }
+
+    const target = assignments.get(record.assignmentId);
+    if (!target) {
+      diagnostics.push({ code: 'RDL-ASG-903', severity: 'error', eventId: record.eventId || null, message: `발급되지 않은 할당을 가리킵니다: ${record.assignmentId || '(없음)'}` });
+      continue;
+    }
+
+    if (record.type === 'assignment.closed') {
+      target.state = 'closed';
+      target.closedReason = record.reason || null;
+      target.closedAt = record.recordedAt || null;
+      target.closedBy = record.closedBy || null;
+      continue;
+    }
+    if (record.type === 'report.submitted') {
+      target.reports.push(Object.assign({}, record.report || {}, {
+        recordedAt: record.recordedAt || null,
+        supersededBy: null,
+        procedureMatched: null,
+        verdict: null
+      }));
+      continue;
+    }
+    if (record.type === 'report.verified') {
+      const report = target.reports.find((item) => item.id === record.reportId);
+      if (!report) {
+        diagnostics.push({ code: 'RDL-ASG-904', severity: 'error', eventId: record.eventId || null, message: `접수되지 않은 보고의 판정입니다: ${record.reportId || '(없음)'}` });
+        continue;
+      }
+      report.verdict = { decision: record.decision, blocks: record.blocks || [], humanReasons: record.humanReasons || [], verifiedBy: record.verifiedBy || null };
+    }
+  }
+
+  for (const assignment of assignments.values()) {
+    // 대체는 저장할 수 없다. 추가 전용 원장에서 지난 사건을 표시하는 방법이 없으므로
+    // 마지막을 뺀 전부에 다음 보고의 식별자를 붙인다. 두 요구 — 대체 표시와 기록
+    // 보존 — 이 모두 지켜지고 아무것도 다시 쓰지 않는다.
+    for (const [index, report] of assignment.reports.entries()) {
+      const next = assignment.reports[index + 1];
+      report.supersededBy = next ? next.id : null;
+      // 저장하지 않고 계산한다. 할당의 고정 다이제스트도 보고의 다이제스트도
+      // 불변이므로 비교 결과가 어긋날 수 없고, 저장하면 입력은 틀릴 수 없는데
+      // 저장된 값만 틀릴 수 있는 상태가 생긴다.
+      report.procedureMatched = String((assignment.procedure || {}).digest || '') === String(report.procedureDigest || '');
+    }
+  }
+
+  return { assignments: Array.from(assignments.values()), rejections, diagnostics };
+}
+
 // literalPrefix와 ASSIGNMENT_FIELDS는 내보내지 않는다. patternsOverlap과
 // missingAssignmentFields가 안에서 쓰는 값이고, 밖에서 부를 일이 없는데 내보내면
 // 그것도 계약이 되어 바꿀 때마다 밖을 확인해야 한다.
@@ -273,5 +448,8 @@ module.exports = {
   unclaimedAcceptance,
   acceptReport,
   verifyReport,
+  composeAssignment,
+  orderWorkEvents,
+  foldAssignments,
   ContractViolation
 };

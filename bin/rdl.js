@@ -213,6 +213,19 @@ Usage:
                     [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
   rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
   rdl debug summary [--json]
+  rdl assignment issue <절차이름> --project <key> --client-id <id> --goal <목표> --acceptance <조건>...
+                      --function-id <기능-ID>... --allow-path <패턴>... --report-schema <이름>
+                      --procedure-revision <n> (--assignee-member <MEMBER-ID> | --assignee-client <client-id>)
+                      [--forbid <금지항목>]... [--task <TASK-ID>] [--json]
+  rdl assignment list --project <key> [--open] [--json]
+  rdl assignment show <ASG-ID> --project <key> [--json]
+  rdl assignment cancel <ASG-ID> --project <key> --client-id <id> --reason <사유> [--json]
+  rdl assignment report <ASG-ID> --project <key> --client-id <id> --outcome <done|blocked|rejected>
+                      --report-schema <이름> --procedure-digest <digest>
+                      [--met <AC-ID>=<증거>]... [--unmet <AC-ID>]... [--changed <경로>]...
+                      [--forbidden-touched <항목>]... [--reason <사유>] [--member <MEMBER-ID>] [--json]
+  rdl assignment reports <ASG-ID> --project <key> [--json]
+  rdl assignment verify <ASG-ID> --project <key> --client-id <id> [--json]
 
 
 Options:
@@ -224,7 +237,7 @@ Options:
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -249,7 +262,8 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
+      '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -298,6 +312,12 @@ function parseOperationArgs(argv) {
       else if (value === '--external-ref') options.externalRefs.push(argv[i]);
       else if (value === '--basis') options.basis.push(argv[i]);
       else if (value === '--trait') options.traits.push(argv[i]);
+      else if (value === '--allow-path') options.allowedPaths.push(argv[i]);
+      else if (value === '--forbid') options.forbidden.push(argv[i]);
+      else if (value === '--met') options.met.push(argv[i]);
+      else if (value === '--unmet') options.unmet.push(argv[i]);
+      else if (value === '--changed') options.changed.push(argv[i]);
+      else if (value === '--forbidden-touched') options.forbiddenTouched.push(argv[i]);
       else if (['--required', '--recommended', '--on-demand', '--disabled'].includes(value)) {
         const state = value === '--on-demand' ? 'onDemand' : value.slice(2);
         options.policy[state].push(...argv[i].split(',').filter(Boolean));
@@ -347,6 +367,116 @@ function printOperation(result, json) {
     if (typeof value === 'object') continue;
     process.stdout.write(`${key}: ${value}\n`);
   }
+}
+
+// 할당·보고는 assignee·procedure·acceptance·claims·blocks 같은 중첩 값을 갖는다.
+// printOperation은 중첩 객체를 건너뛰므로 그대로 쓰면 발급·검수 결과의 알맹이가
+// 사라진다. rdl task comments가 전용 프린터를 갖는 것과 같은 이유이고 같은 방법이다.
+//
+// --json은 계약 값만 내보낸다. 봉투의 clientId·schemaVersion·eventId·projectId·
+// canonicalDigest·type은 저장의 사실이지 판정의 입력이 아니므로 투영에서 뺀다.
+// list·show·reports는 src/assignment.js의 projectAssignment/projectReport가 이미
+// 이 투영을 하므로 여기서 다시 벗길 것이 없다 — issueAssignment가 돌려주는
+// `assignment`만 원 봉투를 그대로 담고 있어 예외적으로 손을 댄다.
+const ASSIGNMENT_ENVELOPE_KEYS = ['clientId', 'schemaVersion', 'eventId', 'projectId', 'canonicalDigest', 'type'];
+function stripAssignmentEnvelope(event) {
+  if (!event || typeof event !== 'object') return event;
+  const projected = Object.assign({}, event);
+  for (const key of ASSIGNMENT_ENVELOPE_KEYS) delete projected[key];
+  return projected;
+}
+function formatWorker(worker) {
+  return worker ? `${worker.kind}:${worker.id}` : '(없음)';
+}
+function formatProcedure(procedure) {
+  return procedure ? `${procedure.name}@${procedure.revision} digest=${procedure.digest}` : '(없음)';
+}
+function formatList(label, values) {
+  return `${label}: ${(values && values.length) ? values.join(', ') : '(없음)'}`;
+}
+function printAssignmentBody(assignment) {
+  process.stdout.write(`  목표: ${assignment.goal}\n`);
+  process.stdout.write(`  수임자: ${formatWorker(assignment.assignee)}\n`);
+  process.stdout.write(`  절차: ${formatProcedure(assignment.procedure)}\n`);
+  process.stdout.write(`  보고 스키마: ${assignment.reportSchema}\n`);
+  process.stdout.write(`  ${formatList('기능 ID', assignment.functionIds)}\n`);
+  process.stdout.write(`  ${formatList('수정 가능 경로', assignment.allowedPaths)}\n`);
+  if (assignment.forbidden && assignment.forbidden.length) process.stdout.write(`  ${formatList('금지', assignment.forbidden)}\n`);
+  process.stdout.write('  수용 조건:\n');
+  for (const item of assignment.acceptance || []) process.stdout.write(`    ${item.id} ${item.text}\n`);
+}
+// 거부 사건은 남되 상태를 만들지 않는다 — 그래도 사람은 어느 항목이 왜 막혔는지
+// 봐야 하므로 코드별로 실리는 배열을 전부 편다.
+function printAssignmentRejection(label, rejected) {
+  process.stdout.write(`${label}: ${rejected.code}\n`);
+  if (rejected.missing && rejected.missing.length) process.stdout.write(`  missing: ${rejected.missing.join(', ')}\n`);
+  if (rejected.unknownFunctionIds && rejected.unknownFunctionIds.length) process.stdout.write(`  unknownFunctionIds: ${rejected.unknownFunctionIds.join(', ')}\n`);
+  if (rejected.unclaimed && rejected.unclaimed.length) process.stdout.write(`  unclaimed: ${rejected.unclaimed.join(', ')}\n`);
+  if (rejected.overlaps && rejected.overlaps.length) {
+    for (const overlap of rejected.overlaps) process.stdout.write(`  overlap: ${overlap.assignmentId} paths=${overlap.paths.join(', ')}\n`);
+  }
+}
+function printReportLine(report) {
+  const claims = (report.claims || []).map((claim) => `${claim.id}=${claim.met ? '충족' : '미충족'}${claim.evidence ? `(${claim.evidence})` : ''}`).join(' ');
+  const superseded = report.supersededBy ? ` 대체됨→${report.supersededBy}` : '';
+  process.stdout.write(`  ${report.id} [${report.outcome}] 작성자=${formatWorker(report.worker)} 절차일치=${report.procedureMatched}${superseded}\n`);
+  if (claims) process.stdout.write(`    주장: ${claims}\n`);
+  if (report.changed && report.changed.length) process.stdout.write(`    변경: ${report.changed.join(', ')}\n`);
+  if (report.forbiddenTouched && report.forbiddenTouched.length) process.stdout.write(`    금지항목 접촉: ${report.forbiddenTouched.join(', ')}\n`);
+  if (report.reason) process.stdout.write(`    사유: ${report.reason}\n`);
+  if (report.verdict) {
+    process.stdout.write(`    검수: ${report.verdict.decision}\n`);
+    for (const block of report.verdict.blocks || []) process.stdout.write(`      막힘: ${block.code} ${block.target}\n`);
+    for (const reason of report.verdict.humanReasons || []) process.stdout.write(`      사람검토: ${reason.code} ${reason.detail || ''}\n`);
+  }
+}
+function printAssignmentIssue(result, json) {
+  if (result.changed) {
+    const projected = Object.assign({}, result, { assignment: stripAssignmentEnvelope(result.assignment) });
+    if (json) { process.stdout.write(`${JSON.stringify(projected, null, 2)}\n`); return; }
+    process.stdout.write(`할당 발급: ${result.assignmentId} (${result.project})\n`);
+    printAssignmentBody(projected.assignment);
+    if (projected.assignment.taskId) process.stdout.write(`  태스크: ${projected.assignment.taskId}\n`);
+    return;
+  }
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  printAssignmentRejection('할당 발급 거부', result.rejected);
+}
+function printAssignmentReportResult(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  if (result.changed) { process.stdout.write(`보고 접수: ${result.reportId} → ${result.assignmentId} (${result.project})\n`); return; }
+  printAssignmentRejection(`보고 거부 (${result.assignmentId})`, result.rejected);
+}
+function printAssignmentVerify(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  process.stdout.write(`검수: ${result.decision} (${result.assignmentId} / ${result.reportId})\n`);
+  for (const block of result.blocks || []) process.stdout.write(`  막힘: ${block.code} ${block.target}\n`);
+  for (const reason of result.humanReasons || []) process.stdout.write(`  사람검토: ${reason.code} ${reason.detail || ''}\n`);
+  process.stdout.write(`  닫힘: ${result.closed ? '예' : '아니오'}\n`);
+}
+function printAssignmentList(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  process.stdout.write(`할당 ${result.count}건 (${result.project})\n`);
+  for (const item of result.assignments) {
+    const task = item.task ? ` 태스크=${item.task.id}(${item.task.status || '?'})` : '';
+    process.stdout.write(`  ${item.id} [${item.state}] ${item.goal} :: 수임=${formatWorker(item.assignee)}${task} :: 보고 ${item.reportCount}건\n`);
+  }
+  for (const diagnostic of result.diagnostics || []) process.stdout.write(`  진단: ${diagnostic.code} ${diagnostic.message}\n`);
+}
+function printAssignmentShow(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  process.stdout.write(`${result.id} [${result.state}] (${result.project})\n`);
+  printAssignmentBody(result);
+  process.stdout.write(`  발급: ${formatWorker(result.issuedBy)} at ${result.issuedAt}\n`);
+  if (result.state === 'closed') process.stdout.write(`  닫힘: ${result.closedReason} at ${result.closedAt}\n`);
+  if (result.task) process.stdout.write(`  태스크: ${result.task.id} (${result.task.status || '?'})\n`);
+  process.stdout.write(`  보고 ${result.reports.length}건:\n`);
+  for (const report of result.reports) printReportLine(report);
+}
+function printAssignmentReports(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  process.stdout.write(`${result.assignmentId} 보고 ${result.reports.length}건 (${result.project})\n`);
+  for (const report of result.reports) printReportLine(report);
 }
 
 function parseArgs(argv) {
@@ -1084,6 +1214,95 @@ async function main() {
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
     else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, pending, log, procedures입니다.');
     return 0;
+  }
+  if (command === 'assignment') {
+    const subcommand = argv.shift();
+    if (!['issue', 'list', 'show', 'cancel', 'report', 'reports', 'verify'].includes(subcommand)) {
+      throw new Error('지원하는 assignment 하위 명령은 issue, list, show, cancel, report, reports, verify입니다.');
+    }
+    const options = parseOperationArgs(argv);
+    const assignmentStore = require('../src/assignment');
+
+    if (subcommand === 'issue') {
+      if (options.positional.length !== 1) throw new Error('rdl assignment issue <절차이름> 형식이 필요합니다.');
+      // 판정부(activeClient)가 담당자를 세우려면 등록된 Client ID가 있어야 한다.
+      // --assignee-client는 그것을 직접 준다. --assignee-member만 주어지면 그 사람을
+      // owner로 등록한 활성 human Client를 찾아 같은 자리를 채운다 — 두 플래그는
+      // "누구에게"를 말하는 두 방법일 뿐, 저장에는 언제나 Client ID가 필요하다.
+      if (Boolean(options.assigneeMember) === Boolean(options.assigneeClient)) {
+        throw new Error('--assignee-member 또는 --assignee-client 중 정확히 하나가 필요합니다.');
+      }
+      let assigneeClientId = options.assigneeClient;
+      if (!assigneeClientId) {
+        const candidates = listClients(options.root).clients.filter((entry) => entry.type === 'human' && entry.owner === options.assigneeMember && entry.status === 'active');
+        if (candidates.length !== 1) throw new Error(`--assignee-member ${options.assigneeMember}를 owner로 등록한 활성 human Client를 하나로 좁히지 못했습니다(${candidates.length}개). --assignee-client로 직접 지정하세요.`);
+        assigneeClientId = candidates[0].id;
+      }
+      // --acceptance는 태스크와 같은 규약을 쓴다. 식별자를 사람이 정하게 하면 같은
+      // 조건이 프로젝트마다 다른 이름을 갖는다.
+      const acceptance = options.acceptance.map((text, index) => ({ id: `AC-${String(index + 1).padStart(3, '0')}`, text }));
+      const result = assignmentStore.issueAssignment(options.root, {
+        project: options.project, clientId: options.clientId,
+        assigneeClientId, assigneeMember: options.assigneeMember || undefined,
+        taskId: options.task, goal: options.goal, acceptance,
+        functionIds: options.functionIds, allowedPaths: options.allowedPaths, forbidden: options.forbidden,
+        procedureName: options.positional[0],
+        procedureRevision: options.procedureRevision === undefined ? undefined : Number(options.procedureRevision),
+        reportSchema: options.reportSchema
+      });
+      printAssignmentIssue(result, options.json);
+      // 거부는 실패가 아니라 정의된 응답이지만 스크립트가 성공과 구별해야 한다.
+      return result.changed ? 0 : 1;
+    }
+    if (subcommand === 'list') {
+      if (options.positional.length) throw new Error('rdl assignment list에는 위치 인수를 사용할 수 없습니다.');
+      printAssignmentList(assignmentStore.listAssignments(options.root, { project: options.project, open: options.open }), options.json);
+      return 0;
+    }
+    if (options.positional.length !== 1) throw new Error(`rdl assignment ${subcommand}에는 ASG-ID 하나가 필요합니다.`);
+    const assignmentId = options.positional[0];
+    if (subcommand === 'show') {
+      printAssignmentShow(assignmentStore.showAssignment(options.root, { project: options.project, assignmentId }), options.json);
+      return 0;
+    }
+    if (subcommand === 'reports') {
+      // 읽기는 쓰지 않는다. showAssignment가 이미 보고 전부를 담아 돌려주므로
+      // 여기서는 그 결과를 다시 추려 보여줄 뿐 별도로 원장을 건드리지 않는다.
+      const shown = assignmentStore.showAssignment(options.root, { project: options.project, assignmentId });
+      printAssignmentReports({ project: shown.project, assignmentId: shown.id, reports: shown.reports }, options.json);
+      return 0;
+    }
+    if (subcommand === 'cancel') {
+      const result = assignmentStore.cancelAssignment(options.root, {
+        project: options.project, clientId: options.clientId, assignmentId, reason: options.reason
+      });
+      printOperation(result, options.json);
+      return 0;
+    }
+    if (subcommand === 'report') {
+      if (!['done', 'blocked', 'rejected'].includes(options.outcome)) throw new Error('--outcome은 done, blocked, rejected 중 하나여야 합니다.');
+      // 값 안에 =가 흔하지 않지만 :는 흔하다(예: test:search.test.js#title). 그래서
+      // <AC-ID>=<증거>로 가르고 첫 =에서만 나눈다.
+      const met = options.met.map((entry) => {
+        const separator = String(entry).indexOf('=');
+        if (separator < 0) throw new Error(`--met은 <AC-ID>=<증거> 형식이어야 합니다: ${entry}`);
+        return { id: entry.slice(0, separator), met: true, evidence: entry.slice(separator + 1) };
+      });
+      const unmet = options.unmet.map((id) => ({ id, met: false, evidence: '' }));
+      const result = assignmentStore.submitReport(options.root, {
+        project: options.project, clientId: options.clientId, member: options.member,
+        assignmentId, schema: options.reportSchema, outcome: options.outcome,
+        claims: met.concat(unmet), changed: options.changed, procedureDigest: options.procedureDigest,
+        reason: options.reason, forbiddenTouched: options.forbiddenTouched
+      });
+      printAssignmentReportResult(result, options.json);
+      return result.changed ? 0 : 1;
+    }
+    // verify
+    const verdict = assignmentStore.verifyLatestReport(options.root, { project: options.project, clientId: options.clientId, assignmentId });
+    printAssignmentVerify(verdict, options.json);
+    // 검수의 reject·needs-human도 1이다. pass만 0이다.
+    return verdict.decision === 'pass' ? 0 : 1;
   }
   if (command === 'test') {
     const subcommand = argv.shift();

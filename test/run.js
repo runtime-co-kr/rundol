@@ -76,6 +76,7 @@ require('./human-intervention.test');
 require('./task-link.test');
 require('./asset.test');
 require('./comment.test');
+require('./assignment.test');
 require('./diagnostic-rules.test');
 // 편집기 시험은 remark(ESM 전용)를 동적 import로 읽으므로 promise를 내보낸다.
 // 아래 사슬에 얹지 않고 따로 두는 이유는 순서가 아니라 격리다 — 앞 시험이 넘어지면

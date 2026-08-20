@@ -114,6 +114,32 @@ try {
   const context = spawnSync(process.execPath, [cli, 'context', '--project', 'crm', '--root', temporary, '--json'], { cwd: repository, encoding: 'utf8', env });
   assert.strictEqual(context.status, 0, context.stderr || context.stdout);
   ratchet('context', context.stdout);
+
+  // 할당 표면은 래칫이 아니라 예외 없음이다. 새로 만든 표면에 기준선을 주면
+  // 그 기준선이 곧 영구 예외가 된다 — 누출은 처음부터 없어야 한다.
+  //
+  // 하드코딩한 값이 아니라 실제 명령 출력을 재는 이유는, 투영이 빠뜨린 필드를
+  // 값 픽스처는 잡지 못하기 때문이다. 새는 것은 계약이 아니라 저장의 사실이다.
+  setup(process.execPath, [cli, 'client', 'register', 'boss-a', '--name', '통제자', '--type', 'human', '--owner', 'MEMBER-001', '--root', temporary, '--json']);
+  setup(process.execPath, [cli, 'client', 'register', 'agent-a', '--name', '워커', '--type', 'agent', '--owner', 'MEMBER-001', '--root', temporary, '--json']);
+  setup(process.execPath, [cli, 'doc', 'create', 'PRD', 'CRM 제품 요구사항', '--project', 'crm', '--owner', 'MEMBER-001',
+    '--scope', 'CRM 제품의 사용자 문제와 성공 기준', '--exclude', '개별 고객 등록 동작', '--root', temporary, '--json']);
+  setup(process.execPath, [cli, 'doc', 'create', 'REQ', '고객 검색', '--project', 'crm', '--owner', 'MEMBER-001',
+    '--scope', '등록된 고객을 조건으로 검색하는 동작', '--exclude', '고객 등록과 색인 구축',
+    '--function-id', 'WRK-01', '--related', 'PRD-001', '--root', temporary, '--json']);
+  const issued = spawnSync(process.execPath, [cli, 'assignment', 'issue', 'document.authored', '--project', 'crm',
+    '--client-id', 'boss-a', '--goal', '고객 검색을 구현한다', '--acceptance', '이름으로 찾는다',
+    '--function-id', 'WRK-01', '--allow-path', 'src/search/**', '--report-schema', 'report-v1',
+    '--procedure-revision', '1', '--assignee-client', 'agent-a', '--root', temporary, '--json'], { cwd: repository, encoding: 'utf8', env });
+  assert.strictEqual(issued.status, 0, issued.stderr || issued.stdout);
+  const assignmentId = JSON.parse(issued.stdout).assignmentId;
+
+  for (const args of [['assignment', 'show', assignmentId], ['assignment', 'list']]) {
+    const shown = spawnSync(process.execPath, [cli].concat(args, ['--project', 'crm', '--root', temporary, '--json']), { cwd: repository, encoding: 'utf8', env });
+    assert.strictEqual(shown.status, 0, shown.stderr || shown.stdout);
+    const leaked = leakedTokens(shown.stdout);
+    assert.deepStrictEqual(leaked, [], `rdl ${args.join(' ')}에 내부 개념이 샜습니다: ${leaked.join(', ')}`);
+  }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

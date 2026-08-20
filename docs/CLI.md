@@ -130,6 +130,19 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                     [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
   rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
   rdl debug summary [--json]
+  rdl assignment issue <절차이름> --project <key> --client-id <id> --goal <목표> --acceptance <조건>...
+                      --function-id <기능-ID>... --allow-path <패턴>... --report-schema <이름>
+                      --procedure-revision <n> (--assignee-member <MEMBER-ID> | --assignee-client <client-id>)
+                      [--forbid <금지항목>]... [--task <TASK-ID>] [--json]
+  rdl assignment list --project <key> [--open] [--json]
+  rdl assignment show <ASG-ID> --project <key> [--json]
+  rdl assignment cancel <ASG-ID> --project <key> --client-id <id> --reason <사유> [--json]
+  rdl assignment report <ASG-ID> --project <key> --client-id <id> --outcome <done|blocked|rejected>
+                      --report-schema <이름> --procedure-digest <digest>
+                      [--met <AC-ID>=<증거>]... [--unmet <AC-ID>]... [--changed <경로>]...
+                      [--forbidden-touched <항목>]... [--reason <사유>] [--member <MEMBER-ID>] [--json]
+  rdl assignment reports <ASG-ID> --project <key> [--json]
+  rdl assignment verify <ASG-ID> --project <key> --client-id <id> [--json]
 
 ```
 <!-- rdl-advanced:end -->
@@ -490,6 +503,35 @@ rdl run log --run RUN-... --project memo --json
 커서를 결정하는 이벤트는 Workspace의 `events/run/` 아래 클라이언트+런 샤드로 복제된다. 다른 머신은 공유 이벤트만 읽어도 같은 커서를 복원한다. 인수(takeover)는 이전 소유자의 정지가 보일 때만 자동이고, 정지 없이 중단된 런은 `--force --reason`으로 사람이 결정한다. 벽시계 시간은 어떤 인수 판정에도 쓰이지 않는다.
 
 `rdl sync`가 성공하면 `completed_local` 런이 `synced`로 전이한다 — 런의 완료는 저장이 아니라 병합 생존이다. sync 실패는 관련 런을 재개 가능한 정지로 전이시킨다. `rdl check`는 run 샤드의 파일명(`RDL-RUN-001`), Client 등록(`RDL-RUN-002`), 파일명과 이벤트 필드의 일치(`RDL-RUN-003`), JSONL 파싱(`RDL-RUN-004`)을 검사한다.
+
+## 할당과 보고
+
+```bash
+rdl assignment issue document.authored --project memo --client-id boss-a --goal "검색을 구현한다" \
+  --acceptance "제목으로 찾는다" --function-id WRK-01 --allow-path "src/search/**" \
+  --report-schema report-v1 --procedure-revision 1 --assignee-client agent-a --task TASK-...
+rdl assignment list --project memo --open
+rdl assignment show ASG-... --project memo
+rdl assignment report ASG-... --project memo --client-id agent-a --outcome done \
+  --report-schema report-v1 --procedure-digest <절차 다이제스트> \
+  --met AC-001=src/search/index.js --changed src/search/index.js
+rdl assignment verify ASG-... --project memo --client-id boss-a
+rdl assignment cancel ASG-... --project memo --client-id boss-a --reason "범위 변경"
+```
+
+할당은 `run start`가 사람이 이미 시작한 절차를 미는 것과 반대 방향이다 — 통제자가 할당을 발급하면 워커가 그것을 받아 일하고 보고한다. `assignment`는 Workspace 공유 이벤트 원장(`projects/workspace/events/assignment/`)에 사는 새 kind다. `.rundol/`은 프로젝트 `.gitignore`가 제외해 새 clone에 없고, 태스크 샤드는 제자리에서 덮어써 추가 전용 성질을 잃는다. 두 조건을 모두 지키는 자리가 run·verdict·decision·comment kind가 이미 서 있는 공유 원장뿐이다 — 그래야 `assignmentOverlaps`가 다른 기계에서 발급된 열린 할당까지 보고 겹침을 막는다.
+
+발급·접수·검수는 새 판정 규칙을 만들지 않는다. `src/worker-contract.js`의 `composeAssignment`·`acceptReport`·`verifyReport`가 정본이고, CLI는 부르기만 한다. 발급 거부는 `missing-function-id → missing-field → unknown-function-id → procedure-unpinnable → path-overlap` 순으로 정확히 하나의 코드로 떨어지고, `assignment.rejected` 사건에는 `assignmentId`가 없어 부분 발급이 남지 않는다. 절차는 이름이 아니라 그 시점의 다이제스트로 고정되므로 발급 뒤 절차 본문이 바뀌어도 `rdl assignment show`가 돌려주는 다이제스트는 변하지 않는다.
+
+워커 신원은 등록된 Client에서 파생하지 CLI 인자가 주장하지 않는다. 사람 Client는 `--member`(발급자)·`--assignee-member`(수임자)로 어느 구성원인지 밝히고, 에이전트 Client는 Client ID 그대로 워커 ID가 된다 — 그래야 접수 판정의 `sameWorker`가 담당자 확인에서 클라이언트 종류를 속일 수 없다. 발급 판정부는 Client ID 없이는 담당자를 세우지 못하므로 `--assignee-member`만 주면 그 사람을 `owner`로 등록한 활성 human Client를 찾아 담당자로 세운다. `--assignee-client`와는 정확히 하나만 지정한다.
+
+태스크 결박은 선택이다. `--task`로 묶어도 그 태스크가 반려되면 할당은 자동으로 닫히지 않는다 — 닫는 사건이 검수 통과와 통제자 취소 둘을 벗어나면 워커가 왜 할당을 잃었는지 알 길이 없어지기 때문이다. 대신 `rdl assignment list`·`show`가 태스크 상태를 읽는 시점에 계산해 실어 보여주고, 통제자가 보고 직접 취소를 결정한다.
+
+보고는 접수와 검수를 구분한다. 접수(`rdl assignment report`)는 "이 보고를 판정할 수 있는가"만 보고, 형식을 갖췄으면 절차 다이제스트가 달라도 접수된다 — 그 사실은 `procedureMatched: false`로 읽기에 남고 검수를 막지 않는다. 검수(`rdl assignment verify`)가 실제 통과 여부를 가른다. 같은 할당에 보고를 다시 내도 이전 보고는 사라지지 않고 `supersededBy`로 다음 보고를 가리킬 뿐이다 — 추가 전용 원장에서 지난 사건을 고칠 방법이 없기 때문이며, 그래서 접수된 보고를 바꾸는 명령은 없다. 정정은 언제나 새 보고다. `--met AC-001=<증거>`와 `--unmet AC-001`은 첫 `=`에서만 나눈다 — 증거 문자열에 `:`가 흔하기 때문이다. 증거를 빈 값으로 주면(`--met AC-001=`) 검수에서 `missing-evidence`로 막힌다.
+
+일곱 하위 명령 모두 `rdl --help`에는 없고 `rdl advanced`에만 나온다. 발급하는 쪽은 통제자, 보고하는 쪽은 워커이고 둘 다 매일 이 명령을 치는 사람이 아니며, 일곱 중 넷(`issue`·`cancel`·`report`·`verify`)이 `--client-id`를 요구해 사람 표면에 남기면 실행 원장·어댑터와 같은 내부 개념이 새어 나간다. `rdl help --json`은 두 표면을 합쳐 돌려주므로 에이전트의 발견 경로는 그대로다.
+
+종료 코드는 인자 오류가 2, 발급·접수 거부는 1이다 — 거부는 실패가 아니라 정의된 응답이지만 스크립트가 성공과 구별해야 한다. 검수는 `reject`·`needs-human`이 1이고 `pass`만 0이다. `rdl assignment list`·`show`·`reports`는 원장을 읽기만 하며 아무것도 쓰지 않는다.
 
 ## 문서 생성
 

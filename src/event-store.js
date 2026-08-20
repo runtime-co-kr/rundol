@@ -23,7 +23,11 @@ const KINDS = {
   approval: { flat: false, pattern: new RegExp(`^approval-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
   // 태스크 댓글. 두 세션이 같은 태스크에 동시에 쓰므로 Client별 조각으로 나뉘고,
   // append-only라 병합이 그대로 푼다.
-  comment: { flat: false, pattern: new RegExp(`^comment-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
+  comment: { flat: false, pattern: new RegExp(`^comment-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
+  // 작업 할당과 보고. kind를 하나로 두는 이유는 닫힘과 대체가 같은 fold에서
+  // 결정되어야 하기 때문이다 — 둘로 나누면 두 저장소를 시계로 엮어야 하고,
+  // 시계로 엮는 순서는 run 원장이 이미 한 번 무너진 자리다.
+  assignment: { flat: false, pattern: new RegExp(`^assignment-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
 };
 
 function kindDefinition(kind) {

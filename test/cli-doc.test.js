@@ -69,7 +69,7 @@ assert(advancedUsage, 'rdl advanced Usage 블록을 찾지 못했습니다.');
 const advancedDocumented = /<!-- rdl-advanced:start -->\n```text\n([\s\S]*?)\n```\n<!-- rdl-advanced:end -->/.exec(document);
 assert(advancedDocumented, 'docs/CLI.md 고급 명령 동기화 블록을 찾지 못했습니다.');
 
-for (const hidden of ['rdl run ', 'rdl adapter ', 'rdl verify ', 'rdl decision ', 'rdl delegation ', 'rdl client ', 'rdl action ', 'rdl debug ', 'rdl workset ']) {
+for (const hidden of ['rdl run ', 'rdl adapter ', 'rdl verify ', 'rdl decision ', 'rdl delegation ', 'rdl client ', 'rdl action ', 'rdl debug ', 'rdl workset ', 'rdl assignment ']) {
   assert(!help.includes(`  ${hidden}`), `사람 표면에 내부 개념 명령이 남았습니다: ${hidden.trim()}`);
   assert(advanced.includes(`  ${hidden}`), `고급 표면에서 사라졌습니다: ${hidden.trim()}`);
 }
