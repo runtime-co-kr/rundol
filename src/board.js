@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
@@ -13,6 +14,7 @@ const { readTaskStore, shardFiles, clientId, TERMINAL_TASK_STATES } = require('.
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus } = require('./collaboration-store');
 const { addComment, listComments } = require('./comment');
+const { addAsset } = require('./asset');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
@@ -73,6 +75,40 @@ function projectAsset(response, projectRoot, relative) {
     'X-Frame-Options': 'DENY'
   });
   response.end(body);
+}
+
+/**
+ * 편집기에서 붙여 넣은 그림을 자산 디렉터리에 들인다.
+ *
+ * 검증과 축소는 `rdl asset add`가 이미 한다. 여기서 그 판정을 다시 쓰면 명령줄로
+ * 넣은 그림과 화면으로 넣은 그림이 서로 다른 규격을 갖게 되고, 그 차이는 자산
+ * 한계 검사에서야 드러난다. 그래서 바이트를 임시 파일로 내려놓고 같은 함수를 부른다.
+ *
+ * 임시 파일은 자산 디렉터리가 아니라 OS 임시 자리에 둔다. 자산 디렉터리에 두면
+ * 실패한 업로드가 "어느 문서도 참조하지 않는 자산"으로 남아 검사가 그것을 센다.
+ */
+function addProjectAsset(root, projectKey, body) {
+  const name = String(body.name || '').trim();
+  if (!name) inputError('그림의 이름이 필요합니다.');
+  const encoded = String(body.data || '');
+  if (!encoded) inputError('그림 내용이 비어 있습니다.');
+  const bytes = Buffer.from(encoded, 'base64');
+  if (!bytes.length) inputError('그림을 해석하지 못했습니다.');
+  if (bytes.length > MAX_IMAGE_BYTES) inputError('그림이 너무 큽니다.');
+
+  const extension = path.extname(name).toLowerCase() || '.png';
+  const temporary = path.join(os.tmpdir(), `rundol-asset-${process.pid}-${crypto.randomBytes(6).toString('hex')}${extension}`);
+  fs.writeFileSync(temporary, bytes);
+  try {
+    return addAsset(root, temporary, { project: projectKey, as: name, maxEdge: body.maxEdge });
+  } catch (error) {
+    // 형식이 아니거나 규격을 넘긴 것은 서버가 잘못한 일이 아니라 보낸 것이 잘못된
+    // 경우다. 500으로 돌려주면 화면은 "서버가 죽었다"로 읽고, 사람은 다시 눌러 본다.
+    if (!error.statusCode) error.statusCode = 400;
+    throw error;
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
 }
 
 function boardConfig(start, projectKey) {
@@ -204,14 +240,19 @@ function packageAsset(response, packageName, relativePath) {
   response.end(body);
 }
 
-function requestBody(request) {
+// 그림은 64KB 상한에 걸린다. 화면 갈무리 한 장이 그보다 크고, 그래서 이 한계는
+// 그림을 넣는 경로에서는 "요청이 크다"가 아니라 "그림을 못 넣는다"가 된다.
+// 서빙 쪽 한계와 같은 값을 쓴다 — 넣을 수 있는 것과 볼 수 있는 것이 달라지면
+// 넣어 놓고 못 보는 그림이 생긴다.
+function requestBody(request, limit) {
+  const cap = limit || 64 * 1024;
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     request.on('data', (chunk) => {
       size += chunk.length;
-      if (size > 64 * 1024) {
-        reject(new Error('요청 본문은 64KB를 넘을 수 없습니다.'));
+      if (size > cap) {
+        reject(new Error(`요청 본문은 ${Math.round(cap / 1024)}KB를 넘을 수 없습니다.`));
         request.destroy();
         return;
       }
@@ -606,6 +647,13 @@ function createBoardServer(start, options) {
         return task ? json(response, 200, task) : json(response, 404, { error: '태스크를 찾지 못했습니다.' });
       }
       if (request.method !== 'GET' && request.headers['x-rundol-token'] !== token) return json(response, 403, { error: '유효하지 않은 로컬 세션입니다.' });
+      // 그림을 들이는 자리. 조회는 경로가 이름을 담고, 들이기는 이름이 본문에 있다.
+      // 토큰 검사 뒤에 둔다 — 파일을 만드는 경로가 그 앞에 있으면 안 된다.
+      const projectAssetsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/assets$/u);
+      if (request.method === 'POST' && projectAssetsMatch) {
+        const body = await requestBody(request, MAX_IMAGE_BYTES * 2);
+        return json(response, 200, addProjectAsset(config.root, projectAssetsMatch[1], body));
+      }
       if (request.method === 'POST' && url.pathname === '/api/clients') {
         const body = await requestBody(request);
         return json(response, 201, registerClient(config.root, body));

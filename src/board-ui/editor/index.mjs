@@ -24,6 +24,7 @@ import { toolbar } from './toolbar.mjs';
 import { placeholder } from './placeholder.mjs';
 import { ListItemView } from './list-item-view.mjs';
 import { tableControls } from './table-controls.mjs';
+import { imageDrop } from './image-drop.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -104,7 +105,8 @@ export function openEditor(mount, markdown, options = {}) {
         linkPicker({ candidates: options.linkCandidates || [] }),
         toolbar(),
         placeholder(),
-        tableControls()
+        tableControls(),
+        imageDrop({ upload: options.uploadImage, onMessage: options.onMessage })
       ]
     }),
     // 체크 상자를 눌러 상태를 바꾸려면 항목이 자기 DOM을 가져야 한다.

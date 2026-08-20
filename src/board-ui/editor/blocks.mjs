@@ -48,7 +48,10 @@ export const BLOCK_GROUPS = [
       { label: '표', hint: '3열 표', keywords: ['표', 'table', '테이블'], make: () => emptyTable(3, 2) },
       { label: '코드', hint: '``` 블록', keywords: ['코드', 'code', 'pre'], make: () => schema.nodes.code_block.create({ lang: '' }) },
       { label: 'mermaid', hint: '다이어그램', keywords: ['mermaid', '다이어그램', 'diagram', 'erd', 'flow'], make: () => schema.nodes.code_block.create({ lang: 'mermaid' }) },
-      { label: '구분선', hint: '---', keywords: ['구분', 'divider', 'hr', 'rule'], make: () => schema.nodes.horizontal_rule.create() }
+      { label: '구분선', hint: '---', keywords: ['구분', 'divider', 'hr', 'rule'], make: () => schema.nodes.horizontal_rule.create() },
+      // 그림은 넣을 노드가 아니라 할 일이다. 파일을 고르고 자산으로 들인 뒤에야
+      // 참조가 생기므로, 다른 항목처럼 make로 만들 수 없다.
+      { label: '그림', hint: '![[...]]', keywords: ['그림', 'image', 'img', '사진', '자산'], action: 'image', make: () => null }
     ]
   }
 ];

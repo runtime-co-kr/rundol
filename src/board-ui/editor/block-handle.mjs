@@ -10,6 +10,7 @@
 
 import { Plugin, PluginKey, NodeSelection, Selection } from 'prosemirror-state';
 import { menuItems, madeNodes, selectInside } from './blocks.mjs';
+import { pickImage } from './image-drop.mjs';
 
 export const blockHandleKey = new PluginKey('rundol-block-handle');
 
@@ -151,6 +152,7 @@ class BlockHandleView {
 
   insert(entry) {
     if (!this.target) return this.closeMenu();
+    if (entry.action === 'image') { this.closeMenu(); return pickImage(this.view); }
     const at = this.target.pos + this.target.node.nodeSize;
     const tr = this.view.state.tr.insert(at, madeNodes(entry));
     this.view.dispatch(selectInside(tr, Selection, at).scrollIntoView());

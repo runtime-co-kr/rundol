@@ -1165,6 +1165,15 @@ function renderDocumentCheck(result) {
   }
 }
 
+// 편집기가 넘긴 그림을 자산으로 들인다. 검증과 축소는 서버의 rdl asset add가 한다.
+async function uploadImage(input) {
+  return api(projectPath('/assets'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+    body: JSON.stringify({ name: input.name, data: input.data })
+  });
+}
+
 function closeBlockEditor() {
   if (!blockEditor) return;
   clearTimeout(checkTimer);
@@ -1189,7 +1198,7 @@ async function enterEditing(item) {
     el('document-editor').hidden = true;
     el('document-editor-surface').hidden = false;
     el('document-editor-surface').append(frontmatterNotice());
-    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates(), contractSections: sectionsFor(item), onChange: () => scheduleDocumentCheck(item) });
+    blockEditor = window.RundolEditor.openEditor(el('document-editor-surface'), item.body, { linkCandidates: linkCandidates(), contractSections: sectionsFor(item), onChange: () => scheduleDocumentCheck(item), uploadImage, onMessage: message });
     blockEditor.view.focus();
     return;
   }

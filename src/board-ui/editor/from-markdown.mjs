@@ -21,6 +21,36 @@ const processor = unified()
   // 그러면 왕복은 되지만 링크 대상을 알 수 없어 @ 선택기도 검증도 못 세운다.
   .use(remarkWikiLink, { aliasDivider: '|' });
 
+// 자산 참조 `![[이름]]`을 글자에서 뽑아 노드로 만든다.
+//
+// remark-wiki-link는 `[[이름]]`만 안다. 앞에 느낌표가 붙으면 micromark가 그것을
+// 그림 시작으로 보아 위키링크 확장이 걸리지 않고, 결과는 통째로 글자다. 글자로 두면
+// 되쓸 때 `[`가 이스케이프되어 `!\[\[…`가 되고 참조가 사라진다. 실측에서 저장소의
+// 자산 참조 6건이 그 자리에 있었다.
+//
+// 확장자를 가리지 않고 모든 `![[…]]`를 노드로 만든다. 자산인지 문서인지는 검사
+// 규칙이 정하는 것이고, 여기서 그 판정을 다시 하면 두 곳이 같은 글자를 다르게
+// 읽는 날이 온다. 편집기가 지켜야 하는 것은 바이트이고, 그것은 `!`를 붙여 되쓰면
+// 지켜진다.
+const ASSET_EMBED = /!\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/gu;
+
+function assetEmbeds(value, marks) {
+  ASSET_EMBED.lastIndex = 0;
+  if (!ASSET_EMBED.test(value)) return [schema.text(value, marks)];
+  ASSET_EMBED.lastIndex = 0;
+  const out = [];
+  let at = 0;
+  let match = ASSET_EMBED.exec(value);
+  while (match) {
+    if (match.index > at) out.push(schema.text(value.slice(at, match.index), marks));
+    out.push(schema.nodes.wiki_link.create({ target: match[1], alias: match[2] || null, embed: true }));
+    at = match.index + match[0].length;
+    match = ASSET_EMBED.exec(value);
+  }
+  if (at < value.length) out.push(schema.text(value.slice(at), marks));
+  return out;
+}
+
 function marksFor(type, mark) {
   return mark ? mark.concat(schema.marks[type].create()) : [schema.marks[type].create()];
 }
@@ -29,7 +59,7 @@ function marksFor(type, mark) {
 function inline(node, marks = []) {
   switch (node.type) {
     case 'text':
-      return node.value ? [schema.text(node.value, marks)] : [];
+      return node.value ? assetEmbeds(node.value, marks) : [];
     case 'inlineCode':
       return [schema.text(node.value, marks.concat(schema.marks.code.create()))];
     case 'strong':

@@ -9,6 +9,7 @@
 import { Plugin, PluginKey, Selection } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { filterBlocks, menuItems, madeNodes, selectInside } from './blocks.mjs';
+import { pickImage } from './image-drop.mjs';
 
 export const slashMenuKey = new PluginKey('rundol-slash-menu');
 
@@ -60,6 +61,13 @@ class SlashMenuView {
 
   choose(entry) {
     if (!entry || this.from == null) return this.close();
+    if (entry.action === 'image') {
+      // 슬래시와 이어 친 글자는 지운다. 그림이 들어갈 자리에 명령이 남으면 안 된다.
+      const to = this.from + 1 + this.query.length;
+      this.view.dispatch(this.view.state.tr.delete(this.from, Math.min(to, this.view.state.doc.content.size)));
+      this.close();
+      return pickImage(this.view);
+    }
     const { state } = this.view;
     // `/`와 이어 친 글자를 지우고 그 자리를 고른 블록으로 바꾼다.
     const to = this.from + 1 + this.query.length;
