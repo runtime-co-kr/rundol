@@ -17,6 +17,8 @@ Usage:
            [--profile <name>] [--defaults] [--questions] [--primary-branch <name>] [--trait <name>] [--root <path>] [--json]
   rdl attach [project-key] [--remote <name>] [--root <path>] [--json]
   rdl detach <project-key> [--remote <name>] [--root <path>] [--json]
+  rdl session start [--session-id <id>] [--path <경로>] [--from <ref>] [--root <path>] [--json]
+  rdl session list|end [--session-id <id>] [--force] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
   rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
   rdl contract show|next|check|trace --project <key> [--json]
@@ -249,7 +251,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as'].includes(value)) {
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as', '--session-id', '--path', '--from'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -674,6 +676,22 @@ async function main() {
       for (const item of result.attached || []) initObsidian(result.root, { project: item.project, force: false });
       result.contracts = (result.attached || []).map((item) => loadDocumentContract(result.root, item.project));
     }
+    printOperation(result, options.json);
+    return 0;
+  }
+  // 세션 작업 공간은 프로젝트를 요구하지 않는다. 나누는 대상이 문서가 아니라 코드의
+  // index와 HEAD이고, 그것은 저장소 하나에 하나뿐이기 때문이다.
+  if (command === 'session') {
+    const subcommand = argv.shift();
+    if (!['start', 'list', 'end'].includes(subcommand)) throw new Error('지원하는 세션 하위 명령은 start, list, end입니다.');
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error(`rdl session ${subcommand}에는 위치 인수를 사용할 수 없습니다.`);
+    const session = require('../src/session');
+    const result = subcommand === 'start'
+      ? session.startSession(options.root, { sessionId: options.sessionId, path: options.path, from: options.from })
+      : subcommand === 'list'
+        ? session.listSessions(options.root)
+        : session.endSession(options.root, { sessionId: options.sessionId, force: options.force });
     printOperation(result, options.json);
     return 0;
   }
