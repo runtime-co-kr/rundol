@@ -2562,7 +2562,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "제약 종류 5종의 해석기가 구현되고 각각 진단 코드를 갖는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "test 유형이 데이터 정의로 표현되고 하드코딩 분기가 제거된다",
@@ -2583,7 +2583,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:45.676Z",
-      "updatedAt": "2026-08-20T23:24:58.498Z",
+      "updatedAt": "2026-08-20T23:25:02.834Z",
       "statusChangedAt": "2026-08-20T23:24:58.498Z",
       "externalRefs": [],
       "project": "rundol"
