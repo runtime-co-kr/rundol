@@ -96,6 +96,51 @@
       "statusChangedAt": "2026-08-21T04:05:42.600Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-0XP26XSF": {
+      "title": "[개선] 승인 화면에서 대상 문서를 읽고 승인한다",
+      "summary": "사람 게이트 승인 모달이 런의 목표·지나온 스텝·대상 문서 본문을 문서 화면과 같은 방식으로 보여 준다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-067",
+        "TST-039"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "GET /api/projects/:key/runs/:runId가 목표·태스크·대상 문서 ID·사건 이력을 돌려주고 원장을 바꾸지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "승인 모달이 대상 문서 본문을 markdown·mermaid 포함해 문서 화면과 같은 경로로 그린다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "대상 문서가 여럿이면 탭으로 고르고, 찾지 못하면 그 사실을 말한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "문서 화면에서 열기로 같은 문서를 본 화면으로 이어 간다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "test/board-run.test.js가 상세 조회 시나리오(S11~S13)를 검증한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T06:48:58.539Z",
+      "updatedAt": "2026-08-21T06:48:58.539Z",
+      "statusChangedAt": "2026-08-21T06:48:58.539Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
