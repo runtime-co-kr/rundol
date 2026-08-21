@@ -9,7 +9,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -43,8 +43,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:00:27.298Z",
-      "updatedAt": "2026-08-21T04:00:27.298Z",
-      "statusChangedAt": "2026-08-21T04:00:27.298Z",
+      "updatedAt": "2026-08-21T04:00:33.454Z",
+      "statusChangedAt": "2026-08-21T04:00:33.454Z",
       "externalRefs": [],
       "project": "rundol"
     }
