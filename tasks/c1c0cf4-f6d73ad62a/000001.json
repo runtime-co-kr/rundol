@@ -34,7 +34,7 @@
         },
         "AC-004": {
           "text": "REQ-019와 TST-009에 화면 등록 경로가 기록된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "rdl check --strict와 npm test가 통과한다",
@@ -43,7 +43,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:00:27.298Z",
-      "updatedAt": "2026-08-21T04:23:09.979Z",
+      "updatedAt": "2026-08-21T04:23:13.765Z",
       "statusChangedAt": "2026-08-21T04:00:33.454Z",
       "externalRefs": [],
       "project": "rundol"
