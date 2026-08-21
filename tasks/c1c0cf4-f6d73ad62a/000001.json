@@ -141,6 +141,48 @@
       "statusChangedAt": "2026-08-21T06:49:10.722Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-GGVKZC04": {
+      "title": "[기능] 태스크 댓글에 답글과 지라식 표면",
+      "summary": "댓글 원장에 1단계 답글을 더하고, 아바타·상대시간·펼침 입력칸·문서 편집기 재사용으로 댓글 표면을 다시 짠다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "답글이 원장에 parentId로 남고 답글의 답글은 같은 줄기 뿌리로 접힌다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "뿌리 댓글에는 parentId 키가 생기지 않아 지난 이벤트의 다이제스트가 흔들리지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "명령줄과 Board가 같은 답글 판정을 쓴다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "댓글 입력은 문서와 같은 편집기를 써서 그림과 문서 링크가 들어간다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "REQ와 TST에 댓글과 답글 계약이 기록된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T07:09:07.653Z",
+      "updatedAt": "2026-08-21T07:09:07.653Z",
+      "statusChangedAt": "2026-08-21T07:09:07.653Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
