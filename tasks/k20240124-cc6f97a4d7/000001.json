@@ -2475,7 +2475,7 @@
         },
         "AC-005": {
           "text": "업무 유형 정의에서 목록·필터·입력·연결이 파생되는 범위와 그 경계가 화면에 규정된다",
-          "done": false
+          "done": true
         },
         "AC-006": {
           "text": "각 기능 ID에 대응하는 TST 시나리오가 존재하고 rdl check --strict가 통과한다",
@@ -2484,7 +2484,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:10:36.780Z",
-      "updatedAt": "2026-08-20T16:22:41.011Z",
+      "updatedAt": "2026-08-21T00:17:21.835Z",
       "statusChangedAt": "2026-08-20T16:22:15.958Z",
       "externalRefs": [],
       "project": "rundol"
