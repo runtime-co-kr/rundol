@@ -11,6 +11,7 @@ Treat lightweight delivery as an implementation choice, never as permission to r
 
 - Run `rdl context --json` before exploring the repository. One call returns the workspace, current branch, diagnostics, open tasks, and the next actions computed from that state. Read it instead of working the state out from files.
 - When a command or flag is unknown, run `rdl help --json`. It is derived from the CLI's own usage text, so it cannot drift; never read the CLI source to discover a command or its flags.
+- Run `rdl run pending --json` when you start and whenever you are about to pick up new work. It answers "what is waiting for someone right now" across every project in the workspace, in one call, and prints nothing when nothing is waiting. A run outlives your session — the ledger is recomputed on every read — so work you left halted last time is still there, and nobody else will notice it for you.
 - Claim a task before changing canonical documents or code. `rdl task list --open --json` to see what exists, `rdl task set <TASK-ID> --status doing --owner <MEMBER-ID>` to take it, or `rdl task add` when none fits. Record evidence with `rdl task acceptance <TASK-ID> <AC-ID> --done` as it lands, and set `--status done` only after `rdl check --strict` passes and the change is synced. Working without a task is an exception you state out loud, not a shortcut you take quietly.
 
 ## Decisions that need a human
@@ -23,6 +24,27 @@ Ask before doing any of these, and record the answer where the work lives — a 
 - Anything the request did not cover: a scope change, a new dependency, or a second problem discovered mid-work.
 
 Do not ask what the tools already answer. If `rdl check` decides it, run the check instead of asking; if a safe default exists, take it and say which one you took. A long question list is a defect in the defaults, not diligence.
+
+## Runs and assignments
+
+A run binds a goal, its steps, its gates and its outcome under one `RUN-ID`. Progress is not stored — the ledger is append-only and every read folds it again — so a run survives a session ending, a crash, or a different machine picking it up. That is the point: you are not the thing that keeps the work alive.
+
+Start one with `rdl run start <procedure> --project <key> --client-id <id>`, naming the task or artifact it serves; `rdl run procedures --json` lists what you may start. A run that stopped is resumed with `rdl run resume` — read the halt reason `rdl run pending` printed first, because most reasons need the underlying problem fixed before the cursor will move, and `--grant-attempts` exists for exhausted retry budgets, not for skipping the failure.
+
+**The execution unit is decided by the procedure, not by preference.** `rdl run drive` refuses any procedure that is not pinned `idempotent: true`, so it cannot run authoring at all.
+
+- **Authoring** (`document.authored`, `idempotent: false`) — walk it yourself. `rdl run next --run <RUN-ID> --project <key> --json` returns the cursor step and how to execute it; report completion with `rdl run step`, and let `rdl run gate` run gate steps so the exit code decides, not your reading of the output. Authoring is not idempotent because what to write — type, title, single responsibility, exclusions — is human intent, and a procedure must not invent it.
+- **Verification** (`document.verified`, `idempotent: true`) — `rdl run drive` carries it from the canonical cursor to the next explicit boundary in one call. It pins the revision at run start and requires a clean worktree, so do not author into the same run.
+
+Do not report a step you did not perform, and never pass `--force` to move a cursor you could not move honestly — a forced step is recorded and blocks sync until a human resolves it.
+
+**Human gates stop you, and that is the design.** `rdl run approve` accepts only a `human` Client; your agent credential is refused there by contract, not by accident. When `rdl run pending` shows `human-gate`, surface it to the person with the command it printed. Do not look for a way around it.
+
+**Ownership only moves between machines.** A run is owned by the Client that drives it, and `rdl run takeover` is automatic only when the previous owner is visibly halted. You do not need a handoff to resume your own machine's work — use the same Client and the process lock keeps two drivers apart. Reach for `--force --reason` only when a machine is genuinely gone; a forced takeover recorded for routine reasons destroys the signal it exists to carry.
+
+Assignments are how work leaves the person who planned it. `rdl assignment issue` binds a goal, acceptance criteria, function IDs, the paths a worker may change, and a pinned procedure digest; the issuing side refuses overlapping paths so two workers never edit the same files. Workers submit with `rdl assignment report` and the controller runs `rdl assignment verify`. Acceptance and verification are separate questions — a malformed report is refused at intake, a well-formed report that fails its criteria is rejected at verification — so never collapse the two when you explain a result. `rdl assignment list --open --json` shows what is outstanding.
+
+Human and agent workers use the same commands and the same judge. Your worker identity is derived from your registered Client type; do not claim it, and do not ask for a way to claim it.
 
 ## Workflow
 
