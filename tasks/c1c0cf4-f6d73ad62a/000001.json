@@ -71,7 +71,7 @@
         },
         "AC-002": {
           "text": "POST /api/projects/:key/runs/:runId/approve가 활성 human Client와 사유를 갖춘 요청만 기록한다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "승인 화면이 활성 human Client만 승인자로 제시하고 기기 작성자 신원은 제시하지 않는다",
@@ -92,7 +92,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:05:35.999Z",
-      "updatedAt": "2026-08-21T04:30:42.958Z",
+      "updatedAt": "2026-08-21T04:30:46.850Z",
       "statusChangedAt": "2026-08-21T04:05:42.600Z",
       "externalRefs": [],
       "project": "rundol"
