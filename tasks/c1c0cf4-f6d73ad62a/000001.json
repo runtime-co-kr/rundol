@@ -79,7 +79,7 @@
         },
         "AC-004": {
           "text": "하네스 자식으로 실행한 Board는 조회는 제공하고 승인은 거부한다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "test/board-run.test.js가 TST-039의 시나리오를 자동 검증하고 종료 코드 0이다",
@@ -92,7 +92,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:05:35.999Z",
-      "updatedAt": "2026-08-21T04:30:50.845Z",
+      "updatedAt": "2026-08-21T04:30:54.303Z",
       "statusChangedAt": "2026-08-21T04:05:42.600Z",
       "externalRefs": [],
       "project": "rundol"
