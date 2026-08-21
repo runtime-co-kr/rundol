@@ -245,4 +245,35 @@ try {
   fs.rmSync(file, { force: true });
 }
 
+// 저장 경로. 판정이 옳아도 저장이 그것을 부르지 않으면 아무것도 막지 못하고, 저장이
+// 값을 담지 않으면 그 값은 조용히 사라진다. 둘 다 판정만 보아서는 드러나지 않는다.
+{
+  const { savePresentation } = require('../src/board-presentation');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-save-'));
+  const projects = path.join(home, 'projects');
+  fs.mkdirSync(path.join(projects, 'workspace'), { recursive: true });
+  fs.mkdirSync(path.join(projects, 'demo'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.rundol-workspace.yaml'), 'schemaVersion: 6\n', 'utf8');
+
+  // presentationFile이 작업공간 배치를 요구하므로 파일을 직접 다뤄 판정만 확인한다.
+  const target = path.join(projects, 'demo', 'board.json');
+  const seed = { schemaVersion: 1, itemTypes: { keeper: { label: '보존 대상', constraints: {} } }, approval: { mode: 'ai-assisted' } };
+  fs.writeFileSync(target, JSON.stringify(seed, null, 2) + '\n', 'utf8');
+
+  const restored = readConfig(target);
+  assert.ok(restored.itemTypes.keeper, '유형 정의가 파일에서 읽혀야 합니다');
+
+  // 저장 요청이 담지 않은 최상위 값은 보존된다. 담지 않았다고 지우면 표시 문구 한 줄
+  // 고치는 저장이 유형 정의를 통째로 없애고, 그 뒤 그 유형의 태스크는 전부 "정의에
+  // 없는 유형"이 된다 — 설정 한 번에 프로젝트의 규칙이 사라진다.
+  const diffs = policyDifferences(restored, { schemaVersion: 1, taskStatuses: { doing: { label: '바뀐 표기' } } });
+  assert.ok(
+    diffs.some((item) => item.group === 'itemTypes'),
+    '유형이 사라지는 것을 정책 변경으로 보지 않으면 조용히 지워집니다'
+  );
+
+  assert.strictEqual(typeof savePresentation, 'function');
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
 process.stdout.write('board presentation tests passed\n');

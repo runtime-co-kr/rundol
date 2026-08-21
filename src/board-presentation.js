@@ -475,6 +475,20 @@ function savePresentation(start, projectKey, scope, input, options) {
     // 저장이 승인 모드를 조용히 없애면, 없어진 것을 아무도 알아채지 못한다.
     next.approval = previous.approval;
   }
+  // 최상위 맵도 같은 이유로 보존한다. 담지 않으면 표시 문구 한 줄 고치는 저장이
+  // 유형 정의를 통째로 지우고, 지워진 뒤에는 그 유형의 태스크가 모두 "정의에 없는
+  // 유형"이 된다 — 설정 한 번에 프로젝트의 규칙이 사라진다.
+  for (const mapKey of MAP_KEYS) {
+    if (input && input[mapKey] !== undefined) {
+      if (mapKey === 'itemTypes') {
+        try { normalizeItemTypes(input[mapKey]); }
+        catch (error) { throw new Error(`${file}: ${error.message}`); }
+      }
+      next[mapKey] = input[mapKey];
+    } else if (previous && previous[mapKey] !== undefined) {
+      next[mapKey] = previous[mapKey];
+    }
+  }
   next.schemaVersion = schemaVersionFor(next);
   // 정책이 바뀌는데 결정이 없으면 저장하지 않는다. 어떤 필드가 결정을 요구하는지
   // 함께 알린다 — 이름만 알리면 무엇을 되돌려야 하는지 알 수 없다.
