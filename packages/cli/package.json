@@ -1,6 +1,6 @@
 {
   "name": "@rundol/cli",
-  "version": "0.38.1",
+  "version": "0.39.0",
   "description": "Rundol command line interface",
   "license": "Apache-2.0",
   "repository": {
@@ -32,8 +32,8 @@
     "prepack": "node scripts/build.js"
   },
   "dependencies": {
-    "@rundol/core": "0.38.1",
-    "@rundol/protocol": "0.38.1",
+    "@rundol/core": "0.39.0",
+    "@rundol/protocol": "0.39.0",
     "dompurify": "^3.4.13",
     "jpeg-js": "^0.4.4",
     "marked": "^18.0.9",
