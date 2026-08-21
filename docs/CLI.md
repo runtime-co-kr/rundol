@@ -108,6 +108,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
+  rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -202,6 +203,42 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 주의를 요구하는 런이 없으면 **아무것도 출력하지 않고** 0으로 끝납니다. 세션 시작 훅처럼 자주 도는 자리에서 쓰이므로 침묵이 계약입니다. Workspace를 찾지 못한 경우에도 사람 출력 없이 0으로 끝납니다 — Rundol 저장소가 아닌 곳에서 도는 것은 정상이고 "런이 없다"가 그 물음의 옳은 답입니다. Workspace는 있는데 읽지 못하면 종료 코드 2입니다. 런 하나가 손상돼도 나머지는 계속 보고하며, 그 런은 `unreadable`로 드러납니다.
 
 `rdl run list`와 다릅니다. `list`는 "이 프로젝트에 런이 무엇이 있는가"를 묻고 fold 전체를 돌려줍니다. `pending`은 판정과 다음 명령만 돌려줍니다.
+
+`rdl run driver`는 사람이 자리에 없는 동안 몰 수 있는 런을 미는 상주 프로세스입니다. `--scheduled`가 daemon을 띄우지 않는다고 못박아 트리거를 바깥에 뒀고, 이 명령이 그 바깥입니다. tick과 원장은 그대로이며 몰 수 있는 런을 고르는 순회만 얹습니다.
+
+회전 한 번이 후보 하나를 고르며 관문은 셋이고 순서가 고정입니다. **프로젝트 동의** — 하네스 설정의 `drive.schedulerClientId`가 이 클라이언트일 때만 그 프로젝트가 범위에 듭니다. 기본값이 `null`이므로 **아무것도 설정하지 않은 Workspace에서 드라이버는 한 런도 몰지 않습니다.** 이것이 무인 실행의 동의 장치이며 새 설정 키를 만들지 않습니다. **런 판정** — `rdl run pending`의 `drivable`을 그대로 씁니다. 여기에 조건을 더하지 않습니다. **진행 증거** — 아래 문단입니다.
+
+진행 중인 런은 언제나 하나입니다. 희소한 것은 벽시계가 아니라 계정 사용량이고, 어댑터가 AI CLI를 자식 프로세스로 띄우므로 여럿을 동시에 몰면 그만큼 빨리 창을 태웁니다. 시작한 진행에 바깥에서 시간 제한을 걸지 않습니다 — 제한을 지키려면 프로세스 나무를 죽여야 하는데 그 보장이 아직 없고, 보장하지 못하는 것을 보장하는 척하지 않기 때문입니다.
+
+**한 번의 진행이 끝나면 원장을 다시 읽어 움직였는지 잽니다.** `run drive`가 돌아왔는데 원장에 아무것도 남지 않는 경로가 여럿 있고, 그런 런은 여전히 `drivable`이라 다음 회전에 다시 뽑힙니다. 대표가 `termination-unsafe`인데 그 사유는 정지 사유 목록에 없어 기록될 수조차 없고, Windows에서 `RUNDOL_ALLOW_WINDOWS_ADAPTER`를 켜지 않으면 그것이 예외가 아니라 기본 경로입니다. 그래서 움직이지 않은 런은 격리하고, 격리된 런은 증거가 달라질 때까지 고르지 않습니다. 사람이 `rdl run resume`을 치거나 설정 표류를 고치면 원장이 움직이고 격리가 스스로 풀립니다 — 백오프도 재시도 상한도 시계도 쓰지 않습니다. 격리는 프로세스 기억이며 저장하지 않습니다.
+
+정지한 런은 건드리지 않고 되살리지도 않습니다. 드라이버는 성공하는 런을 완주시키고 실패한 런을 구조하지 않습니다.
+
+몰 것이 없는 회전은 아무것도 출력하지 않습니다. 상주 프로세스가 유휴 회전마다 한 줄씩 쓰면 로그는 곧 읽히지 않습니다. 종료 코드는 인자·기동 실패만 2이고 그 밖에는 0입니다 — 몰 것이 없는 것도, 격리가 생긴 것도, 런이 정지한 것도 드라이버의 실패가 아니며, 드라이버가 아닌 값을 내면 OS 유닛의 재시작 정책이 정상 상태를 고장으로 읽습니다.
+
+한 Workspace에서 드라이버는 하나만 돕니다. `driver-workspace` 잠금이 그것을 강제하며, `workspace`는 예약된 프로젝트 키라 어떤 프로젝트의 잠금과도 충돌하지 않습니다.
+
+### 재부팅 복구와 OS 유닛
+
+복구 뒤에 치울 것이 없습니다. 원장은 추가 전용이고 fold는 읽을 때마다 다시 계산되며, 죽은 프로세스의 잠금은 `acquireProcessLock`이 회수하고, driver lease는 벽시계로 만료됩니다.
+
+**복구는 자동이지만 즉시가 아닙니다.** 강제 종료된 drive가 남긴 lease는 닫히지 않았으므로 `lease.ttlSeconds`(기본 300초)가 지날 때까지 그 런은 `driving`으로 보이고 드라이버가 건너뜁니다. **최대 5분이 이 기능의 복구 지연 상한입니다.**
+
+강제 종료가 어댑터 호출 도중이었다면 재기동한 drive가 새 `rootRequestId`로 같은 `operationId`를 다시 실행합니다. 결과가 이전과 다르면 `operation-conflict`가 되고 사람이 `rdl run operation resolve`로 고릅니다 — 조용한 손상이 아니라 보이는 충돌입니다.
+
+유닛은 셋 다 **시스템이 아니라 사용자 범위**입니다. 어댑터가 AI 클라이언트의 자격 증명을 사용자 홈에서 읽기 때문입니다.
+
+```bat
+:: Windows 11 — 작업 스케줄러, ONLOGON
+schtasks /Create /F /TN "Rundol Driver" /SC ONLOGON /RL LIMITED ^
+  /TR "\"<node.exe>\" \"<repo>\bin\rdl.js\" run driver --root \"<repo>\" --client-id <id>"
+```
+
+`ONSTART`가 아니라 `ONLOGON`입니다. `ONSTART`는 사용자 프로필 없이 SYSTEM으로 돌고, 그러면 `LOCALAPPDATA`가 다르며 AI 클라이언트의 자격 증명이 없습니다. `/SC MINUTE`은 쓰지 않습니다 — 매 분 새 프로세스를 띄우면 잠금이 전부 거절하고 스케줄러 이력에 실패만 쌓입니다. 재시작은 작업 속성의 "실패 시 다시 시작"으로 둡니다.
+
+Linux는 systemd 사용자 유닛 `~/.config/systemd/user/rundol-driver.service`(`Type=simple`, `Restart=always`, `RestartSec=30`, `WantedBy=default.target`)를 쓰고, 로그인 없이 부팅 때 뜨게 하려면 `loginctl enable-linger <user>`가 필요합니다. macOS는 LaunchAgent `~/Library/LaunchAgents/dev.rundol.driver.plist`에 `RunAtLoad`와 `KeepAlive`를 둡니다.
+
+**Rundol은 이 유닛을 설치하지 않습니다.** 스킬 설치가 `postinstall`에 붙지 않는 것과 같은 규율입니다 — OS 유닛은 그보다 강한 개입이므로 명시적인 사람의 행위로만 놓입니다.
 
 Operation 결과가 서로 다른 digest로 충돌하면 drive는 후보를 임의로 선택하지 않습니다. 현재 owner는 `rdl run operation resolve`로 기존 candidate event를 선택하며, 다른 active project-member agent/service는 `--force`가 있어야 합니다. 이 명령은 이미 기록된 결과를 적용할 뿐 작업을 다시 실행하지 않습니다.
 | `rdl conflict` | pending 충돌 조회·전략 해결·기록 정리 | 해결 커밋 또는 pending | 없음 |

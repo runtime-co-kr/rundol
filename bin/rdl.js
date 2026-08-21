@@ -191,6 +191,7 @@ Usage:
   rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
+  rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -357,6 +358,20 @@ function printPendingRuns(result, json) {
   // 사라지고, 그 사실을 아무도 모른다 — 이 목록을 만든 이유가 그것이다.
   for (const entry of result.unreadable) lines.push(`읽기실패 ${entry.project} ${entry.runId} :: ${entry.detail}`);
   for (const line of lines) process.stdout.write(`${line}\n`);
+}
+// 드라이버는 상주 프로세스다. 유휴 회전마다 한 줄씩 쓰면 로그는 곧 읽히지 않고,
+// 읽히지 않는 표면은 없는 것과 같다. 몰 것이 없으면 아무것도 쓰지 않는다.
+//
+// printOperation을 쓸 수 없는 이유도 같다 — 모든 키를 찍으므로 빈 회전에도
+// 출력이 생기고, 중첩 객체는 건너뛰어 정작 필요한 것을 안 보여 준다.
+function printDriverRotation(result, json) {
+  if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
+  if (!result || !result.drove) return;
+  // 전진했는지 멈췄는지가 이 한 줄의 요점이다. 몰았다는 사실만으로는 드라이버가
+  // 일하고 있는지 헛도는지 구별되지 않는다.
+  const moved = result.advanced ? '전진' : '정체';
+  const reason = result.reason ? ` :: ${result.reason}` : '';
+  process.stdout.write(`${result.project} ${result.runId} ${result.status || '(상태없음)'} ${moved}${reason}\n`);
 }
 function printOperation(result, json) {
   if (json) { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); return; }
@@ -1229,9 +1244,21 @@ async function main() {
       if (options.positional.length) throw new Error('rdl run pending은 위치 인수를 사용하지 않습니다.');
       printPendingRuns(require('../src/run-pending').pendingRuns(options.root, options), options.json);
     }
+    else if (subcommand === 'driver') {
+      if (options.positional.length) throw new Error('rdl run driver는 위치 인수를 사용하지 않습니다.');
+      if (!options.clientId) throw new Error('rdl run driver는 --client-id <id>가 필요합니다.');
+      const interval = Number.parseInt(options.interval || '60', 10);
+      if (!Number.isInteger(interval) || interval < 5) throw new Error('--interval은 5초 이상의 정수여야 합니다.');
+      const driver = require('../src/run-driver');
+      const result = await driver.runDriver(options.root, {
+        clientId: options.clientId, project: options.project, interval, once: options.once === true
+      });
+      printDriverRotation(result, options.json);
+      return 0;
+    }
     else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
-    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, pending, log, procedures입니다.');
+    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, pending, driver, log, procedures입니다.');
     return 0;
   }
   if (command === 'assignment') {

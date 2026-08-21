@@ -110,6 +110,33 @@ function classifyRun(fold, liveness) {
 }
 
 /**
+ * 원장이 움직였는지를 재는 증거. 드라이버가 같은 런을 무한히 다시 미는 것을
+ * 막는 유일한 수단이다.
+ *
+ * `runDrive`가 돌아왔는데 원장에 아무것도 남지 않는 경로가 여덟 있다 —
+ * `ownership_lost`, `termination-unsafe`, gate·verification 환경 오류 넷,
+ * 그리고 preflight의 던짐들. 그 런은 여전히 drivable이므로 다음 회전에 다시
+ * 뽑히고 같은 자리에서 같은 일이 일어난다.
+ *
+ * `termination-unsafe`가 남을 수 없다는 것은 추측이 아니다. HALT_REASONS에
+ * 그 값이 없어 기록하려 해도 거부된다. 그리고 Windows에서는 그것이 예외가
+ * 아니라 기본 경로다 — terminationGuaranteed()가 옵트인 없이는 false다.
+ *
+ * 네 필드를 보며 하나라도 빼면 놓치는 경로가 생긴다.
+ * - status: 위 여덟이 아닌 정상 종료 전부
+ * - cursor: running 안에서의 전진
+ * - completedSteps: 커서가 같은 id로 돌아왔으나 완료 집합이 다른 경우
+ * - attempts: onFail.goto가 커서와 완료 집합을 같은 자리로 되돌린 경우
+ *
+ * 시계도 백오프도 재시도 상한도 쓰지 않는다. 상태가 바뀌었는지만 묻고, 그
+ * 답은 fold 필드에서만 나온다.
+ */
+function progressWitness(fold) {
+  if (!fold || !fold.status) return null;
+  return ledger.canonicalJson([fold.status, fold.cursor || null, fold.completedSteps || [], fold.attempts || {}]);
+}
+
+/**
  * 지금 이 런을 실제로 몰고 있는 사슬이 있는지 본다. 판정은 이미 있는 것을 읽기만
  * 하고 새로 정의하지 않는다 — 활성의 정의는 driver-lease가 갖는다.
  *
@@ -171,43 +198,50 @@ function item(project, fold, verdict) {
  * 명령이 원장을 고치면, 무엇이 주의를 요구하는지 묻는 행위가 원장을 바꾸는
  * 행위가 된다. 보는 것과 고치는 것은 다른 일이다.
  */
-function pendingRuns(start, options) {
+function readRunFolds(start, options) {
   const settings = options || {};
-  const empty = { workspace: null, waiting: [], drivable: [], driving: [], unreadable: [] };
 
   // 작업공간이 없는 것과 깨진 것은 다르다. 없는 곳에서 훅이 도는 것은 정상이며
   // "런이 없다"가 그 물음의 옳은 답이다. 깨진 것은 findWorkspaceRoot 다음에서
   // 던져 호출자가 2로 끝내게 둔다.
   let root;
-  try { root = findWorkspaceRoot(start); } catch (error) { return empty; }
+  try { root = findWorkspaceRoot(start); } catch (error) { return { workspace: null, layout: null, runs: [], unreadable: [] }; }
   const layout = workspaceLayout(root);
 
   const all = listProjects(layout);
   const projects = settings.project ? all.filter((project) => project.key === settings.project) : all;
   if (settings.project && !projects.length) throw new Error(`${settings.project} 프로젝트를 작업공간에서 찾지 못했습니다.`);
 
-  const result = { workspace: layout.root, waiting: [], drivable: [], driving: [], unreadable: [] };
+  const runs = [];
+  const unreadable = [];
   for (const project of projects) {
     for (const runId of runIdsFor(layout, project)) {
-      let verdict;
-      let fold;
       // 한 런의 손상이 나머지를 멀게 하지 않는다. 전체를 던지면 깨진 런 하나가
       // 나머지 전부를 감추고, 그 사실을 아무도 모른다.
       try {
         const local = ledger.readRunEvents(ledger.runDirectory(project.root, runId));
         const shared = ledger.readSharedRunEvents(layout, project.key, runId);
         const events = ledger.unionRunEvents(local, shared);
-        fold = shared.length ? ledger.foldSharedRun(events) : ledger.foldRun(events);
-        verdict = classifyRun(fold, { lease: driverLeaseActive(layout, project.key, runId), lock: driveLockAlive(layout, project.key, runId) });
+        const fold = shared.length ? ledger.foldSharedRun(events) : ledger.foldRun(events);
+        const liveness = { lease: driverLeaseActive(layout, project.key, runId), lock: driveLockAlive(layout, project.key, runId) };
+        runs.push({ project, runId, fold, liveness });
       } catch (error) {
-        result.unreadable.push({ project: project.key, runId, reason: 'unreadable', detail: error.message });
-        continue;
+        unreadable.push({ project: project.key, runId, reason: 'unreadable', detail: error.message });
       }
-      if (!verdict) continue;
-      result[verdict.bucket].push(item(project, fold, verdict));
     }
+  }
+  return { workspace: layout.root, layout, runs, unreadable };
+}
+
+function pendingRuns(start, options) {
+  const read = readRunFolds(start, options);
+  const result = { workspace: read.workspace, waiting: [], drivable: [], driving: [], unreadable: read.unreadable };
+  for (const entry of read.runs) {
+    const verdict = classifyRun(entry.fold, entry.liveness);
+    if (!verdict) continue;
+    result[verdict.bucket].push(item(entry.project, entry.fold, verdict));
   }
   return result;
 }
 
-module.exports = { classifyRun, pendingRuns };
+module.exports = { classifyRun, progressWitness, readRunFolds, pendingRuns };
