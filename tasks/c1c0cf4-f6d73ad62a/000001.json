@@ -75,7 +75,7 @@
         },
         "AC-003": {
           "text": "승인 화면이 활성 human Client만 승인자로 제시하고 기기 작성자 신원은 제시하지 않는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "하네스 자식으로 실행한 Board는 조회는 제공하고 승인은 거부한다",
@@ -92,7 +92,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:05:35.999Z",
-      "updatedAt": "2026-08-21T04:30:46.850Z",
+      "updatedAt": "2026-08-21T04:30:50.845Z",
       "statusChangedAt": "2026-08-21T04:05:42.600Z",
       "externalRefs": [],
       "project": "rundol"
