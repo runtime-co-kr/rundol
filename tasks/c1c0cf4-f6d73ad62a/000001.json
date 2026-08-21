@@ -26,7 +26,7 @@
         },
         "AC-002": {
           "text": "화면에서 등록을 마치면 누르려던 편집이 이어서 열린다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "Board가 돌려주는 미등록 안내가 화면 경로를 먼저 가리킨다",
@@ -43,7 +43,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:00:27.298Z",
-      "updatedAt": "2026-08-21T04:23:02.341Z",
+      "updatedAt": "2026-08-21T04:23:05.820Z",
       "statusChangedAt": "2026-08-21T04:00:33.454Z",
       "externalRefs": [],
       "project": "rundol"
