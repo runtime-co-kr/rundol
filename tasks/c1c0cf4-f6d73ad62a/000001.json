@@ -83,7 +83,7 @@
         },
         "AC-005": {
           "text": "test/board-run.test.js가 TST-039의 시나리오를 자동 검증하고 종료 코드 0이다",
-          "done": false
+          "done": true
         },
         "AC-006": {
           "text": "docs/CLI.md가 런 면과 승인 표면을 반영한다",
@@ -92,7 +92,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:05:35.999Z",
-      "updatedAt": "2026-08-21T04:30:54.303Z",
+      "updatedAt": "2026-08-21T04:30:58.275Z",
       "statusChangedAt": "2026-08-21T04:05:42.600Z",
       "externalRefs": [],
       "project": "rundol"
