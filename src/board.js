@@ -758,8 +758,11 @@ function createBoardServer(start, options) {
           // 계약 위반은 서버 결함이 아니라 입력의 문제다. 500으로 내보내면 사람은
           // 무엇을 고쳐야 하는지 모른 채 다시 누르고, 그 사이 원인은 로그에만 남는다.
           if (error.name !== 'CommentViolation') throw error;
+          // 화면에서 왔으면 화면에서 풀 수 있는 길을 알린다. 명령줄만 가리키면 하던
+          // 일을 멈추고 터미널로 가야 하는데, 등록은 신원을 적는 일이지 위험한 일이
+          // 아니다. 명령줄도 함께 남기는 이유는 화면 없이 쓰는 경로가 있기 때문이다.
           const help = error.code === 'unknown-client'
-            ? ` 이 기기를 먼저 등록하세요: rdl client register ${writer.id} --name "이름" --type device --owner MEMBER-001`
+            ? ` 설정 → Clients에서 이 기기를 등록하거나, 명령줄에서 rdl client register ${writer.id} --name "이름" --type <human|agent> --owner <MEMBER-ID>를 실행하세요.`
             : '';
           const status = ['unknown-client', 'inactive-client'].includes(error.code) ? 403 : 400;
           return json(response, status, { error: `${error.message}${help}`, code: error.code });

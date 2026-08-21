@@ -1693,16 +1693,54 @@ function renderContractCompliance() {
     <section class="compliance-group"><h3>검사 결과 — 오류 ${diagnostics.summary.errors} · 경고 ${diagnostics.summary.warnings}</h3>${complianceList(findings, 'rdl check --strict가 오류와 경고 없이 통과합니다.')}</section>
     <section class="compliance-group"><h3>기능 추적성 — 준비 ${trace.summary.ready}/${trace.summary.functions}</h3>${complianceList(incomplete, '선언된 기능이 모두 REQ와 TST 계약을 갖췄습니다.')}</section>`;
 }
+// 이 기기가 등록되어 있지 않으면 화면에서 등록한다.
+//
+// 전에는 "명령줄로 등록하세요"라고만 알렸다. 그런데 미등록이 드러나는 자리는 대개
+// 무언가를 하려던 순간 — 댓글을 남기거나 저장하려던 때 — 이고, 그때 사람을 터미널로
+// 보내면 하던 일이 끊긴다. 등록은 이 기기의 신원을 적는 일이지 위험한 일이 아니다.
+//
+// 다만 식별자는 고르게 하지 않는다. 이 기기의 식별자는 프로젝트가 이미 알고 있고,
+// 사람이 고르게 두면 다른 기기의 것을 적어 두 기기가 한 신원을 공유할 수 있다.
+//
+// 유형 기본값을 device로 두지 않는다. device는 기계의 종류일 뿐 행위 주체를 담지
+// 않아서, 그 값으로 파생한 판정이 틀린 적이 있다 — 사람이 쓰는 기기면 human을,
+// AI가 쓰면 agent를 고르게 하고 기본값을 비워 둔다.
+function renderClientRegistration() {
+  const identity = state.snapshot.client;
+  const host = el('client-registration');
+  if (!host) return;
+  if (!identity || !identity.id || identity.registered) {
+    host.innerHTML = '';
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  const members = state.snapshot.people.members || [];
+  host.innerHTML = '<div class="client-register"><h3>이 기기가 아직 등록되지 않았습니다</h3>'
+    + '<p>등록해야 댓글과 저장에 누가 했는지가 남습니다. 등록되지 않은 기기는 기록을 남길 수 없습니다.</p>'
+    + `<div class="client-register-grid">`
+    + `<label>식별자<input id="register-client-id" value="${escapeHtml(identity.id)}" readonly><small>이 기기의 값이라 고를 수 없습니다.</small></label>`
+    + '<label>이름<input id="register-client-name" placeholder="예: 개발 데스크톱"><small>사람이 알아볼 이름입니다.</small></label>'
+    + '<label>유형<select id="register-client-type"><option value="">고르세요</option><option value="human">사람이 직접 씁니다</option><option value="agent">AI 에이전트가 씁니다</option><option value="device">기기 자동 실행</option><option value="service">서비스</option></select>'
+    + '<small>사람이 쓰면 <b>사람</b>을 고르세요. 그래야 남긴 댓글이 승인 근거가 됩니다.</small></label>'
+    + `<label>소유 구성원<select id="register-client-owner"><option value="">고르세요</option>${members.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select><small>이 기기의 행위가 누구에게 귀속되는지입니다.</small></label>`
+    + '</div>'
+    + '<div class="client-register-actions"><button id="register-client" class="primary">이 기기 등록</button></div></div>';
+}
+
 function renderSettings() {
-  // 등록과 삭제는 CLI가 담당한다. 여기서는 활성 상태만 바꾼다 — 에이전트가 늘면 자주 쓰는 동작이다.
+  // 활성 상태 전환은 여기서 한다 — 에이전트가 늘면 자주 쓰는 동작이다. 삭제는 여전히
+  // 명령줄이 갖는다. 지운 Client의 기록은 남는데 그 신원을 화면에서 지울 수 있으면
+  // 무엇이 남긴 기록인지 물을 수 없게 된다.
   const members = state.snapshot.people.members;
   const memberName = (id) => (members.find((item) => item.id === id) || {}).name || id || '미지정';
   el('clients').innerHTML = state.snapshot.clients.map((item) => {
     const self = item.id === state.snapshot.client.id;
     return `<div class="setting-row"><div><strong>${escapeHtml(item.name)}${self ? ' <span class="chip">이 기기</span>' : ''}</strong><p>${escapeHtml(item.id)} · ${escapeHtml(item.type)} · ${escapeHtml(memberName(item.owner))}</p></div><div class="setting-control"><span class="chip ${item.status === 'active' ? 'status-active' : ''}">${escapeHtml(item.status)}</span><button data-client-toggle="${escapeHtml(item.id)}" data-client-status="${item.status === 'active' ? 'disabled' : 'active'}">${item.status === 'active' ? '비활성화' : '활성화'}</button></div></div>`;
-  }).join('') || `<p class="empty-state">등록된 Client가 없습니다. <code>rdl client register ${escapeHtml(state.snapshot.client.id)} --name "&lt;이름&gt;" --type device --owner &lt;MEMBER-ID&gt;</code></p>`;
+  }).join('') || '<p class="empty-state">등록된 Client가 없습니다. 위에서 이 기기를 등록하세요.</p>';
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
+  renderClientRegistration();
   renderPresentationSettings(); renderApprovalSettings(); renderItemTypeSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');
@@ -1718,6 +1756,31 @@ document.addEventListener('click', async (event) => {
     message(error.message, true);
   }
 });
+
+// 이 기기 등록. 식별자는 서버가 아는 값을 그대로 보내고 사람이 고르지 않는다 —
+// 고르게 두면 다른 기기의 것을 적어 두 기기가 한 신원을 공유할 수 있다.
+document.addEventListener('click', async (event) => {
+  if (!event.target.closest('#register-client')) return;
+  const name = (el('register-client-name').value || '').trim();
+  const type = el('register-client-type').value;
+  const owner = el('register-client-owner').value;
+  // 빠진 것을 하나씩 알린다. 한 번에 모아 알리면 무엇부터 채워야 하는지 흐려진다.
+  if (!name) { message('이 기기를 알아볼 이름이 필요합니다.', true); return; }
+  if (!type) { message('유형을 고르세요. 사람이 쓰면 사람을 고르세요 — 그래야 남긴 댓글이 승인 근거가 됩니다.', true); return; }
+  if (!owner) { message('소유 구성원을 고르세요. 이 기기의 행위가 누구에게 귀속되는지입니다.', true); return; }
+  try {
+    await api('/api/clients', {
+      method: 'POST',
+      headers: { 'X-Rundol-Token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: state.snapshot.client.id, name, type, owner })
+    });
+    await loadSnapshot(true);
+    message('이 기기를 등록했습니다. 이제 댓글과 저장에 누가 했는지가 남습니다.');
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+
 function contractInput() {
   const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
   for (const row of document.querySelectorAll('[data-contract-type]')) {

@@ -180,10 +180,24 @@ assert(html.includes('id="settings-member"'), '보기 기준은 설정에서도 
 assert(html.includes('id="reset-view-options"'), '표시 기본값은 되돌릴 수 있어야 합니다');
 assert(app.includes('resetViewOptions(); populateControls();'), '초기화는 저장값과 컨트롤을 함께 되돌려야 합니다');
 
-// Client 등록·삭제는 CLI가 소유하고 Board는 활성 상태만 바꾼다.
+// Client 삭제는 여전히 CLI가 소유한다. 지운 Client의 기록은 남는데 그 신원을 화면에서
+// 지울 수 있으면 무엇이 남긴 기록인지 물을 수 없게 된다.
+//
+// 등록은 화면으로 옮겼다. 미등록이 드러나는 자리는 대개 무언가를 하려던 순간이고,
+// 그때 사람을 터미널로 보내면 하던 일이 끊긴다. 등록은 신원을 적는 일이지 위험한
+// 일이 아니다.
 assert(app.includes('data-client-toggle'), 'Client는 Board에서 활성 상태를 바꿀 수 있어야 합니다');
 assert(app.includes("'/enable' : '/disable'") || app.includes("? 'enable' : 'disable'"), 'Client 상태 변경은 전용 API를 씁니다');
-assert(app.includes('rdl client register'), '등록 방법은 CLI 명령으로 안내해야 합니다');
+assert(app.includes('function renderClientRegistration'), '미등록 기기는 화면에서 등록할 수 있어야 합니다');
+assert(app.includes("closest('#register-client')"), '등록 단추가 동작에 묶여야 합니다');
+assert(app.includes("api('/api/clients'"), '등록은 기존 Client API를 씁니다');
+// 식별자는 사람이 고르지 않는다. 고르게 두면 다른 기기의 것을 적어 두 기기가 한
+// 신원을 공유할 수 있고, 그러면 누가 남긴 기록인지 물을 수 없다.
+assert(app.includes('id: state.snapshot.client.id'), '식별자는 이 기기의 값을 그대로 보내야 합니다');
+assert(app.includes('readonly'), '식별자 칸은 고칠 수 없어야 합니다');
+// 유형 기본값을 두지 않는다. device는 기계의 종류일 뿐 행위 주체를 담지 않아서,
+// 그 값으로 파생한 판정이 실제로 틀린 적이 있다.
+assert(!/register-client-type[^]{0,400}?<option value="device" selected/u.test(app), '유형에 기본값을 두면 안 됩니다');
 
 // 문서 표시 규칙은 설정 파일이라 Board에서 편집하지 않는다. 어느 파일을 열지 알려주는 게 이 화면의 일이다.
 assert(app.includes('presentation-source'), '문서 표시 규칙은 board.json 경로를 본문에 보여야 합니다');

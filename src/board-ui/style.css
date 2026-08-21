@@ -3502,3 +3502,66 @@ dialog label textarea {
 }
 
 .note-block.absent ul { color: var(--tertiary-TextColor); }
+
+/* 이 기기 등록. 미등록이 드러나는 자리는 대개 무언가를 하려던 순간이라, 그때 사람을
+   터미널로 보내면 하던 일이 끊긴다. 등록은 신원을 적는 일이지 위험한 일이 아니다. */
+.client-register {
+  padding: var(--spacing-2);
+  border: 1px solid var(--accent-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  background: var(--accent-subtle-BackgroundColor);
+  margin-bottom: var(--spacing-2);
+}
+
+.client-register h3 {
+  margin: 0 0 var(--spacing-1);
+  font-size: var(--body-FontSize);
+}
+
+.client-register > p {
+  margin: 0 0 var(--spacing-2);
+  font-size: var(--small-FontSize);
+  color: var(--secondary-TextColor);
+  max-width: 64ch;
+}
+
+.client-register-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-1_5);
+}
+
+.client-register-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--small-FontSize);
+  font-weight: 600;
+}
+
+.client-register-grid input,
+.client-register-grid select {
+  font: inherit;
+  font-size: var(--body-FontSize);
+  font-weight: 400;
+  padding: var(--spacing-1);
+  border: 1px solid var(--field-BorderColor);
+  border-radius: var(--small-BorderRadius);
+  background: var(--field-BackgroundColor);
+  color: var(--primary-TextColor);
+}
+
+.client-register-grid input[readonly] {
+  background: var(--surface-02-BackgroundColor);
+  color: var(--secondary-TextColor);
+}
+
+.client-register-grid small {
+  font-weight: 400;
+  color: var(--tertiary-TextColor);
+}
+
+.client-register-actions {
+  margin-top: var(--spacing-2);
+  display: flex;
+  justify-content: flex-end;
+}
