@@ -1,0 +1,9 @@
+schemaVersion: 1
+revision: 1
+id: c1c0cf4-agent
+name: "강영준 데스크톱 에이전트"
+type: agent
+owner: MEMBER-001
+status: active
+registeredAt: "2026-08-21T07:17:01.346Z"
+registeredBy: MEMBER-001
