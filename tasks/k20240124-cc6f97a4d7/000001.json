@@ -3012,13 +3012,15 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "mid",
       "kind": "normal",
       "result": null,
       "round": null,
       "links": [
-        "ADR-014"
+        "ADR-014",
+        "REQ-066",
+        "TST-038"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -3045,8 +3047,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:15:05.386Z",
-      "updatedAt": "2026-08-20T15:15:05.386Z",
-      "statusChangedAt": "2026-08-20T15:15:05.386Z",
+      "updatedAt": "2026-08-21T00:13:17.597Z",
+      "statusChangedAt": "2026-08-21T00:13:17.597Z",
       "externalRefs": [],
       "project": "rundol"
     },
