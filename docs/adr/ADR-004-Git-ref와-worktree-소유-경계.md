@@ -1,5 +1,6 @@
 ---
 id: ADR-004
+uid: 2DERZ6JM
 type: document
 kind: adr
 title: 깃 참조와 작업 트리 소유 경계

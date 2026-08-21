@@ -3,7 +3,7 @@
   "clientId": "k20240124-cc6f97a4d7",
   "segment": 1,
   "tasks": {
-    "TASK-00MSRWZ80Y6525CE5CBC8CBC88": {
+    "TASK-95E6SZB9": {
       "title": "documentProfile v2 문서 계획 계약과 공용 evaluator 구현",
       "summary": "기존 네 상태 정책에 작성 선행조건, 생략 문서 흡수 규칙과 advisory/checkpoint 집행 설정을 추가하고 CLI와 Board가 공유할 결정적 evaluator를 구현한다.",
       "owner": "MEMBER-001",
@@ -42,7 +42,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSRX0G6341088CCA319770D0": {
+    "TASK-YTSQ7K8Z": {
       "title": "rdl init attach project 명령에 문서 계약 점검 내장",
       "summary": "신규 생성과 기존 연결 경계에서 같은 계약 evaluator를 사용해 계약 생성, 상태 진단과 재설정을 일관되게 제공한다.",
       "owner": "MEMBER-001",
@@ -81,7 +81,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSRX0GMGB7B62B7F8A7C2801": {
+    "TASK-9AXDVZHP": {
       "title": "문서 생성 검사 저장 동기화에 계약 제약 적용",
       "summary": "doc create, check, task, save와 sync의 쓰기 경계에 문서 정책과 작성 선행조건을 적용하되 초기 문서 작성 과정이 교착되지 않게 한다.",
       "owner": "MEMBER-001",
@@ -120,7 +120,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSRX0H17331A18790F9F65B0": {
+    "TASK-P5QQ266K": {
       "title": "Board에서 문서 계약 조회 영향검토 변경 제공",
       "summary": "Board 설정과 프로젝트 상태에서 문서 계약을 표 형태로 확인하고 revision 기반으로 안전하게 변경할 수 있게 한다.",
       "owner": "MEMBER-001",
@@ -159,7 +159,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSRX0HFIA380D3AFA3FA17A3": {
+    "TASK-VZWSM1N0": {
       "title": "런돌 스킬과 CLI 문서에 계약 작업 절차 반영",
       "summary": "AI가 자체 규칙을 추론하거나 복제하지 않고 CLI의 계약 평가 결과를 따라 문서를 생성하고 완료 검증하도록 스킬과 사용자 문서를 정비한다.",
       "owner": "MEMBER-001",
@@ -198,7 +198,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSRX0HTJ48333DA33FD8EDFC": {
+    "TASK-N3GA4AYC": {
       "title": "런돌 자체 문서를 제로베이스 계약으로 재생성해 E2E 검증",
       "summary": "문서 계약 기능 개발 후 Rundol 프로젝트를 실제 소비자로 사용해 project.md와 PRD 이후 문서를 권장 순서로 재작성하고 전체 흐름을 검증한다.",
       "owner": "MEMBER-001",
@@ -237,7 +237,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS06LS2D5D168A10B01387C": {
+    "TASK-K3JQYKY2": {
       "title": "문서 계약 기본 섹션 카탈로그 보강",
       "summary": "문서 유형별 기본 흡수 대상과 필수 섹션을 실제 계약 데이터로 제공한다.",
       "owner": "MEMBER-001",
@@ -267,7 +267,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS06PCQ65DE7B0F694D052E": {
+    "TASK-DV9AG48B": {
       "title": "문서 계약 선택형 편집 화면 구현",
       "summary": "선행 문서, 흡수 대상과 필수 섹션을 텍스트가 아닌 선택 컨트롤로 편집한다.",
       "owner": "MEMBER-001",
@@ -301,7 +301,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS06STJ98B073EA7FE88A76": {
+    "TASK-PH5KGSZN": {
       "title": "보드 표시 설정 상속 구현",
       "summary": "board.json 표시 어휘를 Workspace 기본값과 프로젝트 override로 병합한다.",
       "owner": "MEMBER-001",
@@ -335,7 +335,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS06X3566D0260B20782C1E": {
+    "TASK-6BNFKQD6": {
       "title": "보드 문서 계획 실제 적용과 검증",
       "summary": "Rundol 문서와 테스트 증거를 정비하고 strict 및 브라우저 검증을 완료한다.",
       "owner": "MEMBER-001",
@@ -369,7 +369,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS0T4JI6804E00B489B0CFD": {
+    "TASK-JCM0W5BH": {
       "title": "범용 설계문서 비정본 경고 추가",
       "summary": "Rundol 프로젝트에서 DESIGN.md 신규 정본 생성을 억제하고 기존 파일은 안전한 migration 후보로 안내한다.",
       "owner": "MEMBER-001",
@@ -403,7 +403,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS0XOUOB03953774D8E018F": {
+    "TASK-4ZG1BY2Y": {
       "title": "문서 추천 문맥과 자유 구성요소 편집 개선",
       "summary": "선행 문서를 강제 의존성이 아닌 AI 추천 문맥으로 완화하고 템플릿 기반 구성요소를 자유롭게 추가·삭제한다.",
       "owner": "MEMBER-001",
@@ -439,7 +439,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS3LWAE6AA56D76A93D9948": {
+    "TASK-XP23W591": {
       "title": "런돌 시스템 아키텍처 정본화",
       "summary": "CLI, 문서 계약 evaluator, 프로젝트 브랜치와 Board의 실제 경계를 ARC-002에 정리하고 검증한다.",
       "owner": "MEMBER-001",
@@ -471,12 +471,12 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:37:08.917Z",
-      "updatedAt": "2026-08-13T22:38:17.325Z",
+      "updatedAt": "2026-08-20T06:18:31.960Z",
       "statusChangedAt": "2026-08-13T22:38:17.325Z",
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS3OU1X536B2D369460A16F": {
+    "TASK-PJW9D8P3": {
       "title": "문서 계약과 표시 설정 소유 경계 기록",
       "summary": "project.md 문서 계약과 Workspace·프로젝트 board.json 표시 설정의 책임 분리를 ADR-003으로 확정한다.",
       "owner": "MEMBER-001",
@@ -509,12 +509,12 @@
       },
       "blocker": null,
       "createdAt": "2026-08-13T22:39:25.987Z",
-      "updatedAt": "2026-08-13T22:41:35.376Z",
+      "updatedAt": "2026-08-20T06:18:34.037Z",
       "statusChangedAt": "2026-08-13T22:41:35.376Z",
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS412Q99730165161068171": {
+    "TASK-A0PHNXTH": {
       "title": "명령줄 인공지능 스킬 보드 통합 규격 정본화",
       "summary": "CLI, Rundol 스킬과 Local Board의 책임·권한·설계 순서를 REQ-012와 Mermaid 흐름으로 정리하고 검증한다.",
       "owner": "MEMBER-001",
@@ -554,7 +554,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS4E7KDB358D0C9F149BDDB": {
+    "TASK-3XRSK904": {
       "title": "문서 책임 범위와 추적 단위 하네스 구현",
       "summary": "",
       "owner": "MEMBER-001",
@@ -593,7 +593,7 @@
         "at": "2026-08-16T23:43:02.765Z"
       }
     },
-    "TASK-00MSS4EI5AC88C26EF54284EFB": {
+    "TASK-N52HPKVE": {
       "title": "문서 책임 범위와 추적 단위 하네스 구현",
       "summary": "",
       "owner": "MEMBER-001",
@@ -627,7 +627,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS5DLZYF7586451FC7636AA": {
+    "TASK-13K2D604": {
       "title": "Git 브랜치 역할 경계와 푸시 하네스 구현",
       "summary": "빈 저장소 초기화부터 main, project, workspace 브랜치 책임을 분리하고 교차 푸시를 차단한다.",
       "owner": "MEMBER-001",
@@ -661,7 +661,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS66ARC8A79F055A1F7CBA3": {
+    "TASK-83XEY584": {
       "title": "기능 단위 구현 계약과 무인덱스 추적성 하네스 구현",
       "summary": "개별 기능 계약, 미확정 규칙 차단, 산출물 직접 추적을 검증하고 별도 인덱스 문서 생성을 금지한다.",
       "owner": "MEMBER-001",
@@ -699,7 +699,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSS7IQUTB01F641DA04F358A": {
+    "TASK-7GA3DP2A": {
       "title": "Rundol 규격 문서 atomic-v1 전환",
       "summary": "기능 단위 명세 하네스를 Rundol의 요구사항, 아키텍처, 결정, 검증 문서에 적용하고 계산형 추적성을 릴리스 기준으로 확정한다.",
       "owner": "MEMBER-001",
@@ -741,7 +741,7 @@
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSS8RP2Z43CAF5B5F5F3EFD9": {
+    "TASK-YWWT2XFS": {
       "title": "Rundol 제품 규격 문서 전체 확장",
       "summary": "최근 문서계약 기능에 치우친 정본을 제품 전체의 Workspace, Git, 태스크, 협업, Board, 설치와 배포 책임으로 확장한다.",
       "owner": "MEMBER-001",
@@ -780,13 +780,13 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSWGAGTYDF371440DE8F3455": {
+    "TASK-8NSMPYQC": {
       "title": "[기능] run drive의 verify 스텝 배선",
       "summary": "drive가 verify 커서를 명시적으로 거부하는 fail-closed를 해제하고 verifyArtifact로 배선한다. pin된 lenses·instructions·policy로 검증하고 quorum 판정을 run.gate로 기록해 커서가 전진·재시도한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-012",
@@ -796,32 +796,32 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "drive가 verify 커서에서 verifyArtifact를 호출해 pin된 lenses·instructions·policy로 검증한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "검증 quorum 판정이 run.gate(exit 0/1)로 기록되어 fold 커서가 전진하거나 onFail 재시도한다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "preflight의 verify 거부가 제거되고 drive 테스트에 verify 스텝 시나리오가 추가된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:15.381Z",
-      "updatedAt": "2026-08-16T23:43:15.381Z",
-      "statusChangedAt": "2026-08-16T23:43:15.381Z",
+      "updatedAt": "2026-08-19T12:54:23.835Z",
+      "statusChangedAt": "2026-08-19T12:54:23.835Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWGAQ80557D27E3E01A2E5D": {
+    "TASK-8AZF3HB1": {
       "title": "[설계] 프로젝트 상태 쿼리 엔진 설계",
       "summary": "Git 정본 위에 재생성 가능한 로컬 조회 계층(rdl query + materialized index)을 설계한다. 구현 전 설계안 검토가 선행 조건이며, 열린 태스크(통합 조회 TASK-00MSSALSW, 이력 조회 TASK-00MSSASDJ)의 요구를 질의 모델 입력으로 흡수한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "cancelled",
       "priority": "high",
       "links": [
         "PRD-001"
@@ -851,47 +851,55 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:27.551Z",
-      "updatedAt": "2026-08-17T12:37:39.230Z",
-      "statusChangedAt": "2026-08-17T12:37:39.230Z",
+      "updatedAt": "2026-08-19T12:54:27.014Z",
+      "statusChangedAt": "2026-08-19T12:54:27.014Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "cancellation": {
+        "reason": "ADR-010이 조회 인덱스를 공개 명령에서 내렸고 ADR-014가 첫 조각을 SQLite 인덱스가 아니라 읽기 전용 Work Item 투영으로 정했다. 이 태스크의 수용 기준(SQLite 스키마·index revision 계약)은 그 결정으로 대체되었다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-19T12:54:26.906Z"
+      }
     },
-    "TASK-00MSWGB19W05A58C057D0A9AA5": {
+    "TASK-926MKBEC": {
       "title": "[설계] run 원장 v2 작성자 시퀀스 번호 채택 결정",
       "summary": "fold 결정성은 현재 작성자 부분열 보존 입력 계약으로 보증된다. 엄밀한 집합 함수화를 위한 v2 canonical 작성자 시퀀스 번호 추가는 canonical 바이트를 바꾸는 스키마 확장이므로, 외부 소비자가 없고 쿼리 엔진이 projection을 굳히기 전인 지금 채택 여부를 결정해야 한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "mid",
       "links": [
-        "PRD-001"
+        "PRD-001",
+        "ADR-019",
+        "REQ-041",
+        "TST-017"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "채택 여부가 결정되고 근거가 ADR로 기록된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "채택 시 v2 canonical 변경 범위와 기존 이벤트 영향이 명세된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:41.875Z",
-      "updatedAt": "2026-08-16T23:43:41.875Z",
-      "statusChangedAt": "2026-08-16T23:43:41.875Z",
+      "updatedAt": "2026-08-20T06:42:19.570Z",
+      "statusChangedAt": "2026-08-20T06:42:19.570Z",
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSWGB1SEC0E8476B375068A7": {
+    "TASK-EW4NNZNR": {
       "title": "[개선] 스킬과 태스크 매니저 연계 강화",
       "summary": "실작업에서 AI 스킬 흐름이 태스크 매니저와 연계되지 않아 정본·코드 변경이 태스크 없이 진행되는 사례가 관찰됐다. 스킬이 작업 시작·종료 시 태스크 확인·생성·doing 전환·acceptance 반영·done·sync를 흐름에 내장하도록 안내와 게이트를 강화한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-038",
@@ -914,48 +922,50 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:42.541Z",
-      "updatedAt": "2026-08-17T00:27:29.691Z",
-      "statusChangedAt": "2026-08-17T00:27:20.407Z",
+      "updatedAt": "2026-08-19T13:22:40.909Z",
+      "statusChangedAt": "2026-08-19T13:22:40.909Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWGBAOWE27391003B0FC92E": {
+    "TASK-44HRH9K2": {
       "title": "[개선] 이벤트 샤드 파일명의 프로젝트 접두 모호성 해소",
       "summary": "하이픈 포함 프로젝트 키(a와 a-b)의 샤드 파일명 접두가 겹칠 수 있다. 현재는 읽기 시 clientId 대조로 시끄럽게 실패해 조용한 오염은 없지만, 구분자 강화 또는 키 제약으로 접두 자체를 유일하게 만들어야 한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "low",
       "links": [
-        "PRD-001"
+        "PRD-001",
+        "REQ-019",
+        "TST-009"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "하이픈 포함 프로젝트 키의 샤드 접두 충돌 케이스가 테스트로 고정된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "구분자 강화 또는 프로젝트 키 제약 중 해소 방안이 결정되어 적용된다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:43:54.079Z",
-      "updatedAt": "2026-08-16T23:43:54.079Z",
-      "statusChangedAt": "2026-08-16T23:43:54.079Z",
+      "updatedAt": "2026-08-20T06:39:15.988Z",
+      "statusChangedAt": "2026-08-20T06:39:15.988Z",
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSWGFOSX374D9E3EE72A1AE8": {
+    "TASK-1R5FAVDW": {
       "title": "[기능] 에이전트 발견 표면 — 태스크 목록·구조화 도움말·컨텍스트 명령",
       "summary": "AI가 명령과 상태를 소스 탐색으로 재발견하는 비용을 없앤다. rdl task list --json, 명령별 구조화 도움말, 그리고 워크스페이스 상태·열린 태스크·다음 행동·핵심 명령 요약을 한 번에 반환하는 rdl context --json을 제공한다. 스킬의 첫 지시가 이 표면을 가리키게 되어 프롬프트 부패가 원천 차단된다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-038",
@@ -978,13 +988,13 @@
       },
       "blocker": null,
       "createdAt": "2026-08-16T23:47:18.991Z",
-      "updatedAt": "2026-08-17T00:27:18.081Z",
-      "statusChangedAt": "2026-08-17T00:03:22.322Z",
+      "updatedAt": "2026-08-19T12:54:25.399Z",
+      "statusChangedAt": "2026-08-19T12:54:25.399Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWGFPCA0F5473709DB0CEFB": {
+    "TASK-FTGG58K9": {
       "title": "[기능] 워크스페이스 에이전트 지시 파일 자동 생성",
       "summary": "시스템 프롬프트 수동 주입 대신, rdl init·attach가 워크스페이스에 AGENTS.md(또는 CLAUDE.md 섹션)를 생성·갱신한다. 내용은 스킬 로드와 태스크 연계 원칙을 가리키는 짧은 포인터로 한정하고, 소유·갱신은 CLI가 담당해 버전 부패를 막는다.",
       "owner": "MEMBER-001",
@@ -1014,7 +1024,7 @@
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWH0GUHB587903EF465B6F9": {
+    "TASK-D22GCQN9": {
       "title": "[기능] 피처 브랜치·PR 워크플로 배선",
       "summary": "review 상태와 externalRefs PR 요구(RDL-TASK-020)는 계약에 이미 있으나 CLI가 externalRefs를 설정할 수 없어 review 전이가 도달 불능이다. task set에 externalRef 설정을 열고, 브랜치는 필드 신설 대신 task/<TASK-ID> 규약으로 양방향 계산하며, 스킬이 브랜치 생성→PR→review→병합→done 순서를 안내한다.",
       "owner": "MEMBER-001",
@@ -1059,13 +1069,13 @@
         "at": "2026-08-17T00:06:17.188Z"
       }
     },
-    "TASK-00MSWH45F613F048D06047A9F3": {
+    "TASK-E8SPBGX9": {
       "title": "[기능] 번들 브랜치·PR 워크플로 배선",
       "summary": "여러 기능을 한 브랜치에 묶어 작업하고 하나의 PR로 병합하는 실제 개발 흐름을 지원한다. review 상태와 externalRefs PR 요구(RDL-TASK-020)는 계약에 이미 있으나 CLI가 externalRefs를 설정할 수 없어 review 전이가 도달 불능이다. 브랜치·PR은 전용 필드 신설 대신 종류를 가진 externalRefs 항목으로 표현해 N개 태스크가 한 브랜치를 공유하는 관계를 그대로 담고, 영구 추적은 커밋 트레일러에서 계산한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-037",
@@ -1076,114 +1086,114 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl task set이 branch·PR 등 종류를 가진 externalRef를 설정·제거할 수 있어 review 전이가 CLI로 도달 가능하다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "한 브랜치를 공유하는 여러 태스크를 브랜치 또는 PR 기준으로 조회할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "커밋 트레일러 규약으로 태스크와 배달 커밋의 대응이 계산되고 브랜치 삭제 후에도 유지된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "스킬이 번들 브랜치 생성부터 PR·review 일괄 전이·병합 후 done까지의 순서를 안내한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:06:20.272Z",
-      "updatedAt": "2026-08-17T00:06:20.272Z",
-      "statusChangedAt": "2026-08-17T00:06:20.272Z",
+      "updatedAt": "2026-08-19T13:27:04.941Z",
+      "statusChangedAt": "2026-08-19T13:27:04.941Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWHJILL7B14E4A099223E46": {
+    "TASK-FQY669NY": {
       "title": "[기능] 사람 결정 카탈로그와 결정 요청 기록",
       "summary": "AI가 사람에게 반드시 물어야 하는 결정을 정책으로 명문화하고, 질문을 대화가 아니라 기록되는 상태로 만든다. 카탈로그 기준은 비가역성과 외부 노출이며 rdl check가 판정할 수 있는 것과 안전한 기본값이 있는 것은 묻지 않는다. 질문·선택지·권고안·답변·결정자는 소유권 해소 이벤트와 같은 패턴으로 남아 어느 클라이언트에서든 답변하고 감사할 수 있다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
-        "REQ-038",
-        "TST-002"
+        "REQ-039",
+        "TST-016"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "결정 카탈로그가 비가역성 기준으로 정의되고 각 항목의 기본 동작과 답변 권한이 명시된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "결정 요청이 질문·선택지·권고안을 담은 상태로 기록되고 작업은 그 지점에서 정지한다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "답변이 결정자와 사유를 포함해 기록되며 어느 클라이언트에서든 답변할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "절차의 human 스텝과 태스크 waiting 상태가 같은 결정 기록을 사용한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:17.189Z",
-      "updatedAt": "2026-08-17T00:18:17.189Z",
-      "statusChangedAt": "2026-08-17T00:18:17.189Z",
+      "updatedAt": "2026-08-19T13:26:56.379Z",
+      "statusChangedAt": "2026-08-19T13:26:56.379Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWHJL3BBBCC15B92001DC8F": {
+    "TASK-PBJP4YE5": {
       "title": "[기능] 결정 위임과 클라이언트 메모리 분리",
       "summary": "결정 카탈로그 위에 위임을 얹되 권한과 편의를 분리한다. 위임은 권한 부여이므로 공유 레지스트리에 부여자·범위·만료·사유와 함께 남고 조회·취소할 수 있으며 lease처럼 갱신하지 않으면 소멸한다. 클라이언트 메모리는 결정이 아닌 선호만 담는 로컬 상태이고 커밋되지 않는다. 위임 불가 티어를 두어 카탈로그가 위임 한 번으로 무력화되지 않게 한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "mid",
       "links": [
-        "REQ-019",
-        "REQ-038"
+        "REQ-040",
+        "TST-016"
       ],
       "deps": [],
       "acceptanceCriteria": {
         "AC-001": {
           "text": "위임이 부여자·범위·결정 종류·만료·사유와 함께 공유 레지스트리에 기록되고 조회·취소할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "만료된 위임은 자동으로 효력을 잃고 갱신이 명시적 행위다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "위임 불가 결정 종류가 정의되고 위임 시도가 거부된다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "클라이언트 메모리는 로컬 전용이며 결정 권한을 담지 못한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:20.418Z",
-      "updatedAt": "2026-08-17T00:18:20.418Z",
-      "statusChangedAt": "2026-08-17T00:18:20.418Z",
+      "updatedAt": "2026-08-19T13:26:45.715Z",
+      "statusChangedAt": "2026-08-19T13:26:45.715Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWHJNHS54A0DC43F2AB4DEF": {
+    "TASK-Y0BM8DMJ": {
       "title": "[개선] 설정 생략을 예외로 — 초기 설정 인터뷰 기본화",
       "summary": "지금은 프로필 없이 init하면 조용히 기본값으로 프로젝트가 만들어진다 — 아무도 결정하지 않은 설정이 기본이 되는 경로다. 대화형 터미널에서는 인터뷰가 기본이 되고, 비대화형에서는 조용한 기본값 대신 결정을 요구하며 생략은 명시적 플래그로만 가능하게 한다. 에이전트 경로에는 인터뷰 대신 질문셋을 JSON으로 제공해 사람의 답을 받아 재호출할 수 있게 한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-013",
@@ -1193,32 +1203,32 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "대화형 터미널에서 설정 플래그 없이 init하면 인터뷰가 실행된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "비대화형에서 결정이 없으면 조용한 기본값 대신 결정 요구 오류가 나고 생략은 명시적 플래그로만 가능하다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "질문셋을 JSON으로 제공해 에이전트가 사람의 답을 받아 재호출할 수 있다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:18:23.533Z",
-      "updatedAt": "2026-08-17T00:18:23.533Z",
-      "statusChangedAt": "2026-08-17T00:18:23.533Z",
+      "updatedAt": "2026-08-19T13:27:18.363Z",
+      "statusChangedAt": "2026-08-19T13:27:18.363Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSWINLU595CFE01BF3B69A62": {
+    "TASK-DWHWMZN2": {
       "title": "[문서] WS-0 공유 개념 정본화 — 결정 기록과 문서 정체성",
       "summary": "0.30.0의 여러 작업 묶음이 공유하는 개념을 먼저 고정한다. 질문을 대화가 아니라 기록되는 결정으로 두는 선택과 문서 정체성을 표시에서 분리하는 선택을 ADR로 남기고, 사람 결정 요청·응답을 REQ로 명세한다. 나머지 REQ는 각 작업 묶음 착수 시 설계가 확정된 뒤 작성한다.",
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "links": [
         "REQ-038",
@@ -1228,26 +1238,26 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "사람 결정의 기록 방식 ADR이 선택과 대가를 담아 작성된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "문서 정체성과 표시 분리 ADR이 조율 없는 식별자 선택 근거를 담아 작성된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "사람 결정 요청과 응답 REQ가 기능 계약 전체를 확정해 구현 준비도 게이트를 통과한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-17T00:49:27.627Z",
-      "updatedAt": "2026-08-17T00:49:48.072Z",
-      "statusChangedAt": "2026-08-17T00:49:48.072Z",
+      "updatedAt": "2026-08-19T13:27:11.639Z",
+      "statusChangedAt": "2026-08-19T13:27:11.639Z",
       "externalRefs": [],
       "project": "rundol",
       "implementationReadiness": "atomic-v1"
     },
-    "TASK-00MSXID8X9E6BC60944E270F84": {
+    "TASK-B1XSYQ76": {
       "title": "[하네스] ProcessSupervisor 계약과 Windows Job Object",
       "summary": "",
       "owner": null,
@@ -1282,7 +1292,7 @@
       "externalRefs": [],
       "project": "rundol"
     },
-    "TASK-00MSXIDIID26DC38062B012B36": {
+    "TASK-G19ZYNXG": {
       "title": "[검증] 세 OS 프로세스 종료 행렬",
       "summary": "",
       "owner": null,
@@ -1314,6 +1324,751 @@
       "createdAt": "2026-08-17T17:29:22.932Z",
       "updatedAt": "2026-08-17T17:29:22.932Z",
       "statusChangedAt": "2026-08-17T17:29:22.932Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-VXFMT7W8": {
+      "title": "[기능] 태스크 식별자 8자리 축약과 이관",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-045",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "새 태스크 식별자가 문서와 같은 8자 형식이다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "이관 후 태스크 수와 상태 분포가 이관 전과 같다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "이관 후 태스크를 가리키던 참조가 모두 새 식별자를 가리킨다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:48:43.989Z",
+      "updatedAt": "2026-08-19T01:48:00.594Z",
+      "statusChangedAt": "2026-08-19T01:48:00.594Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-4YDZ9GWF": {
+      "title": "[기능] 저장에 태스크 결박 — 문서·태스크 강제 축 분리",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-046",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "거부 수준에서 태스크 없이 저장하면 거부되고 지정하면 저장된다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "진행 중 태스크가 하나면 추론하고 고른 것을 출력한다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "우회로 저장한 커밋에 사유가 남는다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "경고 수준 프로젝트의 동작이 변경 전과 같다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "강제를 지나지 않은 커밋이 검사에서 드러난다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:48:45.721Z",
+      "updatedAt": "2026-08-19T01:48:11.656Z",
+      "statusChangedAt": "2026-08-19T01:48:11.656Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-RJEHADWA": {
+      "title": "[기능] 검증 실행 동시성 — 상한 있는 병렬과 재개 보존",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-043",
+        "TST-018"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "기존 검증 시험이 변경 없이 통과한다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "렌즈 셋 동시 실행의 총 소요가 순차 합이 아니라 최대치에 가깝다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "실패 후 재실행 시 성공했던 판정은 다시 호출되지 않는다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "동시 실행과 순차 실행의 판정 결과가 같다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:49:05.290Z",
+      "updatedAt": "2026-08-19T01:48:20.826Z",
+      "statusChangedAt": "2026-08-19T01:48:20.826Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-FX1AYMQZ": {
+      "title": "[기능] 검증 판정의 독립성 — 어댑터 배분과 만족 가능성 검사",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-042",
+        "TST-018"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "어댑터 둘·정족수 2·다양성 요구로 통과에 도달한다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "어댑터 하나로 같은 정책을 선언하면 절차 로드가 거부된다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "재개한 검증에서 각 slot의 어댑터가 처음과 같다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "선택 렌즈 미실행 시 검증이 완료되고 미실행으로 기록된다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "모델 없는 판정자가 다양성 계산에 어댑터로 셈해진다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:49:06.991Z",
+      "updatedAt": "2026-08-19T01:48:31.282Z",
+      "statusChangedAt": "2026-08-19T01:48:31.282Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-BCD8DPXK": {
+      "title": "[기능] 저작 병렬 실행 — fan-out 스텝과 복귀 경로",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "mid",
+      "links": [
+        "REQ-044",
+        "TST-018"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "형제 문서 셋 동시 저작의 총 소요가 순차 합보다 짧다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "한 대상이 실패해도 나머지 결과가 본 트리에 남는다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "실행되지 못한 대상이 미실행으로 구분된다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "선행 문서가 없는 대상은 준비 완료 집합에 들어가지 않는다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-18T22:49:08.690Z",
+      "updatedAt": "2026-08-19T02:01:46.856Z",
+      "statusChangedAt": "2026-08-19T02:01:46.856Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-85589J65": {
+      "title": "[개선] 작업 결박의 파생 — 런·작업 묶음에서 태스크 결정",
+      "summary": "저장이 어느 태스크의 일인지를 사람에게 묻지 않고 run 원장과 작업 묶음에서 정한다. run 이벤트에 선택 필드 taskId를 더하고, 파생 순서를 런 → 작업 묶음 → 단일 진행 태스크로 둔다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-047",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "태스크를 밝힌 런이 저장하면 인수 없이 그 태스크로 결박된다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "현재 브랜치의 작업 묶음에 태스크가 하나면 인수 없이 그것으로 결박된다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "두 근거가 다른 태스크를 가리키면 런이 이기고, 인수 지정은 둘 다 이긴다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "결과에 파생 근거가 남는다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T01:48:46.626Z",
+      "updatedAt": "2026-08-19T11:25:00.312Z",
+      "statusChangedAt": "2026-08-19T11:25:00.312Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-J9D5567W": {
+      "title": "[개선] 계산 가능한 저장 필드 제거 — implementationReadiness",
+      "summary": "task.links에서 결정되는 implementationReadiness가 저장된다. 링크가 바뀌어도 갱신 경로가 없어 조용히 어긋난다. 필드를 없애고 읽을 때 계산한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "mid",
+      "links": [
+        "REQ-047",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "implementationReadiness 필드 없이도 RDL-IMPL 진단이 같게 나온다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "옛 값이 남은 태스크를 읽어도 오류가 나지 않는다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T01:48:48.593Z",
+      "updatedAt": "2026-08-20T06:31:15.399Z",
+      "statusChangedAt": "2026-08-20T06:31:15.399Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-FZF3Y2PV": {
+      "title": "[기능] 문서 유형 API를 IFC로 옮기고 STD를 더한다",
+      "summary": "API는 HTTP만 연상시켜 CLI·이벤트·파일 형식·어댑터 계약을 담기에 좁았다. IFC로 옮기고 표준(STD) 유형을 더하며, 계약·board.json·문서 세 곳에 이관 경로를 함께 낸다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-010",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "계약과 board.json이 옛 이름을 새 이름으로 읽는다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "rdl doc migrate가 API-### 문서의 ID·kind·태그·참조를 함께 옮긴다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "정본 문서(DOCUMENT-STANDARD)가 새 유형표를 담는다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "혼합 버전 시험이 선언된 파기만 허용한다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:23.666Z",
+      "updatedAt": "2026-08-19T02:23:26.466Z",
+      "statusChangedAt": "2026-08-19T02:23:26.466Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-7DWX25J5": {
+      "title": "[버그] 결박이 결박을 증명하지 않던 네 곳을 닫는다",
+      "summary": "외부 검토 HIGH 6건. 끝난 태스크에 묶임, 거부된 저장이 index 오염, 오타 설정이 advisory로 약화, 사후 검사가 trailer 의미 미검증. 그리고 식별자 이관이 옛→새 매핑을 보존하지 않았다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-045",
+        "REQ-046",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "끝난 태스크에는 묶이지 않는다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "거부된 저장이 staged 변경을 남기지 않는다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "잘못 적힌 taskEnforcement가 저장을 거부한다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "trailer가 가리키는 태스크의 존재를 검사가 확인한다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "이관이 옛 식별자를 태스크에 보존한다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:25.276Z",
+      "updatedAt": "2026-08-19T02:23:37.740Z",
+      "statusChangedAt": "2026-08-19T02:23:37.740Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-J5RHEKFZ": {
+      "title": "[개선] 결박 우회를 요약에서 세어 보여 준다",
+      "summary": "막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수 있어야 하고, 세려면 진단 목록이 아니라 요약에 있어야 한다. 메타데이터 예산 규칙도 STD-002에 남긴다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-046",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl check 요약이 결박·우회·미결박·끊긴 결박을 센다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "조회하지 못한 프로젝트가 값으로 남는다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "메타데이터 예산 규칙이 STD-002에 기록된다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:26.890Z",
+      "updatedAt": "2026-08-19T02:23:45.711Z",
+      "statusChangedAt": "2026-08-19T02:23:45.711Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-EHRWBG74": {
+      "title": "[개선] 명령 실행의 프로세스 생성을 줄인다",
+      "summary": "저장소 위치 조회를 프로세스 안에서 한 번만 하고, 통합 배포판이 자식 프로세스 대신 CLI를 직접 들인다. 캐시는 위치 질의에만 걸고 RUNDOL_NO_GIT_CACHE로 끌 수 있다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-015",
+        "TST-006"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "위치 질의가 프로세스 안에서 재사용된다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "worktree·init·clone이 캐시를 무효화한다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "캐시를 끄는 경로가 있다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:28.534Z",
+      "updatedAt": "2026-08-19T02:23:53.703Z",
+      "statusChangedAt": "2026-08-19T02:23:53.703Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-9KFDQ87J": {
+      "title": "[설계] 실행 엔진의 경계와 인가 2계층 유지를 정본화한다",
+      "summary": "워크플로 엔진 사례에서 실행 의미론만 가져오고 저장 구조는 가져오지 않는다. 원장을 물리적으로 합치지 않고 공통 작업 항목 투영을 첫 조각으로 삼는다. 인가 2계층은 유지한다 — 통합하려면 시점별 신원이 필요하고 그것은 별도 결정이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "links": [
+        "REQ-047",
+        "TST-019"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "가져올 것과 가져오지 않을 것이 기록된다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "인가를 통합하지 않는 이유와 그 전제가 기록된다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "다음 조각의 순서가 기록된다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T02:22:30.249Z",
+      "updatedAt": "2026-08-19T02:24:31.598Z",
+      "statusChangedAt": "2026-08-19T02:24:31.598Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-EKTMMZ92": {
+      "title": "[설계] 제품 방향 재정의 — 이종 워커 오케스트레이션과 리스 폐기",
+      "summary": "대상을 사람·AI 동일계층 워커 운영으로 확정하고, 조정자가 있는 구조에서 불필요해진 리스를 폐기하며, 페이퍼웍·가이드·태스크 세 레이어 분리를 정본에 반영한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "TST-020",
+        "TST-021",
+        "TST-022",
+        "REQ-048",
+        "ADR-015",
+        "ADR-016"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "PRD-001이 단일 1차 대상과 이종 워커 오케스트레이션 제품 정의를 담는다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "리스 폐기와 할당 시점 배타 결정이 ADR로 기록되고 ADR-007을 대체한다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "페이퍼웍·가이드·태스크 세 레이어 분리가 ADR로 기록된다.",
+          "done": true
+        },
+        "AC-004": {
+          "text": "작업 할당과 보고 계약이 기능 ID별 완전 계약을 갖는 REQ로 존재한다.",
+          "done": true
+        },
+        "AC-005": {
+          "text": "rdl check --strict가 오류 없이 통과한다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T16:48:02.564Z",
+      "updatedAt": "2026-08-19T23:05:01.360Z",
+      "statusChangedAt": "2026-08-19T23:05:01.360Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-QAY08AVW": {
+      "title": "[설계] SCR-001 Board 화면 설계 — assured 프로필 필수 유형 충족",
+      "summary": "프로필이 lean(rev7)에서 assured(rev8)로 바뀌면서 SCR이 필수가 되었으나 docs/screens/가 없다. Board의 태스크 보드·문서 뷰·결정함 화면을 SCR 계약으로 작성해 RDL-PROFILE-002를 해소한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "SCR-002",
+        "TST-016",
+        "REQ-039"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "docs/screens/에 SCR 문서가 존재하고 기능 ID별 7슬롯 계약을 갖는다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "전이 섹션이 Mermaid flowchart를 포함하고 전이표가 정본이다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "rdl check --project rundol --strict에서 RDL-PROFILE-002가 사라진다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T17:11:48.132Z",
+      "updatedAt": "2026-08-20T06:18:36.169Z",
+      "statusChangedAt": "2026-08-19T23:05:03.328Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-3E7QT56R": {
+      "title": "[개선] 진단 코드에 정본 문서 링크 필드 추가",
+      "summary": "진단 223개가 코드만 내보내고 그 규칙의 정본 문서를 가리키지 않는다. 규칙에서 근거 문서로, 문서에서 영향받는 진단으로 양방향 계산이 가능하도록 rule 필드를 붙인다. 계약 계열(IMPL 23, PROFILE 11)부터 적용한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "TST-020",
+        "REQ-036",
+        "TST-002"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "진단 객체가 규칙의 정본 문서를 가리키는 필드를 갖는다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "IMPL과 PROFILE 계열 진단이 모두 정본 문서를 지목한다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "정본 문서에서 영향받는 진단 코드를 역방향으로 계산할 수 있다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T22:26:18.582Z",
+      "updatedAt": "2026-08-20T06:18:38.210Z",
+      "statusChangedAt": "2026-08-20T01:54:45.076Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-V9897Q29": {
+      "title": "[기능] 기존 태스크의 문서 링크 편집 경로 추가",
+      "summary": "RDL-TASK-019는 done 태스크에 TST 링크를 요구하는데 rdl task set은 --link를 받지 않는다. 링크는 task add 시점에만 설정할 수 있어, 링크 없이 만든 태스크는 명령줄로 영원히 닫을 수 없다. 태스크 수명주기에 막다른 길이 있다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "TST-020",
+        "REQ-051",
+        "TST-023"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "명령줄에서 기존 태스크의 문서 링크를 추가하고 제거할 수 있다.",
+          "done": true
+        },
+        "AC-002": {
+          "text": "링크 없이 생성한 태스크를 명령줄만으로 done 상태까지 옮길 수 있다.",
+          "done": true
+        },
+        "AC-003": {
+          "text": "링크 변경이 태스크 커밋과 원장에 기록된다.",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-19T22:37:30.505Z",
+      "updatedAt": "2026-08-20T01:54:25.443Z",
+      "statusChangedAt": "2026-08-20T01:54:25.443Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-A1V50CFX": {
+      "title": "[개선] 근거 없는 진단 110건에 요구 문서를 세운다",
+      "summary": "진단 225건 중 110건이 어떤 요구 문서에도 근거를 두지 않는다. RUN 19, DOC 16, APPROVE 10 등 열두 계열이 검사기 자체 판단으로 규칙을 들고 있으며, 추적은 계산 결과라는 REQ-036 원칙과 어긋난다. 매핑이 아니라 요구 문서를 새로 써야 해소된다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "TST-020"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "근거 없는 계열마다 그 규칙을 선언하는 요구 문서가 존재한다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "진단 225건 전부가 정본 문서를 가리킨다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "소관 확정 계열 시험이 전 계열로 확대된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T01:51:26.671Z",
+      "updatedAt": "2026-08-20T01:51:26.671Z",
+      "statusChangedAt": "2026-08-20T01:51:26.671Z",
+      "externalRefs": [],
+      "project": "rundol",
+      "implementationReadiness": "atomic-v1"
+    },
+    "TASK-YQ2S74T8": {
+      "title": "외부 검토가 낸 0.36 잔여 결함 여섯을 닫는다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "done",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-049",
+        "REQ-050",
+        "REQ-051",
+        "TST-021",
+        "TST-022",
+        "TST-023"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "폐기한 문서 소프트 임대가 CLI·보드 문서에서 사용 가능한 기능으로 남아 있지 않다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "같은 호출 안의 중복 링크 입력이 한 번만 남는다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "로그 상한 판정이 UTF-8 바이트를 세고 다국어 로그로 그것을 증명한다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "개입 계측의 이름이 실제 측정 대상과 일치한다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "타입 검사와 잠금 무결성 검사가 릴리즈 게이트 안에 있다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T09:06:57.693Z",
+      "updatedAt": "2026-08-20T13:57:22.946Z",
+      "statusChangedAt": "2026-08-20T13:57:22.946Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-ZTBY5JN0": {
+      "title": "워커 계약을 실제 접수 경로에 연결한다",
+      "summary": "",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "할당 발급과 보고 접수가 저장되고 CLI로 왕복할 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "명령줄과 보드가 같은 acceptReport·verifyReport 결과를 쓴다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "사람 워커와 에이전트 워커가 같은 접수 경로를 쓴다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "겹치는 할당이 발급 시점에 assignmentOverlaps로 걸린다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-20T09:21:28.703Z",
+      "updatedAt": "2026-08-20T09:21:28.703Z",
+      "statusChangedAt": "2026-08-20T09:21:28.703Z",
       "externalRefs": [],
       "project": "rundol"
     }

@@ -1,5 +1,6 @@
 ---
 id: REQ-012
+uid: GBP8J022
 type: document
 kind: requirement
 title: 명령줄 인공지능 스킬 보드 통합 규격

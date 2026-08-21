@@ -1,5 +1,6 @@
 ---
 id: ARC-002
+uid: FGP85PHM
 type: document
 kind: architecture
 title: 런돌 시스템 아키텍처

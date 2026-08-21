@@ -1,5 +1,6 @@
 ---
 id: GLS-002
+uid: ZQ0R8PE4
 type: document
 kind: glossary
 title: 런돌 프로젝트 운영 용어
@@ -37,7 +38,9 @@ related:
 | canonical artifact | 정해진 type·ID·frontmatter·경로를 가진 프로젝트 정본 문서 | `REQ-019`, `ARC-004` | INDEX, 추적성 표 |
 | atomic-v1 | 구현 기능 ID마다 유형별 필수 명세를 독립적으로 완성하는 계약 | `functionIds: [COL-01]` | 여러 기능 공통 placeholder |
 | Client | device·agent·service 중 하나로 등록되고 MEMBER owner가 있는 협업 실행 주체 | `test-device` | 사용자 계정, HTTP session |
-| soft lease | 특정 Client의 문서 편집 의도를 5분 동안 알리는 append-only event 기반 advisory 잠금 | acquire, renew, release | 강제 파일 lock, 소유권 |
+| ~~soft lease~~ (폐기) | 문서 편집 의도를 5분 동안 알리던 advisory 잠금. [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화|ADR-015]]로 폐기했다. 새 문서와 대화에서 쓰지 않는다 | (없음) | 로컬 append 락, 태스크 클레임, Driver 임대 |
+| 로컬 append 락 | 같은 장치의 여러 프로세스가 이벤트 원장에 동시에 쓰는 것을 직렬화하는 파일 락. 같은 파일시스템 안이라 실제로 보장된다 | append lock | soft lease, 분산 잠금 |
+| 태스크 클레임 | 여러 장치의 실행이 같은 태스크를 중복 수행하지 않게 하는 장치. 원격 ref 갱신의 성패로 판정하므로 공통 시계를 요구하지 않는다 | push 경합, 비교-교환 | 시간 만료 임대 |
 | entity revision | entity 내용으로 계산한 SHA digest 또는 contract의 numeric revision | `baseRevision` | Git branch revision과 무조건 동일 |
 | snapshot | Board가 요청 시 정본과 Git 상태를 읽어 만든 저장하지 않는 통합 조회 모델 | board snapshot | 별도 정본 데이터베이스 |
 | task shard | Client별 디렉터리에 최대 크기로 분할한 `000001.json` task 저장 segment | `tasks/client-a/000001.json` | 문서 목록, task projection |
