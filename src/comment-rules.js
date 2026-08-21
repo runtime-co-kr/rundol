@@ -17,6 +17,9 @@
 /** 댓글 본문의 상한. 논의가 길어지면 태스크를 쪼개거나 결정으로 올린다. */
 const MAX_COMMENT_LENGTH = 4000;
 
+/** 원장 이벤트 식별자. 답글은 이 모양의 값으로 부모를 가리킨다. */
+const EVENT_ID = /^EVT-[A-F0-9]{20}$/u;
+
 /**
  * Client 유형에서 워커 종류로.
  *
@@ -82,6 +85,12 @@ function composeComment(input) {
     );
   }
   if (!values.taskId) throw new CommentViolation('댓글을 달 태스크가 필요합니다.', 'missing-task');
+  // 답글이면 어느 댓글에 붙는지가 값으로 온다. 여기서는 모양만 본다 — 그 댓글이
+  // 실재하는지, 같은 태스크의 것인지는 원장을 읽어야 알 수 있고, 이 모듈이 조회를
+  // 시작하면 명령줄과 보드가 서로 다른 답을 갖게 된다.
+  if (values.parentId !== undefined && values.parentId !== null && !EVENT_ID.test(String(values.parentId))) {
+    throw new CommentViolation(`답글이 붙을 댓글 식별자가 유효하지 않습니다: ${values.parentId || '(없음)'}`, 'invalid-parent');
+  }
   if (!values.clientId) throw new CommentViolation('작성한 Client가 필요합니다.', 'missing-client');
   if (!values.recordedAt) throw new CommentViolation('작성 시각이 필요합니다.', 'missing-time');
 
@@ -100,7 +109,10 @@ function composeComment(input) {
     // 자격을 값으로 굳혀 둔다. 읽는 쪽마다 다시 계산하면 규칙이 바뀔 때 지난
     // 댓글의 자격이 조용히 달라진다.
     canGroundApproval: workerKind === 'human',
-    recordedAt: String(values.recordedAt)
+    recordedAt: String(values.recordedAt),
+    // 뿌리 댓글은 이 키를 갖지 않는다. null을 넣으면 지난 이벤트와 필드 구성이
+    // 달라지고, 체크섬은 그 차이를 그대로 반영해 옛 기록의 재계산이 어긋난다.
+    parentId: values.parentId ? String(values.parentId) : undefined
   };
 }
 
@@ -156,6 +168,31 @@ function commentsForTask(events, taskId) {
 }
 
 /**
+ * 한 태스크의 댓글을 스레드로 접는다. 깊이는 하나다.
+ *
+ * 깊이를 열어 두면 대화가 오른쪽으로 계단을 만들고, 계단 다섯 칸 아래의 말은 어느
+ * 줄기에 답한 것인지 아무도 따라가지 못한다. 답글의 답글은 같은 줄기에 붙인다 —
+ * 쓰는 쪽에서 뿌리로 접어 저장하므로 여기서는 접힌 값을 그대로 읽는다.
+ *
+ * 부모를 찾지 못한 답글은 숨기지 않고 뿌리로 올린다. 원장의 기록을 화면에서 지우면
+ * 남은 것이 전부인 줄 알게 되고, 그 순간 "누가 무엇을 말했는가"가 화면에 따라 달라진다.
+ */
+function threadComments(events, taskId) {
+  const list = commentsForTask(events, taskId);
+  const known = new Set(list.map((item) => item.eventId));
+  const replies = new Map();
+  for (const item of list) {
+    if (!item.parentId || !known.has(item.parentId)) continue;
+    const bucket = replies.get(item.parentId) || [];
+    bucket.push(item);
+    replies.set(item.parentId, bucket);
+  }
+  return list
+    .filter((item) => !item.parentId || !known.has(item.parentId))
+    .map((item) => ({ comment: item, replies: replies.get(item.eventId) || [] }));
+}
+
+/**
  * 태스크별 댓글 수와 마지막 작성 시각. 목록 화면이 "논의가 있는 태스크"를
  * 표시하려면 전체를 읽지 않고도 알 수 있어야 한다.
  */
@@ -173,6 +210,6 @@ function commentSummary(events) {
 
 module.exports = {
   MAX_COMMENT_LENGTH, CommentViolation,
-  workerKindOf, canGroundApproval, composeComment, orderComments, commentsForTask, commentSummary,
+  workerKindOf, canGroundApproval, composeComment, orderComments, commentsForTask, threadComments, commentSummary,
   applyCorrections
 };

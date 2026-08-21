@@ -185,6 +185,7 @@ try {
   json(['client', 'register', 'laptop-a', '--name', '업무 노트북', '--type', 'human', '--owner', 'MEMBER-001']);
   json(['client', 'register', 'agent-a', '--name', '작업 에이전트', '--type', 'agent', '--owner', 'MEMBER-001']);
   const task = json(['task', 'add', '댓글 대상', '--project', 'crm', '--acceptance', '댓글이 달린다']);
+  const other = json(['task', 'add', '다른 태스크', '--project', 'crm', '--acceptance', '따로 논의된다']);
 
   // 사람이 남긴 것과 에이전트가 남긴 것이 같은 자리에 쌓이되 자격이 갈린다.
   const human = json(['task', 'comment', task.taskId, '사람이 남긴 확인입니다.', '--project', 'crm', '--client-id', 'laptop-a']);
@@ -196,19 +197,33 @@ try {
   assert.strictEqual(agent.comment.workerKind, 'agent');
   assert.strictEqual(agent.comment.canGroundApproval, false, 'AI가 쓴 댓글에 승인 근거 자격을 주면 안 됩니다.');
 
+  // 명령줄도 같은 줄기에 답한다. 화면에서만 답글을 달 수 있으면, 화면 없이 도는
+  // 에이전트는 남의 말에 답할 방법이 없어 늘 새 줄기를 연다.
+  const cliReply = json(['task', 'comment', task.taskId, '명령줄에서 남긴 답글입니다.', '--project', 'crm', '--client-id', 'agent-a', '--reply-to', human.comment.eventId]);
+  assert.strictEqual(cliReply.comment.parentId, human.comment.eventId, '명령줄 답글이 부모를 가리키지 않습니다.');
+  // 다른 태스크의 댓글에는 붙지 않는다. 붙게 두면 한 논의가 두 태스크에 걸치고,
+  // 어느 태스크의 기록인지 물을 수 없게 된다.
+  const crossTask = run(['task', 'comment', other.taskId, '남의 줄기', '--project', 'crm', '--client-id', 'laptop-a', '--reply-to', human.comment.eventId]);
+  assert.notStrictEqual(crossTask.status, 0, '다른 태스크의 댓글에 답글이 붙었습니다.');
+
   // 서로 다른 Client는 서로 다른 조각에 쓴다. 그래야 동시에 써도 병합이 푼다.
   assert.notStrictEqual(human.file, agent.file, '작성자별로 조각이 갈려야 합니다.');
   const shards = fs.readdirSync(path.join(temporary, 'projects', 'workspace', 'events', 'comment'));
   assert.strictEqual(shards.length, 2, `작성자 둘이면 조각도 둘이어야 합니다: ${shards.join(', ')}`);
 
   const listed = json(['task', 'comments', task.taskId, '--project', 'crm']);
-  assert.strictEqual(listed.count, 2);
-  assert.deepStrictEqual(listed.comments.map((item) => item.workerKind), ['human', 'agent'], '시간 순서를 지켜야 합니다.');
+  assert.strictEqual(listed.count, 3);
+  assert.deepStrictEqual(listed.comments.map((item) => item.workerKind), ['human', 'agent', 'agent'], '시간 순서를 지켜야 합니다.');
+  // 평면 목록과 접힌 모양을 함께 준다. 세는 일과 훑는 일은 평면이 편하고, 화면은 줄기를
+  // 그린다. 접는 규칙이 한 곳에 있으므로 두 모양이 서로 어긋나지 않는다.
+  assert.strictEqual(listed.threads.length, 2, '뿌리 둘이어야 합니다.');
+  assert.strictEqual(listed.threads[0].replies.length, 1, '첫 줄기에 답글 하나가 붙어야 합니다.');
+  assert.strictEqual(listed.threads[1].replies.length, 0, '답글 없는 줄기는 비어야 합니다.');
 
   const overview = json(['task', 'comments', '--project', 'crm']);
   assert.strictEqual(overview.taskCount, 1);
   assert.deepStrictEqual(overview.tasks[0], {
-    taskId: task.taskId, count: 2, human: 1, agent: 1, lastAt: agent.comment.recordedAt
+    taskId: task.taskId, count: 3, human: 1, agent: 2, lastAt: cliReply.comment.recordedAt
   });
 
   // 사람이 읽는 출력이 실제로 읽히는지 본다. 중첩 객체를 한 줄로 편 대화는
@@ -295,6 +310,9 @@ const boardTask = JSON.parse(boardSetup(process.execPath, [cli, 'task', 'add', '
     const detail = await refused.json();
     assert.strictEqual(detail.code, 'unknown-client');
     assert(detail.error.includes('rdl client register'), '무엇을 해야 하는지 알려야 합니다.');
+    // 화면에서 온 요청은 화면에서 풀 수 있어야 한다. 명령줄을 먼저 들이밀면 사람은
+    // 하던 일을 접고 터미널을 찾는다 — 그 길은 화면 없이 쓰는 경우를 위해 뒤에 남긴다.
+    assert(detail.error.indexOf('설정 → Clients') < detail.error.indexOf('rdl client register'), '화면 경로를 먼저 가리켜야 합니다.');
 
     // 등록하면 풀린다.
     boardSetup(process.execPath, [cli, 'client', 'register', snapshot.client.id, '--name', '보드 시험 기기',
@@ -310,13 +328,54 @@ const boardTask = JSON.parse(boardSetup(process.execPath, [cli, 'task', 'add', '
     // 된다"가 되어, 종류를 바로잡은 것이 아무것도 막지 못한다.
     assert.strictEqual(saved.canGroundApproval, false, '에이전트가 쓴 댓글에 승인 근거 자격을 주면 안 됩니다.');
 
+    // 답글. 깊이는 하나다 — 답글에 답글을 달면 계단이 생기는 것이 아니라 같은 줄기에 붙는다.
+    // 계단을 열어 두면 다섯 칸 아래의 말이 어느 줄기에 답한 것인지 아무도 따라가지 못한다.
+    const replied = await fetch(`${base}/api/tasks/${boardTask}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': board.token },
+      body: JSON.stringify({ body: '답글입니다.', parentId: saved.eventId })
+    });
+    assert.strictEqual(replied.status, 201, `답글을 남기지 못했습니다: ${replied.status}`);
+    const reply = (await replied.json()).comment;
+    assert.strictEqual(reply.parentId, saved.eventId, '답글이 부모를 가리키지 않습니다.');
+
+    const nested = await fetch(`${base}/api/tasks/${boardTask}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': board.token },
+      body: JSON.stringify({ body: '답글의 답글입니다.', parentId: reply.eventId })
+    });
+    assert.strictEqual(nested.status, 201, `답글의 답글을 남기지 못했습니다: ${nested.status}`);
+    assert.strictEqual((await nested.json()).comment.parentId, saved.eventId, '답글의 답글은 같은 줄기 뿌리에 붙어야 합니다.');
+
+    // 뿌리 댓글에는 그 키가 아예 없어야 한다. null을 넣으면 지난 이벤트와 필드 구성이
+    // 달라지고, 체크섬은 필드 구성을 그대로 반영하므로 이미 쌓인 기록의 재계산이 어긋난다.
+    assert(!('parentId' in saved), '뿌리 댓글에 parentId 키가 생기면 지난 기록의 다이제스트가 흔들립니다.');
+
+    // 없는 댓글에는 붙지 않는다. 붙게 두면 원장에 부모 없는 답글이 남고, 그것을 읽는
+    // 화면마다 어디에 놓을지 다르게 정하게 된다.
+    const orphan = await fetch(`${base}/api/tasks/${boardTask}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': board.token },
+      body: JSON.stringify({ body: '없는 부모', parentId: 'EVT-00000000000000000000' })
+    });
+    assert.strictEqual(orphan.status, 400, `없는 부모에 답글이 붙었습니다: ${orphan.status}`);
+
+    // 스레드로 접힌 모양도 함께 돌려준다. 접는 규칙이 화면마다 다르면 같은 원장이
+    // 자리마다 다르게 보인다.
+    const threaded = await (await fetch(`${base}/api/tasks/${boardTask}/comments`)).json();
+    assert.strictEqual(threaded.count, 3, '댓글 수가 맞지 않습니다.');
+    assert.strictEqual(threaded.threads.length, 1, '뿌리는 하나여야 합니다.');
+    assert.strictEqual(threaded.threads[0].replies.length, 2, '답글 둘이 한 줄기에 붙어야 합니다.');
+
     const listed = await (await fetch(`${base}/api/tasks/${boardTask}/comments`)).json();
-    assert.strictEqual(listed.count, 1);
+    assert.strictEqual(listed.count, 3);
     assert.strictEqual(listed.comments[0].body, '보드에서 남긴 댓글입니다.');
 
     // 다시 부른 스냅숏에 반영되어야 폴링으로 다른 세션의 댓글이 보인다.
     const after = await (await fetch(`${base}/api/projects/crm/board-snapshot`)).json();
-    assert.strictEqual(after.comments.length, 1, '스냅숏이 새 댓글을 싣지 않았습니다.');
+    assert.strictEqual(after.comments.length, 3, '스냅숏이 새 댓글을 싣지 않았습니다.');
+    // 답글도 스냅숏에 부모를 달고 실린다. 화면은 이 값으로 줄기를 그린다.
+    assert(after.comments.some((item) => item.parentId === saved.eventId), '스냅숏의 답글이 부모를 잃었습니다.');
     assert.notStrictEqual(after.revision.comments, snapshot.revision.comments, '댓글이 늘었는데 영역 revision이 그대로입니다.');
   } finally {
     board.server.close();

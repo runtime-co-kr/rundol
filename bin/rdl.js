@@ -54,7 +54,7 @@ Usage:
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
-  rdl task comment <TASK-ID> <내용> --client-id <id> [--member <MEMBER-ID>] [--project <key>] [--json]
+  rdl task comment <TASK-ID> <내용> --client-id <id> [--reply-to <EVT-ID>] [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl task comments [TASK-ID] [--project <key>] [--json]
   rdl task identity [--project <key>] [--apply] [--json]
   rdl task migrate [--project <key>] [--client-id <id>] [--max-items <n>] [--json]
@@ -267,7 +267,7 @@ function parseOperationArgs(argv) {
     else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
-      '--session-id', '--path', '--from'].includes(value)) {
+      '--session-id', '--path', '--from', '--reply-to'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -301,6 +301,7 @@ function parseOperationArgs(argv) {
       else if (value === '--reviewer') options.reviewers.push(argv[i]);
       else if (value === '--role') options.roles.push(argv[i]);
       else if (value === '--member') options.member = argv[i];
+      else if (value === '--reply-to') options.replyTo = argv[i];
       else if (value === '--organization') options.organization = argv[i];
       else if (value === '--account') options.account = argv[i];
       else if (value === '--responsibility') options.responsibility = argv[i];
@@ -1388,7 +1389,7 @@ async function main() {
       const { addComment } = require('../src/comment');
       const result = addComment(options.root, {
         project: options.project, taskId: options.positional[0], body: options.positional[1],
-        clientId: options.clientId, member: options.member
+        clientId: options.clientId, member: options.member, parentId: options.replyTo
       });
       printOperation(result, options.json);
       note(options, 'task.update', { taskId: options.positional[0] });

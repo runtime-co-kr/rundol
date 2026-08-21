@@ -246,7 +246,31 @@ assert(app.includes("withCommentDraft(el('context-content')"), 'peek도 초안�
 {
   const post = app.slice(app.indexOf('async function postComment'));
   assert(post.indexOf('clearCommentDraft(taskId)') < post.indexOf('await loadSnapshot(true)'), '보낸 댓글은 다시 읽기 전에 지워야 합니다');
+  // 입력칸을 열어 둔 채 스냅샷을 읽으면 '쓰는 중'으로 보고 갱신을 건너뛴다. 그러면
+  // 방금 남긴 댓글이 화면에 나타나지 않는다.
+  assert(post.indexOf('closeCommentComposer()') < post.indexOf('await loadSnapshot(true)'), '입력칸을 닫은 뒤에 다시 읽어야 합니다');
 }
+// 댓글은 누가·언제·무엇을 세 가지로 읽힌다. 아바타 색은 이름에서 뽑아 같은 사람이 늘
+// 같은 색이어야 얼굴 역할을 한다 — 무작위면 새로고침마다 색이 바뀐다.
+assert(app.includes('function avatarTone'), '아바타 색은 이름에서 뽑아야 합니다');
+assert(!/avatarTone[^]{0,200}Math\.random/u.test(app), '아바타 색이 무작위면 얼굴 역할을 하지 못합니다');
+assert(app.includes('function commentAuthor'), '사람은 구성원 이름으로, 에이전트는 Client로 불러야 합니다');
+assert(app.includes('function commentTimeHtml') && app.includes('relativeTime(item.recordedAt)'), '시각은 상대시간으로 읽히고 정확한 값은 함께 남아야 합니다');
+// 스레드는 깊이 하나다. 답글 단추가 답글에도 있으면 화면이 없는 구조를 약속하게 된다.
+assert(app.includes('function commentThreadsOf'), '댓글은 줄기로 접혀야 합니다');
+assert(app.includes("const actions = reply ? '' :"), '답글 단추는 뿌리에만 있어야 합니다');
+assert(style.includes('.comment-replies'), '답글 줄기는 눈에 보이는 선을 가져야 합니다');
+assert(style.includes('.comment-item:hover .comment-actions'), '액션은 평소에 숨어야 목록이 단추밭이 되지 않습니다');
+assert(style.includes('.comment-avatar'), '아바타는 스타일을 가져야 합니다');
+// 입력칸은 평소에 한 줄이고 펼침 여부는 state가 갖는다. DOM에 두면 폴링이 접어 버린다.
+assert(app.includes('function commentComposerHtml') && app.includes('comment-composer-open'), '입력칸은 평소에 접혀 있어야 합니다');
+assert(app.includes('state.commentComposer'), '펼침 여부는 state가 가져야 다시 그려도 남습니다');
+// 댓글 편집기는 문서 편집기와 같은 것을 쓴다. 따로 들이면 같은 그림이 자리마다 다른
+// 규격으로 저장되고, 마크다운 방언도 두 벌이 된다.
+assert(app.includes('window.RundolEditor.openEditor(host, initial'), '댓글은 문서와 같은 편집기를 써야 합니다');
+assert(/mountCommentEditor[^]{0,600}uploadImage/u.test(app), '댓글에 붙인 그림도 같은 자산 경로로 들어가야 합니다');
+assert(app.includes('if (fallback) { fallback.value = initial'), '편집기 번들이 없어도 댓글은 남길 수 있어야 합니다');
+
 
 // 표시 규칙은 이제 Board에서 고친다. 판정에 쓰이지 않는 층이라 결정을 요구할 근거가
 // 없고, 근거 없는 읽기 전용은 사람을 파일로 보낼 뿐이다. 다만 어느 파일에 쓰는지는

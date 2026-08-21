@@ -15,7 +15,7 @@ const path = require('path');
 const eventStore = require('./event-store');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { getClient } = require('./collaboration-store');
-const { composeComment, commentsForTask, orderComments, commentSummary, CommentViolation } = require('./comment-rules');
+const { composeComment, commentsForTask, orderComments, threadComments, commentSummary, CommentViolation } = require('./comment-rules');
 
 const SIMPLE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const TASK_ID = /^TASK-[A-Z0-9]{8,26}$/u;
@@ -42,8 +42,29 @@ function commentEnvelope(input) {
     canGroundApproval: input.canGroundApproval,
     recordedAt: input.recordedAt
   };
+  // 답글일 때만 키가 생긴다. 뿌리 댓글에 parentId: null을 넣으면 지난 이벤트와
+  // 필드 구성이 달라지고, 체크섬은 필드 구성을 그대로 반영하므로 이미 쌓인 기록을
+  // 다시 계산했을 때 어긋난다. 없는 것은 없는 채로 둔다.
+  if (input.parentId) canonical.parentId = input.parentId;
   const digest = sha256(Buffer.from(eventStore.canonicalJson(canonical), 'utf8'));
   return { canonical, shared: Object.assign({}, canonical, { canonicalDigest: digest }) };
+}
+
+/**
+ * 답글이 붙을 뿌리를 정한다.
+ *
+ * 깊이는 하나다. 답글의 답글은 그 답글이 아니라 같은 줄기의 뿌리에 붙인다 — 깊이를
+ * 열어 두면 대화가 계단을 만들고, 계단 아래의 말은 어느 줄기에 답한 것인지 따라갈 수
+ * 없게 된다. 접는 자리는 여기다. 읽는 쪽에서 접으면 표면마다 다르게 접힌다.
+ *
+ * 다른 태스크의 댓글에는 붙이지 않는다. 붙게 두면 한 논의가 두 태스크에 걸쳐 있고,
+ * 어느 태스크의 기록인지 물을 수 없게 된다.
+ */
+function resolveParent(events, parentId, taskId) {
+  const target = (events || []).find((event) => event && event.eventId === parentId && event.type === 'task.comment');
+  if (!target) throw new CommentViolation(`답글을 붙일 댓글을 찾지 못했습니다: ${parentId}`, 'unknown-parent');
+  if (target.taskId !== taskId) throw new CommentViolation(`답글은 같은 태스크의 댓글에만 붙습니다: ${parentId}는 ${target.taskId}의 댓글입니다.`, 'cross-task-parent');
+  return target.parentId || target.eventId;
 }
 
 /**
@@ -68,8 +89,20 @@ function addComment(start, input) {
   const taskId = String(values.taskId || '');
   if (!TASK_ID.test(taskId)) throw new CommentViolation(`태스크 식별자가 유효하지 않습니다: ${taskId || '(없음)'}`, 'missing-task');
 
+  // 부모 해석은 검사보다 먼저 원장을 읽어야 하지만, 값 검사는 compose가 갖는다.
+  // 모양이 틀린 식별자는 원장을 읽기 전에 걸러진다 — 없는 것을 찾느라 파일을 도는 일이 없다.
+  let parentId;
+  if (values.parentId) {
+    if (!/^EVT-[A-F0-9]{20}$/u.test(String(values.parentId))) {
+      throw new CommentViolation(`답글이 붙을 댓글 식별자가 유효하지 않습니다: ${values.parentId}`, 'invalid-parent');
+    }
+    const raw = eventStore.readEvents(eventsRootOf(layout), 'comment', project.key, {});
+    parentId = resolveParent(raw.events || raw || [], String(values.parentId), taskId);
+  }
+
   const composed = composeComment({
     taskId,
+    parentId,
     body: values.body,
     clientId: values.clientId,
     clientType: client.type,
@@ -82,6 +115,7 @@ function addComment(start, input) {
     clientId: composed.clientId,
     projectId: project.key,
     taskId: composed.taskId,
+    parentId: composed.parentId,
     body: composed.body,
     workerKind: composed.workerKind,
     member: composed.member,
@@ -175,12 +209,19 @@ function readCommentEvents(start, projectKey) {
   return { project: project.key, events: orderComments(read.events || read || []) };
 }
 
-/** 한 태스크의 댓글을 시간 순으로. */
+/**
+ * 한 태스크의 댓글을 시간 순으로. 태스크를 주면 스레드로 접은 모양도 함께 준다.
+ *
+ * 평면 목록을 없애지 않는 이유는 읽는 쪽이 둘이기 때문이다. 화면은 줄기를 그리고,
+ * 세는 일과 훑는 일은 평면이 편하다. 접는 규칙은 한 곳(comment-rules)에 있으므로
+ * 두 모양이 서로 어긋나지 않는다.
+ */
 function listComments(start, input) {
   const values = input || {};
   const { project, events } = readCommentEvents(start, values.project);
   const comments = values.taskId ? commentsForTask(events, values.taskId) : events;
-  return { project, taskId: values.taskId || null, count: comments.length, comments };
+  const threads = values.taskId ? threadComments(events, values.taskId) : null;
+  return { project, taskId: values.taskId || null, count: comments.length, comments, threads };
 }
 
 /** 태스크별 댓글 수. 목록 화면이 전체를 읽지 않고 "논의가 있는 태스크"를 표시하게 한다. */
