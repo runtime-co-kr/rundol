@@ -128,7 +128,7 @@
         },
         "AC-004": {
           "text": "문서 화면에서 열기로 같은 문서를 본 화면으로 이어 간다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "test/board-run.test.js가 상세 조회 시나리오(S11~S13)를 검증한다",
@@ -137,7 +137,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T06:48:58.539Z",
-      "updatedAt": "2026-08-21T06:49:18.869Z",
+      "updatedAt": "2026-08-21T06:49:21.020Z",
       "statusChangedAt": "2026-08-21T06:49:10.722Z",
       "externalRefs": [],
       "project": "rundol"
