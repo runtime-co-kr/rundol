@@ -22,7 +22,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "미등록 기기가 문서 편집을 누르면 명령줄 문자열 대신 화면의 등록 절차가 열린다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "화면에서 등록을 마치면 누르려던 편집이 이어서 열린다",
@@ -43,7 +43,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:00:27.298Z",
-      "updatedAt": "2026-08-21T04:00:33.454Z",
+      "updatedAt": "2026-08-21T04:23:02.341Z",
       "statusChangedAt": "2026-08-21T04:00:33.454Z",
       "externalRefs": [],
       "project": "rundol"
