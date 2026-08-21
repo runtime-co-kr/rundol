@@ -67,7 +67,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "GET /api/projects/:key/runs가 run-pending의 갈래 판정을 그대로 실어 내고 조회가 런 원장을 바꾸지 않는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "POST /api/projects/:key/runs/:runId/approve가 활성 human Client와 사유를 갖춘 요청만 기록한다",
@@ -92,7 +92,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:05:35.999Z",
-      "updatedAt": "2026-08-21T04:05:42.600Z",
+      "updatedAt": "2026-08-21T04:30:42.958Z",
       "statusChangedAt": "2026-08-21T04:05:42.600Z",
       "externalRefs": [],
       "project": "rundol"
