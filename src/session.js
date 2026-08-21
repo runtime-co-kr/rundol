@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { runGit } = require('./git');
 const { assertBranchName } = require('./workset');
+const { runtimeWorkspace, acquireProcessLock, readProcessLock, processIsAlive } = require('./runtime');
 
 const BRANCH_PREFIX = 'session/';
 // 짧게 쓰는 이유는 매일 보는 이름이기 때문이다. 8자리 16진수는 한 기계에서 동시에
@@ -32,6 +33,11 @@ const SHORT_LENGTH = 8;
 // 먼저 보고, 확인된 호스트만 뒤에 둔다 — 새 클라이언트는 어댑터가 RUNDOL_SESSION_ID를
 // 채우면 이 목록을 건드리지 않고 붙는다.
 const SESSION_ENV = ['RUNDOL_SESSION_ID', 'CLAUDE_CODE_SESSION_ID'];
+// 세션이 살아 있는지는 그 세션을 띄운 프로세스가 답한다. rdl은 명령마다 죽으므로
+// 자기 pid로는 아무것도 못 말한다 — 호스트가 알려주는 클라이언트 pid를 받아야
+// "이 세션이 지금 붙어 있는가"가 성립한다. 식별자와 같은 이유로 중립 변수가 앞이다.
+const SESSION_PID_ENV = ['RUNDOL_SESSION_PID', 'CLAUDE_PID'];
+const LOCK_KIND = 'session';
 
 function normalizeSessionId(value) {
   const normalized = String(value === undefined || value === null ? '' : value)
@@ -60,6 +66,56 @@ function sessionBranch(short) {
   const branch = `${BRANCH_PREFIX}${short}`;
   assertBranchName(branch);
   return branch;
+}
+
+// 세션의 생존을 대신 말해 줄 프로세스. 없으면 없다고 답한다 — rdl 자신의 pid로
+// 채우면 명령이 끝나는 순간 죽은 세션이 되고, 그것은 "모른다"를 "죽었다"로 바꿔
+// 적는 일이다.
+function resolveSessionPid() {
+  for (const name of SESSION_PID_ENV) {
+    const value = Number.parseInt(process.env[name] || '', 10);
+    if (Number.isSafeInteger(value) && value > 0) return { pid: value, source: name };
+  }
+  return { pid: null, source: null };
+}
+
+function sessionLockFile(root, short) {
+  return path.join(runtimeWorkspace(root).locks, `${LOCK_KIND}-${short}.lock`);
+}
+
+// 등록은 새 저장 형식을 만들지 않는다. 잠금 디렉터리가 이미 "누가 무엇을 쥐고 있는가"를
+// pid와 함께 적는 자리이고, 세션 등록이 묻는 것도 같은 물음이다.
+//
+// 놓지 않고 남긴다. 세션은 명령보다 오래 살아야 하기 때문이며, 그 세션이 죽으면 pid
+// 생존 확인이 대신 회수한다 — 사람이 손으로 풀어야 하는 상태를 만들지 않는다.
+function registerSession(root, short, pid) {
+  if (!pid) return { registered: false, reason: 'no-session-pid' };
+  const workspace = runtimeWorkspace(root);
+  try {
+    acquireProcessLock(workspace.locks, { kind: LOCK_KIND, projectId: short, workspaceId: workspace.id, pid });
+    return { registered: true, pid };
+  } catch (error) {
+    if (!error || error.code !== 'RDL_PROCESS_LOCKED') throw error;
+    // 같은 세션이 다시 등록하는 것은 실패가 아니다. 다른 pid가 쥐고 있다면 같은 짧은
+    // 이름을 쓰는 다른 세션이므로, 덮지 않고 누가 쥐고 있는지 말한다.
+    const holder = error.lock && error.lock.pid;
+    return holder === pid ? { registered: true, pid } : { registered: false, reason: 'held-by-other', pid: holder || null };
+  }
+}
+
+// 등록되지 않은 세션과 죽은 세션은 다르다. 앞엣것은 이 명령을 지나지 않은 것이고
+// 뒤엣것은 지났다가 끝난 것이다. null과 false로 갈라 적는다 — 하나로 접으면 worktree만
+// 만들고 등록하지 않은 세션이 죽은 세션으로 읽힌다.
+function sessionLiveness(root, short) {
+  const file = sessionLockFile(root, short);
+  if (!fs.existsSync(file)) return { pid: null, alive: null };
+  let record;
+  try { record = readProcessLock(file); } catch (_) { return { pid: null, alive: null }; }
+  return { pid: record.pid, alive: processIsAlive(record.pid) };
+}
+
+function releaseSession(root, short) {
+  try { fs.unlinkSync(sessionLockFile(root, short)); return true; } catch (_) { return false; }
 }
 
 // worktree 목록의 첫 블록이 본 저장소다. 세션 worktree 안에서 이 명령을 부를 수 있으므로
@@ -102,6 +158,17 @@ function entry(sessionId, short, branch, target, base) {
   return { sessionId, short, branch, path: target, base: base || null };
 }
 
+// 등록 결과는 평평하게 싣는다. 사람이 읽는 출력이 중첩 객체를 통째로 건너뛰므로,
+// 등록하지 못했다는 사실이 --json에서만 보이게 된다.
+function registration(result, pid) {
+  return {
+    registered: result.registered,
+    sessionPid: result.pid === undefined ? pid.pid : result.pid,
+    sessionPidSource: pid.source,
+    registerSkipped: result.registered ? null : result.reason
+  };
+}
+
 /**
  * 세션의 작업 공간을 연다. 이미 열려 있으면 다시 만들지 않고 그 자리를 알려준다 —
  * 세션은 끊겼다 이어지므로, 두 번째 호출이 실패하면 이어붙이는 쪽이 상태를 따로
@@ -125,9 +192,10 @@ function startSession(start, options) {
     // 거부하면 --path로 연 세션이 다시 들어올 수 없고, 재진입을 위해 만든 갈래가
     // 자리를 옮긴 세션에만 닫힌다.
     if (settings.path && !sameFile(existing.path, target)) throw new Error(`이 세션의 worktree가 이미 다른 경로에 있습니다: ${existing.path}`);
+    const reusedPid = resolveSessionPid();
     return Object.assign(entry(resolved.sessionId, short, branch, existing.path, null), {
       action: 'reused', sessionIdSource: resolved.source, head: existing.head
-    });
+    }, registration(registerSession(root, short, reusedPid.pid), reusedPid));
   }
   if (fs.existsSync(target) && fs.readdirSync(target).length) throw new Error(`worktree 대상 경로가 비어 있지 않습니다: ${target}`);
 
@@ -140,9 +208,10 @@ function startSession(start, options) {
   const added = runGit(['worktree', 'add', '-b', branch, target, base.stdout.trim()], { cwd: root, allowFailure: true });
   if (added.status !== 0) throw new Error(`worktree를 만들지 못했습니다: ${String(added.stderr || '').split(/\r?\n/u)[0] || '알 수 없는 오류'}`);
 
+  const pid = resolveSessionPid();
   return Object.assign(entry(resolved.sessionId, short, branch, target, base.stdout.trim()), {
     action: 'created', sessionIdSource: resolved.source, head: base.stdout.trim()
-  });
+  }, registration(registerSession(root, short, pid.pid), pid));
 }
 
 /** 열려 있는 세션 작업 공간. 저장된 목록이 아니라 Git이 아는 사실이다. */
@@ -150,7 +219,11 @@ function listSessions(start) {
   const root = mainWorktree(start);
   const sessions = worktreeBlocks(start)
     .filter((item) => item.branch && item.branch.startsWith(BRANCH_PREFIX))
-    .map((item) => Object.assign(entry(null, item.branch.slice(BRANCH_PREFIX.length), item.branch, item.path, null), { head: item.head }))
+    .map((item) => {
+      const short = item.branch.slice(BRANCH_PREFIX.length);
+      const live = sessionLiveness(root, short);
+      return Object.assign(entry(null, short, item.branch, item.path, null), { head: item.head, sessionPid: live.pid, alive: live.alive });
+    })
     .sort((left, right) => left.branch.localeCompare(right.branch));
   return { root, sessions };
 }
@@ -193,14 +266,17 @@ function endSession(start, options) {
   //
   // 다만 남긴 것을 세어서 말한다. worktree가 사라지면 이 세션은 list에서 빠지므로,
   // 병합하지 않은 커밋이 있다는 사실을 여기서 말하지 않으면 아무도 다시 묻지 않는다.
+  // 등록도 함께 거둔다. 남기면 죽은 세션이 목록에 계속 살아 있는 것처럼 보이고,
+  // 그 목록으로는 "지금 누가 붙어 있는가"를 답할 수 없다.
+  const unregistered = releaseSession(root, short);
   return {
     action: 'removed', sessionId: resolved.sessionId, short, branch, path: found.path,
-    discarded: changes.length, unmerged: unmergedCount(root, branch)
+    discarded: changes.length, unmerged: unmergedCount(root, branch), unregistered
   };
 }
 
 module.exports = {
-  BRANCH_PREFIX, SESSION_ENV, SHORT_LENGTH,
-  normalizeSessionId, shortSessionId, resolveSessionId, sessionBranch,
-  startSession, listSessions, endSession
+  BRANCH_PREFIX, SESSION_ENV, SESSION_PID_ENV, SHORT_LENGTH, LOCK_KIND,
+  normalizeSessionId, shortSessionId, resolveSessionId, resolveSessionPid, sessionBranch,
+  sessionLockFile, sessionLiveness, startSession, listSessions, endSession
 };
