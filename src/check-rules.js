@@ -1,6 +1,25 @@
 'use strict';
 
-const { evaluateItemTypes, BUILTIN_ITEM_TYPES } = require('./item-type');
+const { evaluateItemTypes, normalizeItemTypes, BUILTIN_ITEM_TYPES } = require('./item-type');
+
+// 호출자가 유형 정의를 넘기지 않으면 내장으로 떨어진다. 다만 내장은 정규화 전 형태이고
+// 해석기는 정규화된 것만 받으므로, 여기서 한 번 정규화해 둔다. 넘기지 않는 호출자를
+// 던져서 막으면 이 판정 하나 때문에 검사기를 부르던 모든 자리가 함께 멈춘다.
+const NORMALIZED_BUILTIN = normalizeItemTypes(BUILTIN_ITEM_TYPES);
+
+// 완료 게이트의 기본값. 게이트를 유형이 면제할 수 있게 만들면서 호출자가 넘기는 값이
+// 되었는데, 넘기지 않으면 판정 자체가 사라진다 — 규칙을 유형에 열어 준 대가로 규칙이
+// 아무 데서도 돌지 않는 상태가 되면 그것은 여는 것이 아니라 없애는 것이다.
+//
+// 그래서 기본값을 여기 둔다. 호출자가 정책 층에서 읽은 것을 넘기면 그것이 이기고,
+// 넘기지 않으면 이관 전과 같은 판정이 돈다.
+const DEFAULT_TASK_GATES = Object.freeze({
+  'done-requires-test-link': (task) => (
+    task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))
+      ? [{ code: 'RDL-TASK-019', message: 'done 태스크는 TST 문서를 연결해야 합니다.' }]
+      : []
+  )
+});
 
 // 검사의 판정부. 파일을 읽지 않고 이미 읽어 둔 값만 보고 진단을 만든다.
 //
@@ -404,6 +423,9 @@ function checkTaskEntries(list, tasks, context) {
     if (task.cancellation && task.cancellation.decidedBy && !memberIds.has(task.cancellation.decidedBy)) diagnostic(list, { code: 'RDL-TASK-025', category: 'task', file: taskFile, artifactId: taskId, target: task.cancellation.decidedBy, message: `반려 결정자가 존재하지 않습니다: ${task.cancellation.decidedBy}` });
     const criteria = task.acceptanceCriteria && typeof task.acceptanceCriteria === 'object' ? Object.values(task.acceptanceCriteria) : [];
     if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
+    // 완료에 미완료 수용조건이 남아 있는지는 유형과 무관하다. 어느 유형이든 조건을
+    // 다 채우지 않고 완료로 넘어갈 수 없으므로 유형 정의로 옮기지 않는다.
+    if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
     // 유형별 판정은 여기 없다. 유형이 데이터가 되면서 제약 해석기로 옮겼다 —
     // 분기 일곱이 유형마다 늘어나던 자리이고, 고칠 곳을 하나라도 빠뜨리면 그 유형만
     // 규칙 없이 통과하던 자리다.
@@ -455,7 +477,7 @@ function checkTaskEntries(list, tasks, context) {
   // 검사기의 순수성이 유지되며, 유형이 늘어도 이 호출 하나는 그대로다.
   const itemTasks = {};
   for (const id of taskIds) itemTasks[id] = tasks[id];
-  for (const issue of evaluateItemTypes(itemTasks, itemTypes || BUILTIN_ITEM_TYPES, { gates })) {
+  for (const issue of evaluateItemTypes(itemTasks, itemTypes || NORMALIZED_BUILTIN, { gates: gates || DEFAULT_TASK_GATES })) {
     diagnostic(list, Object.assign({ category: 'task', file: taskFile }, issue));
   }
   return taskIds.length;
