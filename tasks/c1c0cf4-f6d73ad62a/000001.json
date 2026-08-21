@@ -124,7 +124,7 @@
         },
         "AC-003": {
           "text": "대상 문서가 여럿이면 탭으로 고르고, 찾지 못하면 그 사실을 말한다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "문서 화면에서 열기로 같은 문서를 본 화면으로 이어 간다",
@@ -137,7 +137,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T06:48:58.539Z",
-      "updatedAt": "2026-08-21T06:49:15.734Z",
+      "updatedAt": "2026-08-21T06:49:18.869Z",
       "statusChangedAt": "2026-08-21T06:49:10.722Z",
       "externalRefs": [],
       "project": "rundol"
