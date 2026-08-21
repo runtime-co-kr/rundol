@@ -451,7 +451,8 @@
         "ARC-002",
         "REQ-010",
         "REQ-011",
-        "TST-002"
+        "TST-002",
+        "TST-003"
       ],
       "deps": [],
       "acceptanceCriteria": {
@@ -488,7 +489,8 @@
         "ARC-002",
         "REQ-010",
         "REQ-011",
-        "TST-002"
+        "TST-002",
+        "TST-003"
       ],
       "deps": [],
       "acceptanceCriteria": {
