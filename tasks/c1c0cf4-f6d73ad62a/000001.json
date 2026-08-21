@@ -132,12 +132,12 @@
         },
         "AC-005": {
           "text": "test/board-run.test.js가 상세 조회 시나리오(S11~S13)를 검증한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-21T06:48:58.539Z",
-      "updatedAt": "2026-08-21T06:49:21.020Z",
+      "updatedAt": "2026-08-21T06:49:23.322Z",
       "statusChangedAt": "2026-08-21T06:49:10.722Z",
       "externalRefs": [],
       "project": "rundol"
