@@ -98,6 +98,7 @@ require('./editor-block-move.test').catch((error) => {
 require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./author-fanout.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),
   require('./board-workspace.test'),
+  require('./board-run.test'),
   require('./event-store.test')
 ])).catch((error) => {
   process.stderr.write(`${error.stack || error.message}\n`);

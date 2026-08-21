@@ -19,6 +19,9 @@ const { loadDocumentContract, planDocumentContract, updateDocumentContract } = r
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
 const { CONSTRAINT_KINDS, EXEMPTABLE_GATES } = require('./item-type');
+const { pendingRuns } = require('./run-pending');
+const runLedger = require('./run-ledger');
+const { approveRun } = require('./run');
 
 // inheritance와 sources는 파일 경로와 원본을 담은 파생 정보라 revision 비교에서 뺀다.
 // 넣어 두면 경로가 같아도 값이 같은지 판단하는 데 방해만 된다.
@@ -375,9 +378,12 @@ function boardClient(root, project, clients) {
   return { id, registered: Boolean(registered), status: registered ? registered.status : null, owner: registered ? registered.owner : null };
 }
 
-function inputError(message) {
+// 거절에는 종류를 붙일 수 있다. 화면이 문장을 뒤져 원인을 되짚으면 말을 다듬는 순간
+// 판정이 깨지므로, 화면이 다르게 처리해야 하는 거절은 code로 구분한다.
+function inputError(message, code) {
   const error = new Error(message);
   error.statusCode = 400;
+  if (code) error.code = code;
   throw error;
 }
 
@@ -581,6 +587,119 @@ function requireRevision(config, taskId, supplied) {
   return current;
 }
 
+// 승인자로 제시할 수 있는 자격만 내보낸다. 고를 수 없는 것을 화면에 두면 사람은
+// 거절당한 뒤에야 그것을 알게 된다. 판정 자체는 승인이 다시 하므로 이 목록은
+// 편의이고, 여기가 느슨해져도 자격이 넓어지지는 않는다.
+//
+// 이 기기의 작성자 신원(boardClient)은 여기에 들어올 수 없다. 그 값은 태스크 샤딩이
+// 쓰는 기기 ID이고 유형이 human이 아니며, human으로 바꾸는 순간 같은 기기의 실행
+// 명령이 전부 거부된다(src/run.js:57).
+function runApprovers(root, project) {
+  let members = [];
+  try { members = readCollaboration(root, project.key).members; } catch (error) { members = []; }
+  const active = new Set(members.filter((member) => member.fields && member.fields['상태'] === 'active').map((member) => member.id));
+  return listClients(root).clients
+    .filter((client) => client.type === 'human' && client.status === 'active' && active.has(client.owner))
+    .map((client) => ({ id: client.id, name: client.name, owner: client.owner }));
+}
+
+// 런 갈래 판정은 run-pending이 정본이다. 보드는 인자를 옮기고 결과를 그린다 — 판정이
+// 둘이면 화면과 명령줄이 같은 런에 다른 답을 낸다.
+//
+// pendingRuns를 쓰는 이유가 하나 더 있다. 그 함수는 runContext 대신 readRunFolds를
+// 도는데, 그것이 "무엇이 주의를 요구하는지 묻는 행위가 원장을 바꾸지 않는다"를 지키는
+// 유일한 경로다. 화면은 같은 물음을 되풀이해서 던지므로 여기서 특히 중요하다.
+function boardRuns(root, projectKey) {
+  const project = selectProject(workspaceLayout(root), projectKey, true);
+  const pending = pendingRuns(root, { project: project.key });
+  return {
+    project: project.key,
+    waiting: pending.waiting,
+    drivable: pending.drivable,
+    driving: pending.driving,
+    unreadable: pending.unreadable,
+    approvers: runApprovers(root, project)
+  };
+}
+
+
+// 승인 대화상자가 읽는 한 런의 내막. 목록과 나누는 이유는 값이 커서가 아니라 물음이
+// 다르기 때문이다 — 목록은 "누가 기다리는가"를 묻고 이것은 "무엇을 승인하는가"를 묻는다.
+// 뭉쳐 두면 화면을 열어 두기만 해도 모든 런의 이벤트를 되풀이해서 읽는다.
+//
+// 여기서도 reconcile 하지 않는다. 승인하려고 열어 본 것이 원장을 고치면, 무엇을
+// 승인할지 살펴보는 행위와 승인하는 행위의 경계가 사라진다.
+function boardRunDetail(root, projectKey, runId) {
+  const layout = workspaceLayout(root);
+  const project = selectProject(layout, projectKey, true);
+  const local = runLedger.readRunEvents(runLedger.runDirectory(project.root, runId));
+  const shared = runLedger.readSharedRunEvents(layout, project.key, runId);
+  const events = runLedger.unionRunEvents(local, shared);
+  if (!events.length) {
+    const error = new Error(`런을 찾지 못했습니다: ${runId}`);
+    error.statusCode = 404;
+    throw error;
+  }
+  const fold = shared.length ? runLedger.foldSharedRun(events) : runLedger.foldRun(events);
+  const started = events.find((event) => event && event.type === 'run.started') || {};
+  // 대상 문서는 시작 시 지목한 것과 스텝이 만들어 낸 것 둘 다다. 저작 절차는 런 도중에
+  // 문서를 만들므로 시작 이벤트만 보면 정작 승인할 문서가 목록에서 빠진다.
+  const artifactIds = [];
+  for (const id of [started.targetArtifactId].concat(fold.artifactIds || [])) {
+    if (id && !artifactIds.includes(id)) artifactIds.push(id);
+  }
+  return {
+    project: project.key,
+    runId: fold.runId,
+    status: fold.status,
+    goal: started.goal || null,
+    taskId: fold.taskId || null,
+    procedure: fold.procedure || null,
+    cursor: fold.cursor || null,
+    cursorStep: fold.cursorStep ? { id: fold.cursorStep.id, human: fold.cursorStep.human === true } : null,
+    completedSteps: fold.completedSteps || [],
+    humanGateSteps: fold.humanGateSteps || [],
+    humanApprovals: fold.humanApprovals || [],
+    owner: fold.owner || null,
+    artifactIds,
+    // 무엇을 하고 여기까지 왔는지. 승인은 결과만이 아니라 경로를 보고 하는 판단이다.
+    trail: events.map((event) => ({
+      type: event.type,
+      stepId: event.stepId || null,
+      clientId: event.clientId || null,
+      exitCode: event.exitCode === undefined ? null : event.exitCode,
+      reason: event.reason || null,
+      occurredAt: event.occurredAt || null
+    })),
+    approvers: runApprovers(root, project)
+  };
+}
+// 사람 게이트를 웹에서 지나는 자리. 자격 판정은 rdl run approve와 같은 함수가 한다 —
+// 표면마다 판정을 따로 두면 그중 느슨한 쪽이 게이트의 실제 높이가 된다.
+function approveBoardRun(root, projectKey, runId, body) {
+  // human 자격을 하네스가 들 수 없다는 것이 사람 게이트의 전부다. 하네스가 띄운
+  // Board는 그 자격을 HTTP로 빌려주는 창구가 되므로 승인만 거절한다. 조회는 그대로
+  // 둔다 — 무엇이 막혀 있는지는 하네스도 알아야 사람에게 가져갈 수 있다.
+  if (process.env.RUNDOL_HARNESS_CHILD === '1') {
+    const error = new Error('하네스가 실행한 Board에서는 승인할 수 없습니다. 사람이 직접 연 Board나 명령줄에서 승인하세요.');
+    error.statusCode = 403;
+    error.code = 'harness-board';
+    throw error;
+  }
+  const approver = String((body && body.clientId) || '').trim().toLowerCase();
+  if (!approver) inputError('승인자 Client를 고르세요. 활성 human Client만 사람 게이트를 지날 수 있습니다.', 'missing-approver');
+  const reason = String((body && body.reason) || '').trim();
+  if (!reason) inputError('무엇을 보고 승인했는지 사유가 필요합니다.', 'missing-reason');
+  try {
+    return approveRun(root, { project: projectKey, run: runId, clientId: approver, reason, step: (body && body.step) || undefined });
+  } catch (error) {
+    // 승인 거절은 서버 결함이 아니라 "이 요청은 지금 받아들여질 수 없다"는 답이다.
+    // 500으로 내보내면 사람은 무엇을 고쳐야 하는지 모른 채 같은 버튼을 다시 누른다.
+    if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'approval-refused'; }
+    throw error;
+  }
+}
+
 function createBoardServer(start, options) {
   const settings = options || {};
   const initialLayout = workspaceLayout(start);
@@ -620,6 +739,9 @@ function createBoardServer(start, options) {
       const projectContractMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract$/u);
       const projectContractPlanMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract\/plan$/u);
       const projectPresentationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/presentation$/u);
+      const projectRunsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs$/u);
+      const projectRunApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs\/(RUN-[A-Za-z0-9]+)\/approve$/u);
+      const projectRunMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs\/(RUN-[A-Za-z0-9]+)$/u);
       const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentCheckMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
       const requestedConfig = requestedProject ? boardConfig(config.root, requestedProject[1]) : config;
       if (request.method === 'GET' && projectMatch) {
@@ -637,6 +759,8 @@ function createBoardServer(start, options) {
         return document ? json(response, 200, document) : json(response, 404, { error: '문서를 찾지 못했습니다.' });
       }
       if (request.method === 'GET' && projectSyncMatch) return json(response, 200, syncStatus(selectProject(workspaceLayout(config.root), projectSyncMatch[1], true)));
+      if (request.method === 'GET' && projectRunsMatch) return json(response, 200, boardRuns(config.root, projectRunsMatch[1]));
+      if (request.method === 'GET' && projectRunMatch) return json(response, 200, boardRunDetail(config.root, projectRunMatch[1], projectRunMatch[2]));
       if (request.method === 'GET' && projectSnapshotMatch) {
         return json(response, 200, workspaceSnapshot(config.root, projectSnapshotMatch[1], url.searchParams));
       }
@@ -690,6 +814,10 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         return json(response, 200, updateDocumentBody(config.root, projectDocumentMatch[1], decodeURIComponent(projectDocumentMatch[2]), body));
       }
+      if (request.method === 'POST' && projectRunApproveMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, approveBoardRun(config.root, projectRunApproveMatch[1], projectRunApproveMatch[2], body));
+      }
       if (request.method === 'POST' && projectContractPlanMatch) {
         const body = await requestBody(request);
         return json(response, 200, planDocumentContract(config.root, projectContractPlanMatch[1], body));
@@ -721,7 +849,10 @@ function createBoardServer(start, options) {
         const project = selectProject(workspaceLayout(config.root), projectSyncMatch[1], true);
         const identity = boardClient(config.root, project, listClients(config.root).clients);
         if (!identity.id) inputError('이 기기의 Client ID가 없습니다. rdl git init으로 프로젝트를 준비하세요.');
-        if (!identity.registered) inputError(`등록되지 않은 Client입니다: ${identity.id}. rdl client register ${identity.id} --type agent --owner <MEMBER-ID>로 등록하세요.`);
+        // 화면에서 온 요청이면 화면에서 풀 수 있는 길을 먼저 가리킨다. 명령줄만 남기면
+        // 사람은 하던 일을 접고 터미널로 가야 하고, 명령줄을 지우면 화면 없이 쓰는 경로가
+        // 막힌다. 두 길을 순서로 구분한다.
+        if (!identity.registered) inputError(`등록되지 않은 Client입니다: ${identity.id}. 설정 → Clients에서 이 기기를 등록하거나, 화면 없이 쓴다면 rdl client register ${identity.id} --name "이름" --type <human|agent> --owner <MEMBER-ID>를 실행하세요.`, 'unknown-client');
         return json(response, 200, syncState(config.root, { project: projectSyncMatch[1], remote: 'origin', push: true, clientId: identity.id }));
       }
       if (request.method === 'POST' && url.pathname === '/api/tasks') {
@@ -749,9 +880,11 @@ function createBoardServer(start, options) {
         }
         const writer = boardClient(activeConfig.root, selectProject(writerLayout, activeConfig.project, true), listClients(activeConfig.root).clients);
         try {
+          // 답글이 붙을 자리는 요청이 정한다 — 내용에 속하는 값이라 신원과 달리
+          // 지어낼 수 있는 것이 아니다. 실재 여부와 같은 태스크인지는 저장이 판정한다.
           const created = addComment(activeConfig.root, {
             project: activeConfig.project, taskId: commentMatch[1], body: body.body,
-            clientId: writer.id, member: body.member
+            clientId: writer.id, member: body.member, parentId: body.parentId
           });
           return json(response, 201, created);
         } catch (error) {
@@ -790,7 +923,7 @@ function createBoardServer(start, options) {
       if (request.method === 'POST' && url.pathname === '/api/sync') return json(response, 200, syncState(activeConfig.root, { project: activeConfig.project, remote: 'origin', push: true }));
       return json(response, 404, { error: '경로를 찾지 못했습니다.' });
     } catch (error) {
-      return json(response, error.statusCode || 500, { error: error.message, current: error.current || undefined });
+      return json(response, error.statusCode || 500, { error: error.message, code: error.code || undefined, current: error.current || undefined });
     }
   });
   return { server, token, root: config.root };

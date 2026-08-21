@@ -3200,7 +3200,7 @@ dialog label textarea {
 
 .presentation-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-2);
   padding: var(--spacing-1_5) var(--spacing-2);
@@ -3221,6 +3221,65 @@ dialog label textarea {
 .presentation-row-main small {
   color: var(--secondary-TextColor);
   font-size: var(--small-FontSize);
+}
+
+/* 표시 규칙 편집. 칸의 값은 이 범위가 덮은 것이고 상위에서 내려온 값은 placeholder로만
+   보인다 — 합쳐진 값을 칸에 채우면 손대지 않은 값까지 이 범위 파일에 박힌다. 그래서
+   placeholder는 장식이 아니라 "이 칸을 비우면 무엇이 쓰이는가"라는 답이고, 옅게 두되
+   읽히지 않을 만큼 옅게 두지는 않는다. */
+.presentation-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-1);
+}
+
+.presentation-field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.presentation-field span {
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+}
+
+.presentation-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.presentation-field input::placeholder {
+  color: var(--tertiary-TextColor);
+  font-style: italic;
+}
+
+.presentation-note {
+  margin-top: var(--spacing-1);
+  color: var(--secondary-TextColor);
+  font-size: var(--small-FontSize);
+}
+
+.presentation-row-side {
+  display: grid;
+  gap: var(--spacing-1);
+  justify-items: end;
+  flex: none;
+}
+
+/* 저장하지 않은 칸은 색이 아니라 자리로도 드러나야 한다. 색만으로 표시하면 흑백
+   인쇄와 색각 차이에서 "무엇을 저장하려는지"가 사라진다. */
+.presentation-row-edited {
+  box-shadow: inset 3px 0 0 var(--accent-BorderColor);
+}
+
+.presentation-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  color: var(--secondary-TextColor);
+  font-size: var(--caption-FontSize);
 }
 
 .origin {
@@ -3383,33 +3442,65 @@ dialog label textarea {
 
 /* 댓글. 작성 주체를 지우지 않는 것이 이 화면의 계약이다 — 에이전트가 남긴 것과
    사람이 남긴 것이 같아 보이면, 승인 근거가 될 수 없다는 판정이 화면에서 사라진다.
-   그래서 종류를 이름 옆에 붙이고 에이전트 글에는 왼쪽 표시를 준다. */
-.comment-list {
+   그래서 종류를 이름 옆에 붙이고 아바타 테두리로 한 번 더 가른다. */
+.comment-list,
+.comment-replies {
   display: grid;
-  gap: var(--spacing-1);
-  margin: 0 0 var(--spacing-1_5);
-  padding: 0;
+  gap: var(--spacing-1_5);
   list-style: none;
 }
 
+.comment-list {
+  margin: 0 0 var(--spacing-1_5);
+  padding: 0;
+}
+
 .comment-item {
-  padding: var(--spacing-1) var(--spacing-1_5);
-  border-radius: var(--small-BorderRadius);
-  background: var(--surface-02-BackgroundColor);
-  border-left: 3px solid transparent;
+  display: grid;
+  gap: var(--spacing-0_5);
 }
 
-.comment-item.agent {
-  border-left-color: var(--secondary-TextColor);
+/* 답글은 줄기에 매달린다. 들여쓰기만으로는 어디까지가 한 줄기인지 읽히지 않아
+   왼쪽에 선을 하나 둔다. 깊이는 하나뿐이므로 선도 한 겹뿐이다. */
+.comment-replies {
+  margin: var(--spacing-1) 0 0;
+  padding: 0 0 0 var(--spacing-2);
+  border-left: 2px solid var(--divider-BorderColor);
 }
 
-.comment-meta {
+.comment-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--spacing-1);
-  margin: 0 0 var(--spacing-0_5);
   font-size: var(--caption-FontSize);
   color: var(--secondary-TextColor);
+}
+
+/* 아바타는 이름에서 뽑은 색을 쓴다. 같은 사람이 늘 같은 색이어야 얼굴 역할을 한다. */
+.comment-avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: hsl(var(--tone, 0) 45% 42%);
+  color: var(--on-accent-TextColor);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* 에이전트는 채우지 않고 테두리만 준다. 색만 다르면 사람과 같은 무게로 읽힌다. */
+.comment-avatar.agent {
+  background: transparent;
+  border: 2px dashed hsl(var(--tone, 0) 30% 55%);
+  color: var(--secondary-TextColor);
+}
+
+.comment-author {
+  color: var(--primary-TextColor);
+  font-size: var(--small-FontSize);
 }
 
 .comment-kind {
@@ -3419,28 +3510,94 @@ dialog label textarea {
   letter-spacing: .04em;
 }
 
-.comment-meta time {
+.comment-head time {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+}
+
+.comment-body {
+  padding-left: calc(24px + var(--spacing-1));
+  font-size: var(--body-FontSize);
 }
 
 .comment-body > :first-child { margin-top: 0; }
 .comment-body > :last-child { margin-bottom: 0; }
 
-.comment-form {
-  display: grid;
-  gap: var(--spacing-0_5);
+/* 댓글 안의 그림은 본문 폭을 넘지 않는다. 넘으면 옆 패널이 통째로 가로로 밀린다. */
+.comment-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--small-BorderRadius);
 }
 
-.comment-form textarea {
+.comment-correction {
+  margin: var(--spacing-0_5) 0 0 calc(24px + var(--spacing-1));
+  font-size: var(--caption-FontSize);
+  color: var(--secondary-TextColor);
+}
+
+/* 액션은 평소에 숨는다. 항상 보이면 목록이 단추밭이 되고, 읽는 일이 방해받는다.
+   키보드로 옮겨 다니는 사람에게는 포커스가 같은 역할을 한다. */
+.comment-actions {
+  padding-left: calc(24px + var(--spacing-1));
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+
+.comment-item:hover .comment-actions,
+.comment-item:focus-within .comment-actions {
+  opacity: 1;
+}
+
+.comment-actions button {
+  padding: 2px var(--spacing-1);
+  font-size: var(--caption-FontSize);
+}
+
+/* 입력칸은 평소에 한 줄이다. 항상 펼쳐 두면 목록보다 입력칸이 커 보이고, 읽으러 온
+   사람에게 쓰라고 재촉하는 화면이 된다. */
+.comment-composer {
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+.comment-composer-open {
+  width: 100%;
+  padding: var(--spacing-1) var(--spacing-1_5);
+  border: 1px solid var(--field-BorderColor);
+  border-radius: var(--small-BorderRadius);
+  background: var(--field-BackgroundColor);
+  color: var(--tertiary-TextColor);
+  text-align: left;
+}
+
+.comment-composer-open:hover {
+  border-color: var(--accent-BorderColor);
+  color: var(--secondary-TextColor);
+}
+
+/* 펼친 칸은 문서 편집기와 같은 것을 담는다. 높이는 넉넉히 주되 화면을 삼키지 않게
+   상한을 둔다 — 옆 패널에서 열리면 목록이 통째로 밀려난다. */
+.comment-editor {
+  min-height: 96px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: var(--spacing-1);
+  border: 1px solid var(--field-BorderColor);
+  border-radius: var(--small-BorderRadius);
+  background: var(--field-BackgroundColor);
+}
+
+.comment-composer textarea {
   width: 100%;
   resize: vertical;
   font: inherit;
 }
 
-.comment-form-actions {
+.comment-composer-actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--spacing-1);
 }
 
 /* 저장 전 검사 결과. 저장을 눌러 봐야 아는 상태를 없애는 자리다. */
@@ -3505,6 +3662,13 @@ dialog label textarea {
 
 /* 이 기기 등록. 미등록이 드러나는 자리는 대개 무언가를 하려던 순간이라, 그때 사람을
    터미널로 보내면 하던 일이 끊긴다. 등록은 신원을 적는 일이지 위험한 일이 아니다. */
+/* 등록 칸은 대화상자가 담는다. dialog form의 간격은 바로 아래 자식에만 걸리므로
+   담는 칸이 자기 간격을 가져야 입력 격자와 단추가 붙어 버리지 않는다. */
+#client-dialog-body {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
 .client-register {
   padding: var(--spacing-2);
   border: 1px solid var(--accent-BorderColor);
@@ -3564,4 +3728,154 @@ dialog label textarea {
   margin-top: var(--spacing-2);
   display: flex;
   justify-content: flex-end;
+}
+
+/* ── 런 ───────────────────────────────────────────────────
+   사람이 풀어야 하는 것과 기계가 이을 수 있는 것을 한 목록에 두면 둘 다 읽히지
+   않는다. 갈래마다 상자를 따로 세우고, 승인 단추는 사람 갈래에만 선다. */
+.run-section + .run-section {
+  margin-top: var(--spacing-3);
+}
+
+.run-list {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--large-BorderRadius);
+  background: var(--surface-01-BackgroundColor);
+}
+
+.run-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-1_5);
+  align-items: center;
+  padding: var(--spacing-1_5) var(--spacing-2);
+  border-bottom: 1px solid var(--divider-BorderColor);
+}
+
+.run-row:last-child {
+  border-bottom: 0;
+}
+
+.run-row > * {
+  min-width: 0;
+}
+
+/* 명령은 눌러서 실행하는 것이 아니라 옮겨 적는 것이다. 접어서 여러 줄로 만들면
+   어디까지가 한 명령인지 흐려지므로 가로로만 흐르게 둔다. */
+.run-row code {
+  display: block;
+  overflow-x: auto;
+  margin-top: var(--spacing-1);
+  font-size: var(--caption-FontSize);
+  white-space: pre;
+}
+
+/* ── 승인 검토 대화상자 ─────────────────────────────────
+   승인은 읽고 나서 하는 일이므로 이 상자는 읽을 자리가 본체다. 문서가 본문 폭을 갖고,
+   맥락은 옆으로 비키고, 승인 폼은 아래에 붙어 읽기를 가리지 않는다. 좁은 화면에서는
+   맥락이 문서 위로 접힌다 — 읽을 것과 볼 것을 같은 폭에 우겨넣으면 둘 다 못 읽는다. */
+.review-dialog {
+  max-width: min(1080px, calc(100vw - var(--spacing-4)));
+  width: min(1080px, calc(100vw - var(--spacing-4)));
+}
+
+.review-dialog form {
+  max-height: min(88vh, 900px);
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+}
+
+.review-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--spacing-2);
+  min-height: 0;
+}
+
+.review-main,
+.review-side {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.review-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--spacing-1_5);
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--large-BorderRadius);
+  padding: var(--spacing-2);
+  background: var(--surface-01-BackgroundColor);
+}
+
+.review-side {
+  display: grid;
+  align-content: start;
+  gap: var(--spacing-2);
+}
+
+.review-side h3,
+.review-main h3 {
+  margin: 0 0 var(--spacing-1) 0;
+  font-size: var(--body-FontSize);
+}
+
+.review-document-head {
+  padding-bottom: var(--spacing-1_5);
+  border-bottom: 1px solid var(--divider-BorderColor);
+}
+
+.review-facts {
+  display: grid;
+  gap: var(--spacing-1);
+  margin: 0;
+}
+
+.review-facts div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: var(--spacing-1);
+}
+
+.review-facts dt {
+  color: var(--secondary-TextColor);
+  font-size: var(--caption-FontSize);
+}
+
+.review-facts dd {
+  margin: 0;
+  font-size: var(--small-FontSize);
+  overflow-wrap: anywhere;
+}
+
+/* 이력은 최근 것이 위다. 승인하는 사람이 먼저 묻는 것은 "직전에 무엇을 했는가"이지
+   "무엇으로 시작했는가"가 아니다. */
+.review-trail {
+  display: grid;
+  gap: var(--spacing-1);
+  margin: 0;
+  padding-left: var(--spacing-2);
+}
+
+.review-trail li {
+  font-size: var(--small-FontSize);
+}
+
+.review-trail small {
+  display: block;
+  color: var(--secondary-TextColor);
+}
+
+/* 문서 화면으로 나가는 길은 승인·취소와 성격이 다르다. 같은 쪽에 붙이면 손이 먼저
+   가는 자리에서 승인과 이웃하게 된다. */
+.dialog-actions-lead {
+  margin-right: auto;
+}
+
+@media (max-width: 900px) {
+  .review-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -81,7 +81,17 @@ assert(!html.includes('settings-leases'), '폐기한 편집 임대 화면이 남
 assert(!html.includes('document-lease'), '폐기한 편집 임대 배너가 남아 있습니다');
 assert(!app.includes('leaseAction'), '폐기한 임대 호출이 남아 있습니다');
 assert(!app.includes('heldLease'), '폐기한 임대 상태가 남아 있습니다');
-assert(!/\blease/i.test(app), '화면 코드에 임대 흔적이 남아 있습니다');
+// 드라이버 lease는 폐기한 편집 임대와 다른 개념이다. 런이 lease를 잃고 멈춘 사유는
+// 원장이 내는 값이고 화면은 그 값을 옮겨 적을 뿐이므로, 그 한 쌍만 빼고 검사한다.
+// 빼는 문자열을 정확히 적어야 이 예외가 다른 임대 흔적까지 덮지 않는다.
+const editLeaseTraces = app.split("'lease-lost': 'lease 상실',").join('');
+assert(!/\blease/i.test(editLeaseTraces), '화면 코드에 임대 흔적이 남아 있습니다');
+// 승인은 읽고 나서 하는 일이다. 모달이 런 ID만 보여 주면 사람은 무엇을 승인하는지
+// 모른 채 누르게 되고, 그 승인은 "읽었다"의 증거가 되지 못한다.
+assert(html.includes('id="run-review-document"'), '승인 모달은 대상 문서를 담아야 합니다');
+assert(html.includes('id="run-approve-goal"'), '승인 모달은 런의 목표를 보여야 합니다');
+assert(app.includes('markdown(documentValue.body)'), '승인 모달의 본문은 문서 화면과 같은 렌더 경로를 써야 합니다');
+assert(app.includes('function renderRunReview'), '승인 검토 렌더러가 있어야 합니다');
 assert(html.includes('id="settings-button"'), '설정으로 가는 길이 있어야 합니다');
 const theme = fs.readFileSync(path.join(uiRoot, 'theme.css'), 'utf8');
 
@@ -199,9 +209,63 @@ assert(app.includes('readonly'), '식별자 칸은 고칠 수 없어야 합니�
 // 그 값으로 파생한 판정이 실제로 틀린 적이 있다.
 assert(!/register-client-type[^]{0,400}?<option value="device" selected/u.test(app), '유형에 기본값을 두면 안 됩니다');
 
-// 문서 표시 규칙은 설정 파일이라 Board에서 편집하지 않는다. 어느 파일을 열지 알려주는 게 이 화면의 일이다.
-assert(app.includes('presentation-source'), '문서 표시 규칙은 board.json 경로를 본문에 보여야 합니다');
-assert(!app.includes('data-presentation-edit'), '문서 표시 규칙은 Board에서 편집하지 않습니다');
+// 미등록은 하려던 일 앞에서 드러난다. 그 자리에서 명령줄 문자열을 건네면 사람은 하던
+// 일을 접고 터미널을 찾아야 한다. 화면이 등록을 받고 하려던 일로 이어 준다.
+assert(!/rdl client register/u.test(app), '화면은 등록 명령줄을 건네지 않습니다');
+assert(html.includes('id="client-dialog"'), '등록은 하던 일 위에서 바로 받아야 합니다');
+assert(html.includes('id="client-dialog-body"'), '등록 칸은 대화상자가 담아야 합니다');
+assert(app.includes('function openClientRegistration'), '등록으로 들어가는 길은 한 곳이어야 합니다');
+// 등록 칸은 한 벌만 만든다. 같은 id의 입력이 화면에 둘이면 무엇이 저장될지는 사람이
+// 채운 칸이 아니라 먼저 그려진 칸이 정한다.
+assert(app.includes('function clientRegisterFormHtml'), '등록 칸은 한 곳에서 만들어야 합니다');
+assert(app.split('register-client-name" placeholder').length === 2, '등록 칸은 화면에 한 벌만 있어야 합니다');
+assert(app.includes("closest('#open-client-register')"), '설정 화면은 같은 등록 대화상자로 들어가야 합니다');
+// 등록은 목적이 아니라 중간에 낀 일이다. 끝나면 누르려던 것으로 이어져야 한다.
+assert(app.includes('if (intent) await intent();'), '등록을 마치면 하려던 일로 이어져야 합니다');
+assert(app.includes('const fresh = state.snapshot.documents.find'), '이어갈 대상은 새 스냅샷에서 다시 찾아야 합니다');
+assert(app.includes("state.clientIntent = null"), '대화상자를 닫으면 이어갈 일도 버려야 합니다');
+// 거절의 종류는 문장이 아니라 code로 읽는다. 문장으로 되짚으면 말을 다듬는 순간 판정이 깨진다.
+assert(app.includes('error.code = value.code'), '서버가 붙인 거절 종류를 화면이 읽어야 합니다');
+assert(app.includes("error.code === 'unknown-client'"), '미등록 거절은 등록 절차로 이어져야 합니다');
+assert(app.includes('async function postComment'), '쓰던 댓글은 등록 뒤 다시 쓰게 하면 안 됩니다');
+// dialog 안의 form은 Enter의 기본 동작이 "닫기"다. 막지 않으면 다 채운 사람이 Enter 한
+// 번에 등록 없이 대화상자만 닫고 처음부터 다시 채운다.
+assert(app.includes("el('client-form').addEventListener('submit'"), '등록 칸에서 Enter는 등록이어야 합니다');
+assert(app.includes('async function submitClientRegistration'), '단추와 Enter는 같은 등록을 불러야 합니다');
+
+// 옆에서 연 태스크(peek)는 목록과 함께 다시 그려야 한다. 목록만 갱신하면 peek은 예전
+// 스냅샷을 들고 있어, 방금 남긴 댓글이 저장되고도 그 자리에서는 보이지 않는다.
+assert(app.includes('function redrawTaskPeek'), '옆에 열어둔 태스크도 다시 그려야 합니다');
+assert(app.includes('function renderTasks() { redrawTaskPeek();'), '목록을 그릴 때 peek도 함께 그려야 합니다');
+// 스냅샷은 5초마다 돈다. 그때마다 쓰던 글이 지워지면 이 화면에서는 긴 댓글을 쓸 수 없다.
+assert(app.includes('function withCommentDraft'), '다시 그려도 쓰다 만 댓글은 남아야 합니다');
+assert(app.includes("withCommentDraft(el('task-page')"), '전체화면 상세도 초안을 지키며 다시 그려야 합니다');
+assert(app.includes("withCommentDraft(el('context-content')"), 'peek도 초안을 지키며 다시 그려야 합니다');
+// 보낸 댓글은 다시 읽기 전에 지운다. 순서가 뒤집히면 초안 복원이 방금 보낸 글을
+// 입력칸에 되살려 두 번 보내게 된다.
+{
+  const post = app.slice(app.indexOf('async function postComment'));
+  assert(post.indexOf('clearCommentDraft(taskId)') < post.indexOf('await loadSnapshot(true)'), '보낸 댓글은 다시 읽기 전에 지워야 합니다');
+}
+
+// 표시 규칙은 이제 Board에서 고친다. 판정에 쓰이지 않는 층이라 결정을 요구할 근거가
+// 없고, 근거 없는 읽기 전용은 사람을 파일로 보낼 뿐이다. 다만 어느 파일에 쓰는지는
+// 계속 보여야 한다 — 화면이 어디에 쓰는지 말하지 않으면 편집은 추측이 된다.
+assert(app.includes('presentation-source'), '표시 규칙은 board.json 경로를 본문에 보여야 합니다');
+assert(app.includes('id="presentation-scope"'), '표시 규칙은 어느 범위에 저장할지 고르게 해야 합니다');
+assert(app.includes('id="save-presentation"'), '표시 규칙은 화면에서 저장할 수 있어야 합니다');
+assert(app.includes('data-presentation-field'), '표시 규칙의 문구·설명·순서는 칸으로 편집해야 합니다');
+assert(app.includes('data-presentation-reset'), '이 범위에서 덮은 값을 되돌릴 수 있어야 합니다');
+assert(app.includes('function savePresentationEdits'), '표시 규칙 저장은 한 곳에서 만들어야 합니다');
+// 칸의 값은 이 범위가 덮은 것뿐이다. 합쳐진 값을 칸에 채워 그대로 저장하면 손대지 않은
+// 상위 값까지 이 범위 파일에 박혀, 나중에 상위 기본값이 나아져도 내려오지 않는다.
+assert(app.includes("own && own[field] !== undefined ? own[field] : ''"), '칸은 이 범위가 덮은 값만 담아야 합니다');
+assert(app.includes('inheritedPresentationEntry'), '상위에서 내려온 값은 placeholder로만 보여야 합니다');
+assert(app.includes('function isPresentationEditing'), '편집 중에는 폴링이 칸을 갈아끼우면 안 됩니다');
+// 정책 층은 여기서 바꾸지 않는다. 표시 문구를 고치러 온 사람이 항목을 없애거나 승인
+// 모드를 바꿀 수 있으면, 결정을 요구하는 규칙이 화면 하나로 우회된다.
+assert(!app.includes('data-presentation-disabled'), '사용 안 함은 표시가 아니라 정책이라 여기서 바꾸지 않습니다');
+assert(app.includes('계약 변경 결정'), '정책 층을 왜 여기서 못 바꾸는지 화면이 말해야 합니다');
 
 // 막힘은 목록에서 바로 읽혀야 한다. blocker뿐 아니라 끝나지 않은 선행 태스크도 막힘이다.
 assert(app.includes('function taskBlockage'), '막힘 판정은 한 곳에서 계산해야 합니다');
@@ -338,9 +402,14 @@ assert(html.includes('id="new-task"'), '태스크를 만드는 길은 있어야 
 assert(html.includes('id="task-acceptance"'), '생성 다이얼로그가 완료조건을 받아야 합니다');
 
 // 편집 중 스냅샷을 갈아끼우면 draft가 최신 revision을 달고 저장되어 남의 변경을 덮어쓴다.
+// 표시 규칙 편집도 같은 자리에 선다 — 칸에 적던 값이 사라지는 것보다, baseRevision이
+// 소리 없이 바뀌어 무엇을 기준으로 저장하는지 흐려지는 쪽이 더 나쁘다.
 const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function loadSnapshot') + 900);
-assert(load.includes('if (isDocumentEditing()) return;'), '편집 중에는 스냅샷을 교체하지 않아야 합니다');
-assert(load.indexOf('if (isDocumentEditing()) return;') < load.indexOf('state.snapshot = next'), '가드가 교체보다 먼저여야 합니다');
+// 댓글을 쓰는 중에도 같은 자리에 선다. 편집기 인스턴스는 다시 그리기에 통째로 버려지므로,
+// 폴링 한 번이 쓰던 글을 지우는 일이 된다.
+const guard = 'if (isDocumentEditing() || isPresentationEditing() || isCommentComposing()) return;';
+assert(load.includes(guard), '편집 중에는 스냅샷을 교체하지 않아야 합니다');
+assert(load.indexOf(guard) < load.indexOf('state.snapshot = next'), '가드가 교체보다 먼저여야 합니다');
 
 // ✓와 ○는 같은 자리에 같은 크기로 그려져 멀리서 구분되지 않았고, 20px 글리프만
 // 누를 수 있어 계속 빗나갔다. 행 전체를 버튼으로 두고 상태는 네모칸으로 그린다.
@@ -406,7 +475,7 @@ assert(app.includes('pending.sending'), '같은 태스크를 두 번 동시에 �
 assert(app.includes('function isDocumentEditing'), '두 가드는 성격이 달라 나뉘어야 합니다');
 {
   const load = app.slice(app.indexOf('async function loadSnapshot'), app.indexOf('async function initialize'));
-  assert(load.includes('if (isDocumentEditing()) return;'), '문서 편집 가드는 우회 경로가 없어야 합니다');
+  assert(load.includes('if (isDocumentEditing() || isPresentationEditing() || isCommentComposing()) return;'), '문서 편집 가드는 우회 경로가 없어야 합니다');
   assert(/state\.pendingTasks\.size > 0 && !\(options && options\.settlingTask\)/u.test(load), '태스크 대기열 가드는 저장 직후 경로에서만 열려야 합니다');
 }
 

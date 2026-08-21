@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id' };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, clientIntent: null, commentComposer: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id', presentationScope: 'project', presentationSettling: false, runs: null, runsError: '', approvingRun: null, review: null };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
 const TERMINAL_STATUSES = ['done', 'cancelled'];
@@ -20,7 +20,19 @@ const documentStateLabels = {
 function el(id) { return document.getElementById(id); }
 function escapeHtml(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
 function message(value, error) { el('message').textContent = value || ''; el('message').style.color = error ? 'var(--red)' : ''; if (value) setTimeout(() => { if (el('message').textContent === value) el('message').textContent = ''; }, 5000); }
-async function api(path, options) { const response = await fetch(path, options); const value = await response.json(); if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`); return value; }
+// 거절은 문장만이 아니라 종류도 들고 온다. 문장으로 종류를 되짚으면 말을 다듬는
+// 순간 판정이 깨지므로, 서버가 붙인 code를 그대로 옮긴다 — 미등록 기기를 화면의
+// 등록으로 데려가는 판단이 이 값에 걸려 있다.
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const value = await response.json();
+  if (response.ok) return value;
+  const error = new Error(value.error || `HTTP ${response.status}`);
+  error.code = value.code || null;
+  error.status = response.status;
+  error.payload = value;
+  throw error;
+}
 // 목록에서 훑을 때 쓰는 짧은 날짜. 값이 없으면 자리만 비운다.
 function shortDate(value) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 function projectPath(path) { return `/api/projects/${encodeURIComponent(state.project)}${path}`; }
@@ -279,6 +291,7 @@ function setView(view, selected) {
   else if (state.view === 'documents') renderDocuments();
   else if (state.view === 'task' && selected) renderTask(selected);
   else if (state.view === 'tasks') { for (const button of document.querySelectorAll('[data-task-scope]')) button.classList.toggle('active', button.dataset.taskScope === state.taskScope); renderTasks(); }
+  else if (state.view === 'runs') { renderRuns(); loadRuns(true); }
   else if (state.view === 'home') renderHome();
   else if (state.view === 'people') renderPeople();
   else if (state.view === 'settings') renderSettings();
@@ -462,26 +475,105 @@ function contextSelect(field, current, options) { return `<select class="context
 // 태스크 댓글. 작성 주체를 지우지 않는 것이 이 화면의 계약이다 — 에이전트가 남긴
 // 것과 사람이 남긴 것이 같아 보이면, 승인 근거가 될 수 없다는 판정이 화면에서
 // 사라진다. 그래서 이름 옆에 종류를 붙이고 자격 없는 것은 그 사실을 표시한다.
-function commentSectionHtml(taskId) {
+// 아바타 색은 이름에서 뽑는다. 무작위로 주면 새로고침마다 색이 바뀌어 얼굴 역할을
+// 하지 못한다. 같은 사람은 어느 화면에서도 같은 색이어야 목록을 훑을 때 눈이 쉰다.
+function avatarTone(seed) {
+  let hash = 0;
+  for (const char of String(seed || '?')) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  return hash;
+}
+// 이니셜은 첫 글자 하나다. 한글은 두 글자를 넣으면 원 안에서 뭉개지고, 라틴 이름의
+// 성까지 넣으면 같은 성을 쓰는 사람이 구분되지 않는다.
+function avatarHtml(name, agent) {
+  const label = String(name || '?').trim().slice(0, 1).toUpperCase();
+  return `<span class="comment-avatar${agent ? ' agent' : ''}" style="--tone: ${avatarTone(name)}" aria-hidden="true">${escapeHtml(label)}</span>`;
+}
+// 작성자 이름. 사람이면 구성원 이름을, 에이전트면 어느 Client인지를 보인다 — 에이전트를
+// 사람 이름으로 부르면 누가 한 말인지가 화면에서 흐려지고, 그 구분이 승인 근거 판정이다.
+function commentAuthor(item) {
+  if (item.workerKind !== 'human') return item.clientId;
+  const member = (state.snapshot.people.members || []).find((person) => person.id === item.member);
+  return (member && member.name) || item.member || item.clientId;
+}
+// 시각은 두 벌로 적는다. 훑을 때는 "3시간 전"이 빠르고, 따질 때는 정확한 값이 필요하다.
+function commentTimeHtml(item) {
+  const exact = String(item.recordedAt || '').replace('T', ' ').slice(0, 16);
+  return `<time datetime="${escapeHtml(item.recordedAt || '')}" title="${escapeHtml(exact)}">${escapeHtml(relativeTime(item.recordedAt))}</time>`;
+}
+function commentItemHtml(item, taskId, reply) {
+  const agent = item.workerKind !== 'human';
+  const author = commentAuthor(item);
+  // 정정된 댓글은 그 사실을 남긴다. 조용히 바꾸면 지난 화면을 본 사람과 지금 보는
+  // 사람이 다른 기록을 읽게 된다.
+  const corrected = item.correctedBy
+    ? `<p class="comment-correction">작성 주체가 정정되었습니다: ${escapeHtml(item.correctionReason || '사유 없음')}</p>`
+    : '';
+  // 답글 단추는 뿌리에만 둔다. 깊이는 하나이고, 답글에도 두면 사람은 계단이 생길 것이라
+  // 기대하지만 저장은 같은 줄기로 접는다 — 화면이 없는 구조를 약속하는 셈이 된다.
+  const actions = reply ? '' : `<div class="comment-actions"><button type="button" data-comment-reply="${escapeHtml(item.eventId || '')}" data-comment-task="${escapeHtml(taskId)}">답글</button></div>`;
+  return `<li class="comment-item${agent ? ' agent' : ''}${reply ? ' reply' : ''}" data-comment="${escapeHtml(item.eventId || '')}">`
+    + `<div class="comment-head">${avatarHtml(author, agent)}`
+    + `<strong class="comment-author">${escapeHtml(author)}</strong>`
+    + `<span class="comment-kind">${agent ? '에이전트' : '사람'}</span>`
+    + commentTimeHtml(item)
+    + '</div>'
+    + `<div class="comment-body">${markdown(String(item.body || ''))}</div>`
+    + corrected + actions;
+}
+// 스레드로 접는 규칙은 comment-rules가 갖는다. 화면이 자기 방식으로 다시 접으면 같은
+// 원장이 자리마다 다르게 보인다. 여기서는 같은 규칙을 그대로 따른다 — 부모를 찾지
+// 못한 답글은 숨기지 않고 뿌리로 올린다. 기록을 화면에서 지우면 남은 것이 전부인 줄 알게 된다.
+function commentThreadsOf(taskId) {
   const all = (state.snapshot && state.snapshot.comments) || [];
   const mine = all.filter((item) => item.taskId === taskId);
-  const list = mine.length
-    ? `<ol class="comment-list">${mine.map((item) => {
-      const agent = item.workerKind !== 'human';
-      const who = agent ? item.clientId : (item.member || item.clientId);
-      return `<li class="comment-item${agent ? ' agent' : ''}">`
-        + `<p class="comment-meta"><strong>${escapeHtml(who)}</strong>`
-        + `<span class="comment-kind">${agent ? '에이전트' : '사람'}</span>`
-        + `<time>${escapeHtml(String(item.recordedAt || '').replace('T', ' ').slice(0, 16))}</time></p>`
-        + `<div class="comment-body">${markdown(String(item.body || ''))}</div></li>`;
+  const known = new Set(mine.map((item) => item.eventId));
+  const replies = new Map();
+  for (const item of mine) {
+    if (!item.parentId || !known.has(item.parentId)) continue;
+    replies.set(item.parentId, (replies.get(item.parentId) || []).concat(item));
+  }
+  return mine
+    .filter((item) => !item.parentId || !known.has(item.parentId))
+    .map((item) => ({ comment: item, replies: replies.get(item.eventId) || [] }));
+}
+// 입력칸은 평소에 한 줄이다. 항상 펼쳐 두면 목록보다 입력칸이 커 보이고, 읽으러 온
+// 사람에게 쓰라고 재촉하는 화면이 된다.
+//
+// 펼침 여부는 state가 갖는다. DOM에 두면 폴링이 다시 그릴 때마다 접히고, 쓰던 사람은
+// 자기가 뭘 잘못 눌렀는지 찾게 된다.
+function composerOpenFor(taskId, parentId) {
+  const open = state.commentComposer;
+  return Boolean(open) && open.taskId === taskId && (open.parentId || null) === (parentId || null);
+}
+function commentComposerHtml(taskId, parentId) {
+  const attributes = `data-comment-form="${escapeHtml(taskId)}"${parentId ? ` data-comment-parent="${escapeHtml(parentId)}"` : ''}`;
+  if (!composerOpenFor(taskId, parentId)) {
+    return `<div class="comment-composer" ${attributes}>`
+      + `<button type="button" class="comment-composer-open">${parentId ? '답글 남기기…' : '댓글 남기기…'}</button></div>`;
+  }
+  // 편집기는 여기에 붙는다. RundolEditor가 없으면 textarea가 그 자리를 대신한다 —
+  // 번들이 없다고 댓글을 못 남기면, 편집기 빌드 실패가 논의를 막는 사고가 된다.
+  return `<form class="comment-composer open" ${attributes}>`
+    + '<div class="comment-editor" data-comment-editor hidden></div>'
+    + '<textarea name="body" rows="3" placeholder="남길 말. 그림은 붙여넣고 문서는 [[로 링크합니다" aria-label="댓글 내용"></textarea>'
+    + '<div class="comment-composer-actions"><button type="button" class="comment-composer-cancel">취소</button>'
+    + `<button type="submit" class="primary">${parentId ? '답글' : '댓글'} 남기기</button></div></form>`;
+}
+function commentSectionHtml(taskId) {
+  const threads = commentThreadsOf(taskId);
+  const list = threads.length
+    ? `<ol class="comment-list">${threads.map((thread) => {
+      const replies = thread.replies.length
+        ? `<ol class="comment-replies">${thread.replies.map((item) => commentItemHtml(item, taskId, true)).join('')}</ol>`
+        : '';
+      // 답글 입력칸은 그 줄기 안에 둔다. 목록 맨 아래에 두면 어느 댓글에 답하는지가
+      // 화면에서 사라지고, 사람은 자기가 쓴 답글이 엉뚱한 데 붙었다고 읽는다.
+      const composer = composerOpenFor(taskId, thread.comment.eventId) ? commentComposerHtml(taskId, thread.comment.eventId) : '';
+      return `${commentItemHtml(thread.comment, taskId, false)}${replies}${composer}</li>`;
     }).join('')}</ol>`
     : '<p class="empty-state">아직 댓글이 없습니다.</p>';
-  const form = `<form class="comment-form" data-comment-form="${escapeHtml(taskId)}">`
-    + `<textarea name="body" rows="3" placeholder="이 태스크에 남길 말" aria-label="댓글 내용"></textarea>`
-    + `<div class="comment-form-actions"><button type="submit">댓글 남기기</button></div></form>`;
-  return list + form;
+  return list + commentComposerHtml(taskId, null);
 }
-
 function taskDetailHtml(task, mode) {
   const members = [['', '미지정']].concat(state.snapshot.people.members.map((member) => [member.id, member.name]));
   const criteria = Object.entries(task.acceptanceCriteria || {});
@@ -531,6 +623,42 @@ function taskDetailHtml(task, mode) {
   ].filter(Boolean).join('');
 
   return `<article class="task-detail" data-task-detail="${escapeHtml(task.id)}">${head}${properties}${body}</article>`;
+}
+
+// 태스크 상세를 다시 그릴 때 쓰다 만 댓글을 살린다. 스냅샷은 5초마다 도는데 그때마다
+// 사람이 치고 있던 글이 지워지면 이 화면에서는 긴 댓글을 쓸 수 없다. 값과 캐럿, 그리고
+// 포커스가 그 칸에 있었는지까지 되돌린다 — 포커스를 잃으면 다음 글자가 엉뚱한 데로 간다.
+function withCommentDraft(host, redraw) {
+  const before = host.querySelector('[data-comment-form] [name="body"]');
+  const kept = before && before.value
+    ? { value: before.value, start: before.selectionStart, end: before.selectionEnd, focused: document.activeElement === before }
+    : null;
+  redraw();
+  if (!kept) return;
+  const after = host.querySelector('[data-comment-form] [name="body"]');
+  if (!after) return;
+  after.value = kept.value;
+  if (!kept.focused) return;
+  after.focus();
+  after.setSelectionRange(kept.start, kept.end);
+}
+
+// 옆에 열어둔 태스크는 목록과 함께 다시 그린다. 목록만 갱신하면 peek은 예전 스냅샷을
+// 계속 들고 있어, 방금 남긴 댓글이 저장되고도 그 자리에서는 보이지 않는다 — 사람은
+// 댓글이 사라진 것으로 읽고 같은 글을 다시 쓴다.
+function redrawTaskPeek() {
+  if (document.body.dataset.peekKind !== 'task' || !state.selected) return;
+  const task = state.snapshot.tasks.tasks.find((item) => item.id === state.selected);
+  if (!task) return;
+  withCommentDraft(el('context-content'), () => renderContext(task, 'task'));
+  mountOpenComposer();
+}
+// 목록을 다시 그리면 어느 줄을 열어 두었는지 표시가 사라진다. 옆 패널은 그 태스크를
+// 보여주는데 목록에서는 아무것도 골라지지 않은 것처럼 보여, 둘이 다른 것을 가리키는
+// 것으로 읽힌다. 다시 그린 뒤에 그 표시를 되돌린다.
+function markPeekedRow() {
+  if (document.body.dataset.peekKind !== 'task' || !state.selected) return;
+  for (const row of document.querySelectorAll('.task-row')) row.classList.toggle('peeked', row.dataset.task === state.selected);
 }
 
 function renderContext(item, kind) {
@@ -615,7 +743,7 @@ function taskGroups(tasks) {
     })
     .join('');
 }
-function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)
+function renderTasks() { redrawTaskPeek(); const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)
     && (!el('task-kind').value || (task.kind || 'normal') === el('task-kind').value)
     && (!el('task-round').value || String(task.round) === el('task-round').value));
   // 완료 숨기기는 접기와 다른 일을 한다. 접기는 묶음 머리글을 남기고, 숨기기는 항목을 뺀다.
@@ -628,7 +756,8 @@ function renderTasks() { const scopes = { all: ['전체 태스크', '프로젝�
   // 머리글이 위로 밀려 어느 열을 보고 있는지 놓친다. 그 배치를 body가 알아야 한다.
   document.body.classList.toggle('board-mode', state.taskMode === 'board');
   if (state.taskMode === 'list') el('task-list').innerHTML = tasks.length ? taskGroups(tasks) : '<p class="empty-state">조건에 맞는 태스크가 없습니다.</p>';
-  else if (state.taskMode === 'board') renderBoard(tasks); else renderTaskGraph(tasks); }
+  else if (state.taskMode === 'board') renderBoard(tasks); else renderTaskGraph(tasks);
+  markPeekedRow(); }
 // Trello를 따른다. 카드는 제목 두 줄로 높이를 맞춰 눈이 한 칸씩 훑을 수 있게 하고,
 // 막힌 태스크만 표식을 더한다. 높이가 제각각이면 열끼리 줄이 어긋나 비교가 안 된다.
 function boardCard(task) {
@@ -672,7 +801,8 @@ function renderTask(id) {
   const task = state.snapshot.tasks.tasks.find((item) => item.id === id);
   if (!task) return setView('tasks');
   el('task-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '태스크', view: 'tasks' }, { label: task.id }]);
-  el('task-page').innerHTML = taskDetailHtml(task, 'page');
+  withCommentDraft(el('task-page'), () => { el('task-page').innerHTML = taskDetailHtml(task, 'page'); });
+  mountOpenComposer();
   el('context-content').hidden = true;
   el('context-empty').hidden = false;
   renderMermaid();
@@ -793,7 +923,9 @@ function isEditing() { return isDocumentEditing() || state.pendingTasks.size > 0
 async function loadSnapshot(silent, options) {
   try {
     const next = await api(projectPath('/board-snapshot'));
-    if (isDocumentEditing()) return;
+    // 댓글을 쓰는 중에도 갈아치우지 않는다. 편집기 인스턴스가 다시 그리기에 통째로
+    // 버려지므로, 폴링 한 번이 쓰던 글을 지우는 일이 된다.
+    if (isDocumentEditing() || isPresentationEditing() || isCommentComposing()) return;
     if (state.pendingTasks.size > 0 && !(options && options.settlingTask)) return;
     const changed = !state.snapshot || JSON.stringify(state.snapshot.revision) !== JSON.stringify(next.revision);
     state.snapshot = next;
@@ -816,7 +948,7 @@ async function initialize() { applyTheme(localStorage.getItem('rundol.theme') ||
 // 3초 고정 폴링은 탭을 열어만 두어도 하루 종일 스냅샷을 다시 계산하게 만든다.
 // 보이지 않을 때는 멈추고, 다시 보일 때 한 번 당겨온다.
 const POLL_INTERVAL = 5000;
-function startPolling() { stopPolling(); if (document.visibilityState === 'visible') state.polling = setInterval(() => loadSnapshot(true), POLL_INTERVAL); }
+function startPolling() { stopPolling(); if (document.visibilityState === 'visible') state.polling = setInterval(() => { loadSnapshot(true); if (state.view === 'runs') loadRuns(true); }, POLL_INTERVAL); }
 function stopPolling() { if (state.polling) clearInterval(state.polling); state.polling = null; }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { loadSnapshot(true); startPolling(); return; }
@@ -854,33 +986,138 @@ document.addEventListener('click', (event) => { const button = event.target.clos
     }
     return setView('task', button.dataset.task);
   } });
+// 댓글 입력칸의 여닫이. 어느 태스크의, 어느 댓글에 붙는 칸이 열려 있는지는 state가
+// 갖는다 — DOM에 두면 5초마다 도는 폴링이 다시 그릴 때 접히고, 쓰던 사람은 자기가
+// 무엇을 잘못 눌렀는지 찾게 된다.
+let commentEditor = null;
+function isCommentComposing() { return Boolean(state.commentComposer); }
+// 편집기는 문서 편집과 같은 것을 쓴다. 그림 붙여넣기와 문서 링크가 이미 그 안에 있고,
+// 댓글용으로 따로 들이면 같은 그림이 자리마다 다른 규격으로 저장된다.
+function mountCommentEditor(form, initial) {
+  const host = form.querySelector('[data-comment-editor]');
+  const fallback = form.querySelector('[name="body"]');
+  if (!host || !window.RundolEditor) {
+    // 편집기 번들이 없으면 textarea가 그 자리를 대신한다. 빌드 실패가 논의를 막는
+    // 사고가 되면 안 된다.
+    if (fallback) { fallback.value = initial || ''; fallback.focus(); }
+    return;
+  }
+  host.hidden = false;
+  if (fallback) fallback.hidden = true;
+  commentEditor = window.RundolEditor.openEditor(host, initial || '', {
+    linkCandidates: linkCandidates(),
+    uploadImage,
+    onMessage: message
+  });
+  commentEditor.view.focus();
+}
+// 다시 그리면 편집기의 DOM은 통째로 버려진다. 열린 칸이 있으면 그 자리에 다시 붙이되
+// 쓰던 글은 마크다운으로 받아 옮긴다 — 다시 그렸다는 이유로 사람이 쓴 것을 잃지 않는다.
+function mountOpenComposer() {
+  const form = document.querySelector('.comment-composer.open[data-comment-form]');
+  if (!form) { if (commentEditor) { commentEditor.destroy(); commentEditor = null; } return; }
+  if (commentEditor && document.contains(commentEditor.view.dom)) return;
+  const kept = commentEditor ? commentEditor.getMarkdown() : '';
+  if (commentEditor) { commentEditor.destroy(); commentEditor = null; }
+  mountCommentEditor(form, kept);
+}
+function closeCommentComposer() {
+  if (commentEditor) { commentEditor.destroy(); commentEditor = null; }
+  state.commentComposer = null;
+}
+// 쓰는 중에는 화면을 갈아치우지 않는다. 문서 편집이 이미 같은 규칙을 쓴다 — 폴링이
+// 다시 그리면 편집기 인스턴스가 통째로 사라지고, 그 안의 글도 같이 사라진다.
+function commentBodyOf(form) {
+  if (commentEditor) return commentEditor.getMarkdown();
+  const field = form.querySelector('[name="body"]');
+  return field ? field.value : '';
+}
+document.addEventListener('click', (event) => {
+  const opener = event.target.closest('.comment-composer-open');
+  if (opener) {
+    const host = opener.closest('[data-comment-form]');
+    closeCommentComposer();
+    state.commentComposer = { taskId: host.dataset.commentForm, parentId: host.dataset.commentParent || null };
+    return redrawTaskDetail();
+  }
+  const reply = event.target.closest('[data-comment-reply]');
+  if (reply) {
+    closeCommentComposer();
+    state.commentComposer = { taskId: reply.dataset.commentTask, parentId: reply.dataset.commentReply };
+    return redrawTaskDetail();
+  }
+  if (event.target.closest('.comment-composer-cancel')) {
+    closeCommentComposer();
+    return redrawTaskDetail();
+  }
+});
+// 태스크 상세를 지금 열려 있는 자리에 다시 그린다. peek과 전체화면 중 어디에 있는지는
+// 화면이 알고 있으므로, 부르는 쪽이 그것을 따지지 않게 한 곳에서 가른다.
+function redrawTaskDetail() {
+  if (state.view === 'task' && state.selected) return renderTask(state.selected);
+  redrawTaskPeek();
+}
+
 // 댓글 제출. 태스크 리비전을 싣지 않는 이유는 append-only라 남의 댓글을 덮을 수
 // 없기 때문이다. 리비전을 요구하면 두 사람이 동시에 쓸 때 한 명이 거절당하고,
 // 그러면 논의 때문에 논의가 막힌다.
+//
+// 보내기를 함수로 떼어 둔 이유는 미등록 때문이다. 등록하고 나면 같은 댓글을 다시
+// 보내야 하는데, 그때 화면은 이미 새로 그려져 사람이 쓰던 입력칸은 사라진 뒤다.
+// 내용은 함수가 인자로 들고 있으므로 다시 쓰게 하지 않는다.
+function clearCommentDraft(taskId) {
+  for (const form of document.querySelectorAll('[data-comment-form]')) {
+    if (form.dataset.commentForm !== taskId) continue;
+    const field = form.querySelector('[name="body"]');
+    if (field) field.value = '';
+  }
+}
+async function postComment(taskId, body, options) {
+  const settings = options || {};
+  try {
+    await api(`/api/tasks/${encodeURIComponent(taskId)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      // 답글이 붙을 자리는 요청이 싣는다. 실재하는 댓글인지, 같은 태스크의 것인지는
+      // 저장이 판정한다 — 화면이 그 판정을 흉내 내면 두 답이 갈린다.
+      body: JSON.stringify({ body, parentId: settings.parentId || undefined })
+    });
+    // 보낸 댓글은 스냅샷을 다시 읽기 전에 지운다. 다시 그리기는 쓰다 만 초안을 살려
+    // 주므로, 순서를 뒤집으면 방금 보낸 글이 입력칸에 그대로 남아 두 번 보내게 된다.
+    // 지우는 대상을 화면에서 찾는 이유는 등록 뒤 재시도 때문이다 — 그때 처음 쓰던
+    // 입력칸은 이미 사라졌고, 살아 있는 것은 다시 그려진 쪽이다.
+    clearCommentDraft(taskId);
+    // 입력칸을 먼저 닫는다. 열어 둔 채로 스냅샷을 읽으면 "쓰는 중"으로 보고 갱신을
+    // 건너뛰어, 방금 남긴 댓글이 화면에 나타나지 않는다.
+    closeCommentComposer();
+    await loadSnapshot(true);
+    message('댓글을 남겼습니다.');
+    return true;
+  } catch (error) {
+    // 미등록은 내용의 문제가 아니라 신원의 문제다. 화면에서 등록을 받고 쓰던 댓글을
+    // 그대로 다시 보낸다. 등록 직후의 재시도는 한 번뿐이다 — 그때도 미등록이면 원인은
+    // 다른 데 있고, 되풀이하면 사람은 같은 대화상자만 계속 본다.
+    if (error.code === 'unknown-client' && !settings.retried) {
+      openClientRegistration('댓글에는 누가 썼는지가 남아야 합니다. 이 기기를 등록하면 쓰던 댓글을 이어서 남깁니다.', () => postComment(taskId, body, { retried: true, parentId: settings.parentId || null }));
+      return false;
+    }
+    message(error.message, true);
+    return false;
+  }
+}
 document.addEventListener('submit', async (event) => {
   const form = event.target.closest('[data-comment-form]');
   if (!form) return;
   event.preventDefault();
-  const field = form.querySelector('[name="body"]');
-  const body = (field.value || '').trim();
+  const body = String(commentBodyOf(form) || '').trim();
   if (!body) return message('댓글 내용을 입력하세요.', true);
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
-  try {
-    await api(`/api/tasks/${encodeURIComponent(form.dataset.commentForm)}/comments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
-      body: JSON.stringify({ body })
-    });
-    field.value = '';
-    await loadSnapshot(true);
-    message('댓글을 남겼습니다.');
-  } catch (error) {
-    message(error.message, true);
-  } finally {
-    button.disabled = false;
-  }
+  // 실패하면 쓴 글을 그대로 둔다. 여기서 칸을 닫으면 거절당한 사람이 처음부터 다시 쓴다.
+  try { await postComment(form.dataset.commentForm, body, { parentId: form.dataset.commentParent || null }); }
+  finally { button.disabled = false; }
 });
+
 
 document.addEventListener('click', (event) => { const button = event.target.closest('[data-task-acceptance]'); if (!button) return; const task = state.snapshot.tasks.tasks.find((item) => item.id === state.selected); if (!task) return; const acceptanceCriteria = JSON.parse(JSON.stringify(task.acceptanceCriteria)); const criterion = acceptanceCriteria[button.dataset.taskAcceptance]; if (!criterion) return; criterion.done = !criterion.done; queueTaskUpdate(task, { acceptanceCriteria }); });
 document.addEventListener('change', async (event) => {
@@ -1214,10 +1451,18 @@ function editingBody() {
 el('edit-document').addEventListener('click', async () => {
   const item = state.snapshot.documents.find((value) => value.id === state.selected);
   if (!item) return;
-  // 등록되지 않은 Client는 정본을 바꿀 수 없다. 무엇을 해야 하는지 알려준다.
+  // 등록되지 않은 Client는 정본을 바꿀 수 없다. 명령줄 문자열을 건네는 대신 이 화면에서
+  // 등록을 받고, 끝나면 누르려던 편집을 그대로 이어 준다 — 사람이 하려던 일은 편집이지
+  // 등록이 아니다.
   if (!state.snapshot.client.registered) {
-    return message(`이 기기를 Client로 등록해야 협업 편집을 시작할 수 있습니다: rdl client register ${state.snapshot.client.id} --name "<이름>" --type device --owner <MEMBER-ID>`, true);
+    return openClientRegistration('편집한 내용에 누가 고쳤는지가 남아야 합니다. 이 기기를 등록하면 이어서 편집합니다.', async () => {
+      // 대상은 새 스냅샷에서 다시 찾는다. 등록 뒤 스냅샷을 다시 읽었으므로 누르기 전의
+      // 객체는 낡은 revision을 들고 있고, 그대로 저장하면 바뀐 것이 없는데도 충돌이 난다.
+      const fresh = state.snapshot.documents.find((value) => value.id === item.id);
+      if (fresh) await enterEditing(fresh);
+    });
   }
+
   await enterEditing(item);
 });
 el('cancel-document-edit').addEventListener('click', () => { renderDocument(state.selected); });
@@ -1275,6 +1520,10 @@ async function runSync() {
     await loadSnapshot(true);
     message('동기화를 완료했습니다.');
   } catch (error) {
+    // 동기화는 공유 이벤트를 남기므로 실행 주체가 있어야 한다. 미등록이면 그 자리에서
+    // 등록을 받는다. 다시 물어보는 확인은 그대로 둔다 — push는 되돌리기 어려운 동작이고,
+    // 확인은 등록 때문에 건너뛸 이유가 없다.
+    if (error.code === 'unknown-client') return openClientRegistration('동기화 기록에는 누가 올렸는지가 남아야 합니다. 이 기기를 등록하면 이어서 동기화합니다.', () => runSync());
     message(error.message, true);
   }
 }
@@ -1352,12 +1601,19 @@ function currentSectionsFromRows() {
 }
 // 이 범위에서 덮은 값만 보낸다. 합쳐진 결과를 통째로 보내면 위에서 내려온 값까지
 // 이 범위 파일에 박혀, 나중에 상위 기본값이 나아져도 반영되지 않는다.
+//
+// patch의 null은 "이 범위에서 그 항목을 지운다"는 뜻이다. Object.assign으로는 지움을
+// 표현할 수 없어 표식을 하나 두고 여기서 걷어낸다 — 표식이 없으면 되돌리기가 "빈
+// 객체로 덮기"가 되는데, 빈 객체는 상속이 아니라 이 범위가 항목을 선언했다는 뜻이라
+// 되돌린 다음에도 이 파일이 그 항목을 계속 붙들고 있게 된다.
 function presentationInput(scope, patch) {
   const sources = (state.snapshot.presentation && state.snapshot.presentation.sources) || {};
   const own = sources[scope] || {};
   const next = { scope, baseRevision: state.snapshot.revision.presentation };
-  for (const group of ['documentTypes', 'documentStates', 'policyStates', 'enforcementLevels', 'taskStatuses', 'priorities', 'profiles']) {
-    next[group] = Object.assign({}, own[group], (patch && patch[group]) || {});
+  for (const group of Object.keys(PRESENTATION_GROUP_LABELS)) {
+    const merged = Object.assign({}, own[group], (patch && patch[group]) || {});
+    for (const key of Object.keys(merged)) if (merged[key] === null) delete merged[key];
+    next[group] = merged;
   }
   return next;
 }
@@ -1529,7 +1785,7 @@ function describeConstraint(kind, value) {
 
 function renderItemTypeSettings() {
   if (!el('item-type-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="item-type-settings" class="settings-panel"><header><h2>업무 유형</h2><p>유형 하나가 필드와 규칙과 화면을 함께 끌고 옵니다. 규칙은 코드가 가진 다섯 가지 제약 종류에 값을 채우는 방식이라, 새 유형을 만드는 데 코드 변경이 필요하지 않습니다. 지금은 읽기 전용이며 <code>board.json</code>의 <code>itemTypes</code>를 직접 편집합니다.</p></header><div class="settings-body"><div id="item-type-list"></div><div id="item-type-derived"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="item-type-settings" class="settings-panel"><header><h2>업무 유형</h2><p>유형 하나가 필드와 규칙과 화면을 함께 끌고 옵니다. 규칙은 코드가 가진 다섯 가지 제약 종류에 값을 채우는 방식이라, 새 유형을 만드는 데 코드 변경이 필요하지 않습니다. 유형 정의는 표시가 아니라 정책이라 이 화면에서 바꾸지 않습니다 — 정책 층 변경은 계약 변경 결정을 함께 남겨야 저장되고, Board에는 아직 그 결정을 남길 자리가 없습니다. 지금은 <code>board.json</code>의 <code>itemTypes</code>를 고치고 <code>rdl save</code>로 남깁니다.</p></header><div class="settings-body"><div id="item-type-list"></div><div id="item-type-derived"></div></div></section>');
   }
   const snapshot = state.snapshot;
   const types = (snapshot.presentation && snapshot.presentation.itemTypes) || null;
@@ -1564,7 +1820,7 @@ function renderItemTypeSettings() {
 
 function renderApprovalSettings() {
   if (!el('approval-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 지금은 읽기 전용이며 <code>board.json</code>의 <code>approval</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 승인 모드도 정책이라 이 화면에서 바꾸지 않습니다 — 정책 층 변경은 계약 변경 결정을 함께 남겨야 저장됩니다. 지금은 <code>board.json</code>의 <code>approval</code>을 고치고 <code>rdl save</code>로 남깁니다.</p></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
   }
   const snapshot = state.snapshot;
   const catalog = snapshot.approvalCatalog;
@@ -1620,31 +1876,176 @@ function renderApprovalSettings() {
     + `<div class="presentation-row"><div class="presentation-row-main"><strong>어댑터 다양성</strong><small>켠 것은 스텝이 끌 수 없습니다</small></div><span class="origin-label">${effective.diversity ? '요구' : '요구 안 함'}</span></div></div>`;
 }
 
+// 표시 규칙 편집. 칸에 적는 값은 "고른 범위가 덮은 것"이고 상위에서 내려온 값은
+// placeholder로만 보인다. 합쳐진 결과를 칸에 채워 두고 그대로 저장하면 손대지 않은
+// 상위 값까지 이 범위 파일에 박히고, 그러면 나중에 상위 기본값이 나아져도 내려오지
+// 않는다 — 화면이 편집하지 않은 것을 payload에 실으면 안 된다는 규칙이 여기서도 같다.
+//
+// 칸을 비우는 것이 곧 되돌리기다. 지우기를 따로 두면 "이 범위에서 정하지 않음"과
+// "빈 값으로 덮음"이 두 조작이 되는데, 빈 라벨은 애초에 저장할 수 없으므로 둘은 같은
+// 뜻이어야 한다. 되돌리기 버튼은 그 칸들을 한 번에 비우는 손잡이일 뿐이다.
+const PRESENTATION_EDIT_FIELDS = [['label', '표시 문구'], ['description', '설명'], ['order', '정렬 순서']];
+const PRESENTATION_SCOPE_LABELS = { workspace: 'Workspace', project: '이 프로젝트' };
+
+function presentationSources() { return (state.snapshot.presentation && state.snapshot.presentation.sources) || {}; }
+function presentationScope() { return state.presentationScope === 'workspace' ? 'workspace' : 'project'; }
+// 이 범위가 실제로 파일에 적어 둔 것. 없으면 null이고, null과 빈 객체는 다르다 —
+// 없는 것은 상속이고 빈 객체는 이 범위가 항목을 선언했다는 뜻이다.
+function ownPresentationEntry(group, key, scope) {
+  const own = presentationSources()[scope];
+  const entry = own && own[group] && own[group][key];
+  return entry && typeof entry === 'object' ? entry : null;
+}
+// 이 범위가 아무 말도 하지 않을 때 내려오는 값. 저장 범위보다 위에 있는 층만 합친다.
+function inheritedPresentationEntry(group, key, scope) {
+  const sources = presentationSources();
+  const layers = scope === 'workspace' ? ['builtin'] : ['builtin', 'workspace'];
+  return layers.reduce((merged, layer) => Object.assign(merged, (sources[layer] && sources[layer][group] && sources[layer][group][key]) || {}), {});
+}
+// 프로필만 키가 열려 있어 상위 범위가 만든 프리셋이 내려온다. 그 표시 문구를 하위에서
+// 덮으려면 정책까지 함께 적어야 하는데(정책 없는 커스텀 프로필은 거부된다), 정책을
+// 옮겨 적는 순간 그것은 표시가 아니라 정책 변경이다. 그래서 잠그고, 그 프리셋을 가진
+// 범위를 고르라고 말한다.
+function presentationEditable(group, key, scope) {
+  if (group !== 'profiles') return true;
+  if (ownPresentationEntry(group, key, scope)) return true;
+  const builtin = presentationSources().builtin || {};
+  return Boolean(builtin.profiles && builtin.profiles[key]);
+}
+function presentationDirty() {
+  return Array.from(document.querySelectorAll('[data-presentation-field]')).some((input) => input.value.trim() !== input.dataset.initial);
+}
+// 편집 중에는 폴링이 화면을 갈아끼우지 않는다. 문서 편집과 같은 규칙이다 — 갈아끼우면
+// 적던 값이 사라지고 baseRevision까지 함께 바뀌어, 무엇을 기준으로 저장하는지 흐려진다.
+function isPresentationEditing() { return !state.presentationSettling && presentationDirty(); }
+function presentationFieldHtml(group, key, field, label, own, inherited, editable) {
+  const numeric = field === 'order';
+  const value = own && own[field] !== undefined ? own[field] : '';
+  const placeholder = inherited[field] === undefined ? '정하지 않음' : String(inherited[field]);
+  const id = `presentation-${group}-${key}-${field}`;
+  return `<label class="presentation-field" for="${escapeHtml(id)}"><span>${escapeHtml(label)}</span>`
+    + `<input id="${escapeHtml(id)}" data-presentation-field="${escapeHtml(field)}" type="${numeric ? 'number' : 'text'}"${numeric ? ' step="1"' : ''}`
+    + ` value="${escapeHtml(value)}" data-initial="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}"${editable ? '' : ' disabled'}></label>`;
+}
+function presentationRowHtml(group, key, item, origin, scope) {
+  const own = ownPresentationEntry(group, key, scope);
+  const inherited = inheritedPresentationEntry(group, key, scope);
+  const editable = presentationEditable(group, key, scope);
+  const notes = [];
+  // 사용 안 함은 값이 아니라 항목의 상태이고 정책 층이다. 여기서 끄고 켤 수 있으면
+  // 표시 문구를 고치러 온 사람이 항목을 없앨 수 있게 되므로, 보여만 주고 잠근다.
+  if (item.disabled) notes.push('이 항목은 사용 안 함으로 표시되어 있습니다. 되살리는 것은 정책이라 여기서 하지 않습니다.');
+  if (!editable) notes.push('상위 범위가 만든 프리셋입니다. 그 범위를 골라 고치세요.');
+  else if (scope === 'workspace' && origin === 'project') notes.push('이 프로젝트가 같은 항목을 덮고 있어, 저장해도 이 화면의 값은 그대로입니다.');
+  return `<div class="presentation-row origin-row-${origin}" data-presentation-group="${escapeHtml(group)}" data-presentation-entry="${escapeHtml(key)}">`
+    + `<div class="presentation-row-main"><strong>${escapeHtml(item.label || key)}</strong><small><code>${escapeHtml(key)}</code>${item.description ? ' · ' + escapeHtml(item.description) : ''}</small>`
+    + `<div class="presentation-fields">${PRESENTATION_EDIT_FIELDS.map(([field, label]) => presentationFieldHtml(group, key, field, label, own, inherited, editable)).join('')}</div>`
+    + (notes.length ? `<small class="presentation-note">${notes.map(escapeHtml).join(' ')}</small>` : '')
+    + '</div>'
+    + `<div class="presentation-row-side">${originIndicator(origin)}`
+    + `${own && editable ? '<button type="button" data-presentation-reset>되돌리기</button>' : ''}</div></div>`;
+}
+// 저장 payload는 바뀐 항목만 담는다. 바뀌지 않은 항목은 presentationInput이 이 범위의
+// 원본을 그대로 실어 보내므로 여기서 다시 적을 이유가 없다.
+function presentationPatch(scope) {
+  const patch = {};
+  for (const row of document.querySelectorAll('[data-presentation-entry]')) {
+    const inputs = Array.from(row.querySelectorAll('[data-presentation-field]'));
+    if (!inputs.some((input) => input.value.trim() !== input.dataset.initial)) continue;
+    const group = row.dataset.presentationGroup;
+    const key = row.dataset.presentationEntry;
+    // 이 범위의 원본에서 시작한다. 표시 필드만 갈아끼우면 사용 안 함 표식과 프리셋
+    // 정의가 그대로 남고, 표시 문구를 고치는 저장이 정책을 지우는 일이 되지 않는다.
+    const next = Object.assign({}, ownPresentationEntry(group, key, scope));
+    for (const input of inputs) {
+      const field = input.dataset.presentationField;
+      const value = input.value.trim();
+      if (!value) { delete next[field]; continue; }
+      if (field === 'order' && !/^-?\d+$/u.test(value)) throw new Error(`정렬 순서는 정수여야 합니다: ${PRESENTATION_GROUP_LABELS[group]}의 ${key}`);
+      next[field] = field === 'order' ? Number(value) : value;
+    }
+    // 남은 것이 하나도 없으면 이 범위는 그 항목에 대해 아무 말도 하지 않는다. 정책
+    // 값이 남아 있으면 비어 있지 않으므로 항목이 통째로 지워지는 경로는 열리지 않는다.
+    patch[group] = patch[group] || {};
+    patch[group][key] = Object.keys(next).length ? next : null;
+  }
+  return patch;
+}
+async function savePresentationEdits() {
+  const scope = presentationScope();
+  let patch;
+  try { patch = presentationPatch(scope); }
+  catch (error) { return message(error.message, true); }
+  if (!Object.keys(patch).length) return message('바뀐 표시 규칙이 없습니다.');
+  try {
+    await api(projectPath('/presentation'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify(presentationInput(scope, patch))
+    });
+    message(`${PRESENTATION_SCOPE_LABELS[scope]} 표시 규칙을 저장했습니다. 커밋은 rdl save가 맡습니다.`);
+  } catch (error) {
+    message(error.message, true);
+  }
+  // 성공이든 실패든 파일이 답이다. 편집 상태를 버리고 다시 읽어야 409로 막힌 뒤에도
+  // 최신 revision을 들고 다시 시도할 수 있다. 유효 값이 그대로인 저장 — 상위와 같은
+  // 값을 이 범위에 명시하는 경우 — 은 revision이 바뀌지 않으므로 여기서 직접 다시 그린다.
+  state.presentationSettling = true;
+  try { await loadSnapshot(true); } finally { state.presentationSettling = false; }
+  if (state.view === 'settings') renderPresentationSettings();
+}
 function renderPresentationSettings() {
   let section = el('presentation-settings');
   if (!section) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header><h2>표시 규칙</h2><p>화면에 보이는 말과 순서입니다. 저장값이 아니라 표시이므로 판정에 영향이 없습니다. 아직 여기서 바꾸지 않고 <code>board.json</code>을 직접 편집합니다.</p></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><div id="presentation-groups" class="presentation-groups"></div><div id="presentation-boundary" class="boundary-block"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header class="section-heading"><div><h2>표시 규칙</h2><p>화면에 보이는 말과 순서입니다. 저장값이 아니라 표시이므로 판정에 영향이 없고, 그래서 여기서 바로 고칩니다. 칸에 적은 값만 고른 범위의 <code>board.json</code>에 덮이고 비운 칸은 상위에서 내려온 값(옅은 글씨)을 그대로 씁니다. 항목을 없애거나 되살리는 것은 표시가 아니라 정책이라 여기 없습니다.</p></div><div class="page-actions"><label class="presentation-scope">저장 범위<select id="presentation-scope"><option value="project">이 프로젝트</option><option value="workspace">Workspace</option></select></label><button id="save-presentation" class="primary">표시 규칙 저장</button></div></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><p id="presentation-scope-hint" class="control-hint"></p><div id="presentation-groups" class="presentation-groups"></div><div id="presentation-boundary" class="boundary-block"></div></div></section>');
     section = el('presentation-settings');
   }
   const presentation = state.snapshot.presentation;
-  const inherited = presentation.inheritance;
+  const chain = presentation.inheritance;
   const origins = presentation.origins;
-  el('presentation-inheritance').innerHTML = `<span class="inheritance-node active">내장 기본값</span><span>→</span><span class="inheritance-node ${inherited.workspace.configured ? 'active' : ''}">Workspace board.json</span><span>→</span><span class="inheritance-node ${inherited.project.configured ? 'active' : ''}">프로젝트 board.json</span>`;
-  // 어느 파일을 열어야 하는지 알려주는 게 이 화면의 전부다. 경로를 tooltip에만 두면 찾을 수 없다.
-  el('presentation-source').innerHTML = [['Workspace', inherited.workspace], ['프로젝트', inherited.project]]
+  const scope = presentationScope();
+  el('presentation-scope').value = scope;
+  el('presentation-inheritance').innerHTML = `<span class="inheritance-node active">내장 기본값</span><span>→</span><span class="inheritance-node ${chain.workspace.configured ? 'active' : ''}">Workspace board.json</span><span>→</span><span class="inheritance-node ${chain.project.configured ? 'active' : ''}">프로젝트 board.json</span>`;
+  // 어느 파일을 여는지 알려주는 게 이 화면의 절반이다. 경로를 tooltip에만 두면 찾을 수 없다.
+  el('presentation-source').innerHTML = [['Workspace', chain.workspace], ['프로젝트', chain.project]]
     .map(([label, item]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd><code>${escapeHtml(item.file)}</code><small>${item.configured ? '이 파일이 값을 덮어쓰고 있습니다.' : '아직 없어 상위 값을 그대로 씁니다.'}</small></dd></div>`).join('');
+  el('presentation-scope-hint').innerHTML = `저장하면 <code>${escapeHtml((scope === 'workspace' ? chain.workspace : chain.project).file)}</code>에 씁니다. 커밋은 <code>rdl save</code>가 맡습니다.`;
   el('presentation-groups').innerHTML = Object.keys(PRESENTATION_GROUP_LABELS).map((group) => {
     const entries = Object.entries(presentation[group] || {}).sort((left, right) => (left[1].order || 0) - (right[1].order || 0));
     if (!entries.length) return '';
     const overridden = entries.filter(([key]) => presentationOrigin(origins, group, key) !== 'builtin').length;
-    const rows = entries.map(([key, item]) => {
-      const origin = presentationOrigin(origins, group, key);
-      return `<div class="presentation-row origin-row-${origin}"><div class="presentation-row-main"><strong>${escapeHtml(item.label || key)}</strong><small><code>${escapeHtml(key)}</code>${item.description ? ' · ' + escapeHtml(item.description) : ''}</small></div>${originIndicator(origin)}</div>`;
-    }).join('');
+    const rows = entries.map(([key, item]) => presentationRowHtml(group, key, item, presentationOrigin(origins, group, key), scope)).join('');
     return `<section class="presentation-group"><h3>${escapeHtml(PRESENTATION_GROUP_LABELS[group])}<span class="group-count">${entries.length}개${overridden ? ' · ' + overridden + '개 덮음' : ''}</span></h3><div class="presentation-rows">${rows}</div></section>`;
   }).join('');
   el('presentation-boundary').innerHTML = `<h3>여기 없는 것</h3><p>아래는 되돌릴 수 없는 행위의 관문입니다. 잠긴 항목으로 두지 않고 설정에서 뺐습니다 — 잠긴 항목은 언젠가 잠금을 푸는 요청을 부르지만, 없는 항목은 그 대상이 되지 않습니다.</p><div class="boundary-list">${BOUNDARY_ITEMS.map(([name, why]) => `<div class="boundary-item"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(why)}</small></div>`).join('')}</div>`;
 }
+// 범위를 바꾸면 칸의 뜻이 바뀐다 — 같은 글자라도 어느 파일에 적히느냐가 달라지므로
+// 적던 것을 그대로 옮겨 담지 않고 버린다. 버리기 전에는 반드시 묻는다.
+document.addEventListener('change', (event) => {
+  if (event.target.id !== 'presentation-scope') return;
+  if (presentationDirty() && !confirm('저장하지 않은 표시 규칙 편집이 있습니다. 범위를 바꾸면 사라집니다. 계속할까요?')) {
+    event.target.value = presentationScope();
+    return;
+  }
+  state.presentationScope = event.target.value;
+  renderPresentationSettings();
+});
+document.addEventListener('input', (event) => {
+  if (!event.target.matches('[data-presentation-field]')) return;
+  const row = event.target.closest('[data-presentation-entry]');
+  const changed = Array.from(row.querySelectorAll('[data-presentation-field]')).some((input) => input.value.trim() !== input.dataset.initial);
+  row.classList.toggle('presentation-row-edited', changed);
+});
+document.addEventListener('click', (event) => {
+  const reset = event.target.closest('[data-presentation-reset]');
+  if (reset) {
+    const row = reset.closest('[data-presentation-entry]');
+    for (const input of row.querySelectorAll('[data-presentation-field]')) input.value = '';
+    row.classList.add('presentation-row-edited');
+    message('저장을 누르면 이 항목은 상위 범위에서 내려온 값으로 돌아갑니다.');
+    return;
+  }
+  if (event.target.closest('#save-presentation')) savePresentationEdits();
+});
 // 계약 준수. 규칙을 정하는 화면은 있었는데 그 규칙이 지켜지는지 보는 화면이 없었다.
 // 여기 쓰는 값은 전부 스냅샷에 이미 실려 오던 것이라 새로 계산하지 않는다.
 const enforcementNote = {
@@ -1705,6 +2106,50 @@ function renderContractCompliance() {
 // 유형 기본값을 device로 두지 않는다. device는 기계의 종류일 뿐 행위 주체를 담지
 // 않아서, 그 값으로 파생한 판정이 틀린 적이 있다 — 사람이 쓰는 기기면 human을,
 // AI가 쓰면 agent를 고르게 하고 기본값을 비워 둔다.
+function clientRegisterFormHtml(identity, members) {
+  return '<div class="client-register-grid">'
+    + `<label>식별자<input id="register-client-id" value="${escapeHtml(identity.id)}" readonly><small>이 기기의 값이라 고를 수 없습니다.</small></label>`
+    + '<label>이름<input id="register-client-name" placeholder="예: 개발 데스크톱"><small>사람이 알아볼 이름입니다.</small></label>'
+    + '<label>유형<select id="register-client-type"><option value="">고르세요</option><option value="human">사람이 직접 씁니다</option><option value="agent">AI 에이전트가 씁니다</option><option value="device">기기 자동 실행</option><option value="service">서비스</option></select>'
+    + '<small>사람이 쓰면 <b>사람</b>을 고르세요. 그래야 남긴 댓글이 승인 근거가 됩니다.</small></label>'
+    + `<label>소유 구성원<select id="register-client-owner"><option value="">고르세요</option>${members.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select><small>이 기기의 행위가 누구에게 귀속되는지입니다.</small></label>`
+    + '</div>'
+    + '<div class="dialog-actions"><button type="button" data-dialog-cancel="client-dialog">나중에</button><button id="register-client" type="button" class="primary">이 기기 등록</button></div>';
+}
+
+// 미등록이 드러나는 자리는 대개 무언가를 하려던 순간 — 편집을 누르거나 댓글을 쓰려던
+// 때 — 이다. 그때 명령줄 문자열을 건네면 사람은 하던 일을 접고 터미널을 찾아야 하고,
+// 돌아와서는 무엇을 하려던 참이었는지부터 다시 세워야 한다. 등록은 이 기기의 신원을
+// 적는 일이지 위험한 일이 아니므로, 그 자리에서 받고 하려던 일로 이어 준다.
+//
+// 이어갈 일은 값이 아니라 함수로 받는다. 등록 뒤에는 스냅샷을 다시 읽어 화면이 새로
+// 그려지므로, 누르기 전에 손에 쥐고 있던 객체는 이미 낡았다 — 이어갈 때 새 스냅샷에서
+// 대상을 다시 찾아야 옛 revision으로 저장이 나가지 않는다.
+function openClientRegistration(reason, intent) {
+  const identity = state.snapshot && state.snapshot.client;
+  // 식별자가 없는 것은 등록의 문제가 아니라 프로젝트가 준비되지 않은 것이다. 없는 값을
+  // 채우라고 하면 사람은 채울 수 없는 칸 앞에 선다.
+  if (!identity || !identity.id) {
+    message('이 기기의 Client ID가 없습니다. 명령줄에서 rdl git init으로 프로젝트를 먼저 준비하세요.', true);
+    return false;
+  }
+  if (identity.registered) {
+    if (intent) intent();
+    return true;
+  }
+  state.clientIntent = intent || null;
+  el('client-dialog-reason').textContent = reason || '이 기기를 등록해야 남기는 기록에 누가 했는지가 붙습니다.';
+  el('client-dialog-body').innerHTML = clientRegisterFormHtml(identity, (state.snapshot.people && state.snapshot.people.members) || []);
+  el('client-dialog').showModal();
+  el('register-client-name').focus();
+  return false;
+}
+// 닫으면 이어갈 일도 함께 버린다. 남겨두면 나중의 등록이 예전에 누르던 일을 되살린다.
+el('client-dialog').addEventListener('close', () => { state.clientIntent = null; });
+
+// 설정 화면은 등록으로 들어가는 또 하나의 문일 뿐, 입력 칸을 따로 갖지 않는다. 같은
+// id의 칸이 화면에 둘이면 무엇이 저장될지는 사람이 채운 칸이 아니라 먼저 그려진 칸이
+// 정한다. 칸은 대화상자 하나가 갖고, 들어오는 문만 여럿 둔다.
 function renderClientRegistration() {
   const identity = state.snapshot.client;
   const host = el('client-registration');
@@ -1715,18 +2160,14 @@ function renderClientRegistration() {
     return;
   }
   host.hidden = false;
-  const members = state.snapshot.people.members || [];
   host.innerHTML = '<div class="client-register"><h3>이 기기가 아직 등록되지 않았습니다</h3>'
-    + '<p>등록해야 댓글과 저장에 누가 했는지가 남습니다. 등록되지 않은 기기는 기록을 남길 수 없습니다.</p>'
-    + `<div class="client-register-grid">`
-    + `<label>식별자<input id="register-client-id" value="${escapeHtml(identity.id)}" readonly><small>이 기기의 값이라 고를 수 없습니다.</small></label>`
-    + '<label>이름<input id="register-client-name" placeholder="예: 개발 데스크톱"><small>사람이 알아볼 이름입니다.</small></label>'
-    + '<label>유형<select id="register-client-type"><option value="">고르세요</option><option value="human">사람이 직접 씁니다</option><option value="agent">AI 에이전트가 씁니다</option><option value="device">기기 자동 실행</option><option value="service">서비스</option></select>'
-    + '<small>사람이 쓰면 <b>사람</b>을 고르세요. 그래야 남긴 댓글이 승인 근거가 됩니다.</small></label>'
-    + `<label>소유 구성원<select id="register-client-owner"><option value="">고르세요</option>${members.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select><small>이 기기의 행위가 누구에게 귀속되는지입니다.</small></label>`
-    + '</div>'
-    + '<div class="client-register-actions"><button id="register-client" class="primary">이 기기 등록</button></div></div>';
+    + `<p>등록해야 댓글과 저장에 누가 했는지가 남습니다. 등록되지 않은 기기는 기록을 남길 수 없습니다. 이 기기의 식별자는 <code>${escapeHtml(identity.id)}</code>입니다.</p>`
+    + '<div class="client-register-actions"><button id="open-client-register" type="button" class="primary">이 기기 등록</button></div></div>';
 }
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('#open-client-register')) return;
+  openClientRegistration('등록하면 이 기기가 남기는 편집과 댓글에 누가 했는지가 붙습니다.', null);
+});
 
 function renderSettings() {
   // 활성 상태 전환은 여기서 한다 — 에이전트가 늘면 자주 쓰는 동작이다. 삭제는 여전히
@@ -1737,7 +2178,7 @@ function renderSettings() {
   el('clients').innerHTML = state.snapshot.clients.map((item) => {
     const self = item.id === state.snapshot.client.id;
     return `<div class="setting-row"><div><strong>${escapeHtml(item.name)}${self ? ' <span class="chip">이 기기</span>' : ''}</strong><p>${escapeHtml(item.id)} · ${escapeHtml(item.type)} · ${escapeHtml(memberName(item.owner))}</p></div><div class="setting-control"><span class="chip ${item.status === 'active' ? 'status-active' : ''}">${escapeHtml(item.status)}</span><button data-client-toggle="${escapeHtml(item.id)}" data-client-status="${item.status === 'active' ? 'disabled' : 'active'}">${item.status === 'active' ? '비활성화' : '활성화'}</button></div></div>`;
-  }).join('') || '<p class="empty-state">등록된 Client가 없습니다. 위에서 이 기기를 등록하세요.</p>';
+  }).join('') || '<p class="empty-state">등록된 Client가 없습니다. 위 단추로 이 기기를 등록하세요.</p>';
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
   renderClientRegistration();
@@ -1759,8 +2200,7 @@ document.addEventListener('click', async (event) => {
 
 // 이 기기 등록. 식별자는 서버가 아는 값을 그대로 보내고 사람이 고르지 않는다 —
 // 고르게 두면 다른 기기의 것을 적어 두 기기가 한 신원을 공유할 수 있다.
-document.addEventListener('click', async (event) => {
-  if (!event.target.closest('#register-client')) return;
+async function submitClientRegistration() {
   const name = (el('register-client-name').value || '').trim();
   const type = el('register-client-type').value;
   const owner = el('register-client-owner').value;
@@ -1775,11 +2215,31 @@ document.addEventListener('click', async (event) => {
       body: JSON.stringify({ id: state.snapshot.client.id, name, type, owner })
     });
     await loadSnapshot(true);
+    // 이어갈 일은 대화상자를 닫고 나서 부른다. 편집으로 이어지는 경우 편집기가 열리는데,
+    // 그 위에 모달이 남아 있으면 사람이 자기가 쓸 곳을 누를 수 없다.
+    //
+    // 닫기가 intent를 비우므로 부를 것을 먼저 손에 쥔다. 순서를 뒤집으면 등록은 됐는데
+    // 하려던 일만 조용히 사라지고, 사람은 같은 단추를 다시 누른다.
+    const intent = state.clientIntent;
+    state.clientIntent = null;
+    if (el('client-dialog').open) el('client-dialog').close();
     message('이 기기를 등록했습니다. 이제 댓글과 저장에 누가 했는지가 남습니다.');
+    if (intent) await intent();
   } catch (error) {
     message(error.message, true);
   }
+}
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('#register-client')) return;
+  submitClientRegistration();
 });
+// 칸에서 Enter를 치는 것도 등록이다. dialog 안의 form은 기본 동작이 "닫기"라서, 막지
+// 않으면 다 채운 사람이 Enter 한 번에 등록 없이 대화상자만 닫고 처음부터 다시 채운다.
+el('client-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitClientRegistration();
+});
+
 
 function contractInput() {
   const policy = { required: [], recommended: [], onDemand: [], disabled: [] };
@@ -1842,3 +2302,219 @@ document.addEventListener('keydown', (event) => {
   if (addContractComponent(row, event.target.value)) event.target.value = '';
 });
 initialize().catch((error) => message(error.message, true));
+
+// ── 런 ────────────────────────────────────────────────────────────────────
+// 사람 게이트는 런을 멈추게 하려고 있는 것이고, 그것을 지나는 유일한 경로는 human
+// 자격의 승인이다. 그 경로가 명령줄에만 있으면 승인해야 하는 사람이 런 ID를 옮겨
+// 적어야 하고, 옮겨 적기 전까지 절차는 멈춘 채로 남는다.
+//
+// 갈래와 사유는 서버가 원장 판정으로 답한 값을 그대로 그린다. 화면이 상태를 보고 다시
+// 판정하면 같은 런에 명령줄과 다른 답을 내는 두 번째 판정자가 생긴다.
+const RUN_REASON_LABELS = {
+  'human-gate': '사람 승인 대기', 'sync-pending': '동기화 대기', 'ownership-conflict': '소유권 충돌',
+  'operation-conflict': 'operation 충돌', 'gate-failed': '게이트 실패', 'step-failed': '스텝 실패',
+  'merge-conflict': '병합 충돌', 'sync-failed': '동기화 실패', 'adapter-timeout': '어댑터 시간 초과',
+  'lease-lost': 'lease 상실', 'attempt-limit': '시도 예산 소진', manual: '수동 정지',
+  'settings-drift': '설정 변경', 'legacy-conflict': '구형 충돌', 'verification-required': '검증 필요',
+  'cursor-ready': '이어서 몰 수 있음', 'driver-active': '구동 중'
+};
+function runReasonLabel(reason) { return RUN_REASON_LABELS[reason] || reason || '사유 없음'; }
+
+async function loadRuns(silent) {
+  try {
+    state.runs = await api(projectPath('/runs'));
+    state.runsError = '';
+    if (!silent) message('런을 새로 읽었습니다.');
+  } catch (error) {
+    state.runs = null;
+    state.runsError = error.message;
+    if (!silent) message(error.message, true);
+  }
+  if (state.view === 'runs') renderRuns();
+}
+
+// 승인은 사람 게이트에서만 열린다. 나머지 대기 사유는 보드가 할 수 있는 일이 아니므로
+// 무엇을 실행해야 하는지를 그대로 보여 준다 — 여기서 흉내 내면 화면이 할 수 없는 일을
+// 할 수 있는 것처럼 보이고, 누른 사람은 아무 일도 일어나지 않은 이유를 알 수 없다.
+function runRowHtml(item, approvable) {
+  const chips = [runReasonLabel(item.reason), item.procedure ? `절차 ${item.procedure}` : '', item.cursor ? `스텝 ${item.cursor}` : '']
+    .filter(Boolean).map((label) => `<span class="chip">${escapeHtml(label)}</span>`).join('');
+  const action = approvable && item.reason === 'human-gate'
+    ? `<button class="primary" data-run-approve="${escapeHtml(item.runId)}">승인</button>`
+    : '';
+  const command = !action && item.command ? `<code>${escapeHtml(item.command)}</code>` : '';
+  return `<div class="run-row"><div><strong>${escapeHtml(item.runId)}</strong><div class="chip-row">${chips}</div>${command}</div><div>${action}</div></div>`;
+}
+
+function runSectionHtml(title, description, items, approvable, empty) {
+  const rows = (items || []).map((item) => runRowHtml(item, approvable)).join('');
+  const body = rows ? `<div class="run-list">${rows}</div>` : `<p class="empty-state">${escapeHtml(empty)}</p>`;
+  return `<section class="content-section run-section"><div class="section-heading"><h2>${escapeHtml(title)}</h2><span class="badge">${(items || []).length || ''}</span></div><p class="control-hint">${escapeHtml(description)}</p>${body}</section>`;
+}
+
+function renderRuns() {
+  const body = el('runs-body');
+  if (!body) return;
+  const runs = state.runs;
+  if (!runs) { body.innerHTML = `<p class="empty-state">${escapeHtml(state.runsError || '런을 읽는 중입니다.')}</p>`; return; }
+  const unreadable = (runs.unreadable || []).length
+    ? `<section class="content-section run-section"><div class="section-heading"><h2>읽지 못한 런</h2><span class="badge">${runs.unreadable.length}</span></div><div class="run-list">${runs.unreadable.map((item) => `<div class="run-row"><div><strong>${escapeHtml(item.runId)}</strong><div class="chip-row"><span class="chip">${escapeHtml(item.detail || '읽기 실패')}</span></div></div><div></div></div>`).join('')}</div></section>`
+    : '';
+  body.innerHTML = runSectionHtml('사람을 기다림', '사람만 풀 수 있는 런입니다. 사람 게이트는 여기서 승인하고, 나머지 사유는 적힌 명령이 풀어야 합니다.', runs.waiting, true, '사람을 기다리는 런이 없습니다.')
+    + runSectionHtml('이어서 몰 수 있음', '기계가 이을 수 있는 런입니다. 구동은 명령줄이 담당합니다.', runs.drivable, false, '이어서 몰 수 있는 런이 없습니다.')
+    + runSectionHtml('구동 중', '지금 누군가 몰고 있는 런입니다.', runs.driving, false, '구동 중인 런이 없습니다.')
+    + unreadable;
+}
+
+// 승인자는 요청이 주장하는 값이 아니라 사람이 고른 자격이다. 목록에 활성 human Client만
+// 두는 이유는 이 기기의 작성자 신원으로는 승인이 거부되기 때문이다 — 그 신원을 human으로
+// 바꾸면 같은 기기의 실행 명령이 전부 막히므로, 승인용 자격은 따로 있어야 한다.
+//
+// 대화상자는 먼저 열고 내막은 뒤따라 채운다. 읽어 온 뒤에 열면 누른 것과 열리는 것 사이가
+// 비어 사람은 눌리지 않았다고 생각하고 다시 누른다.
+function openRunApproval(runId) {
+  const item = ((state.runs && state.runs.waiting) || []).find((entry) => entry.runId === runId);
+  if (!item) return message('그 런은 지금 사람을 기다리고 있지 않습니다. 다시 읽어 보세요.', true);
+  state.approvingRun = item;
+  state.review = { runId, detail: null, artifact: null };
+  el('run-approve-id').textContent = item.runId;
+  el('run-approve-step').textContent = `${item.procedure || '절차 없음'} · 지금 멈춘 스텝: ${item.cursor || '없음'}`;
+  el('run-approve-goal').textContent = '';
+  el('run-approve-reason').value = '';
+  renderRunApprovers((state.runs && state.runs.approvers) || []);
+  renderRunReview();
+  el('run-approve-dialog').showModal();
+  loadRunReview(runId);
+}
+
+function renderRunApprovers(approvers) {
+  el('run-approve-client').replaceChildren(...approvers.map((client) => new Option(`${client.name || client.id} (${client.id})`, client.id)));
+  el('run-approve-client').disabled = approvers.length === 0;
+  el('run-approve-client-hint').textContent = approvers.length
+    ? '실행 명령을 수행할 수 없는 자격만 여기 있습니다. 이 기기의 작성자 신원은 승인자가 될 수 없습니다.'
+    : '이 프로젝트에 승인할 수 있는 활성 human Client가 없습니다. 설정 → Clients에서 사람이 쓰는 Client를 등록하세요.';
+}
+
+async function loadRunReview(runId) {
+  try {
+    const detail = await api(projectPath(`/runs/${encodeURIComponent(runId)}`));
+    // 읽는 동안 사람이 다른 런을 열었을 수 있다. 늦게 온 답이 지금 보는 것을 갈아치우면,
+    // 화면에 있는 문서와 승인 단추가 가리키는 런이 서로 다른 것이 된다.
+    if (!state.review || state.review.runId !== runId) return;
+    state.review.detail = detail;
+    state.review.artifact = (detail.artifactIds || [])[0] || null;
+    if (detail.approvers) renderRunApprovers(detail.approvers);
+    renderRunReview();
+  } catch (error) {
+    if (!state.review || state.review.runId !== runId) return;
+    state.review.error = error.message;
+    renderRunReview();
+  }
+}
+
+// 문서는 스냅샷이 이미 본문까지 들고 있다. 대화상자용으로 따로 받아 오면 같은 문서의 두
+// 벌이 화면에 생기고, 어느 쪽이 최신인지 묻는 자리가 하나 더 늘어난다.
+function reviewDocument(id) { return (state.snapshot.documents || []).find((item) => item.id === id) || null; }
+
+function runTrailHtml(trail) {
+  const rows = (trail || []).slice().reverse().slice(0, 12).map((entry) => {
+    const label = entry.stepId ? `${entry.type} · ${entry.stepId}` : entry.type;
+    const detail = [entry.clientId, entry.reason].filter(Boolean).join(' · ');
+    return `<li><strong>${escapeHtml(label)}</strong>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</li>`;
+  });
+  return rows.length ? `<h3>이 런이 한 일</h3><ol class="review-trail">${rows.join('')}</ol>` : '';
+}
+
+function renderRunReview() {
+  const review = state.review;
+  const tabs = el('run-review-tabs');
+  const body = el('run-review-document');
+  const facts = el('run-review-facts');
+  const trail = el('run-review-trail');
+  if (!review) return;
+  const detail = review.detail;
+  if (!detail) {
+    tabs.innerHTML = '';
+    body.innerHTML = `<p class="empty-state">${escapeHtml(review.error || '승인할 내용을 읽는 중입니다.')}</p>`;
+    facts.innerHTML = '';
+    trail.innerHTML = '';
+    return;
+  }
+  el('run-approve-goal').textContent = detail.goal || '';
+  const task = detail.taskId ? (state.snapshot.tasks.tasks || []).find((item) => item.id === detail.taskId) : null;
+  const rows = [
+    ['절차', detail.procedure ? `${detail.procedure.name} rev.${detail.procedure.revision}` : '없음'],
+    ['멈춘 스텝', detail.cursor || '없음'],
+    ['지나온 스텝', (detail.completedSteps || []).join(' → ') || '없음'],
+    ['태스크', task ? `${task.id} ${task.title}` : (detail.taskId || '결박 없음')],
+    ['소유 Client', detail.owner || '없음']
+  ];
+  facts.innerHTML = '<h3>무엇을 승인하는가</h3><dl class="review-facts">' + rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('') + '</dl>';
+  trail.innerHTML = runTrailHtml(detail.trail);
+  const artifacts = detail.artifactIds || [];
+  tabs.innerHTML = artifacts.map((id) => {
+    const item = reviewDocument(id);
+    return `<button type="button" data-review-artifact="${escapeHtml(id)}" class="${id === review.artifact ? 'active' : ''}">${escapeHtml(id)}${item ? ' ' + escapeHtml(item.title) : ''}</button>`;
+  }).join('');
+  tabs.hidden = artifacts.length < 2;
+  if (!artifacts.length) {
+    body.innerHTML = '<p class="empty-state">이 런은 문서를 지목하지 않았습니다. 무엇을 승인하는지는 위의 목표와 스텝 이력으로 판단하세요.</p>';
+    return;
+  }
+  const documentValue = reviewDocument(review.artifact);
+  if (!documentValue) {
+    body.innerHTML = `<p class="empty-state">${escapeHtml(review.artifact)} 문서를 이 프로젝트에서 찾지 못했습니다. 아직 저장되지 않았거나 다른 브랜치에 있습니다.</p>`;
+    return;
+  }
+  body.innerHTML = `<div class="review-document-head"><p class="eyebrow">${escapeHtml(documentValue.id)}</p><h3>${escapeHtml(documentValue.title)}</h3><div class="chip-row"><span class="chip">${escapeHtml(documentTypeLabel(documentValue))}</span><span class="chip">${escapeHtml(documentStateLabel(documentValue.state))}</span></div></div>` + markdown(documentValue.body);
+  resolveDocumentImages(body, documentValue.file, state.project);
+  renderMermaid();
+}
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-review-artifact]');
+  if (!button || !state.review) return;
+  state.review.artifact = button.dataset.reviewArtifact;
+  renderRunReview();
+});
+
+el('open-run-document').addEventListener('click', () => {
+  const artifact = state.review && state.review.artifact;
+  if (!artifact) return message('열어 볼 문서가 없습니다.', true);
+  el('run-approve-dialog').close();
+  setView('document', artifact);
+});
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-run-approve]');
+  if (!button) return;
+  openRunApproval(button.dataset.runApprove);
+});
+
+el('refresh-runs').addEventListener('click', () => loadRuns(false));
+
+el('run-approve-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const item = state.approvingRun;
+  if (!item) return;
+  const clientId = el('run-approve-client').value;
+  const reason = el('run-approve-reason').value.trim();
+  // 빠진 것을 하나씩 알린다. 사유를 강제하는 이유는 형식이 아니라, 나중에 "AI 검토가
+  // 놓쳤나 사람이 건너뛰었나"를 구분할 수 있는 유일한 자리가 그 문장이기 때문이다.
+  if (!clientId) return message('승인자를 고르세요. 활성 human Client만 사람 게이트를 지날 수 있습니다.', true);
+  if (!reason) return message('무엇을 보고 승인했는지 사유가 필요합니다.', true);
+  try {
+    const result = await api(projectPath(`/runs/${encodeURIComponent(item.runId)}/approve`), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify({ clientId, reason })
+    });
+    el('run-approve-dialog').close();
+    state.approvingRun = null;
+    message(`${result.stepId} 스텝을 ${result.approvedBy} 자격으로 승인했습니다.`);
+    await loadRuns(true);
+  } catch (error) {
+    // 거절은 그대로 옮긴다. 사람 게이트가 아닌 스텝, 검증이 본 커밋과 다른 HEAD,
+    // 비활성 소유권은 서로 다른 문제이고, 한 문장으로 뭉개면 무엇을 고쳐야 하는지 사라진다.
+    message(error.message, true);
+  }
+});

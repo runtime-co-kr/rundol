@@ -43,6 +43,7 @@
         <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="nav-label">홈</span></button>
         <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></span><span class="nav-label">문서</span></button>
         <button data-view="tasks" class="nav-item" title="태스크"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 4h7"/><path d="M14 9h7"/><path d="M14 15h7"/><path d="M14 20h7"/></svg></span><span class="nav-label">태스크</span></button>
+        <button data-view="runs" class="nav-item" title="런"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg></span><span class="nav-label">런</span></button>
       </nav>
       <section class="nav-section"><h2>문서 유형</h2><div id="document-filters" class="nav-list"></div></section>
       <section class="nav-section"><h2>최근 문서</h2><div id="recent-documents" class="nav-list"></div></section>
@@ -103,6 +104,13 @@
         <div id="task-page"></div>
       </section>
 
+      <!-- 런은 태스크가 아니다. 태스크에 결박되지 않은 런도 사람 게이트에서 멈추므로,
+           태스크 상세 안에만 두면 그런 런은 화면 어디에도 나타나지 않는다. -->
+      <section id="runs-view" class="view" hidden>
+        <header class="page-heading"><div><p class="eyebrow">RUNS</p><h1>런</h1><p>사람을 기다리는 런을 여기서 지납니다. 승인은 활성 human Client 자격으로만 기록되고, 구동·재개·소유권은 명령줄이 담당합니다.</p></div><div class="page-actions"><button id="refresh-runs">다시 읽기</button></div></header>
+        <div id="runs-body"></div>
+      </section>
+
       <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1><p>project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="person-list"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="person-list"></div></section></div></section>
       <section id="settings-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header>
@@ -113,7 +121,7 @@
             <h2>이 프로젝트</h2>
             <button data-settings-section="contract-settings">문서 계약</button>
             <button data-settings-section="contract-compliance">계약 준수</button>
-            <button data-settings-section="presentation-settings">문서 표시 규칙</button>
+            <button data-settings-section="presentation-settings">표시 규칙</button>
             <button data-settings-section="approval-settings">승인과 파이프</button>
             <button data-settings-section="item-type-settings">업무 유형</button>
             <h2>Workspace</h2>
@@ -184,6 +192,36 @@
       <label>반려 사유<textarea id="cancellation-reason" required rows="3" maxlength="1000" placeholder="예: 모노레포 전환을 하지 않기로 해 이 구조 정의가 필요 없어졌습니다"></textarea></label>
       <label>결정자<select id="cancellation-decided-by" required></select></label>
       <div class="dialog-actions"><button type="button" data-dialog-cancel="cancellation-dialog">취소</button><button id="save-cancellation" class="primary" value="default">반려</button></div>
+    </form>
+  </dialog>
+  <dialog id="client-dialog" aria-labelledby="client-form-heading">
+    <form id="client-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">CLIENT</p><h2 id="client-form-heading">이 기기 등록</h2></div><button type="button" data-dialog-cancel="client-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>
+      <p id="client-dialog-reason" class="dialog-hint"></p>
+      <div id="client-dialog-body"></div>
+    </form>
+  </dialog>
+  <!-- 승인은 읽고 나서 하는 일이다. 무엇을 승인하는지가 화면에 없으면 사람은 런 ID만
+       보고 누르게 되고, 그 승인은 "읽었다"의 증거가 되지 못한다. 그래서 이 대화상자는
+       대상 문서를 문서 화면과 같은 방식으로 그려 놓고 그 아래에서 승인을 받는다. -->
+  <dialog id="run-approve-dialog" class="review-dialog" aria-labelledby="run-approve-heading">
+    <form id="run-approve-form" method="dialog">
+      <div class="dialog-heading"><div><p id="run-approve-id" class="eyebrow">RUN</p><h2 id="run-approve-heading">사람 게이트 승인</h2><p id="run-approve-goal" class="dialog-hint"></p></div><button type="button" data-dialog-cancel="run-approve-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>
+      <div class="review-body">
+        <div class="review-main">
+          <div id="run-review-tabs" class="segmented" aria-label="승인 대상 문서"></div>
+          <article id="run-review-document" class="markdown-body"></article>
+        </div>
+        <aside class="review-side">
+          <div id="run-review-facts"></div>
+          <div id="run-review-trail"></div>
+        </aside>
+      </div>
+      <p id="run-approve-step" class="dialog-hint"></p>
+      <label>승인자<select id="run-approve-client"></select></label>
+      <p id="run-approve-client-hint" class="dialog-hint"></p>
+      <label>사유<textarea id="run-approve-reason" rows="3" required maxlength="1000" placeholder="무엇을 보고 승인했는지"></textarea></label>
+      <div class="dialog-actions"><button type="button" id="open-run-document" class="dialog-actions-lead">문서 화면에서 열기</button><button type="button" data-dialog-cancel="run-approve-dialog">취소</button><button id="submit-run-approve" class="primary" value="default">승인</button></div>
     </form>
   </dialog>
   <script src="/dompurify.js"></script>
