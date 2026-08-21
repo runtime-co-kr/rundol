@@ -3038,7 +3038,7 @@
         },
         "AC-004": {
           "text": "하나의 상주 프로세스가 여러 런을 순회한다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "재부팅 복구가 OS 유닛 하나로 끝난다",
@@ -3047,7 +3047,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:15:05.386Z",
-      "updatedAt": "2026-08-21T00:19:39.459Z",
+      "updatedAt": "2026-08-21T00:19:43.037Z",
       "statusChangedAt": "2026-08-21T00:13:17.597Z",
       "externalRefs": [],
       "project": "rundol"
