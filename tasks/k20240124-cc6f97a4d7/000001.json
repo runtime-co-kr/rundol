@@ -3030,7 +3030,7 @@
         },
         "AC-002": {
           "text": "드라이버가 사람 경계와 sync 경계 앞에서 멈춘다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "커서가 전진하지 않은 런을 다시 밀지 않는다",
@@ -3047,7 +3047,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:15:05.386Z",
-      "updatedAt": "2026-08-21T00:19:31.734Z",
+      "updatedAt": "2026-08-21T00:19:35.514Z",
       "statusChangedAt": "2026-08-21T00:13:17.597Z",
       "externalRefs": [],
       "project": "rundol"
