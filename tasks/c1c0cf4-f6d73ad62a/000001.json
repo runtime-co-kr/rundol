@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "clientId": "c1c0cf4-f6d73ad62a",
+  "segment": 1,
+  "tasks": {
+    "TASK-71QR6GWQ": {
+      "title": "[개선] 미등록 기기의 편집 진입을 화면 등록으로 잇는다",
+      "summary": "웹에서 편집을 누른 미등록 기기에 명령줄을 주지 않고, 같은 화면에서 등록을 마치고 하던 편집으로 이어지게 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-019",
+        "TST-009"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "미등록 기기가 문서 편집을 누르면 명령줄 문자열 대신 화면의 등록 절차가 열린다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "화면에서 등록을 마치면 누르려던 편집이 이어서 열린다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "Board가 돌려주는 미등록 안내가 화면 경로를 먼저 가리킨다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "REQ-019와 TST-009에 화면 등록 경로가 기록된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl check --strict와 npm test가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T04:00:27.298Z",
+      "updatedAt": "2026-08-21T04:00:27.298Z",
+      "statusChangedAt": "2026-08-21T04:00:27.298Z",
+      "externalRefs": [],
+      "project": "rundol"
+    }
+  }
+}
