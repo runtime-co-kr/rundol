@@ -172,6 +172,14 @@ try {
   assert.strictEqual(where({ priorities: { low: { label: '낮음' } } }, { priorities: { low: { label: '낮음', disabled: true } } }), 'priorities.low.disabled');
   assert.strictEqual(where({ priorities: { low: { disabled: true } } }, { priorities: { low: {} } }), 'priorities.low.disabled', '표식을 떼는 것도 정책입니다');
 
+  // 되돌리기는 이 범위에서 덮은 표시 값을 걷어내 상위 값을 다시 내려받는 조작이다.
+  // 표시만 담고 있던 항목은 통째로 빠져도 정책이 바뀌지 않으므로 결정을 요구하지
+  // 않는다 — 요구하면 라벨을 되돌리는 데 결정이 필요해진다.
+  assert.strictEqual(where({ priorities: { low: { label: '낮음', order: 5 } } }, { priorities: {} }), '', '표시만 덮은 항목은 걷어내도 정책이 아닙니다');
+  // 반대로 정책 값이 함께 있으면 항목을 빼는 것이 곧 그 값을 없애는 것이다. 그래서
+  // 화면은 표시 필드만 걷어내고 항목 자체는 남긴다.
+  assert.strictEqual(where({ priorities: { low: { label: '낮음', disabled: true } } }, { priorities: {} }), 'priorities.low.disabled', '정책 값을 담은 항목은 걷어내면 정책 변경입니다');
+
   // 최상위 값도 정책이다. 그룹만 훑으면 승인 모드를 사람만에서 AI만로 바꾸는 저장이
   // 아무 기록도 남기지 않는다 — 가장 크게 푸는 변경이 가장 조용히 지나간다.
   assert.notStrictEqual(where({ approval: { mode: 'human-only' } }, { approval: { mode: 'ai-only' } }), '', '승인 모드 변경이 결정을 요구해야 합니다');
@@ -274,6 +282,78 @@ try {
 
   assert.strictEqual(typeof savePresentation, 'function');
   fs.rmSync(home, { recursive: true, force: true });
+}
+
+// 화면이 보내는 payload 그대로 저장까지 밟는다. 판정 함수만 시험하면 "정책 변경을
+// 가려낸다"는 것까지만 알 수 있고, 그 판정을 저장이 실제로 부르는지, 담기지 않은 값이
+// 파일에 남는지는 모른다. 표시 규칙 편집이 화면에 생긴 뒤로는 그 둘이 사고의 자리다.
+{
+  const { savePresentation, presentationFile } = require('../src/board-presentation');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-presentation-save-'));
+  try {
+    const registry = path.join(root, 'projects', 'workspace', 'projects');
+    fs.mkdirSync(registry, { recursive: true });
+    fs.mkdirSync(path.join(root, 'projects', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'projects', 'workspace', 'workspace.yaml'), 'schemaVersion: 6\nid: workspace\nname: Test Workspace\nmount: projects\n', 'utf8');
+    fs.writeFileSync(path.join(registry, 'project-demo.yaml'), 'schemaVersion: 1\nrevision: 1\nkey: demo\nname: Demo\n', 'utf8');
+
+    // 화면이 만드는 payload. 이 범위의 원본에 바뀐 항목만 얹고, null은 "이 범위에서
+    // 지운다"는 표식이라 걷어낸다 — src/board-ui/app.js의 presentationInput과 같은 규칙이다.
+    const payloadFor = (own, patch) => {
+      const next = {};
+      for (const group of Object.keys(PRESENTATION_GROUPS)) {
+        const merged = Object.assign({}, own[group], (patch && patch[group]) || {});
+        for (const key of Object.keys(merged)) if (merged[key] === null) delete merged[key];
+        next[group] = merged;
+      }
+      return next;
+    };
+
+    const target = presentationFile(root, 'demo', 'project');
+    fs.writeFileSync(target, `${JSON.stringify({
+      schemaVersion: 1,
+      documentTypes: { prd: { label: '제품 명세' } },
+      priorities: { low: { disabled: true } },
+      itemTypes: { keeper: { label: '보존 대상', constraints: {} } },
+      approval: { mode: 'ai-assisted' }
+    }, null, 2)}\n`, 'utf8');
+
+    // 표시 문구만 고치는 저장은 결정을 요구하지 않는다. 요구하면 라벨의 오타를 고치는
+    // 데도 결정이 필요해지고, 형식이 된 결정은 그 안에 담긴 정책 변경까지 함께 가린다.
+    const edited = savePresentation(root, 'demo', 'project', payloadFor(readConfig(target), { taskStatuses: { doing: { label: '작업 중' } } }));
+    assert.deepStrictEqual(edited.policyChanges, [], '표시 문구 변경이 결정을 요구하면 안 됩니다');
+    const afterEdit = readConfig(target);
+    assert.strictEqual(afterEdit.taskStatuses.doing.label, '작업 중', '고친 표시 문구가 파일에 남아야 합니다');
+    // payload가 담지 않는 값들이다. 담기지 않았다고 지우면 표시 문구 한 줄 고치는
+    // 저장이 유형 정의와 승인 모드를 통째로 없앤다.
+    assert.ok(afterEdit.itemTypes.keeper, '유형 정의가 표시 저장에 살아남아야 합니다');
+    assert.strictEqual(afterEdit.approval.mode, 'ai-assisted', '승인 모드가 표시 저장에 살아남아야 합니다');
+    assert.strictEqual(afterEdit.priorities.low.disabled, true, '사용 안 함 표식이 표시 저장에 살아남아야 합니다');
+
+    // 되돌리기. 이 범위에서 덮은 표시 값을 걷어내면 항목이 파일에서 사라지고 상위 값이
+    // 다시 내려온다. 빈 객체로 덮으면 안 된다 — 빈 객체는 상속이 아니라 선언이다.
+    const reverted = savePresentation(root, 'demo', 'project', payloadFor(readConfig(target), { documentTypes: { prd: null } }));
+    assert.deepStrictEqual(reverted.policyChanges, [], '표시만 덮은 항목을 되돌리는 것은 정책이 아닙니다');
+    assert.strictEqual(readConfig(target).documentTypes.prd, undefined, '되돌린 항목은 파일에서 빠져야 합니다');
+
+    // 반대로 정책 값을 담은 항목을 통째로 빼면 저장이 거절한다. 판정만 옳고 저장이
+    // 부르지 않으면 아무것도 막지 못하므로, 막히는 것을 저장 경로에서 확인한다.
+    assert.throws(
+      () => savePresentation(root, 'demo', 'project', payloadFor(readConfig(target), { priorities: { low: null } })),
+      /정책 층 변경은 계약 변경 결정이 필요합니다/u,
+      '사용 안 함 표식을 지우는 저장은 결정 없이 통과하면 안 됩니다'
+    );
+    assert.strictEqual(readConfig(target).priorities.low.disabled, true, '거절된 저장은 파일을 건드리지 않아야 합니다');
+
+    // 범위는 파일을 가른다. 프로젝트에 쓴 것이 Workspace 파일에 새면 한 프로젝트의
+    // 표기가 모든 프로젝트의 기본값이 된다.
+    const workspaceFile = presentationFile(root, 'demo', 'workspace');
+    savePresentation(root, 'demo', 'workspace', payloadFor({}, { priorities: { high: { label: '급함' } } }));
+    assert.strictEqual(readConfig(workspaceFile).priorities.high.label, '급함', 'Workspace 범위는 Workspace 파일에 써야 합니다');
+    assert.strictEqual(readConfig(target).priorities.high, undefined, '범위가 다른 저장이 프로젝트 파일에 새면 안 됩니다');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 process.stdout.write('board presentation tests passed\n');
