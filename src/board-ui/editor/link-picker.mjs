@@ -13,6 +13,7 @@
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { schema } from './schema.mjs';
+import { guarded } from './guard.mjs';
 
 export const linkPickerKey = new PluginKey('rundol-link-picker');
 
@@ -131,6 +132,10 @@ class LinkPickerView {
   }
 
   update() {
+    guarded('link-picker', () => this.recompute(), () => this.close());
+  }
+
+  recompute() {
     const { state } = this.view;
     const { $from, empty } = state.selection;
     if (!empty || !$from.parent.isTextblock || $from.parent.type.spec.code) return this.open && this.close();

@@ -10,6 +10,7 @@ import { Plugin, PluginKey, Selection } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { filterBlocks, menuItems, madeNodes, selectInside } from './blocks.mjs';
 import { pickImage } from './image-drop.mjs';
+import { guarded } from './guard.mjs';
 
 export const slashMenuKey = new PluginKey('rundol-slash-menu');
 
@@ -127,6 +128,10 @@ class SlashMenuView {
   }
 
   update() {
+    guarded('slash-menu', () => this.recompute(), () => this.close());
+  }
+
+  recompute() {
     const { state } = this.view;
     const { $from, empty } = state.selection;
     if (!empty || !$from.parent.isTextblock) return this.open && this.close();

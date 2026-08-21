@@ -159,6 +159,24 @@ try {
   assert.deepStrictEqual(parsed.driving, []);
   assert.deepStrictEqual(parsed.unreadable, []);
 
+  // 침묵의 조건이 런만이 아니다. 세션 축이 붙은 뒤로 "런이 없으면 조용하다"가
+  // "런이 없고 세션도 하나 이하면 조용하다"가 됐다. 위의 침묵 단언이 그 조건을
+  // 말하지 않으면, 세션이 픽스처에 닿는 날 이 시험은 이유 없이 깨지고 사람은
+  // 침묵이 깨진 것인지 세션이 늘어난 것인지 구별하지 못한다.
+  assert.ok(Array.isArray(parsed.sessions), '세션 축이 결과에 있다');
+  assert.ok(parsed.sessions.length <= 1, `침묵을 재려면 세션이 하나 이하여야 한다: ${parsed.sessions.length}`);
+
+  // 세지 못한 것과 혼자인 것은 다르다. 실패를 빈 목록으로 접으면 "혼자"와
+  // "못 셌다"가 같은 값이 되고, 둘 이상일 때만 말하는 규칙 때문에 못 센 저장소는
+  // 영영 조용해진다 — 경고가 필요한 바로 그때 침묵하는 방향이다.
+  assert.strictEqual(parsed.sessionsUnreadable, null, '이 픽스처에서는 세션을 읽을 수 있다');
+  const { readSessions, liveSessions } = require('../src/run-pending');
+  const broken = readSessions(path.join(temporary, '없는-경로'));
+  assert.ok(broken.unreadable, '읽지 못하면 그 사실이 값으로 남는다');
+  assert.deepStrictEqual(broken.sessions, [], '읽지 못했을 때의 목록은 비어 있다');
+  // 배열만 쓰는 기존 호출자의 계약은 그대로다.
+  assert.deepStrictEqual(liveSessions(path.join(temporary, '없는-경로')), []);
+
   // 없는 프로젝트를 필터로 주면 조용히 비는 것이 아니라 인자 오류다. 조용히
   // 비면 오타 하나가 "할 일 없음"으로 읽힌다.
   const unknown = pendingRaw(['--project', 'nosuch', '--json']);

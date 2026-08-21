@@ -201,20 +201,16 @@ function item(project, fold, verdict) {
  */
 function readRunFolds(start, options) {
   const settings = options || {};
-  // 작업공간을 못 찾아도 세션은 답해야 하므로 빈 결과에 세션 자리를 함께 둔다.
-  const empty = { workspace: null, waiting: [], drivable: [], driving: [], unreadable: [], sessions: [] };
 
   // 작업공간이 없는 것과 깨진 것은 다르다. 없는 곳에서 훅이 도는 것은 정상이며
   // "런이 없다"가 그 물음의 옳은 답이다. 깨진 것은 findWorkspaceRoot 다음에서
   // 던져 호출자가 2로 끝내게 둔다.
-  let root;
-  // 작업공간을 못 찾아도 세션은 답한다. 세션 worktree에는 projects/가 없으므로 여기서
-  // 접으면, 정작 격리된 세션이 "나 말고 누가 있나"를 물을 수 없다 — 그 물음은 Rundol
-  // 작업공간이 아니라 Git만 있으면 답할 수 있다.
   //
-  // 다만 이 함수가 내는 모양은 런을 접은 결과다. 드라이버가 layout과 runs를 쓰므로
-  // 그 둘을 비워서라도 담고, 세션은 곁들이로 얹는다.
-  try { root = findWorkspaceRoot(start); } catch (error) { return { workspace: null, layout: null, runs: [], unreadable: [], sessions: liveSessions(start) }; }
+  // 세션은 여기서 읽지 않는다. 이 함수가 내는 것은 런을 접은 결과이고 드라이버가
+  // 그것만 쓴다. 곁들이를 하나 얹으면 다음 축도 여기 얹힐 자리가 열리고, 그러면
+  // 이름과 내용이 갈린다. 세션은 두 축을 함께 보여야 하는 pendingRuns가 합친다.
+  let root;
+  try { root = findWorkspaceRoot(start); } catch (error) { return { workspace: null, layout: null, runs: [], unreadable: [] }; }
   const layout = workspaceLayout(root);
 
   const all = listProjects(layout);
@@ -239,7 +235,7 @@ function readRunFolds(start, options) {
       }
     }
   }
-  return { workspace: layout.root, layout, runs, unreadable, sessions: liveSessions(layout.root) };
+  return { workspace: layout.root, layout, runs, unreadable };
 }
 
 function pendingRuns(start, options) {
@@ -250,8 +246,16 @@ function pendingRuns(start, options) {
     if (!verdict) continue;
     result[verdict.bucket].push(item(entry.project, entry.fold, verdict));
   }
-  // 세션은 런과 같은 물음의 다른 축이다. 접은 결과가 이미 담고 있으므로 다시 읽지 않는다.
-  result.sessions = read.sessions || [];
+  // 세션은 런과 같은 물음의 다른 축이다. 작업공간을 못 찾아도 답한다 — 세션
+  // worktree에는 projects/가 없으므로 여기서 접으면 정작 격리된 세션이 "나 말고
+  // 누가 있나"를 물을 수 없고, 그 물음은 Rundol 작업공간이 아니라 Git만 있으면
+  // 답할 수 있다.
+  const seen = readSessions(read.workspace || start);
+  result.sessions = seen.sessions;
+  // 읽지 못했다는 사실을 값으로 싣는다. 빈 목록으로 삼키면 "혼자"와 "못 셌다"가
+  // 같은 값이 되고, 출력이 둘 이상일 때만 말하므로 못 센 저장소는 영영 조용해진다
+  // — 경고가 필요한 바로 그때 침묵하는 방향이다.
+  result.sessionsUnreadable = seen.unreadable;
   return result;
 }
 
@@ -265,15 +269,22 @@ function pendingRuns(start, options) {
  * 읽기만 한다. 등록은 세션 시작이 하고 여기서는 잠금 파일을 읽을 뿐이다 — 조회가
  * 등록을 겸하면 무엇이 주의를 요구하는지 묻는 행위가 상태를 바꾼다.
  */
-function liveSessions(root) {
+function readSessions(root) {
   try {
-    return session.listSessions(root).sessions.filter((entry) => entry.alive === true)
+    const sessions = session.listSessions(root).sessions.filter((entry) => entry.alive === true)
       .map((entry) => ({ short: entry.short, branch: entry.branch, path: entry.path, sessionPid: entry.sessionPid }));
+    return { sessions, unreadable: null };
   } catch (error) {
-    // 세션을 읽지 못한 것이 런을 못 읽은 것으로 번지면 안 된다. 이 줄은 곁들이
-    // 정보이므로, 없으면 없는 채로 런의 답을 낸다.
-    return [];
+    // 세션을 읽지 못한 것이 런을 못 읽은 것으로 번지면 안 된다. 런의 답은 그대로
+    // 낸다 — 다만 못 읽었다는 사실까지 삼키지는 않는다. 삼키면 "혼자"와 "못 셌다"가
+    // 구별되지 않고, 그 구별이 사라진 자리에서 경고가 침묵한다.
+    return { sessions: [], unreadable: error.message };
   }
 }
 
-module.exports = { classifyRun, progressWitness, readRunFolds, pendingRuns, liveSessions };
+/** 살아 있는 세션 목록만. 실패는 빈 목록으로 접힌다 — 사실이 필요하면 readSessions를 쓴다. */
+function liveSessions(root) {
+  return readSessions(root).sessions;
+}
+
+module.exports = { classifyRun, progressWitness, readRunFolds, pendingRuns, readSessions, liveSessions };

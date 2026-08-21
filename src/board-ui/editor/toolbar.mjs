@@ -10,6 +10,7 @@
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import { toggleMark } from 'prosemirror-commands';
 import { schema } from './schema.mjs';
+import { guarded } from './guard.mjs';
 
 export const toolbarKey = new PluginKey('rundol-toolbar');
 
@@ -73,6 +74,10 @@ class ToolbarView {
   }
 
   update() {
+    guarded('toolbar', () => this.recompute(), () => { this.dom.style.display = 'none'; });
+  }
+
+  recompute() {
     if (!this.shouldShow()) {
       this.dom.style.display = 'none';
       return;

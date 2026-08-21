@@ -11,6 +11,7 @@
 // 화면에서는 모든 셀이 따라야 하고, 파일에서는 머리 행 하나가 그 열을 대표한다.
 
 import { Plugin, PluginKey } from 'prosemirror-state';
+import { guarded } from './guard.mjs';
 import {
   CellSelection, TableMap, cellAround,
   addColumnBefore, addColumnAfter, deleteColumn,
@@ -278,7 +279,7 @@ class TableControlsView {
     return true;
   }
 
-  update() { if (this.spot) this.hide(); }
+  update() { guarded('table-controls', () => { if (this.spot) this.hide(); }); }
 
   destroy() {
     clearTimeout(this.timer);

@@ -22,6 +22,7 @@ import { Fragment } from 'prosemirror-model';
 import { schema } from './schema.mjs';
 import { menuItems, madeNodes, selectInside } from './blocks.mjs';
 import { pickImage } from './image-drop.mjs';
+import { guarded } from './guard.mjs';
 
 export const blockHandleKey = new PluginKey('rundol-block-handle');
 
@@ -440,6 +441,10 @@ class BlockHandleView {
   }
 
   update() {
+    guarded('block-handle', () => this.reposition(), () => this.hide());
+  }
+
+  reposition() {
     if (!this.target || this.drag || this.root.style.display === 'none') return;
     if (this.target.pos > this.view.state.doc.content.size) return this.hide();
     const dom = this.view.nodeDOM(this.target.pos);

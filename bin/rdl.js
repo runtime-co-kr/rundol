@@ -363,6 +363,10 @@ function printPendingRuns(result, json) {
   // 다르고, 경로가 그 차이를 드러내는 유일한 값이다.
   const sessions = result.sessions || [];
   if (sessions.length > 1) lines.push(`동시세션 ${sessions.length}건 :: ${sessions.map((entry) => `${entry.short}(${entry.path})`).join(' ')}`);
+  // 세지 못한 것은 혼자인 것과 다르다. 둘 이상일 때만 말하는 규칙과 실패를 빈
+  // 목록으로 접는 처리가 겹치면, 세션을 못 읽는 저장소는 영영 "혼자"로 보인다 —
+  // 경고가 필요한 바로 그때 침묵하는 방향이다. 그래서 못 셌다는 사실은 말한다.
+  else if (result.sessionsUnreadable) lines.push(`동시세션 확인불가 :: ${result.sessionsUnreadable}`);
   for (const line of lines) process.stdout.write(`${line}\n`);
 }
 // 드라이버는 상주 프로세스다. 유휴 회전마다 한 줄씩 쓰면 로그는 곧 읽히지 않고,
