@@ -30,7 +30,7 @@
         },
         "AC-003": {
           "text": "Board가 돌려주는 미등록 안내가 화면 경로를 먼저 가리킨다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "REQ-019와 TST-009에 화면 등록 경로가 기록된다",
@@ -43,7 +43,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T04:00:27.298Z",
-      "updatedAt": "2026-08-21T04:23:05.820Z",
+      "updatedAt": "2026-08-21T04:23:09.979Z",
       "statusChangedAt": "2026-08-21T04:00:33.454Z",
       "externalRefs": [],
       "project": "rundol"
