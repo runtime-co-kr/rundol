@@ -56,14 +56,17 @@ class ToolbarView {
   }
 
   shouldShow() {
-    const { state, hasFocus } = this.view;
+    // hasFocus는 view의 메서드다. 구조 분해로 떼어 내 부르면 this를 잃고 그 자리에서
+    // 던진다. 이 함수는 트랜잭션마다 불리므로 그것은 편집기 전체가 트랜잭션마다
+    // 던진다는 뜻이다 — 문서는 이미 갱신된 뒤라 화면은 멀쩡해 보이고, 던진 것은
+    // dispatch를 부른 쪽의 남은 일을 대신 죽인다. 손잡이의 끌기가 그렇게 죽었다.
     if (!this.view.editable) return false;
-    if (!hasFocus()) return false;
-    const { selection } = state;
+    if (!this.view.hasFocus()) return false;
+    const { selection } = this.view.state;
     if (!(selection instanceof TextSelection)) return false;
     if (selection.empty) return false;
     // 고른 범위에 글자가 없으면(빈 줄 여럿을 훑은 경우) 걸 서식이 없다.
-    if (!state.doc.textBetween(selection.from, selection.to).length) return false;
+    if (!this.view.state.doc.textBetween(selection.from, selection.to).length) return false;
     // 코드 블록 안에서는 서식이 의미가 없다. 마크가 걸리지도 않는다.
     if (selection.$from.parent.type.spec.code) return false;
     return true;

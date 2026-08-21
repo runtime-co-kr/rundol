@@ -90,6 +90,10 @@ require('./editor-roundtrip.test').catch((error) => {
   process.stderr.write(`${error.stack || error.message}\n`);
   process.exitCode = 1;
 });
+require('./editor-block-move.test').catch((error) => {
+  process.stderr.write(`${error.stack || error.message}\n`);
+  process.exitCode = 1;
+});
 
 require('./verify-concurrency.test').then(() => require('./verify-independence.test')).then(() => require('./author-fanout.test')).then(() => require('./windows-termination.test')).then(() => require('./watch.test')).then(() => require('./adapter.test')).then(() => require('./drive.test')).then(() => Promise.all([
   require('./board.test'),

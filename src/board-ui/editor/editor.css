@@ -11,17 +11,20 @@
   display: none;
   gap: 2px;
   align-items: center;
-  height: 1.75em;
+  /* 높이는 단추가 정한다. 여기서 따로 정하면 손잡이를 첫 줄 한가운데 맞추는 계산이
+     실제로 보이는 높이가 아니라 그 수를 보게 된다. */
   z-index: 5;
   /* 보이고 안 보이고는 플러그인이 정한다. CSS의 :hover로 정하면 손잡이가 놓인
      왼쪽 여백은 편집 영역 밖이라, 손잡이를 누르러 가는 순간 투명해진다. */
   transition: opacity 120ms ease;
 }
 
+/* 24px는 좁은 화면에서도 손가락이 아니라 마우스로 집는다는 가정의 최소치다.
+   손잡이 전체 너비(24+2+24=50)는 block-handle.mjs의 GUTTER 안에 들어가야 한다. */
 .rdl-block-add,
 .rdl-block-grip {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -30,7 +33,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--tertiary-TextColor, #8a8a99);
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1;
   cursor: pointer;
 }
@@ -39,7 +42,7 @@
   background: var(--surface-raised-BackgroundColor, #24242e);
   color: var(--primary-TextColor, #e6e6ea);
 }
-.rdl-block-grip { cursor: grab; font-size: 12px; letter-spacing: -1px; }
+.rdl-block-grip { cursor: grab; font-size: 14px; letter-spacing: -1px; }
 .rdl-block-grip:active { cursor: grabbing; }
 
 /* 삽입 메뉴 ----------------------------------------------------------- */
@@ -114,13 +117,29 @@
 
 /* 놓을 자리 표시선 ---------------------------------------------------- */
 
+/* 표시선은 "어느 자리"만이 아니라 "어느 층"까지 말한다. 왼쪽 끝이 곧 들여쓰기이므로
+   시작점이 눈에 띄어야 한다 — 점을 하나 달아 그 자리를 짚는다. */
 .rdl-drop-line {
   position: absolute;
-  height: 2px;
-  border-radius: 2px;
+  height: 3px;
+  border-radius: 3px;
   background: var(--accent-BackgroundColor, #4a6a9a);
+  box-shadow: 0 0 0 1px var(--surface-00-BackgroundColor, #131318);
   pointer-events: none;
   z-index: 6;
+}
+
+.rdl-drop-line::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--accent-BackgroundColor, #4a6a9a);
+  border-radius: 50%;
+  background: var(--surface-00-BackgroundColor, #131318);
+  transform: translateY(-50%);
 }
 
 /* 슬래시 메뉴 --------------------------------------------------------- */
