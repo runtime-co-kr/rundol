@@ -120,7 +120,7 @@
         },
         "AC-002": {
           "text": "승인 모달이 대상 문서 본문을 markdown·mermaid 포함해 문서 화면과 같은 경로로 그린다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "대상 문서가 여럿이면 탭으로 고르고, 찾지 못하면 그 사실을 말한다",
@@ -137,7 +137,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-21T06:48:58.539Z",
-      "updatedAt": "2026-08-21T06:49:13.078Z",
+      "updatedAt": "2026-08-21T06:49:15.734Z",
       "statusChangedAt": "2026-08-21T06:49:10.722Z",
       "externalRefs": [],
       "project": "rundol"
