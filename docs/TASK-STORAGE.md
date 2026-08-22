@@ -27,6 +27,8 @@ rundol/crm → projects/crm/
 - 차수를 정수로 두는 이유는 표기가 갈리지 않게 하려는 것이다. 문자열이면 `2차`, `2차 `, `R2`가 서로 다른 회차가 되어 모아 세는 일이 불가능해진다. "지금 몇 차인가"도 따로 저장하지 않고 태스크들의 최댓값이 답한다.
 - 차수의 대상 목록은 저장하지 않는다. 태스크를 만든 것이 곧 그 차수의 범위이고, 빠진 것은 TST 문서 전체와 대조해 계산한다.
 - 재실행은 새 태스크가 아니라 같은 태스크의 판정이 바뀌는 일이다. 발견한 결함은 별도의 일반 태스크가 나르고 그 테스트 태스크의 선행으로 연결한다.
+- 태스크 댓글은 태스크 파일이 아니라 Workspace 이벤트 원장에 산다. `projects/workspace/events/comment/comment-<project>-<client-id>-<segment>.jsonl`이며 append-only다. 태스크 파일 안에 넣으면 두 세션이 같은 줄을 고쳐 충돌이 나고, 태스크가 무엇이 바뀌었는지 보여주는 diff를 논의가 덮는다.
+- 답글은 `parentId`로 같은 태스크의 뿌리 댓글을 가리키며 깊이는 하나다. 뿌리 댓글에는 그 키가 생기지 않는다 — `canonicalDigest`가 필드 구성을 그대로 반영하므로 `null`을 넣으면 이미 쌓인 기록의 재계산이 어긋난다.
 - Board index는 Watch 메모리에서 계산한다.
 - 현재 구현의 호환 projection은 `.rundol/state/tasks.json`이며 Git에서 제외한다.
 - 문서는 Markdown 파일 단위 원본을 유지한다.
@@ -44,11 +46,11 @@ projects/<project-key>/.rundol/
    └─ sync.jsonl
 ```
 
-`.rundol/`은 삭제 가능한 실행 상태와 진단 정보만 포함하며 프로젝트 `.gitignore`에서 제외한다. 문서, 태스크, Client Registry와 공유 임대 이벤트를 넣지 않는다.
+`.rundol/`은 삭제 가능한 실행 상태와 진단 정보만 포함하며 프로젝트 `.gitignore`에서 제외한다. 문서, 태스크, Client Registry와 공유 협업 이벤트를 넣지 않는다.
 
 ```bash
 rdl task migrate --project crm --client-id laptop-a --max-items 500
-rdl sync --watch --project crm --interval 15
+rdl sync watch --project crm --client-id laptop-a --interval 15
 ```
 
 미전송 변경은 별도 복제본이 아니라 Git working tree와 로컬 commit에 남는다. Sync는 Workspace를 먼저 동기화한 뒤 프로젝트를 처리하며, 충돌 정보는 프로젝트 `.rundol/state/pending/`에 보존한다.

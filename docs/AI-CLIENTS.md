@@ -36,6 +36,17 @@ CLI를 새 버전으로 갱신한 뒤에는 `rdl doctor`로 스킬 버전을 확
 
 Gemini CLI, Cursor 또는 `AGENTS.md` 기반 도구는 [클라이언트 호환성 레퍼런스](../skills/rundol-project-governance/references/client-compatibility.md)의 최소 어댑터를 프로젝트 instruction 파일에 연결한다. 어댑터는 발견 방식만 담당하고 실제 계약은 `SKILL.md`와 `references/governance-contract.md`를 읽는다.
 
+## 세션 식별
+
+한 기계에서 여러 AI 세션이 같은 저장소를 고칠 수 있다. Rundol은 세션 식별자를 발급하지 않고 호스트가 주는 값을 받는다 — 어느 세션의 일이었는지는 호스트만 알기 때문이다.
+
+- 식별자: `--session-id`, `RUNDOL_SESSION_ID`, `CLAUDE_CODE_SESSION_ID` 순으로 읽고, 없으면 생성한다.
+- 생존 확인용 pid: `RUNDOL_SESSION_PID`, `CLAUDE_PID` 순으로 읽는다. `rdl`은 명령마다 죽으므로 자기 pid로는 "이 세션이 지금 붙어 있는가"를 말할 수 없다. 없으면 등록하지 않고 `registerSkipped`로 그 사실을 낸다.
+
+새 클라이언트는 어댑터가 `RUNDOL_SESSION_ID`와 `RUNDOL_SESSION_PID`를 채우면 Rundol을 고치지 않고 붙는다. 확인된 호스트 변수는 그 뒤에 둔다.
+
+`rdl session start|list|end`는 세션마다 worktree와 브랜치를 하나씩 준다. 나뉘어야 하는 것은 경로가 아니라 index와 HEAD이기 때문이다. 세션 시작 훅에서 `rdl run pending`을 돌리면 주의를 요구하는 런과 함께 같이 붙어 있는 세션 수를 알 수 있다. 자세한 계약은 [CLI 명세의 세션 작업 공간](CLI.md#세션-작업-공간)에 있다.
+
 ## 검증
 
 어떤 클라이언트에서 작업하더라도 완료 조건은 같다.

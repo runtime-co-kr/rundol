@@ -49,6 +49,16 @@ monorepo 루트의 Git URL 전역 설치는 지원하지 않는다. npm은 works
 @rundol/core → @rundol/protocol → @rundol/cli, @rundol/node → rundol
 ```
 
+## 배포물 구성
+
+`@rundol/cli`는 저장소를 그대로 싣지 않고 `prepack`이 `dist/`를 만들어 싣는다. 순서가 중요하다 — 편집기 번들을 먼저 만들고 `src`를 복사한다. 복사한 뒤에 만들면 배포물에는 번들이 빠진 채로 남고, 그 사실은 설치한 사람이 문서를 편집하려 할 때에야 드러난다.
+
+1. `scripts/build-editor.js` → `src/board-ui/generated/`. 보드의 문서·댓글 편집기 번들이다. 없으면 편집이 평문 입력칸으로 떨어진다.
+2. `scripts/build-licenses.js` → `THIRD-PARTY-LICENSES.txt`. 번들에 들어간 제3자 코드의 고지다. ProseMirror·remark 계열은 소스에 파일별 라이선스 헤더가 없어 번들러가 옮길 것이 없고, 헤더가 없다는 사실이 고지 의무를 없애 주지는 않는다.
+3. `bin`, `src`, `docs`, `skills`, `scripts`를 `dist/`로 복사하고 고지 파일을 함께 넣는다.
+
+두 생성물은 Git에 담지 않는다. 저장소 루트에서도 `npm run build:editor`, `npm run build:licenses`로 같은 것을 만들 수 있고 `prepare`가 그 둘을 부른다. 번들 의존을 바꿨다면 고지도 다시 만들어야 한다 — 목록이 낡으면 배포물이 싣지 않은 것을 고지하거나 실은 것을 고지하지 않는다.
+
 ## 검증
 
 `npm run version:check`는 다음을 검사한다.

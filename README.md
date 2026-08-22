@@ -8,7 +8,7 @@ Rundol은 특정 회사의 문서를 표준화하는 도구가 아니다. 프로
 
 | 저장 위치 | Git 소유권 | 내용 |
 |---|---|---|
-| `rundol/workspace` | Workspace 브랜치 | 프로젝트 Registry, Client Registry, 임대 이벤트 |
+| `rundol/workspace` | Workspace 브랜치 | 프로젝트 Registry, Client Registry, 공유 협업 이벤트 |
 | `projects/<key>/` | `rundol/<key>` | 프로젝트별 Obsidian Vault, 문서와 태스크 |
 | `projects/<key>/.rundol/` | Git 비추적 | 프로젝트별 실행 상태와 진단 로그 |
 | 제품 저장소 main | 제품 브랜치 | 제품 코드만 소유하며 Rundol 파일을 요구하지 않음 |
@@ -110,7 +110,7 @@ rdl conflict list --project memo
 rdl doctor --json
 ```
 
-`rdl board`는 `127.0.0.1`에서만 동작하는 로컬 웹 UI다. 태스크 검색·생성·편집·drag/drop, 역할·멤버·이해관계자 조회·수정과 3초 주기 외부 변경 감지를 제공한다.
+`rdl board`는 `127.0.0.1`에서만 동작하는 로컬 웹 UI다. 태스크 검색·생성·편집·drag/drop, 정본 문서 편집과 그림 삽입, 태스크 댓글과 답글, 사람 게이트 승인, 역할·멤버·이해관계자 조회와 3초 주기 외부 변경 감지를 제공한다. `project.md`에 쓰는 사람·역할 변경은 명령줄이 갖는다 — 같은 파일에 쓰는 경로가 둘이면 검증과 되돌리기가 두 배가 된다.
 
 ## 명령 지도
 
@@ -119,6 +119,9 @@ rdl doctor --json
 | Workspace 연결·생성 | `rdl attach`, `rdl detach`, `rdl init`, `rdl project add` |
 | 브랜치 연결·저장 | `rdl git init`, `rdl refresh`, `rdl save` |
 | 문서·태스크 | `rdl doc create`, `rdl doc migrate`, `rdl project profile`, `rdl task add`, `rdl task set`, `rdl task acceptance`, `rdl task migrate` |
+| 논의·협업 | `rdl task comment`, `rdl task comments`, `rdl member add`, `rdl member list`, `rdl client register` |
+| 런과 사람 게이트 | `rdl run pending`, `rdl run start`, `rdl run step`, `rdl run approve`, `rdl run drive`, `rdl run driver` |
+| 세션 작업 공간 | `rdl session start`, `rdl session list`, `rdl session end` |
 | 검증·정리 | `rdl check`, `rdl check --strict`, `rdl check --structure`, `rdl cleanup`, `rdl doctor` |
 | 동기화·충돌 | `rdl sync`, `rdl sync watch`, `rdl conflict list|resolve|clear` |
 | UI·연동 | `rdl board`, `rdl obsidian init`, `rdl skill install` |
@@ -132,7 +135,7 @@ rdl doctor --json
 |---|---|
 | [Git 저장소 설치와 복구](docs/INSTALLATION.md) | 어떻게 설치·인증·진단·복구하는가? |
 | [CLI 기능 명세](docs/CLI.md) | 어떤 명령과 옵션이 실제로 제공되는가? |
-| [Board와 협업 API](docs/BOARD-API.md) | 멀티 프로젝트 UI와 Client·임대·동기화 API를 어떻게 사용하는가? |
+| [Board와 협업 API](docs/BOARD-API.md) | 멀티 프로젝트 UI와 문서·댓글·런·Client API를 어떻게 사용하는가? |
 | [Workspace 브랜치 규칙](docs/WORKSPACE-BRANCH.md) | main, settings와 프로젝트 브랜치는 무엇을 소유하는가? |
 | [태스크 저장과 동기화](docs/TASK-STORAGE.md) | 1만 건 태스크를 어떻게 분할·병합하는가? |
 | [문서 표준](docs/DOCUMENT-STANDARD.md) | PRD, REQ, ARC, SCR, MOD, IFC, STD 등은 언제 만드는가? |
@@ -164,4 +167,4 @@ npm run test:install
 npm run release:check
 ```
 
-Rundol은 외부 runtime dependency 없이 동작한다. 현재 제공하지 않는 기능과 명령별 종료 코드는 [CLI 기능 명세](docs/CLI.md#현재-제공하지-않는-기능)에서 관리한다.
+`@rundol/core`와 `@rundol/node`는 외부 runtime dependency 없이 동작한다. `@rundol/cli`만 보드 화면과 그림 처리를 위해 `mermaid`, `marked`, `dompurify`, `jpeg-js`에 의존한다. 현재 제공하지 않는 기능과 명령별 종료 코드는 [CLI 기능 명세](docs/CLI.md#현재-제공하지-않는-기능)에서 관리한다.

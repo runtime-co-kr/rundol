@@ -4,7 +4,7 @@ Rundol은 제품 코드, Workspace 공통 정보와 프로젝트 정본의 소�
 
 ```text
 main                         # 제품 코드
-rundol/workspace             # 프로젝트·Client Registry와 공유 임대 이벤트
+rundol/workspace             # 프로젝트·Client Registry와 공유 협업 이벤트
 rundol/<project-key>         # 프로젝트별 문서와 태스크
 ```
 
