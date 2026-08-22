@@ -384,7 +384,7 @@ const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/u;
 // 완료와 반려는 둘 다 종료지만 게이트가 다르다. 완료는 수용조건과 검증 증거를,
 // 반려는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
 // 아래 규칙들은 두 상태를 하나로 묶지 않는다.
-const ALLOWED_TASK_STATES = new Set(['todo', 'doing', 'waiting', 'review', 'done', 'cancelled']);
+const ALLOWED_TASK_STATES = new Set(require('./vocabulary').TASK_STATES);
 const REQUIRED_TASK_FIELDS = ['title', 'summary', 'owner', 'reviewers', 'stakeholders', 'status', 'priority', 'links', 'deps', 'acceptanceCriteria', 'blocker', 'createdAt', 'updatedAt', 'statusChangedAt', 'externalRefs'];
 
 /**

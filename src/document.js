@@ -15,7 +15,7 @@ const {
 } = require('./implementation-contract');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
-const RELATED_REQUIRED = new Set(['REQ', 'SCR', 'MOD', 'IFC', 'TST', 'RUN']);
+const RELATED_REQUIRED = new Set(require('./vocabulary').RELATED_REQUIRED_TYPES);
 
 function markdownFiles(root, output) {
   const result = output || [];

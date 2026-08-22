@@ -1,6 +1,7 @@
 'use strict';
 
-// 업무 유형 정의의 정규화와 제약 판정. require를 하나도 갖지 않는다 — 값만 보고 답한다.
+// 업무 유형 정의의 정규화와 제약 판정. 값 목록의 정본(vocabulary) 말고는 require를
+// 갖지 않는다 — 값만 보고 답한다. 정본은 스스로 require가 없으므로 그 성질을 깨지 않는다.
 //
 // 순수해야 하는 이유는 코드 취향이 아니라 답의 일치다. 유형 규칙을 명령줄과 보드와
 // 검사기가 각자 읽으면 같은 태스크가 어디서 보느냐에 따라 다른 판정을 받고, 그때
@@ -20,10 +21,7 @@
  * 카탈로그 밖의 종류를 무시하지 않고 거부하는 이유는, 무시하면 오타로 적은 제약이
  * 조용히 적용되지 않고 그 사실이 규칙이 필요해진 시점에야 드러나기 때문이다.
  */
-const CONSTRAINT_KINDS = Object.freeze(['fields', 'requiresLink', 'requiredWhen', 'unique', 'exempt']);
-
-/** 표시 필드. 화면에 보이는 말은 전부 여기 있고, 저장값은 유형 식별자뿐이다. */
-const DISPLAY_FIELDS = Object.freeze(['label', 'description', 'order', 'disabled']);
+const { CONSTRAINT_KINDS, DISPLAY_FIELDS, EXEMPTABLE_GATES, FIELD_TYPES } = require('./vocabulary');
 const ENTRY_KEYS = Object.freeze(DISPLAY_FIELDS.concat(['constraints']));
 
 /**
@@ -45,7 +43,6 @@ const ITEM_TYPE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
  * 경계 층 게이트는 여기 없다. 유형 정의로 사람 승인이나 위임 불가 티어를 열 수 있으면
  * 유형을 하나 더 만드는 것이 경계 우회 수단이 된다.
  */
-const EXEMPTABLE_GATES = Object.freeze(['implementation-readiness', 'done-requires-test-link']);
 
 /**
  * 진단 코드는 제약 종류마다 하나다. 유형이 열 개여도 코드는 다섯이다.
@@ -72,7 +69,6 @@ const ITEM_DIAGNOSTICS = Object.freeze({
 const UNUSABLE_ITEM_TYPE = 'RDL-ITEM-006';
 
 const FIELD_SPEC_KEYS = Object.freeze(['values', 'type', 'min', 'max', 'required']);
-const FIELD_TYPES = Object.freeze(['string', 'integer']);
 // 태스크 필드 이름. 저장된 태스크가 쓰는 표기를 그대로 가리킨다.
 const FIELD_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/u;
 // 문서 유형은 문서 식별자의 앞자리다. 유형 식별자와 달리 대문자인 것은 이미 저장된

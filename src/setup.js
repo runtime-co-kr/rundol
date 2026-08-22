@@ -7,11 +7,11 @@
 const path = require('path');
 const { runGit } = require('./git');
 const { PROFILE_NAMES, DEFAULT_POLICIES } = require('./document-profile');
+const { CONVENTIONAL_PRIMARY } = require('./vocabulary');
 
-// 관례적 기본 브랜치. 원격 HEAD가 없을 때 현재 브랜치를 기본으로 추론해도
-// 안전한지 판단하는 기준이다 — 기능 브랜치를 기본으로 삼으면 push 경계가
-// 엉뚱한 브랜치를 보호하게 된다.
-const CONVENTIONAL_PRIMARY = ['main', 'master', 'trunk'];
+// 관례적 기본 브랜치(vocabulary.CONVENTIONAL_PRIMARY)는 원격 HEAD가 없을 때
+// 현재 브랜치를 기본으로 추론해도 안전한지 판단하는 기준이다 — 기능 브랜치를
+// 기본으로 삼으면 push 경계가 엉뚱한 브랜치를 보호하게 된다.
 
 // 프로필은 크기가 아니라 목적으로 고른다. 이름만으로는 무엇을 쓰게 되는지 알 수
 // 없어서, 목적과 "무엇을 정본으로 쓰게 되는가"를 함께 제시한다.

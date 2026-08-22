@@ -9,6 +9,7 @@ const { runtimeWorkspace } = require('./runtime');
 const { getClient } = require('./collaboration-store');
 const eventStore = require('./event-store');
 const requestJournal = require('./request-journal');
+const vocabulary = require('./vocabulary');
 
 const RUN_ID = /^RUN-[A-F0-9]{20}$/u;
 const EVENT_ID = /^EVT-[A-F0-9]{20}$/u;
@@ -21,8 +22,12 @@ const REVISION = /^[a-f0-9]{40,64}$/u;
 // 커밋을 만들어야 하는 스텝. procedure.js의 COMMIT_PRODUCING_COMMANDS와 같은 목록이며,
 // fold가 절차 모듈을 부르면 순환이 되므로 여기 둔다. 어긋나면 시험이 잡는다.
 const COMMIT_REQUIRED_STEPS = new Set(['save']);
-const CHECKPOINT_TYPES = new Set(['run.started', 'run.halted', 'run.resumed', 'run.completed_local', 'run.synced', 'run.takeover', 'run.ownership_resolved']);
-const HALT_REASONS = new Set(['gate-failed', 'step-failed', 'merge-conflict', 'sync-failed', 'adapter-timeout', 'lease-lost', 'attempt-limit', 'manual', 'settings-drift', 'ownership-conflict', 'operation-conflict', 'legacy-conflict', 'verification-required']);
+const CHECKPOINT_TYPES = new Set(vocabulary.CHECKPOINT_TYPES);
+const HALT_REASONS = new Set(vocabulary.HALT_REASONS);
+// 접기가 내는 런 상태. 옆의 둘은 집합으로 선언되어 있었는데 정작 상태 어휘만
+// 이름이 없어 문자열로만 돌아다녔다 — 상태 기계가 있는 유일한 자리가 어휘는
+// 암묵인 상태였다.
+const RUN_STATES = new Set(vocabulary.RUN_STATES);
 const TYPE_FIELDS = {
   'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId', 'taskId'] },
   'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
@@ -50,7 +55,7 @@ const V3_ONLY = {
 const SCHEMA_VERSION = 3;
 const SUPPORTED_SCHEMA = new Set([2, 3]);
 const BASE_FIELDS = ['schemaVersion', 'eventId', 'type', 'rootRequestId', 'requestId', 'clientId', 'projectId', 'runId'];
-const OUTCOME_KINDS = new Set(['step-completed', 'gate-passed', 'gate-failed', 'verification-passed', 'verification-refuted', 'verification-abstained', 'forced', 'step-failed']);
+const OUTCOME_KINDS = new Set(vocabulary.OUTCOME_KINDS);
 
 function canonicalJson(value) {
   return eventStore.canonicalJson(value);

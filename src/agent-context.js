@@ -8,10 +8,12 @@
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore } = require('./tasks');
 
-const STATUS_ORDER = ['doing', 'review', 'waiting', 'todo', 'done', 'cancelled'];
-const PRIORITY_ORDER = ['high', 'mid', 'low'];
-const ACTIVE_STATES = new Set(['doing', 'review', 'waiting']);
-const OPEN_STATES = new Set(['todo', 'doing', 'waiting', 'review']);
+const vocabulary = require('./vocabulary');
+
+const STATUS_ORDER = vocabulary.TASK_STATUS_ORDER;
+const PRIORITY_ORDER = vocabulary.TASK_PRIORITIES;
+const ACTIVE_STATES = new Set(vocabulary.ACTIVE_TASK_STATES);
+const OPEN_STATES = new Set(vocabulary.OPEN_TASK_STATES);
 
 function rank(order, value) {
   const index = order.indexOf(value);

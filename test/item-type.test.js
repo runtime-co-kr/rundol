@@ -221,9 +221,26 @@ const REVIEW = {
 }
 
 // 판정 계층은 값만 보고 답한다. 파일에 닿으면 표면마다 답이 갈린다.
+//
+// 허용하는 것은 값 목록의 정본 하나뿐이다. "require가 없다"는 원래 "파일에 닿지
+// 않는다"의 대리 지표였고, 정본은 스스로 require를 갖지 않으므로 그 지표를 한 단계
+// 아래까지 그대로 유지하면 보장은 줄지 않는다. 정본이 언젠가 무언가를 require하기
+// 시작하면 아래 단언이 먼저 깨진다 — 그때 이 면제는 근거를 잃는다.
 {
-  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'item-type.js'), 'utf8');
-  assert(!/require\s*\(/u.test(source), 'item-type은 값만으로 판정해야 하는데 require를 갖고 있습니다.');
+  const requires = (name) => {
+    const source = fs.readFileSync(path.resolve(__dirname, '..', 'src', `${name}.js`), 'utf8');
+    return Array.from(source.matchAll(/require\s*\(\s*'([^']+)'\s*\)/gu), (match) => match[1]);
+  };
+  assert.deepStrictEqual(
+    requires('item-type'),
+    ['./vocabulary'],
+    'item-type은 값 목록의 정본 말고는 require를 가질 수 없습니다.'
+  );
+  assert.deepStrictEqual(
+    requires('vocabulary'),
+    [],
+    '정본이 require를 갖기 시작하면 판정 계층의 순수성 보장이 무너집니다.'
+  );
 }
 
 // ---------------------------------------------------------------------------

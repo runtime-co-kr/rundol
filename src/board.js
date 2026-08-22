@@ -32,7 +32,7 @@ function stripSources(presentation) {
   return copy;
 }
 
-const STATUSES = ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'];
+const { TASK_STATES: STATUSES } = require('./vocabulary');
 const UI_ROOT = path.join(__dirname, 'board-ui');
 
 // 문서에 넣은 그림을 보드가 서빙한다. 지금까지 정적 경로는 UI 자산과 라이브러리뿐

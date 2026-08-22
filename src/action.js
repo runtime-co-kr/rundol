@@ -1,8 +1,9 @@
 'use strict';
 
 const { appendDebug } = require('./debug');
+const { EXECUTORS: EXECUTOR_VALUES } = require('./vocabulary');
 
-const EXECUTORS = new Set(['cli', 'llm', 'hybrid']);
+const EXECUTORS = new Set(EXECUTOR_VALUES);
 const ACTIONS = {
   'workspace.init': { recommendedExecutor: 'cli', commandHint: 'rdl init <project-key> --name <project-name>', reason: 'Workspace와 Git branch/worktree 계약을 CLI가 원자적으로 생성합니다.' },
   'project.add': { recommendedExecutor: 'cli', commandHint: 'rdl project add <project-key> --name <project-name>', reason: '프로젝트 등록과 branch/worktree 생성을 CLI가 검증합니다.' },

@@ -12,7 +12,7 @@ const MEMBER = /^MEMBER-\d{3}$/u;
 // 쥘 수 없는 자격"이라는 것이고, 그것도 Rundol이 보장하는 게 아니라 등록한
 // 사람들이 지키기로 한 약속이다 — 사람을 탐지할 방법은 없으므로 이것은 인증이
 // 아니라 귀속이다. 대신 그 자격으로는 자동 실행 명령 자체가 거부된다.
-const TYPES = new Set(['device', 'agent', 'service', 'human']);
+const TYPES = new Set(require('./vocabulary').CLIENT_TYPES);
 const CLIENT_FILE = /^client-([a-z0-9]+(?:-[a-z0-9]+)*)\.yaml$/u;
 
 function atomicWrite(file, content) {

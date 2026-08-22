@@ -2,8 +2,9 @@
 
 // 워커 계약의 판정부. 사람 워커와 에이전트 워커가 같은 답을 받으려면 같은 함수가
 // 판정해야 하고, 같은 함수를 네 표면이 부르려면 그 함수가 파일을 몰라야 한다.
-// 그래서 이 모듈은 require를 하나도 갖지 않는다 — 그 사실 자체가 계약이며
-// worker-contract-purity.test.js가 전이 의존까지 따라가며 지킨다.
+// 그래서 이 모듈은 값 목록의 정본(vocabulary) 말고는 require를 갖지 않는다 — 그
+// 사실 자체가 계약이며 worker-contract-purity.test.js가 전이 의존까지 따라가며
+// 지킨다. 정본은 스스로 require가 없으므로 그 폐포에 아무것도 더하지 않는다.
 //
 // 여기 들어올 수 있는 것은 값만 보고 답이 나오는 판정뿐이다. 저장소를 읽어야
 // 알 수 있는 것(기능 ID가 정규 문서에 선언되었는지, 다른 할당이 열려 있는지)은
@@ -320,7 +321,7 @@ function composeAssignment(request, pinned, context) {
 
 // ── 원장 접기 ────────────────────────────────────────────────────────────
 
-const WORK_EVENT_TYPES = new Set(['assignment.issued', 'assignment.rejected', 'assignment.closed', 'report.submitted', 'report.rejected', 'report.verified']);
+const WORK_EVENT_TYPES = new Set(require('./vocabulary').WORK_EVENT_TYPES);
 
 /**
  * 두 클라이언트의 조각이 임의 순서로 병합되므로 순서의 정본이 필요하다.

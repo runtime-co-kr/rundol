@@ -73,6 +73,7 @@ require('./board-ui.test');
 require('./document-roundtrip.test');
 require('./worker-contract.test');
 require('./worker-contract-purity.test');
+require('./vocabulary.test');
 require('./surface-leak.test');
 require('./human-intervention.test');
 require('./task-link.test');

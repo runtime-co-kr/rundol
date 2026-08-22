@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const vocabulary = require('./vocabulary');
+
 const MAX_TASKS_PER_SHARD = 500;
 
 function canonicalJson(value) {
@@ -42,7 +44,7 @@ function assertBlockerConsistency(current, changes) {
 // 완료와 반려는 둘 다 종료 상태지만 게이트가 반대 방향이다. 완료는 수용조건과 TST 증거를
 // 요구하고, 반려는 그 증거가 없다는 것을 전제로 사유를 요구한다. 사유를 강제하지 않으면
 // 반려가 완료 게이트를 우회하는 조용한 통로가 된다.
-const TERMINAL_TASK_STATES = Object.freeze(['done', 'cancelled']);
+const TERMINAL_TASK_STATES = vocabulary.TERMINAL_TASK_STATES;
 function assertCancellationConsistency(current, changes) {
   const next = Object.assign({}, current || {}, changes || {});
   if (next.status === 'cancelled' && !next.cancellation) throw inputError('반려하려면 반려 사유와 결정자가 필요합니다.');
@@ -57,8 +59,8 @@ function assertCancellationConsistency(current, changes) {
 // 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝난 것이라 done이고, 그
 // 판정이 fail이다. 한 필드에 섞으면 "실패를 확인한 테스트"와 "아직 돌리지 않은 테스트"를
 // 구분할 수 없어, 테스트만 모아 성공 여부를 묻는 일이 처음부터 불가능해진다.
-const TASK_KINDS = Object.freeze(['normal', 'test']);
-const TEST_RESULTS = Object.freeze(['pass', 'fail', 'blocked', 'skipped']);
+const TASK_KINDS = vocabulary.TASK_KINDS;
+const TEST_RESULTS = vocabulary.TEST_RESULTS;
 
 function taskKind(task) {
   return (task && task.kind) || 'normal';

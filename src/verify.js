@@ -23,7 +23,7 @@ const EVENT_ID = /^EVT-[A-F0-9]{20}$/u;
 const VALIDATOR_ID = /^VAL-[A-F0-9]{20}$/u;
 const REVISION = /^[a-f0-9]{40,64}$/u;
 const DIGEST = /^[a-f0-9]{64}$/u;
-const VERDICTS = new Set(['pass', 'refuted', 'abstain']);
+const VERDICTS = new Set(require('./vocabulary').VERDICTS);
 const BASE_FIELDS = ['schemaVersion', 'eventId', 'type', 'rootRequestId', 'requestId', 'clientId', 'projectId', 'targetId', 'reviewedRevision', 'lens', 'verdict', 'findings', 'adapter', 'validatorInstanceId'];
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }

@@ -4,7 +4,7 @@ const path = require('path');
 const { parseFrontmatter } = require('./frontmatter');
 
 const CONTRACT_VERSION = 'atomic-v1';
-const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST']);
+const { IMPLEMENTATION_TYPES } = require('./vocabulary');
 // 문서 1개 = 기능 1개가 기본 계약이다. 합침은 groupingReason 선언이 있는 opt-in이며
 // 유형별 정책을 따른다. 근거는 실사용 정본 측정이다: TST가 기능 여럿을 검증하는 것은
 // 자연스럽고(TST-002=11), REQ가 기능 여럿을 요구하는 것은 과합침이다(REQ-010=5).

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { runGit, refExists, gitRoot } = require('./git');
 
-const WORKSPACE_BRANCHES = ['rundol/workspace', 'rundol/settings'];
+const { WORKSPACE_BRANCHES } = require('./vocabulary');
 
 function pathKey(value) {
   const resolved = path.resolve(value);

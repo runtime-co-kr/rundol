@@ -6,16 +6,23 @@ const { workspaceLayout, selectProject } = require('./workspace');
 const { REGULAR_TYPES, DEFAULT_POLICIES, DEFAULT_SECTIONS } = require('./document-profile');
 const { normalizeItemTypes, mergeItemTypes, BUILTIN_ITEM_TYPES } = require('./item-type');
 
-const DOCUMENT_TYPE_KEYS = ['charter', 'prd', 'requirement', 'architecture', 'screen', 'model', 'interface', 'decision', 'standard', 'test', 'runbook', 'glossary', 'clipping'];
-const DOCUMENT_STATE_KEYS = ['draft', 'proposed', 'active', 'review', 'approved', 'deprecated', 'archived', 'unread'];
 // 계약이 저장하는 값은 ASCII 식별자이고 화면에 보이는 말은 그 값의 라벨이다. 둘을 섞으면
 // 표기를 바꾸는 순간 저장된 계약이 깨진다. 여기 키는 언제나 저장값이고 label만 바뀐다.
-const POLICY_STATE_KEYS = ['required', 'recommended', 'onDemand', 'disabled'];
-const ENFORCEMENT_KEYS = ['advisory', 'checkpoint'];
-const TASK_STATUS_KEYS = ['todo', 'doing', 'waiting', 'review', 'done', 'cancelled'];
-const PRIORITY_KEYS = ['high', 'mid', 'low'];
-const PROFILE_KEYS = ['lean', 'product', 'service', 'platform', 'assured'];
-const ENTRY_FIELDS = ['label', 'description', 'order', 'disabled'];
+//
+// 그래서 키는 이 파일이 짓지 않고 정본에서 가져온다. 표시 층이 저장값 목록을 따로
+// 적어 두면 저장값이 늘어도 화면은 그것을 모른 채 돌고, 그 사실은 새 값을 가진
+// 데이터가 화면에 닿을 때에야 드러난다.
+const {
+  DOCUMENT_TYPE_KEYS,
+  DOCUMENT_STATE_KEYS,
+  POLICY_STATES: POLICY_STATE_KEYS,
+  ENFORCEMENTS: ENFORCEMENT_KEYS,
+  TASK_STATES: TASK_STATUS_KEYS,
+  TASK_PRIORITIES: PRIORITY_KEYS,
+  PROFILE_NAMES: PROFILE_KEYS,
+  DISPLAY_FIELDS: ENTRY_FIELDS,
+  APPROVAL_MODES
+} = require('./vocabulary');
 // 되돌릴 수 없는 관문의 이름. 화면에 두지 않는 것만으로는 파일로 우회하는 길이
 // 남는다 — 파일은 손으로 고칠 수 있고 병합으로도 흘러들어온다. 그래서 읽는
 // 시점에 거부한다. 무시하지 않는 이유는 무시가 최악이기 때문이다: 적은 사람은
@@ -56,7 +63,7 @@ const MAP_KEYS = Object.freeze(['itemTypes']);
 // 있어도 막지 않는다 — 범위마다 무엇을 읽을지는 읽는 쪽이 정하고, 파일이 그것까지
 // 강제하면 작업공간 파일을 프로젝트로 복사하는 흔한 일이 거부된다.
 const APPROVAL_FIELDS = Object.freeze(['mode', 'floor']);
-const APPROVAL_MODE_NAMES = Object.freeze(['human-only', 'ai-assisted', 'ai-first', 'ai-only']);
+const APPROVAL_MODE_NAMES = APPROVAL_MODES;
 
 function validateApproval(value, file) {
   if (value === undefined) return;

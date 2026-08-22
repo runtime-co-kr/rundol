@@ -35,7 +35,7 @@ const DELEGATION_ID = /^DLG-[A-F0-9]{20}$/u;
 // 승인이 무엇에 기댔는지는 필수다. 사유 문장은 선택이다 — 강제하면 "확인함"
 // 같은 빈 문장이 채워질 뿐이고, 그것으로는 나중에 "AI 검토가 놓쳤나 사람이
 // 건너뛰었나"를 구분할 수 없다. 개선하려면 그 구분이 필요하다.
-const BASIS_KINDS = Object.freeze(['read', 'verdict', 'check', 'delegated']);
+const { BASIS_KINDS } = require('./vocabulary');
 const BASE_FIELDS = ['schemaVersion', 'eventId', 'type', 'rootRequestId', 'requestId', 'clientId', 'projectId', 'targetId', 'reviewedRevision'];
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }

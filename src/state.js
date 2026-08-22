@@ -591,8 +591,10 @@ function stageScoped(config, scope) {
 // 그 사실이 따로 움직이고, 나중에 둘이 어긋났을 때 어느 쪽이 사실인지 알 수 없다.
 const TASK_TRAILER = 'Rundol-Task';
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 그 뒤에 생긴 커밋은
-// 그 태스크의 일일 수 없다.
-const TERMINAL_TASK_STATUSES = ['done', 'cancelled'];
+// 그 태스크의 일일 수 없다. 목록은 tasks.js가 정본에서 가져온 것을 그대로 쓴다 —
+// 이 자리에 같은 목록을 다시 적었던 것이 이 파일이 이미 tasks를 require 하면서도
+// 다른 이름으로 선언해 두는 결과를 낳았다.
+const TERMINAL_TASK_STATUSES = require('./vocabulary').TERMINAL_TASK_STATES;
 const TASK_REASON_TRAILER = 'Rundol-Task-Reason';
 
 function taskTrailer(binding) {

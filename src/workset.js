@@ -8,7 +8,8 @@
 // 파일도 새 검증 규칙도 늘지 않으며, "이 병합 요청에 무엇이 들어있나"는 저장된
 // 목록이 아니라 조회 결과가 된다(ADR-009와 같은 계산형 추적 원칙).
 
-const REF_KINDS = Object.freeze(['branch', 'pr', 'issue', 'other']);
+const { REF_KINDS } = require('./vocabulary');
+
 const BRANCH_NAME = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*[\\~^: ?*[\]])[\w.\-/]+(?<![./])$/u;
 
 // externalRefs는 문자열과 객체를 모두 받아 왔다. 종류를 가진 항목으로 정규화하되

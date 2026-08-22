@@ -30,8 +30,7 @@ const { spawnSync } = require('child_process');
 
 // 체크섬 재계산 문제는 이 세 원장만의 것이 아니다. 같은 방식으로 기록되는
 // 실행 원장 전체를 함께 본다.
-const LEDGERS = ['decision', 'delegation', 'approval', 'run', 'verdict', 'driver'];
-const FLAT_LEDGERS = ['lease'];
+const { LEDGERS, FLAT_LEDGERS } = require('./vocabulary');
 
 function git(root, args) {
   return spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });

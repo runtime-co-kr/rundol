@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const REGULAR_TYPES = ['PRD', 'REQ', 'ARC', 'SCR', 'MOD', 'IFC', 'ADR', 'TST', 'RUN', 'STD', 'GLS'];
+const { REGULAR_TYPES } = require('./vocabulary');
 
 // 옛 유형 이름. API는 HTTP만 연상시켜 CLI·이벤트·파일 계약을 담기에 좁았고 IFC로
 // 바뀌었다. 이미 저장된 계약에는 옛 이름이 남아 있으므로, 그것을 오류로 읽으면
@@ -13,10 +13,7 @@ const LEGACY_TYPE_ALIASES = Object.freeze({ API: 'IFC' });
 function canonicalType(value) {
   return Object.prototype.hasOwnProperty.call(LEGACY_TYPE_ALIASES, value) ? LEGACY_TYPE_ALIASES[value] : value;
 }
-const PROFILE_NAMES = ['lean', 'product', 'service', 'platform', 'assured'];
-const POLICY_STATES = ['required', 'recommended', 'onDemand', 'disabled'];
-const ENFORCEMENTS = ['advisory', 'checkpoint'];
-const TRAITS = ['ui', 'data', 'api', 'component', 'operations', 'security-regulation', 'terminology'];
+const { PROFILE_NAMES, POLICY_STATES, ENFORCEMENTS, TRAITS } = require('./vocabulary');
 const DEFAULT_POLICIES = {
   lean: { required: ['PRD', 'REQ'], recommended: ['ARC', 'TST'], onDemand: ['IFC', 'ADR', 'RUN', 'GLS', 'SCR', 'MOD'], disabled: [] },
   product: { required: ['PRD', 'REQ', 'SCR'], recommended: ['ARC', 'TST'], onDemand: ['MOD', 'ADR', 'IFC', 'RUN', 'GLS'], disabled: [] },
