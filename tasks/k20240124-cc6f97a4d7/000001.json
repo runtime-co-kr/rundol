@@ -4312,7 +4312,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "src/validation-catalog.js가 vocabulary의 소스·방법·성질만 읽는 순수 함수로 서고, 성질에 안 맞는 조합을 파일 경로·키 경로·이유와 함께 거부한다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "진단 코드가 방법 8종에만 붙고, 판정이 막는 규칙을 전부 Blocker 목록으로 돌려준다",
@@ -4321,7 +4321,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:54:16.491Z",
-      "updatedAt": "2026-08-23T14:54:53.543Z",
+      "updatedAt": "2026-08-23T15:18:46.704Z",
       "statusChangedAt": "2026-08-23T14:54:53.543Z",
       "externalRefs": [],
       "project": "rundol"
