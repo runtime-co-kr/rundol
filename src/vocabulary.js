@@ -310,6 +310,29 @@ const JUDGMENT_ONLY_UNIT_KINDS = Object.freeze(['gate']);
  */
 const RUN_OPENING_UNIT_KINDS = Object.freeze(EXECUTION_UNIT_KINDS.filter((kind) => !JUDGMENT_ONLY_UNIT_KINDS.includes(kind)));
 
+/**
+ * 대상의 종류. 워크플로가 무엇에 붙는가와 런이 무엇을 움직이는가가 같은 값이다 —
+ * 항목 유형은 태스크로 붙고 문서 유형은 문서로 붙으며, 그 워크플로를 타는 런의
+ * 대상도 같은 종류다.
+ *
+ * 두 표에 같은 값이 서므로 어느 한 표의 이름을 붙이지 않는다. 종료 상태가
+ * TERMINAL_TASK_STATES · TERMINAL_TASK_STATUSES · TERMINAL_STATUSES 세 이름으로
+ * 있었던 것이 표마다 이름을 지은 결과였다. workflow.d.ts의 Blocker.target과
+ * FiringRecord.target이 이미 "태스크 또는 문서의 식별자"를 뜻하므로, 그 축의
+ * 이름을 그대로 쓴다.
+ *
+ * 지금 원장은 대상을 두 필드로 나눠 갖는다. targetArtifactId는 이 런이 다루는 정본
+ * 문서이고 taskId는 이 런이 어느 태스크의 일인지다. 뜻이 다르므로 둘은 합쳐지지
+ * 않지만, "이 런의 대상이 무엇인가"에 답하는 값은 어느 쪽에도 없다. 그래서 코드가
+ * 문서를 다루는 런과 태스크를 다루는 런을 가르려면 식별자의 생김새를 봐야 하고,
+ * 생김새로 가른 것은 표기가 바뀌는 날 조용히 갈린다 — ID_PATTERNS가 표기를 정본으로
+ * 들고 있는 것과 같은 이유로 종류도 값이어야 한다.
+ *
+ * 둘로 두는 것은 마스터가 둘이기 때문이다. 셋째가 필요해지면 그것은 새 마스터이지
+ * 이 목록의 세 번째 값이 아니다.
+ */
+const TARGET_KINDS = Object.freeze(['task', 'document']);
+
 // ── 실행 원장 ───────────────────────────────────────────────────────────
 
 /**
@@ -528,6 +551,7 @@ module.exports = Object.freeze({
   EXECUTION_UNIT_KINDS,
   JUDGMENT_ONLY_UNIT_KINDS,
   RUN_OPENING_UNIT_KINDS,
+  TARGET_KINDS,
   RUN_STATES,
   CHECKPOINT_TYPES,
   HALT_REASONS,
