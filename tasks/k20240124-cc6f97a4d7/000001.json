@@ -4346,7 +4346,7 @@
         },
         "AC-002": {
           "text": "어려운 절반 다섯 가지가 각각 실측 수치로 보고된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "TST 링크 없이 done인 건이 면제·사유 유무로 구분되어 11절 표를 갱신할 수 있다",
@@ -4363,7 +4363,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:59:20.118Z",
-      "updatedAt": "2026-08-23T15:21:52.519Z",
+      "updatedAt": "2026-08-23T15:22:13.536Z",
       "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
