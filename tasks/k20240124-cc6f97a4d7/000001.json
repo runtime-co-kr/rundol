@@ -3987,7 +3987,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl session list가 rdl 밖에서 만든 linked worktree도 낸다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "세션으로 연 것과 그렇지 않은 것이 값으로 구분된다.",
@@ -4000,7 +4000,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:11:17.633Z",
-      "updatedAt": "2026-08-23T05:11:44.353Z",
+      "updatedAt": "2026-08-23T05:14:11.773Z",
       "statusChangedAt": "2026-08-23T05:11:44.353Z",
       "externalRefs": [],
       "project": "rundol"
