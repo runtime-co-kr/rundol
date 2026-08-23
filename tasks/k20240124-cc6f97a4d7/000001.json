@@ -4302,7 +4302,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -4321,8 +4321,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:54:16.491Z",
-      "updatedAt": "2026-08-23T14:54:16.491Z",
-      "statusChangedAt": "2026-08-23T14:54:16.491Z",
+      "updatedAt": "2026-08-23T14:54:53.543Z",
+      "statusChangedAt": "2026-08-23T14:54:53.543Z",
       "externalRefs": [],
       "project": "rundol"
     }
