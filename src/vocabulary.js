@@ -196,6 +196,20 @@ const ID_PATTERNS = Object.freeze({
   member: 'MEMBER-\\d{3}'
 });
 
+// ── 하네스 훅 ──────────────────────────────────────────────────────────
+
+/**
+ * rdl hook이 받는 이벤트. 하네스가 부르는 이름이 아니라 Rundol이 판정하는 이름이며,
+ * 클라이언트마다 다른 표기(PostToolUse / post-tool-use)를 여기 하나로 모은다.
+ *
+ * 클라이언트가 늘어도 이 목록은 늘지 않는다. Claude Code는 31종, Codex는 11종을
+ * 내지만 Rundol이 판정하는 자리는 그 교집합 안의 넷뿐이다.
+ */
+const HOOK_EVENTS = Object.freeze(['session-start', 'post-tool-use', 'stop', 'session-end']);
+
+/** 훅을 부르는 클라이언트. 페이로드 모양의 차이를 흡수할 때만 쓴다. */
+const HOOK_CLIENTS = Object.freeze(['claude', 'codex']);
+
 module.exports = Object.freeze({
   TASK_STATES,
   TASK_STATUS_ORDER,
@@ -236,6 +250,8 @@ module.exports = Object.freeze({
   LEDGERS,
   FLAT_LEDGERS,
   REF_KINDS,
+  HOOK_EVENTS,
+  HOOK_CLIENTS,
   CONVENTIONAL_PRIMARY,
   ASSET_EXTENSIONS,
   ID_PATTERNS

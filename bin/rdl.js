@@ -229,6 +229,7 @@ Usage:
                       [--forbidden-touched <항목>]... [--reason <사유>] [--member <MEMBER-ID>] [--json]
   rdl assignment reports <ASG-ID> --project <key> [--json]
   rdl assignment verify <ASG-ID> --project <key> --client-id <id> [--json]
+  rdl hook <session-start|post-tool-use|stop|session-end> [--client <claude|codex>] [--root <path>] [--json]
 
 
 Options:
@@ -564,9 +565,32 @@ function printText(result) {
     if (binding.dangling) parts.push(`끊긴 결박 ${binding.dangling}`);
     process.stdout.write(`  최근 커밋 ${binding.scanned}건: ${parts.join(' · ')} (결박 밖 ${rate}%)\n`);
   }
+  // 코드 브랜치는 프로젝트 ref와 따로 센다. 한 줄로 합치면 문이 있는 쪽의 높은
+  // 결박률이 문이 없는 쪽을 가려, 지표가 실제보다 건강해 보인다.
+  if (binding && binding.code && binding.code.scanned) {
+    const code = binding.code;
+    const codeRate = Math.round(((code.excused + code.unbound) / code.scanned) * 100);
+    const codeParts = [`결박 ${code.bound}`, `우회 ${code.excused}`, `미결박 ${code.unbound}`];
+    if (code.dangling) codeParts.push(`끊긴 결박 ${code.dangling}`);
+    process.stdout.write(`  코드 브랜치 ${code.branch} 최근 ${code.scanned}건: ${codeParts.join(' · ')} (결박 밖 ${codeRate}%)
+`);
+  }
   if (binding && binding.unchecked.length) {
     process.stdout.write(`  결박을 확인하지 못한 프로젝트: ${binding.unchecked.join(', ')}\n`);
   }
+}
+
+// 훅 페이로드는 stdin으로 온다. 읽지 못하거나 JSON이 아니면 빈 객체로 본다 —
+// 훅이 입력을 못 읽었다고 판정을 지어내면 막지 말아야 할 것을 막는다.
+function readJsonStdin() {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) { resolve({}); return; }
+    let raw = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { raw += chunk; });
+    process.stdin.on('end', () => { try { resolve(JSON.parse(raw)); } catch (_) { resolve({}); } });
+    process.stdin.on('error', () => resolve({}));
+  });
 }
 
 async function main() {
@@ -837,6 +861,27 @@ async function main() {
   }
   // 세션 작업 공간은 프로젝트를 요구하지 않는다. 나누는 대상이 문서가 아니라 코드의
   // index와 HEAD이고, 그것은 저장소 하나에 하나뿐이기 때문이다.
+  if (command === 'hook') {
+    const event = argv.shift();
+    let client = null;
+    const clientIndex = argv.indexOf('--client');
+    if (clientIndex >= 0) { client = argv[clientIndex + 1] || null; argv.splice(clientIndex, 2); }
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl hook에는 추가 위치 인수를 사용할 수 없습니다.');
+    const payload = await readJsonStdin();
+    const result = require('../src/hook').runHook(options.root, { event, client, payload });
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}
+`);
+      return result.block ? 2 : 0;
+    }
+    // 통과할 때의 출력은 컨텍스트로 주입되고, 막을 때의 사유는 stderr로 모델에게 돌아간다.
+    for (const line of result.context || []) process.stdout.write(`[rdl] ${line}
+`);
+    if (result.block) { process.stderr.write(`${result.reason}
+`); return 2; }
+    return 0;
+  }
   if (command === 'session') {
     const subcommand = argv.shift();
     if (!['start', 'list', 'end'].includes(subcommand)) throw new Error('지원하는 세션 하위 명령은 start, list, end입니다.');

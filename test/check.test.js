@@ -22,6 +22,10 @@ function testTmsFixture() {
   assert.strictEqual(output.summary.documents, 16);
   assert.strictEqual(output.summary.tasks, 11);
   assert.strictEqual(output.summary.errors, 0);
+  // Workspace 루트가 Git 최상위가 아니면 코드 브랜치 결박은 이 Workspace의 것이 아니다.
+  // 픽스처는 이 저장소 안에 있으므로, 세면 바깥 저장소의 커밋이 픽스처의 결박으로
+  // 보고되고 그 저장소의 태스크를 모르니 전부 끊긴 결박이 된다.
+  assert.strictEqual(output.summary.taskBinding.code, undefined, '남의 저장소 이력을 자기 결박으로 세지 않는다');
 }
 
 function testMissingReference() {

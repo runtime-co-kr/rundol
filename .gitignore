@@ -4,6 +4,12 @@ node_modules/
 .tmp-publish/
 packages/cli/dist/
 
+# Rundol linked worktrees
+# 프로젝트 문서·태스크 정본 (rundol/<key> 브랜치)
+/projects/*/
+# 코드 작업 worktree와 로컬 실행 상태
+.rundol/
+
 # Local AI agent and session metadata
 .omx/
 .claude/

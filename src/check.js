@@ -46,6 +46,7 @@ const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, composi
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness, implementationTrace } = require('./implementation-contract');
 const { runGit } = require('./git');
 const { readCommitBindings } = require('./task-commits');
+const { currentBranch } = require('./branch-boundary');
 const { normalizeVerdictEvent, verdictEnvelope } = require('./verify');
 const { createEventEnvelope: createRunEnvelope, normalizeRunEvent } = require('./run-ledger');
 const { normalizeDriverEvent, driverEnvelope } = require('./driver-lease');
@@ -939,6 +940,68 @@ function checkTaskBinding(diagnostics, layout, project, tally) {
   });
 }
 
+// 코드 브랜치의 결박. 프로젝트 ref가 아니므로 프로젝트 순회 밖에서 한 번만 센다.
+//
+// 이 줄이 없으면 지표가 rdl save가 지키는 절반만 재고, 문이 없는 절반은 계측 밖에
+// 남는다. 그 상태에서는 결박이 무너져도 검사가 초록으로 답하므로 고장이 신호를
+// 만들지 못한다 — 통제가 약해지는 것보다 계측이 눈감는 쪽이 늦게 발견된다.
+//
+// 세기만 하고 막지는 않는다. 코드 커밋은 rdl save를 지나지 않으므로 여기에는 막을
+// 자리가 없고, 막을 수 없는 자리에서 오류를 내면 검사 전체가 꺼진다.
+function checkCodeBinding(diagnostics, layout, projects, tally) {
+  // Workspace 루트가 Git 최상위가 아니면 여기서 보이는 이력은 이 Workspace의 것이
+  // 아니다. 검사 픽스처처럼 다른 저장소 안에 놓인 Workspace가 바깥 저장소의 커밋을
+  // 자기 결박으로 보고하고, 그 저장소의 태스크를 모르니 전부 끊긴 결박으로 세게 된다.
+  const top = runGit(['rev-parse', '--show-toplevel'], { cwd: layout.root, allowFailure: true });
+  if (top.status !== 0 || !top.stdout) return;
+  if (path.resolve(top.stdout.trim()).toLowerCase() !== path.resolve(layout.root).toLowerCase()) return;
+  const branch = currentBranch(layout.root);
+  // 루트에 rundol 전용 브랜치가 있는 것은 결박이 아니라 경계 위반이고 RDL-BRANCH-005가 답한다.
+  if (!branch || branch.startsWith('rundol/')) return;
+  let commits;
+  try { commits = readCommitBindings(layout.root, branch, { limit: TASK_BINDING_WINDOW }); }
+  catch (error) {
+    tally.code = { branch, scanned: 0, unchecked: true };
+    diagnostic(diagnostics, {
+      code: 'RDL-TASK-038', category: 'task', severity: 'warning', file: null, project: null,
+      message: `코드 브랜치 ${branch}의 태스크 결박을 확인하지 못했습니다. ${error.message}`
+    });
+    return;
+  }
+  if (!commits.length) return;
+  // 아는 태스크는 모든 프로젝트의 합집합이다. 코드 브랜치는 한 프로젝트에 속하지
+  // 않으므로 한 프로젝트의 목록으로 판정하면 다른 프로젝트의 태스크가 끊긴 결박이 된다.
+  let known = new Set();
+  for (const project of projects) {
+    try {
+      const store = readTaskStore(project.tasks).tasks || {};
+      for (const id of Object.keys(store)) known.add(id);
+      for (const task of Object.values(store)) for (const previous of Array.isArray(task.previousIds) ? task.previousIds : []) known.add(previous);
+    } catch (_) { known = null; break; }
+  }
+  const short = (item) => item.commit.slice(0, 12);
+  const sample = (list) => list.slice(0, 5).map(short).join(', ') + (list.length > 5 ? ` 외 ${list.length - 5}건` : '');
+  const unbound = commits.filter((item) => item.binding === 'unbound');
+  const excused = commits.filter((item) => item.binding === 'excused');
+  const dangling = known ? commits.filter((item) => item.taskId && !known.has(item.taskId)) : [];
+  tally.code = {
+    branch,
+    scanned: commits.length,
+    bound: commits.length - unbound.length - excused.length,
+    unbound: unbound.length,
+    excused: excused.length,
+    dangling: dangling.length
+  };
+  if (unbound.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-041', category: 'task', severity: 'warning', file: null, project: null,
+    message: `코드 브랜치 ${branch}의 최근 커밋 ${commits.length}건 중 ${unbound.length}건이 태스크 결박을 지나지 않았습니다: ${sample(unbound)}`
+  });
+  if (dangling.length) diagnostic(diagnostics, {
+    code: 'RDL-TASK-039', category: 'task', severity: 'warning', file: null, project: null,
+    message: `코드 브랜치 커밋 ${dangling.length}건이 등록되지 않은 태스크를 가리킵니다: ${sample(dangling)}`
+  });
+}
+
 function checkDocumentProfile(diagnostics, layout, project, settings) {
   if (!project.charter || !fs.existsSync(project.charter)) return;
   const source = fs.readFileSync(project.charter, 'utf8');
@@ -1033,6 +1096,7 @@ function checkWorkspace(start, options) {
     documents += result.summary.documents + 1;
     tasks += result.summary.tasks;
   }
+  checkCodeBinding(diagnostics, layout, projects, taskBinding);
   const taskSources = layout.schemaVersion >= 3 ? projects.map((project) => ({ project: project.key, file: project.tasks })) : [{ project: null, file: layout.tasks }];
   const projectKeys = new Set(allProjects.map((project) => project.key));
   for (const source of taskSources) {

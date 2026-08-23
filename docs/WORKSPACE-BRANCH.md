@@ -18,7 +18,18 @@ repository/
    └─ tms/                   # rundol/tms
 ```
 
-제품 브랜치에는 Rundol loader나 `.gitignore` 변경을 남기지 않는다. 로컬 `.git/info/exclude`의 `/projects/*/` 규칙으로 worktree를 숨긴다.
+worktree 경로는 제품 브랜치의 `.gitignore`가 숨긴다. 규칙은 둘이다.
+
+```text
+/projects/*/
+.rundol/
+```
+
+`/projects/*/`는 프로젝트 문서와 태스크 정본 worktree를, `.rundol/`은 코드 작업 worktree와 로컬 실행 상태를 숨긴다.
+
+로컬 `.git/info/exclude`에 두지 않는 이유는 clone이다. 그 파일은 복제되지 않으므로 새로 clone한 사람은 `rdl attach`를 지나기 전까지 규칙을 갖지 못하고, 그 사이의 `git add -A` 한 번이 worktree 전체를 커밋한다. `.gitignore`는 clone과 함께 온다.
+
+제품 브랜치에 Rundol loader는 두지 않는다.
 
 Workspace 구조:
 

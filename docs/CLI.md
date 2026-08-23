@@ -146,6 +146,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                       [--forbidden-touched <항목>]... [--reason <사유>] [--member <MEMBER-ID>] [--json]
   rdl assignment reports <ASG-ID> --project <key> [--json]
   rdl assignment verify <ASG-ID> --project <key> --client-id <id> [--json]
+  rdl hook <session-start|post-tool-use|stop|session-end> [--client <claude|codex>] [--root <path>] [--json]
 
 ```
 <!-- rdl-advanced:end -->

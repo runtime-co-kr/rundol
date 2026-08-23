@@ -33,6 +33,7 @@ require('./note-artifact.test');
 require('./git.test');
 require('./task-identity.test');
 require('./task-binding.test');
+require('./hook.test');
 require('./collaboration.test');
 require('./collaboration-store.test');
 require('./skill-install.test');
