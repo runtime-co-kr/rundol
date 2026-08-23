@@ -4342,7 +4342,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "태스크 전건과 문서 전건이 WORKFLOW_STEPS에 매핑되거나 미매핑으로 분류되어 집계된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "어려운 절반 다섯 가지가 각각 실측 수치로 보고된다",
@@ -4363,7 +4363,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:59:20.118Z",
-      "updatedAt": "2026-08-23T15:00:55.658Z",
+      "updatedAt": "2026-08-23T15:21:52.519Z",
       "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
