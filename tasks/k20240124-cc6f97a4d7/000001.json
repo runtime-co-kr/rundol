@@ -4499,7 +4499,7 @@
         },
         "AC-002": {
           "text": "RDL-IMPL-009와 RDL-IMPL-011이 제품 코드에서 사라진다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "추적 조인이 부모를 단 표기로 이뤄져 요구와 검증이 이어진다",
@@ -4512,7 +4512,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T17:13:52.374Z",
-      "updatedAt": "2026-08-23T20:57:39.524Z",
+      "updatedAt": "2026-08-23T20:57:56.405Z",
       "statusChangedAt": "2026-08-23T17:14:30.665Z",
       "externalRefs": [],
       "project": "rundol"
