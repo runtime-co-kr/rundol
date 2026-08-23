@@ -4286,12 +4286,12 @@
         },
         "AC-004": {
           "text": "run.started가 대상 종류와 대상 식별자를 기록하고 접기가 그것을 돌려준다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:49:45.050Z",
-      "updatedAt": "2026-08-23T16:03:41.115Z",
+      "updatedAt": "2026-08-23T16:03:54.801Z",
       "statusChangedAt": "2026-08-23T14:50:20.447Z",
       "externalRefs": [],
       "project": "rundol"
@@ -4438,7 +4438,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -4469,8 +4469,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T16:03:39.605Z",
-      "updatedAt": "2026-08-23T16:03:39.605Z",
-      "statusChangedAt": "2026-08-23T16:03:39.605Z",
+      "updatedAt": "2026-08-23T16:04:04.041Z",
+      "statusChangedAt": "2026-08-23T16:04:04.041Z",
       "externalRefs": [],
       "project": "rundol"
     }
