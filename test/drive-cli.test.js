@@ -44,7 +44,7 @@ try {
     drive: { schedulerClientId: 'agent-b' }
   }, null, 2)}\n`, 'utf8');
   fs.writeFileSync(path.join(project, 'procedures.json'), `${JSON.stringify({ schemaVersion: 1, procedures: {
-    'drive.fixture': { revision: 1, idempotent: true, steps: [
+    'drive.fixture': { revision: 1, targetKind: 'document', idempotent: true, steps: [
       { id: 'approval', human: true },
       { id: 'sync-gate', human: true },
       { id: 'closed-check', gate: { command: 'check', args: ['{artifact}', '--structure', '--project', '{project}'] } },

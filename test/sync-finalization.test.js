@@ -38,7 +38,7 @@ try {
   rdl(['client', 'register', 'sync-agent', '--name', 'Sync Agent', '--type', 'agent', '--owner', 'MEMBER-001']);
   fs.writeFileSync(path.join(temporary, 'projects', 'crm', 'procedures.json'), `${JSON.stringify({
     schemaVersion: 1,
-    procedures: { 'quick-sync': { revision: 1, steps: [{ id: 'author', executor: 'client' }] } }
+    procedures: { 'quick-sync': { revision: 1, targetKind: 'document', steps: [{ id: 'author', executor: 'client' }] } }
   }, null, 2)}\n`, 'utf8');
 
   const started = rdl(['run', 'start', 'quick-sync', '--project', 'crm', '--client-id', 'device-a']);

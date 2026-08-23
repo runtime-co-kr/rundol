@@ -6,7 +6,7 @@ const { spawnSync } = require('child_process');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { runGit } = require('./git');
 const ledger = require('./run-ledger');
-const { loadProcedures, substituteArgs, pinProcedureVerificationRevision, validateClosedDriveGate, COMMIT_PRODUCING_COMMANDS } = require('./procedure');
+const { loadProcedures, substituteArgs, pinProcedureVerificationRevision, validateClosedDriveGate, stepClass, COMMIT_PRODUCING_COMMANDS } = require('./procedure');
 const { getClient } = require('./collaboration-store');
 const { loadHarnessSettings } = require('./harness-settings');
 const { runtimeWorkspace } = require('./runtime');
@@ -89,7 +89,10 @@ function substitutionContext(context) {
   return {
     project: context.project.key,
     runId: context.fold.runId,
-    artifact: context.fold.artifactIds[context.fold.artifactIds.length - 1] || null
+    artifact: context.fold.artifactIds[context.fold.artifactIds.length - 1] || null,
+    // 대상이 태스크인 절차의 스텝이 자기 대상을 부를 수 있어야 한다. 이것이 없으면
+    // 대상 종류에 태스크를 적을 수는 있어도 그 스텝은 대상을 가리킬 방법이 없다.
+    task: context.fold.taskId || null
   };
 }
 
@@ -100,10 +103,19 @@ function startRun(start, options) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, options.project, true);
   authorizeClient(start, project, options.clientId);
-  // 대상 문서를 만들지 않는 절차는 대상 없이 시작할 수 없다. 시작 시점에 묻지 않으면
-  // {artifact}에 닿을 때까지 런이 돌다가 치환 실패라는 엉뚱한 이름으로 멈춘다 — 빠진
-  // 것은 인수인데 실패는 실행 오류로 보고된다.
-  if (resolved.resolved.requiresArtifact === true && !options.artifactId) {
+  // 무엇을 움직이는지는 절차가 선언하고, 시작은 그 선언에 맞는 대상만 받는다. 시작
+  // 시점에 묻지 않으면 {artifact}에 닿을 때까지 런이 돌다가 치환 실패라는 엉뚱한
+  // 이름으로 멈춘다 — 빠진 것은 인수인데 실패는 실행 오류로 보고된다.
+  //
+  // 대상이 태스크인 절차는 태스크를 만들지 않으므로 언제나 대상이 있어야 한다. 문서를
+  // 대신 받는 것은 인수를 더 준 것이 아니라 대상을 잘못 준 것이라 조용히 무시하지 않는다.
+  if (resolved.resolved.targetKind === 'task') {
+    if (!options.task) throw new Error(`${resolved.resolved.name}은 태스크를 움직이는 절차입니다. --task <TASK-ID>로 대상을 지정하세요.`);
+    if (options.artifactId) throw new Error(`${resolved.resolved.name}의 대상은 태스크입니다. --artifact-id는 이 절차에 쓸 수 없습니다.`);
+  }
+  // 문서는 만드는 절차가 따로 있다. 그래서 대상을 시작 시점에 요구하는지는 목록이
+  // 아니라 절차가 말한다.
+  if (resolved.resolved.targetKind === 'document' && resolved.resolved.requiresArtifact === true && !options.artifactId) {
     throw new Error(`${resolved.resolved.name}은 대상 문서를 요구하는 절차입니다. --artifact-id <ARTIFACT-ID>를 지정하세요.`);
   }
   if (options.artifactId && !/^[A-Z]{3}-\d{3,}$/u.test(String(options.artifactId))) throw new Error(`--artifact-id는 정본 문서 ID여야 합니다: ${options.artifactId}`);
@@ -140,6 +152,9 @@ function nextStep(start, options) {
     completedSteps: fold.completedSteps,
     attempts: fold.attempts,
     artifactIds: fold.artifactIds,
+    // 이 런이 무엇을 움직이는가. 종류를 식별자와 함께 내보내므로 표면이 생김새로
+    // 되짚지 않는다 — 되짚은 것들은 표면마다 조금씩 달라진다.
+    target: fold.target,
     owner: context.owner,
     ownerToken: context.ownership && context.ownership.ownerToken || null,
     ownershipStatus: context.ownership && context.ownership.status || 'ACTIVE',
@@ -152,7 +167,10 @@ function nextStep(start, options) {
   if (!step) return response;
   response.step = {
     id: step.id,
-    executor: step.executor || (step.gate ? 'gate' : 'client'),
+    // 실행 단위 종류를 그대로 답한다. 여기서 다시 분류하면 같은 축이 네 번째로
+    // 선언되고, 그때부터 표면이 보는 종류와 절차가 아는 종류가 갈릴 수 있다.
+    // 사람 게이트는 client가 아니라 human으로 나온다 — 그것이 실제로 무엇인지다.
+    executor: stepClass(step),
     human: step.human === true,
     command: step.command || null,
     args: step.args ? trySubstitute(step.args, substitution) : null,
@@ -705,7 +723,7 @@ function driveSubstitution(context, operationId) {
 }
 
 function substituteDriveArgs(args, values) {
-  return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact|operationId|head)\}/gu, (whole, key) => {
+  return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact|task|operationId|head)\}/gu, (whole, key) => {
     if (values[key] === undefined || values[key] === null) throw new Error(`missing drive placeholder value: ${whole}`);
     return String(values[key]);
   }));

@@ -8,6 +8,7 @@ const { canonicalJson, validateProcedure } = require('./run-ledger');
 const { getLens, pinInstruction, resolveInstructionPin } = require('./instruction-registry');
 const { loadBoardPresentation } = require('./board-presentation');
 const { floorPolicy } = require('./approval-mode');
+const { EXECUTION_UNIT_KINDS, RUN_OPENING_UNIT_KINDS, TARGET_KINDS } = require('./vocabulary');
 
 function pinnedLensInstructions(lenses) {
   return Object.fromEntries(lenses.map((lensId) => {
@@ -22,6 +23,10 @@ function pinnedLensInstructions(lenses) {
 const BUILTIN = {
   'document.authored': {
     revision: 1,
+    // 이 절차가 움직이는 것. 절차가 자기 대상의 종류를 밝히고, 런은 그 선언을 함께
+    // pin해서 나중에 "이 런이 무엇을 움직였나"에 답한다. 종류를 원장에 따로 적지
+    // 않는 이유는 절차가 이미 pin되어 있어서, 두 곳에 적으면 언젠가 갈리기 때문이다.
+    targetKind: 'document',
     idempotent: false,
     steps: [
       { id: 'plan', executor: 'cli', command: 'contract', args: ['next', '--project', '{project}', '--json'] },
@@ -53,6 +58,7 @@ const BUILTIN = {
   // 쓰고·검사하고·검증하고·저장한 뒤 사람 앞에서 멈춘다.
   'document.verified': {
     revision: 2,
+    targetKind: 'document',
     idempotent: true,
     // 이 절차는 문서를 만들지 않는다. 대상이 없으면 시작할 수 없고, 그 사실은
     // {artifact}에 닿는 스텝에서가 아니라 시작할 때 말해야 한다 — 나중에 말하면
@@ -137,14 +143,49 @@ function validateOverride(name, parent, child, source) {
   const order = child.steps.map((step) => step.id).filter((id) => parentSteps.has(id));
   const expected = parent.steps.map((step) => step.id);
   if (canonicalJson(order) !== canonicalJson(expected)) throw new Error(`${source}: ${name}의 부모 스텝 순서를 바꿀 수 없습니다.`);
+  // 대상 종류는 절차의 정체다. 하위 계층이 이것을 바꾸면 같은 이름의 절차가 다른 것을
+  // 움직이게 되고, 그 이름으로 절차를 부르는 자리가 전부 조용히 다른 일을 한다.
+  // 조이는 방향이 없는 축이라 여기는 더 조였는지가 아니라 같은지만 본다.
+  if (child.targetKind !== parent.targetKind) throw new Error(`${source}: ${name}의 대상 종류를 바꿀 수 없습니다: ${parent.targetKind} -> ${child.targetKind || '(없음)'}`);
+}
+
+// 스텝의 모양에서 실행 단위 종류를 읽는다. 종류의 이름은 vocabulary.js가 갖고, 이
+// 파일은 "그 종류가 어떤 모양의 스텝인가"만 갖는다.
+//
+// 다섯 문자열을 여기 다시 적으면 그것이 두 번째 선언이다. 실제로 이 다섯은 오랫동안
+// 이 함수의 return 문 안에만 있었고, 목록이 아니라 분기라서 두 번째 선언을 막는 어휘
+// 시험의 스캐너에도 잡히지 않았다 — "값 목록은 전부 여기 있다"가 새는 모양이 그것이다.
+//
+// 위에서부터 먼저 맞는 것이 답이다. 사람 게이트가 게이트보다 앞인 것은 사람 게이트도
+// 게이트의 모양을 가질 수 있기 때문이고, 순서를 뒤집으면 승인이 조용히 기계 게이트가
+// 된다. 마지막 줄은 언제나 맞으므로 이 표에는 답이 없는 스텝이 없다.
+const UNIT_SHAPES = Object.freeze([
+  Object.freeze(['human', (step) => step.human === true]),
+  Object.freeze(['gate', (step) => Boolean(step.gate)]),
+  Object.freeze(['adapter', (step) => step.executor === 'adapter' || Boolean(step.adapter)]),
+  Object.freeze(['cli', (step) => step.executor === 'cli']),
+  Object.freeze(['client', () => true])
+]);
+
+// 정본에 종류가 하나 늘면 여기서 로드가 멈춘다. 모양을 못 찾은 종류를 조용히 client로
+// 떨어뜨리면 새 종류가 기존 분류에 섞여 들어가고, 섞였다는 사실은 아무 신호도 내지 않는다.
+for (const kind of EXECUTION_UNIT_KINDS) {
+  if (!UNIT_SHAPES.some(([shaped]) => shaped === kind)) throw new Error(`실행 단위 종류에 스텝 모양이 선언되지 않았습니다: ${kind}`);
+}
+for (const [kind] of UNIT_SHAPES) {
+  if (!EXECUTION_UNIT_KINDS.includes(kind)) throw new Error(`정본에 없는 실행 단위 종류입니다: ${kind}`);
 }
 
 function stepClass(step) {
-  if (step.human === true) return 'human';
-  if (step.gate) return 'gate';
-  if (step.executor === 'adapter' || step.adapter) return 'adapter';
-  if (step.executor === 'cli') return 'cli';
-  return 'client';
+  const shape = step || {};
+  return UNIT_SHAPES.find(([, matches]) => matches(shape))[0];
+}
+
+// 이 스텝이 런을 여는가. 게이트만 열지 않는다 — 경계는 "규칙이 있는가"가 아니라
+// "판정 함수가 혼자 답할 수 없는 것이 있는가"다. "규칙이 없으면 즉시"로 그으면
+// 게이트뿐인 절차가 런을 열고, 그 런은 판정 함수가 이미 답한 것을 다시 묻는다.
+function opensRun(step) {
+  return RUN_OPENING_UNIT_KINDS.includes(stepClass(step));
 }
 
 function validateOnFailOverride(name, parent, child, source) {
@@ -395,6 +436,13 @@ function validateDriveSafety(procedure, source) {
       if (!step.retrySafety) throw new Error(`${origin}: idempotent 절차의 ${step.id}에는 retrySafety가 필요합니다.`);
     }
   }
+  // 게이트뿐인 절차는 런을 열지 않는다. 게이트는 항목만 보고 답하므로 원장에 남길
+  // 것이 없고, 남길 것이 없는 런은 나중에 아무 물음에도 답하지 못한다. 그 판정은
+  // 검사기가 이미 답하므로, 여기서 거부하는 것은 기능을 빼는 일이 아니다.
+  //
+  // 스텝 하나하나의 판정이 끝난 뒤에 본다. 절차 전체의 성질보다 좁은 원인이 있으면
+  // 그쪽을 먼저 말하는 편이 고치는 사람에게 낫다.
+  if (!procedure.steps.some(opensRun)) throw new Error(`${origin}: ${procedure.name || '(이름 없음)'}은 스텝이 전부 게이트라 런을 열지 않습니다. 판정만 필요하면 rdl check를 쓰세요.`);
   return procedure;
 }
 
@@ -583,11 +631,23 @@ function loadProcedures(start, projectKey) {
   for (const layer of layers) {
     for (const [name, definition] of Object.entries(layer.procedures)) {
       if (!NAME.test(name)) throw new Error(`${layer.source}: 잘못된 절차 이름입니다: ${name}`);
-      const pinned = pinProcedureInstructions(Object.assign({ name }, definition), layer.source);
+      const parent = resolved.get(name);
+      // 대상 종류를 적지 않은 계층은 부모의 것을 그대로 받는다. 계층마다 다시 적게
+      // 하면 한 번 빠뜨린 계층이 조용히 대상 없는 절차가 되고, 그 절차로 시작한 런은
+      // 무엇을 움직였는지 답하지 못한다. 다시 적을 수는 있고, 다르게 적으면 거부된다.
+      const inherited = parent && definition.targetKind === undefined
+        ? Object.assign({ targetKind: parent.definition.targetKind }, definition)
+        : definition;
+      const pinned = pinProcedureInstructions(Object.assign({ name }, inherited), layer.source);
       const candidate = validateDriveSafety(validateProcedure(pinned), layer.source);
       for (const step of candidate.steps) assertAllowWithinFloor(name, step, floor, layer.source);
       const raised = liftToFloor(candidate, floor);
-      const parent = resolved.get(name);
+      // 시작할 수 있는 절차는 자기가 무엇을 움직이는지 밝힌다. 선택으로 두면 절반이
+      // 비는 칸이 되고, 절반이 빈 칸은 장식이다 — 태스크 125건 중 61건에 항목 유형이
+      // 없는데 아무 진단도 나지 않는 자리가 그 결과다.
+      if (!TARGET_KINDS.includes(raised.targetKind)) {
+        throw new Error(`${layer.source}: ${name}의 대상 종류가 없거나 정본에 없는 값입니다: ${raised.targetKind || '(없음)'} (${TARGET_KINDS.join(' 또는 ')})`);
+      }
       if (parent) validateOverride(name, parent.definition, raised, layer.source);
       resolved.set(name, { definition: raised, source: layer.source });
     }
@@ -610,10 +670,10 @@ function loadProcedures(start, projectKey) {
 
 // placeholder 치환은 args 원소 값 안에서만 일어나고 셸을 경유하지 않는다.
 function substituteArgs(args, context) {
-  return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact)\}/gu, (whole, key) => {
+  return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact|task)\}/gu, (whole, key) => {
     if (context[key] === undefined || context[key] === null) throw new Error(`치환할 값이 없습니다: {${key}}`);
     return String(context[key]);
   }));
 }
 
-module.exports = { BUILTIN, ALLOW_DIRECTION, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };
+module.exports = { BUILTIN, ALLOW_DIRECTION, stepClass, opensRun, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };

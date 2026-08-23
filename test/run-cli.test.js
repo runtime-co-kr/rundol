@@ -19,7 +19,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { loadProcedures, validateOverride, validateDriveSafety } = require('../src/procedure');
+const { loadProcedures, validateOverride, validateDriveSafety, stepClass, opensRun, BUILTIN } = require('../src/procedure');
+const vocabulary = require('../src/vocabulary');
 const { runtimeWorkspace } = require('../src/runtime');
 const requestJournal = require('../src/request-journal');
 const { canonicalJson } = require('../src/event-store');
@@ -142,6 +143,69 @@ assert.throws(() => validateDriveSafety({
   steps: [{ id: 'ambiguous', executor: 'cli', gate: { command: 'check', args: ['REQ-001', '--strict'] } }]
 }), /exactly one drive class/u);
 
+// ── 실행 단위 종류 ──────────────────────────────────────────────────────
+//
+// 스텝 분류가 정본에서 파생되는지 값으로 확인한다. 소스 문자열을 맞춰 보면 아무것도
+// 증명하지 못한다 — 글자가 같아도 값이 틀릴 수 있고, 띄어쓰기만 바뀌어도 깨진다.
+//
+// 종류마다 그 종류로 읽히는 스텝을 하나씩 둔다. 정본에 종류가 늘면 이 표에 빈칸이
+// 생겨 첫 단언이 멈춘다. 늘어난 종류가 조용히 client로 떨어지는 길을 막는 것이다.
+const SHAPED_STEPS = {
+  gate: { id: 'g', gate: { command: 'check', args: ['{artifact}', '--strict'] } },
+  client: { id: 'c', executor: 'client' },
+  cli: { id: 'l', executor: 'cli' },
+  adapter: { id: 'a', executor: 'adapter' },
+  human: { id: 'h', human: true }
+};
+assert.deepStrictEqual(
+  Object.keys(SHAPED_STEPS).sort(),
+  vocabulary.EXECUTION_UNIT_KINDS.slice().sort(),
+  '실행 단위 종류와 스텝 모양 표의 집합이 다릅니다.'
+);
+for (const [kind, step] of Object.entries(SHAPED_STEPS)) {
+  assert.strictEqual(stepClass(step), kind, `${kind} 모양의 스텝이 ${stepClass(step)}로 분류됩니다.`);
+  assert.strictEqual(
+    opensRun(step),
+    vocabulary.RUN_OPENING_UNIT_KINDS.includes(kind),
+    `${kind}이 런을 여는지가 정본과 다릅니다.`
+  );
+}
+// 사람 게이트는 게이트의 모양도 갖는다. 순서가 뒤집히면 승인이 조용히 기계 게이트가
+// 되고, 그 런은 사람이 본 적 없는 것을 승인된 것으로 기록한다.
+assert.strictEqual(stepClass({ id: 'h', human: true, gate: { command: 'check', args: [] } }), 'human');
+
+// 게이트뿐인 절차는 런을 열지 않으므로 로드에서 거부된다. 열어 봐야 그 런은 판정
+// 함수가 이미 답한 것을 다시 묻고, 원장에는 남길 것이 없다.
+assert.throws(() => validateDriveSafety({
+  name: 'gate-only', revision: 1,
+  steps: [{ id: 'only-gate', gate: { command: 'check', args: ['{artifact}', '--strict'] } }]
+}), /런을 열지 않습니다/u);
+// 게이트 하나만 더 있으면 되는 것이 아니라, 런을 여는 종류가 하나라도 있어야 한다.
+assert.doesNotThrow(() => validateDriveSafety({
+  name: 'gate-then-human', revision: 1,
+  steps: [
+    { id: 'only-gate', gate: { command: 'check', args: ['{artifact}', '--strict'] } },
+    { id: 'approve', human: true }
+  ]
+}));
+
+// ── 대상 종류 ───────────────────────────────────────────────────────────
+//
+// 내장 절차가 자기 대상의 종류를 밝힌다. 선택으로 두면 절반이 비는 칸이 되고 절반이
+// 빈 칸은 장식이다 — 그 자리를 실제로 세어 본 것이 이 설계의 출발점이었다.
+for (const [name, definition] of Object.entries(BUILTIN)) {
+  assert(vocabulary.TARGET_KINDS.includes(definition.targetKind), `${name}의 대상 종류가 정본에 없습니다: ${definition.targetKind}`);
+}
+
+// 대상 종류는 절차의 정체다. 하위 계층이 바꾸면 같은 이름의 절차가 다른 것을 움직이게
+// 되고, 그 이름으로 절차를 부르는 자리가 전부 조용히 다른 일을 한다.
+assert.throws(() => validateOverride(
+  'retarget',
+  { targetKind: 'document', steps: [{ id: 'author', executor: 'client' }] },
+  { targetKind: 'task', steps: [{ id: 'author', executor: 'client' }] },
+  'fixture'
+), /대상 종류를 바꿀 수 없습니다/u);
+
 try {
   const bare = path.join(temporary, 'origin.git');
   command('git', ['init', '--bare', '--initial-branch=main', bare], temporary);
@@ -219,6 +283,13 @@ try {
   // revision 2는 문서를 만들지 않는다. 대상 문서를 run 시작 시 고정하고, 절차는
   // 그것을 쓰고·검사하고·검증하고·저장한 뒤 사람 앞에서 멈춘다.
   const verificationRun = rdl(['run', 'start', 'document.verified', '--project', 'crm', '--client-id', 'agent-a', '--artifact-id', resumeArtifact.id]);
+  // 런이 무엇을 움직이는지 표면이 되짚지 않고 답을 받는다. 식별자만 받으면 표면마다
+  // 생김새로 종류를 다시 판정하게 되고, 다시 판정한 것들은 조금씩 달라진다.
+  assert.deepStrictEqual(
+    rdl(['run', 'next', '--run', verificationRun.runId, '--project', 'crm']).target,
+    { kind: 'document', id: resumeArtifact.id },
+    '문서 런이 자기 대상을 답하지 않습니다'
+  );
   const startedPin = rdl(['run', 'log', '--run', verificationRun.runId, '--project', 'crm']).events.find((item) => item.type === 'run.started').procedure.resolved.steps.find((item) => item.id === 'verify').verify.revisionPin;
   // step-output-commit은 run 시작 시점에 굳힐 수 없다 — 그 커밋이 아직 없다.
   assert.strictEqual(startedPin.strategy, 'step-output-commit');
@@ -318,7 +389,23 @@ try {
   const procedureFixture = JSON.parse(fs.readFileSync(proceduresFile, 'utf8'));
   procedureFixture.procedures['environment.gate'] = {
     revision: 1,
-    steps: [{ id: 'env-gate', gate: { command: 'check', args: ['--definitely-unknown'] } }]
+    // 게이트 뒤에 런을 여는 스텝을 둔다. 게이트뿐인 절차는 런을 열지 않아 로드에서
+    // 거부되고, 이 시험이 보려는 것은 게이트가 아니라 요청 저널의 복구다.
+    targetKind: 'document',
+    steps: [
+      { id: 'env-gate', gate: { command: 'check', args: ['--definitely-unknown'] } },
+      { id: 'env-report', executor: 'client' }
+    ]
+  };
+  // 런이 태스크도 받는다. 오늘 문서 상태를 sed로 바꾸면 아무 기록도 남지 않는 것과
+  // 같은 자리에 태스크가 있다 — 대상 종류가 태스크인 절차가 그것을 런 하나로 만든다.
+  procedureFixture.procedures['task.moved'] = {
+    revision: 1,
+    targetKind: 'task',
+    steps: [
+      { id: 'decide', executor: 'client' },
+      { id: 'approve', human: true }
+    ]
   };
   fs.writeFileSync(proceduresFile, `${JSON.stringify(procedureFixture, null, 2)}\n`, 'utf8');
   const environmentRootId = 'REQ-BBBBBBBBBBBBBBBBBBBB';
@@ -339,6 +426,44 @@ try {
   const repairedEvent = JSON.parse(fs.readFileSync(environmentLocalFile, 'utf8').trim());
   assert.strictEqual(repairedEvent.eventId, environmentChild.eventId);
   assert.strictEqual(rdl(['run', 'request', 'resume', environmentRun.rootRequestId, '--client-id', 'laptop-a']).children[0].status, 'already-complete');
+
+  // 대상이 태스크인 절차는 태스크를 만들지 않으므로 대상 없이 시작할 수 없다. 시작
+  // 시점에 묻지 않으면 런이 끝까지 돌고도 무엇을 움직였는지 답하지 못한다.
+  {
+    const moved = rdl(['task', 'add', '런이 움직이는 태스크', '--project', 'crm', '--client-id', 'laptop-a',
+      '--summary', '런의 대상이 된다.', '--owner', 'MEMBER-001', '--acceptance', '움직인다.']);
+    const withoutTarget = rdlRaw(['run', 'start', 'task.moved', '--project', 'crm', '--client-id', 'laptop-a']);
+    assert.notStrictEqual(withoutTarget.status, 0, '대상 없는 태스크 런이 시작됐습니다');
+    assert.match(`${withoutTarget.stdout}${withoutTarget.stderr}`, /태스크를 움직이는 절차/u, `${withoutTarget.stdout}${withoutTarget.stderr}`);
+    // 문서를 주는 것은 인수를 더 준 것이 아니라 대상을 잘못 준 것이다. 조용히 무시하면
+    // 시작한 사람은 자기가 무엇을 대상으로 걸었는지 끝까지 모른다.
+    const wrongTarget = rdlRaw(['run', 'start', 'task.moved', '--project', 'crm', '--client-id', 'laptop-a', '--task', moved.taskId, '--artifact-id', 'REQ-001']);
+    assert.notStrictEqual(wrongTarget.status, 0, '태스크 절차가 문서 대상을 받았습니다');
+    const taskRun = rdl(['run', 'start', 'task.moved', '--project', 'crm', '--client-id', 'laptop-a', '--task', moved.taskId]);
+    assert.deepStrictEqual(
+      rdl(['run', 'next', '--run', taskRun.runId, '--project', 'crm']).target,
+      { kind: 'task', id: moved.taskId },
+      '태스크 런이 자기 대상을 답하지 않습니다'
+    );
+  }
+
+  // 종류를 밝히지 않은 새 절차는 열리지 않는다. 부모가 없으면 상속받을 곳도 없다.
+  {
+    const kindless = JSON.parse(fs.readFileSync(proceduresFile, 'utf8'));
+    kindless.procedures['kindless'] = { revision: 1, steps: [{ id: 'do', executor: 'client' }] };
+    fs.writeFileSync(proceduresFile, `${JSON.stringify(kindless, null, 2)}
+`, 'utf8');
+    const rejected = rdlRaw(['run', 'procedures', '--project', 'crm']);
+    assert.notStrictEqual(rejected.status, 0, '대상 종류 없는 절차가 열렸습니다');
+    assert.match(rejected.stderr, /대상 종류가 없거나/u, rejected.stderr);
+    delete kindless.procedures['kindless'];
+    fs.writeFileSync(proceduresFile, `${JSON.stringify(kindless, null, 2)}
+`, 'utf8');
+  }
+
+  // 오버라이드가 적지 않은 대상 종류는 부모에게서 온다. 계층마다 다시 적게 하면 한 번
+  // 빠뜨린 계층이 조용히 대상 없는 절차가 된다.
+  assert.strictEqual(loadProcedures(temporary, 'crm').resolve('document.authored').resolved.targetKind, 'document');
 
   // Prepared semantic children use their canonical type, not a historical child-key prefix, when resuming.
   const semanticRun = rdl(['run', 'start', 'document.authored', '--project', 'crm', '--client-id', 'agent-a']);
@@ -465,6 +590,9 @@ try {
   rdl(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'save', '--client-id', 'laptop-a', '--commit', command('git', ['rev-parse', 'HEAD'], path.join(temporary, 'projects', 'crm'))]);
   next = rdl(['run', 'next', '--run', runId, '--project', 'crm']);
   assert.strictEqual(next.step.human, true);
+  // 클라이언트 중립 인터페이스도 실행 단위 종류를 그대로 답한다. 여기가 client로
+  // 나오면 표면이 보는 종류와 절차가 아는 종류가 갈린 것이다.
+  assert.strictEqual(next.step.executor, 'human');
   const humanWithoutAcknowledgement = rdlRaw(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'sync-gate', '--client-id', 'laptop-a']);
   assert.strictEqual(humanWithoutAcknowledgement.status, 2);
   rdl(['run', 'step', '--run', runId, '--project', 'crm', '--step', 'sync-gate', '--client-id', 'laptop-a', '--force', '--reason', '수동 동기화 승인']);

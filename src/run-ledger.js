@@ -28,6 +28,8 @@ const HALT_REASONS = new Set(vocabulary.HALT_REASONS);
 // 이름이 없어 문자열로만 돌아다녔다 — 상태 기계가 있는 유일한 자리가 어휘는
 // 암묵인 상태였다.
 const RUN_STATES = new Set(vocabulary.RUN_STATES);
+// 런이 무엇을 움직이는가. 절차가 선언하고 원장은 그 선언을 pin된 절차 안에 함께 싣는다.
+const TARGET_KINDS = new Set(vocabulary.TARGET_KINDS);
 const TYPE_FIELDS = {
   'run.started': { required: ['ownerToken', 'procedure', 'settings'], optional: ['goal', 'targetArtifactId', 'taskId'] },
   'run.step': { required: ['ownerToken', 'stepId', 'executor', 'exitCode', 'artifactIds'], optional: ['operation'] },
@@ -473,6 +475,11 @@ function validateProcedure(procedure) {
   if (!procedure || typeof procedure !== 'object') throw new Error('procedure is required');
   if (!/^[a-z][a-z0-9.-]*$/u.test(procedure.name || '')) throw new Error(`invalid procedure name: ${procedure.name || '(missing)'}`);
   if (!Number.isInteger(procedure.revision) || procedure.revision < 1) throw new Error('절차 revision은 1 이상의 정수여야 합니다.');
+  // 대상 종류는 값만 본다. 있으면 정본에 있는 값이어야 하고, 없다고 막지는 않는다 —
+  // 종류를 밝히지 않은 절차로 시작된 런이 이미 원장에 있고, 원장은 자기가 못 읽는
+  // 값을 거부하지 자기가 못 본 값을 요구하지 않는다. 시작할 수 있는 절차가 종류를
+  // 밝혀야 한다는 요구는 절차를 여는 자리가 갖는다.
+  if (procedure.targetKind !== undefined && !TARGET_KINDS.has(procedure.targetKind)) throw new Error(`정본에 없는 대상 종류입니다: ${procedure.targetKind}`);
   if (!Array.isArray(procedure.steps) || procedure.steps.length === 0) throw new Error('procedure must have at least one step');
   const seen = new Set();
   for (const step of procedure.steps) {
@@ -939,6 +946,18 @@ function foldProgress(events, ownership) {
       diagnostics.push({ code: 'RDL-RUN-028', severity: 'error', message: `사람이 승인한 커밋이 검증이 본 커밋과 다릅니다: ${approval.stepId} 승인 ${approval.commit} vs 검증 ${verifiedCommit}` });
     }
   }
+  // 이 런이 무엇을 움직였나. 종류는 pin된 절차가 선언한 값이고 식별자는 종류가
+  // 가리키는 자리에서 온다 — 태스크면 런이 밝힌 태스크, 문서면 런이 다룬 마지막
+  // 정본 문서다. 종류를 이벤트에 따로 적지 않는 것은 절차가 이미 pin되어 있기
+  // 때문이고, 같은 사실을 두 곳에 적으면 그 둘이 갈리는 날이 온다.
+  //
+  // 종류를 밝히지 않은 절차로 시작된 옛 런은 대상이 null이다. 여기서 식별자의
+  // 생김새로 되짚지 않는다 — 되짚은 값은 표기가 바뀌는 날 한꺼번에 틀린다.
+  const targetKind = (started.procedure.resolved && started.procedure.resolved.targetKind) || null;
+  const target = targetKind === null ? null : {
+    kind: targetKind,
+    id: targetKind === 'task' ? (started.taskId || null) : (artifactIds[artifactIds.length - 1] || null)
+  };
   const current = status === 'completed_local' || status === 'synced' ? null : cursor();
   // 충돌 상태 덮어쓰기는 진행 계산이 끝난 뒤다 — completed·cursor는 보존된다.
   if (ownership && ownership.status === 'CONFLICT') { status = 'ownership-conflict'; haltReason = 'ownership-conflict'; }
@@ -946,6 +965,8 @@ function foldProgress(events, ownership) {
     runId: started.runId, projectId: started.projectId,
     // 런이 밝힌 태스크. 저장이 결박을 파생할 때 첫 근거가 된다.
     taskId: started.taskId || null,
+    // 런 하나에 대상 하나다. 결박(taskId)과 다른 축이며, 대상이 태스크인 런에서만 둘이 같다.
+    target,
     procedure: { name: started.procedure.name, revision: started.procedure.revision, contentHash: started.procedure.contentHash },
     status, cursor: current, cursorStep: current ? byId.get(current) || null : null,
     completedSteps: order.filter((identifier) => completed.has(identifier)), attempts, forcedSteps, artifactIds, lastGate, haltReason,
@@ -1312,6 +1333,10 @@ function createRun(start, input) {
   const procedure = validateProcedure(input.procedure);
   const clientId = String(input.clientId || '').trim().toLowerCase();
   if (!clientId) throw new Error('--client-id is required');
+  // 대상이 태스크인 절차는 태스크를 만들지 않으므로 시작 시점에 대상이 있어야 한다.
+  // 없이 열면 그 런은 끝까지 무엇을 움직였는지 답하지 못하고, 답하지 못하는 기록은
+  // 없는 것과 같다. 문서는 만드는 절차가 있으므로 여기서 같은 요구를 하지 않는다.
+  if (procedure.targetKind === 'task' && !String(input.taskId || '').trim()) throw new Error('대상이 태스크인 절차는 taskId 없이 시작할 수 없습니다.');
   if (workspaceEventsRoot(layout)) {
     const client = getClient(start, clientId);
     if (client.status !== 'active') throw new Error(`inactive client cannot start a run: ${clientId}`);
