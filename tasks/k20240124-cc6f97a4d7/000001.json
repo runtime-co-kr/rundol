@@ -4507,12 +4507,12 @@
         },
         "AC-004": {
           "text": "정본 문서 98건의 기능 ID 선언 117건이 새 표기로 옮겨진다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T17:13:52.374Z",
-      "updatedAt": "2026-08-23T20:58:10.999Z",
+      "updatedAt": "2026-08-23T20:58:24.464Z",
       "statusChangedAt": "2026-08-23T17:14:30.665Z",
       "externalRefs": [],
       "project": "rundol"
