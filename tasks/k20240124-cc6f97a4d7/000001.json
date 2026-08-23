@@ -2130,7 +2130,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -2167,10 +2167,19 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:03:53.896Z",
-      "updatedAt": "2026-08-20T15:29:24.380Z",
-      "statusChangedAt": "2026-08-20T15:04:04.713Z",
+      "updatedAt": "2026-08-23T04:24:28.744Z",
+      "statusChangedAt": "2026-08-23T04:24:28.744Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gates": [
+          "done-requires-test-link",
+          "implementation-readiness"
+        ],
+        "reason": "완료 게이트를 재량으로 면제한다. 검증 문서가 확인된 것이 아니라, 닫지 못해 doing에 쌓인 태스크를 정리하려고 사람이 임의로 지난 것이다. 이 태스크의 완료를 검증 근거로 읽으면 안 되며, 검증은 별도 TST로 다시 세운다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T04:24:28.322Z"
+      }
     },
     "TASK-RVW4CCST": {
       "title": "저장 왕복 무변경 보장을 시험으로 고정한다",
