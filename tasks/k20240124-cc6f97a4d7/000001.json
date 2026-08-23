@@ -4115,6 +4115,46 @@
       "statusChangedAt": "2026-08-23T05:47:11.793Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-GVDBQJ8N": {
+      "title": "보호 경로에 스킬과 배포 설정을 넣는다",
+      "summary": "커밋 경계가 보는 경로가 src/bin/packages/scripts 넷뿐이라, 실려 나가는 스킬과 배포를 결정하는 워크플로가 기본 브랜치에서 그냥 커밋된다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "skills/ 아래 변경이 기본 브랜치에서 거부된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "배포를 결정하는 .github/ 변경이 거부된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "시험 코드 변경이 거부된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "docs/ 변경은 계속 통과한다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T07:08:52.044Z",
+      "updatedAt": "2026-08-23T07:08:52.044Z",
+      "statusChangedAt": "2026-08-23T07:08:52.044Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
