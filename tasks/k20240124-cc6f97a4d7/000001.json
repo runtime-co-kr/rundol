@@ -4090,7 +4090,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "기본 코드 브랜치에서 제품 코드를 커밋하면 거부되고 다음 명령이 사유에 담긴다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "제품 코드 커밋에 Rundol-Task 트레일러가 없으면 거부되고, none과 사유는 통과한다.",
@@ -4111,7 +4111,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:46:59.685Z",
-      "updatedAt": "2026-08-23T05:47:11.793Z",
+      "updatedAt": "2026-08-23T06:43:37.081Z",
       "statusChangedAt": "2026-08-23T05:47:11.793Z",
       "externalRefs": [],
       "project": "rundol"
