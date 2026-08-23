@@ -2178,7 +2178,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -2207,10 +2207,19 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T15:08:29.359Z",
-      "updatedAt": "2026-08-20T15:15:23.782Z",
-      "statusChangedAt": "2026-08-20T15:15:23.782Z",
+      "updatedAt": "2026-08-23T04:24:19.016Z",
+      "statusChangedAt": "2026-08-23T04:24:19.016Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gates": [
+          "done-requires-test-link",
+          "implementation-readiness"
+        ],
+        "reason": "완료 게이트를 재량으로 면제한다. 검증 문서가 확인된 것이 아니라, 닫지 못해 doing에 쌓인 태스크를 정리하려고 사람이 임의로 지난 것이다. 이 태스크의 완료를 검증 근거로 읽으면 안 되며, 검증은 별도 TST로 다시 세운다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T04:24:18.622Z"
+      }
     },
     "TASK-RA3Y3NBH": {
       "title": "Board 문서 편집을 블록 단위로 올릴지 결정한다",
