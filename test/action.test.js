@@ -37,9 +37,9 @@ try {
   const prdSource = fs.readFileSync(prd.file, 'utf8');
   assert(prdSource.includes('title: 메모 제품 요구사항'));
   assert(!prdSource.includes('제품 요구사항 제품 요구사항'));
-  const req = successful(temporary, ['doc', 'create', 'REQ', '메모 작성', '--owner', 'MEMBER-001', '--scope', '사용자가 새 메모를 저장하는 동작', '--exclude', '메모 검색과 삭제', '--function-id', 'MEM-01', '--related', 'PRD-001'], { debug: true });
+  const req = successful(temporary, ['doc', 'create', 'REQ', '메모 작성', '--owner', 'MEMBER-001', '--scope', '사용자가 새 메모를 저장하는 동작', '--exclude', '메모 검색과 삭제', '--function-id', 'FN-001', '--related', 'PRD-001'], { debug: true });
   assert.strictEqual(req.id, 'REQ-001');
-  const tst = successful(temporary, ['doc', 'create', 'TST', '메모 인수 테스트', '--owner', 'MEMBER-001', '--scope', '새 메모 저장 요구사항의 인수 검증', '--exclude', '검색과 삭제 검증', '--function-id', 'MEM-01', '--related', 'REQ-001'], { debug: true });
+  const tst = successful(temporary, ['doc', 'create', 'TST', '메모 인수 테스트', '--owner', 'MEMBER-001', '--scope', '새 메모 저장 요구사항의 인수 검증', '--exclude', '검색과 삭제 검증', '--function-id', 'REQ-001#FN-001', '--related', 'REQ-001'], { debug: true });
   assert.strictEqual(tst.id, 'TST-001');
 
   const task = successful(temporary, ['task', 'add', '메모 구현', '--owner', 'MEMBER-001', '--link', 'REQ-001', '--link', 'TST-001', '--acceptance', '동작을 확인한다.'], { debug: true });

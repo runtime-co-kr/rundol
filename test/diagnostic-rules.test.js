@@ -39,18 +39,21 @@ assert.deepStrictEqual(declaredCodes({ diagnostics: 'RDL-ASSET-005' }), { codes:
 // ── 선언을 모은다 ────────────────────────────────────────────────────────────
 
 const index = collectDeclarations([
-  { id: 'DOC-A', meta: { functionIds: ['AST-02'], diagnostics: ['RDL-ASSET-005', 'RDL-ASSET-002'] } },
-  { id: 'DOC-B', meta: { functionIds: ['AST-01'], diagnostics: ['RDL-ASSET-001'] } },
-  { id: 'DOC-C', meta: { functionIds: ['ZZZ-01'], diagnostics: ['RDL-ASSET-001', '아무거나'] } },
-  { id: 'DOC-D', meta: { functionIds: ['YYY-01'] } },
+  { id: 'DOC-A', meta: { functionIds: ['FN-002'], diagnostics: ['RDL-ASSET-005', 'RDL-ASSET-002'] } },
+  { id: 'DOC-B', meta: { functionIds: ['FN-001'], diagnostics: ['RDL-ASSET-001'] } },
+  { id: 'DOC-C', meta: { functionIds: ['FN-001'], diagnostics: ['RDL-ASSET-001', '아무거나'] } },
+  { id: 'DOC-D', meta: { functionIds: ['FN-001'] } },
   { id: '', meta: { diagnostics: ['RDL-ASSET-009'] } },
   null
 ]);
 
 // 기능은 선언한 문서에서 파생한다. 선언에 기능 ID를 또 적으면 같은 값이 두 곳에 살고,
 // 한쪽만 고쳐지는 날 어느 쪽이 정본인지 말할 근거가 없다.
-assert.deepStrictEqual(ruleSource(index, 'RDL-ASSET-005'), { document: 'DOC-A', functionIds: ['AST-02'] });
-assert.deepStrictEqual(ruleSource(index, 'RDL-ASSET-002'), { document: 'DOC-A', functionIds: ['AST-02'] });
+//
+// 파생할 때 부모를 단다. 답은 그 문서 밖으로 나가고, 문서 안 표기는 문서를 떠나는
+// 순간 어느 문서의 몇 번인지를 잃는다 — DOC-B와 DOC-C의 FN-001은 다른 기능이다.
+assert.deepStrictEqual(ruleSource(index, 'RDL-ASSET-005'), { document: 'DOC-A', functionIds: ['DOC-A#FN-002'] });
+assert.deepStrictEqual(ruleSource(index, 'RDL-ASSET-002'), { document: 'DOC-A', functionIds: ['DOC-A#FN-002'] });
 
 // 두 문서가 같은 코드를 선언하면 이긴 쪽을 고르지 않는다. 디렉터리를 읽는 순서가 답을
 // 정하는 조회는 추적성이 아니라 추적성처럼 보이는 것이다.
@@ -154,7 +157,7 @@ process.stdout.write(`diagnostic rule tests passed (${measured.declared}/${measu
 // 있는 것이었고, 이것은 그 저장소를 읽어 그 자리에서 계산한 그 저장소의 문서다.
 {
   const { validateTaskImplementationReadiness } = require('../src/implementation-contract');
-  const coverage = { 'WRK-01': { REQ: ['REQ-048'], TST: ['TST-020'] } };
+  const coverage = { 'REQ-048#FN-001': { REQ: ['REQ-048'], TST: ['TST-020'] } };
 
   function frontmatter(id, ids) {
     return { data: { id, implementationContract: 'atomic-v1', functionIds: ids }, body: '', bodyStartLine: 1 };
@@ -162,7 +165,7 @@ process.stdout.write(`diagnostic rule tests passed (${measured.declared}/${measu
 
   // TST만 연결한 태스크: 어느 REQ가 그 기능을 덮는지 알려야 한다.
   const missingReq = validateTaskImplementationReadiness(
-    [{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['WRK-01']) }],
+    [{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['REQ-048#FN-001']) }],
     { coverage }
   );
   const req = missingReq.find((item) => item.code === 'RDL-IMPL-020');
@@ -171,7 +174,7 @@ process.stdout.write(`diagnostic rule tests passed (${measured.declared}/${measu
 
   // REQ만 연결한 태스크: 어느 TST가 그 기능을 검증하는지 알려야 한다.
   const missingTst = validateTaskImplementationReadiness(
-    [{ id: 'REQ-048', source: '', frontmatter: frontmatter('REQ-048', ['WRK-01']) }],
+    [{ id: 'REQ-048', source: '', frontmatter: frontmatter('REQ-048', ['FN-001']) }],
     { coverage }
   );
   const tst = missingTst.find((item) => item.code === 'RDL-IMPL-021');
@@ -180,13 +183,13 @@ process.stdout.write(`diagnostic rule tests passed (${measured.declared}/${measu
 
   // 덮는 문서를 모르면 추측하지 않는다. 없는 안내를 붙이면 사람이 그것을 찾으러 간다.
   const unknown = validateTaskImplementationReadiness(
-    [{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['ZZZ-99']) }],
+    [{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['REQ-999#FN-001']) }],
     { coverage }
   );
   const silent = unknown.find((item) => item.code === 'RDL-IMPL-020');
   assert(!silent.message.includes('덮는 문서'), `모르는 기능에 안내를 지어내면 안 됩니다: ${silent.message}`);
 
   // coverage를 주지 않으면 예전 그대로 동작한다. 안내는 덧붙임이지 계약 변경이 아니다.
-  const bare = validateTaskImplementationReadiness([{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['WRK-01']) }]);
+  const bare = validateTaskImplementationReadiness([{ id: 'TST-020', source: '', frontmatter: frontmatter('TST-020', ['REQ-048#FN-001']) }]);
   assert(bare.some((item) => item.code === 'RDL-IMPL-020'), '안내 없이도 진단은 나와야 합니다.');
 }

@@ -75,7 +75,7 @@ try {
   const document = rdl(['doc', 'create', 'PRD', '적대 시험 대상', '--project', 'crm', '--owner', 'MEMBER-001',
     '--scope', '적대 시험이 다루는 문서', '--exclude', '그 밖']);
   rdl(['doc', 'create', 'REQ', '적대 시험 요구', '--project', 'crm', '--owner', 'MEMBER-001',
-    '--scope', '적대 시험 요구', '--exclude', '그 밖', '--related', document.id, '--function-id', 'ADV-01']);
+    '--scope', '적대 시험 요구', '--exclude', '그 밖', '--related', document.id, '--function-id', 'FN-001']);
   const projectRoot = path.join(temporary, 'projects', 'crm');
   // 승인 검사를 보려면 런이 실제로 커밋을 만들어야 한다. 커밋이 없는 런은 공유할
   // 것도 없으므로 애초에 막히지 않고, 그러면 이 시험은 승인에 대해 아무것도 묻지

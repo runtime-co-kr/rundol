@@ -29,7 +29,7 @@
 //     ---
 //     id: REQ-053
 //     functionIds:
-//       - AST-02
+//       - FN-001
 //     diagnostics:
 //       - RDL-ASSET-002
 //       - RDL-ASSET-003
@@ -50,8 +50,17 @@
 // 두 곳에 적으면 한쪽만 고쳐지는 날이 오고, 그때 어느 쪽이 정본인지 말할 근거가 없다.
 // 선언은 코드만 나르고 기능은 선언한 문서에서 파생한다.
 //
+// 그 파생이 부모를 단다. 문서가 적는 것은 문서 안 표기 FN-001이지만 이 조회의 답은
+// 그 문서 밖으로 나가므로, 나갈 때는 어느 문서의 몇 번 기능인지를 스스로 말해야 한다.
+// 부모를 여기서 붙이는 것은 표를 되살리는 것이 아니다 — 붙이는 값이 입력으로 들어온
+// 그 문서의 번호이지, 제품이 미리 알고 있는 번호가 아니다.
+//
 // 코드 형식은 제품이 판정한다. 진단 이름공간은 제품 것이므로 "이건 내가 내는 코드의
 // 꼴이 아니다"는 제품이 말할 수 있다 — 남의 문서 번호를 아는 것과는 다른 일이다.
+
+// 부모와 서브를 잇는 구분자는 어휘가 갖는다. 여기서 다시 적으면 두 벌이 되고,
+// 두 벌은 한쪽만 고쳐지는 날 갈린다.
+const { SUB_ID_SEPARATOR } = require('./vocabulary');
 
 /** 선언이 적히는 frontmatter 칸. 문서 쪽 도구도 이 이름을 여기서 가져다 쓴다. */
 const DECLARATION_KEY = 'diagnostics';
@@ -85,9 +94,17 @@ function declaredCodes(meta) {
   return { codes: sortedUnique(codes), invalid: sortedUnique(invalid) };
 }
 
-function functionIdsOf(meta) {
+/**
+ * 선언한 문서가 근거 짓는 기능. 조회의 답은 그 문서 밖으로 나가므로 부모를 달아
+ * 내보낸다 — 문서 안 표기는 자기 문서를 떠나는 순간 어느 문서의 몇 번인지를 잃는다.
+ *
+ * 이미 부모가 달린 값은 그대로 둔다. 선언한 문서가 곧 부모인 것은 원천 계약일 때뿐이고,
+ * 여기서 부모를 덮어쓰면 남의 기능을 자기 것으로 적는 문서가 조용히 생긴다.
+ */
+function functionIdsOf(documentId, meta) {
   const raw = meta && Array.isArray(meta.functionIds) ? meta.functionIds : [];
-  return sortedUnique(raw.map(textOf).filter(Boolean));
+  const local = (value) => `${documentId}${SUB_ID_SEPARATOR}${value}`;
+  return sortedUnique(raw.map(textOf).filter(Boolean).map((value) => (value.includes(SUB_ID_SEPARATOR) ? value : local(value))));
 }
 
 /**
@@ -114,7 +131,7 @@ function collectDeclarations(documents) {
     if (invalid.length) malformed.push({ document: id, codes: invalid });
     if (!codes.length) continue;
     byDocument[id] = codes;
-    const functionIds = functionIdsOf(meta);
+    const functionIds = functionIdsOf(id, meta);
     for (const code of codes) {
       if (!claims.has(code)) claims.set(code, []);
       claims.get(code).push({ document: id, functionIds });

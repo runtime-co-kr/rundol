@@ -294,6 +294,10 @@ function composeAssignment(request, pinned, context) {
   }
   if (missing.length) return Object.assign({}, none, { code: 'missing-field', missing });
 
+  // 대조는 글자 그대로다. 기능 ID가 부모를 달게 되면서 이 값은 REQ-033#FN-001 꼴이고,
+  // 부모를 뗀 FN-001은 여기서 모르는 기능이다 — 떼고도 통과시키면 어느 요구의 몇 번
+  // 기능에 할당했는지가 원장에 남지 않는다. 표기를 여기서 다시 맞추지 않는 이유는
+  // 판정이 값만 보고 답해야 하기 때문이고, 맞추는 자리는 declaredFunctionIds 하나다.
   const declared = new Set((scope.declaredFunctionIds || []).map((id) => String(id)));
   const unknownFunctionIds = input.functionIds.map((id) => String(id)).filter((id) => !declared.has(id));
   if (unknownFunctionIds.length) return Object.assign({}, none, { code: 'unknown-function-id', unknownFunctionIds });

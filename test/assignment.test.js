@@ -16,7 +16,7 @@ function request(overrides) {
   return Object.assign({
     goal: '할당 발급 경로를 세운다',
     acceptance: [{ id: 'AC-001', text: '발급이 원장에 남는다' }],
-    functionIds: ['WRK-01'],
+    functionIds: ['REQ-048#FN-001'],
     allowedPaths: ['src/assignment/**'],
     forbidden: [],
     procedure: { name: 'impl', revision: 3 },
@@ -26,7 +26,9 @@ function request(overrides) {
 }
 
 const PINNED = { name: 'impl', revision: 3, digest: DIGEST };
-const CONTEXT = { declaredFunctionIds: ['WRK-01', 'WRK-02'], openAssignments: [] };
+// 선언 목록은 부모를 단 표기다. 할당은 문서 밖에서 기능을 가리키는 일이므로
+// 부모 없이는 어느 요구의 기능인지가 정해지지 않는다.
+const CONTEXT = { declaredFunctionIds: ['REQ-048#FN-001', 'REQ-048#FN-002'], openAssignments: [] };
 
 // ── 1. 발급 거부 코드의 순서 (순수, 파일 없음) ───────────────────────────
 // 다섯 코드가 서로 다르게 도달 가능해야 통제자가 무엇을 고쳐야 하는지 안다.
@@ -44,9 +46,9 @@ assert.strictEqual(several.code, 'missing-field');
 assert.deepStrictEqual(several.missing, ['goal', 'acceptance', 'functionIds']);
 
 // 정규 문서가 선언하지 않은 기능 ID는 근거가 없다.
-const unknown = composeAssignment(request({ functionIds: ['WRK-01', 'WRK-99'] }), PINNED, CONTEXT);
+const unknown = composeAssignment(request({ functionIds: ['REQ-048#FN-001', 'REQ-099#FN-001'] }), PINNED, CONTEXT);
 assert.strictEqual(unknown.code, 'unknown-function-id');
-assert.deepStrictEqual(unknown.unknownFunctionIds, ['WRK-99']);
+assert.deepStrictEqual(unknown.unknownFunctionIds, ['REQ-099#FN-001']);
 
 // 절차를 다이제스트로 고정하지 못하면 워커가 무엇을 따랐는지 나중에 말할 수 없다.
 for (const pinned of [null, { name: 'impl', revision: 3, digest: '' }, { name: '', revision: 3, digest: DIGEST }]) {
@@ -56,7 +58,7 @@ for (const pinned of [null, { name: 'impl', revision: 3, digest: '' }, { name: '
 // 겹침은 어느 할당과 어느 경로에서 겹쳤는지까지 돌려준다. 하나만 알려주면
 // 어디까지 좁혀야 통과하는지 알 수 없다.
 const overlapping = composeAssignment(request(), PINNED, {
-  declaredFunctionIds: ['WRK-01'],
+  declaredFunctionIds: ['REQ-048#FN-001'],
   openAssignments: [{ id: 'ASG-EXIST01', state: 'open', allowedPaths: ['src/assignment/**'] }]
 });
 assert.strictEqual(overlapping.code, 'path-overlap');
@@ -68,7 +70,7 @@ assert.strictEqual(codes.size, 5, '다섯 거부 사유가 서로 구분된다')
 
 // 닫힌 할당은 겹침의 대상이 아니다. 취소한 뒤 같은 경로로 다시 발급할 수 있어야 한다.
 const afterCancel = composeAssignment(request(), PINNED, {
-  declaredFunctionIds: ['WRK-01'],
+  declaredFunctionIds: ['REQ-048#FN-001'],
   openAssignments: [{ id: 'ASG-EXIST01', state: 'closed', allowedPaths: ['src/assignment/**'] }]
 });
 assert.ok(!afterCancel.code, '닫힌 할당은 재발급을 막지 않는다');
@@ -90,7 +92,7 @@ function issued(overrides) {
     assignmentId: 'ASG-AAAA0001', issuedBy: { kind: 'human', id: 'MEMBER-001' }, taskId: null,
     goal: '할당 발급 경로를 세운다',
     acceptance: [{ id: 'AC-001', text: '발급이 원장에 남는다' }],
-    functionIds: ['WRK-01'], allowedPaths: ['src/assignment/**'], forbidden: [],
+    functionIds: ['REQ-048#FN-001'], allowedPaths: ['src/assignment/**'], forbidden: [],
     procedure: { name: 'impl', revision: 3, digest: DIGEST },
     reportSchema: 'report-v1', assignee: { kind: 'agent', id: 'claude-code' }
   }, overrides);
@@ -152,7 +154,7 @@ assert.strictEqual(mismatched.assignments[0].reports[0].procedureMatched, false)
 // 거부는 기록되지만 상태를 만들지 않는다. assignmentId가 없는 것이 그 사실의
 // 표현이며, 그래서 부분 발급이 남지 않는다.
 const rejected = foldAssignments([
-  { schemaVersion: 1, eventId: 'EVT-09', type: 'assignment.rejected', clientId: 'agent-a', projectId: 'memo', recordedAt: '2026-08-21T00:00:01.000Z', code: 'path-overlap', missing: [], unknownFunctionIds: [], overlaps: [{ assignmentId: 'ASG-AAAA0001', paths: ['src/assignment/**'] }], requestedBy: { kind: 'human', id: 'MEMBER-001' }, summary: { goal: '겹치는 요청', functionIds: ['WRK-01'], allowedPaths: ['src/assignment/**'] } }
+  { schemaVersion: 1, eventId: 'EVT-09', type: 'assignment.rejected', clientId: 'agent-a', projectId: 'memo', recordedAt: '2026-08-21T00:00:01.000Z', code: 'path-overlap', missing: [], unknownFunctionIds: [], overlaps: [{ assignmentId: 'ASG-AAAA0001', paths: ['src/assignment/**'] }], requestedBy: { kind: 'human', id: 'MEMBER-001' }, summary: { goal: '겹치는 요청', functionIds: ['REQ-048#FN-001'], allowedPaths: ['src/assignment/**'] } }
 ]);
 assert.strictEqual(rejected.assignments.length, 0, '거부된 발급은 할당을 만들지 않는다');
 assert.strictEqual(rejected.rejections.length, 1, '거부는 침묵하지 않는다');
@@ -206,9 +208,10 @@ try {
   rdl(['client', 'register', 'agent-a', '--name', '워커', '--type', 'agent', '--owner', 'MEMBER-001']);
   rdl(['doc', 'create', 'PRD', '메모 제품 요구사항', '--project', 'memo', '--owner', 'MEMBER-001',
     '--scope', '메모 제품의 사용자 문제와 성공 기준', '--exclude', '개별 메모 작성 동작']);
-  rdl(['doc', 'create', 'REQ', '메모 검색', '--project', 'memo', '--owner', 'MEMBER-001',
+  const requirement = rdl(['doc', 'create', 'REQ', '메모 검색', '--project', 'memo', '--owner', 'MEMBER-001',
     '--scope', '저장된 메모를 조건으로 검색하는 동작', '--exclude', '메모 작성과 색인 구축',
-    '--function-id', 'WRK-01', '--related', 'PRD-001']);
+    '--function-id', 'FN-001', '--related', 'PRD-001']);
+  const covered = `${requirement.id}#FN-001`;
   const task = rdl(['task', 'add', '검색 구현', '--project', 'memo', '--acceptance', '제목으로 찾는다', '--owner', 'MEMBER-001']);
 
   const store = require('../src/assignment');
@@ -216,7 +219,7 @@ try {
     project: 'memo', clientId: 'boss-a', assigneeClientId: 'agent-a', taskId: task.taskId,
     goal: '검색을 구현한다',
     acceptance: [{ id: 'AC-001', text: '제목으로 찾는다' }],
-    functionIds: ['WRK-01'], allowedPaths: ['src/search/**'], forbidden: [],
+    functionIds: [covered], allowedPaths: ['src/search/**'], forbidden: [],
     procedureName: 'document.authored', procedureRevision: 1, reportSchema: 'report-v1'
   };
 

@@ -4,15 +4,35 @@ const path = require('path');
 const { parseFrontmatter } = require('./frontmatter');
 
 const CONTRACT_VERSION = 'atomic-v1';
-const { IMPLEMENTATION_TYPES } = require('./vocabulary');
+const { IMPLEMENTATION_TYPES, SUB_ID_SEPARATOR } = require('./vocabulary');
 // 문서 1개 = 기능 1개가 기본 계약이다. 합침은 groupingReason 선언이 있는 opt-in이며
 // 유형별 정책을 따른다. 근거는 실사용 정본 측정이다: TST가 기능 여럿을 검증하는 것은
 // 자연스럽고(TST-002=11), REQ가 기능 여럿을 요구하는 것은 과합침이다(REQ-010=5).
 // forbidden 유형은 선언이 있어도 다기능을 거부한다 — 분리가 유일한 해소다.
 const GROUPING_POLICY = Object.freeze({ REQ: 'forbidden', SCR: 'forbidden', TST: 'declared', MOD: 'declared', IFC: 'declared' });
-const FUNCTION_ID_PATTERN = /^[A-Z][A-Z0-9]{1,7}-\d{2,4}$/u;
+// 기능은 서브 종류 FN이다. 부모와 종류와 일련 세 자리 중 코드가 소유하는 것은
+// 가운데뿐이고, 그 계약은 types/sub.d.ts가 갖는다.
+const FUNCTION_SUB_KIND = 'FN';
+// 기능의 원천 계약을 나르는 유형. 이 유형의 문서 안에서는 부모가 문서 자신이므로
+// 부모를 적지 않는다. RDL-IMPL-011이 "REQ 원천 계약"이라 부르던 자리가 여기다.
+const FUNCTION_SOURCE_TYPE = 'REQ';
+/**
+ * 문서 안 표기 — FN-001. 부모가 자명하므로 붙이지 않는다.
+ *
+ * 사람이 짓던 접두(HRN·TSK·BRD …)와 두 자리 일련은 받지 않는다. 받으면 이 표기가
+ * 무엇을 닫았는지가 흐려지고, 옮겨진 것과 안 옮겨진 것을 셀 수 없다.
+ */
+const LOCAL_FUNCTION_ID_PATTERN = new RegExp(`^${FUNCTION_SUB_KIND}-\\d{3,}$`, 'u');
+/**
+ * 문서 밖 표기 — REQ-033#FN-001. 부모의 형태는 못박지 않는다. 문서 식별자의 형태는
+ * 프로젝트가 정하는 값이므로, 여기 적으면 사용자가 정의한 것이 다시 코드가 된다.
+ */
+const QUALIFIED_FUNCTION_ID_PATTERN = new RegExp(`^[^\\s${SUB_ID_SEPARATOR}]+${SUB_ID_SEPARATOR}${FUNCTION_SUB_KIND}-\\d{3,}$`, 'u');
+/** 본문 기능 계약 절의 제목. 그 문서가 frontmatter에 적은 표기를 그대로 쓴다. */
+const FUNCTION_HEADING_PATTERN = new RegExp(`^(?:기능\\s+)?((?:[^\\s${SUB_ID_SEPARATOR}]+${SUB_ID_SEPARATOR})?${FUNCTION_SUB_KIND}-\\d{3,})$`, 'u');
+/** 한 행에 범위로 묶인 기능. FN-001 ~ 003과 REQ-033#FN-001 ~ 003을 함께 집는다. */
+const FUNCTION_RANGE_PATTERN = new RegExp(`((?:[^\\s|,]+${SUB_ID_SEPARATOR})?${FUNCTION_SUB_KIND})-(\\d{3,})\\s*(?:~|～|–|—)\\s*(?:\\1-)?(\\d{3,})`, 'u');
 const ARTIFACT_ID_PATTERN = /\b([A-Z]{3}-\d{3,})\b/u;
-const FUNCTION_ID_GLOBAL = /\b[A-Z][A-Z0-9]{1,7}-\d{2,4}\b/gu;
 const PLACEHOLDER_PATTERN = /(?:작성\s*필요|미정|추후[^\r\n]{0,40}확정|별도[^\r\n]{0,40}확정|원본(?:\s+문서)?\s*(?:기준|적용|참조)|todo|tbd|<[^>]+>)/iu;
 const INDEX_TITLE_PATTERN = /^(?:(?:문서|기능|요구사항|설계|테스트)\s*)?(?:인덱스|목록|카탈로그|추적표|추적성\s*매트릭스|index|catalog|traceability\s*matrix)(?:\s*문서)?$/iu;
 const REQUIRED_FIELDS_BY_TYPE = Object.freeze({
@@ -28,8 +48,38 @@ function unique(values) {
   return Array.from(new Set(values));
 }
 
+function escapeForPattern(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+/** 문서가 적은 그대로의 기능 ID. 표기를 맞추는 것은 qualifiedFunctionIds가 한다. */
 function functionIds(meta) {
   return unique((Array.isArray(meta && meta.functionIds) ? meta.functionIds : []).map((value) => String(value).trim()).filter(Boolean));
+}
+
+/** 부모를 단 표기에서 부모를 떼어 낸다. 그 값이 이 기능의 원천 계약이다. */
+function subParent(value) {
+  const text = String(value || '');
+  const at = text.indexOf(SUB_ID_SEPARATOR);
+  return at < 0 ? null : text.slice(0, at);
+}
+
+/**
+ * 부모를 단 표기로 맞춘 기능 ID. 원천 문서는 부모가 자기 자신이므로 여기서 달고,
+ * 하위 산출물은 이미 달고 온다.
+ *
+ * 이 함수를 지나면 값 하나가 어느 문서의 몇 번 기능인지를 스스로 말한다. 그래서
+ * 주인이 누구인지 되짚는 조회가 사라지고, 주인이 둘이거나 없는 경우도 함께 사라진다 —
+ * 진단 둘이 막고 있던 것이 여기서 일어나지 못하는 것이 된다.
+ *
+ * 표기가 어긋난 값은 여기서 뺀다. 조용하지 않은 이유는 같은 값을
+ * validateImplementationDocument가 RDL-IMPL-003으로 잡기 때문이고, 어긋난 값을 추적에
+ * 들이면 부모 없는 항목이 다시 생겨 방금 없앤 진단이 다시 필요해지기 때문이다.
+ */
+function qualifiedFunctionIds(type, artifactId, meta) {
+  const ids = functionIds(meta);
+  if (String(type || '').toUpperCase() !== FUNCTION_SOURCE_TYPE) return ids.filter((id) => QUALIFIED_FUNCTION_ID_PATTERN.test(id));
+  return ids.filter((id) => LOCAL_FUNCTION_ID_PATTERN.test(id)).map((id) => `${artifactId}${SUB_ID_SEPARATOR}${id}`);
 }
 
 function isIndexArtifact(title, file) {
@@ -48,7 +98,7 @@ function functionSections(body) {
   for (let index = 0; index < lines.length; index += 1) {
     const heading = headingName(lines[index], 3);
     if (!heading) continue;
-    const match = /^(?:기능\s+)?([A-Z][A-Z0-9]{1,7}-\d{2,4})$/u.exec(heading);
+    const match = FUNCTION_HEADING_PATTERN.exec(heading);
     if (!match) continue;
     let end = index + 1;
     while (end < lines.length && !/^#{2,3}\s+/u.test(lines[end])) end += 1;
@@ -71,11 +121,15 @@ function fieldContent(section, field) {
 function groupedFunctionLines(body, declaredIds) {
   const findings = [];
   const declared = new Set(declaredIds || []);
+  // 훑는 패턴을 선언된 값에서 만든다. 표기에서 부모의 형태를 짐작하면 그 순간
+  // 사용자가 정의한 것이 다시 코드가 되고, 짐작이 빗나가는 프로젝트에서는 이 검사가
+  // 아무 말도 없이 죽는다.
+  const wanted = Array.from(declared).map((id) => ({ id, pattern: new RegExp(`(?<![\\w${SUB_ID_SEPARATOR}-])${escapeForPattern(id)}(?![\\w-])`, 'u') }));
   const lines = String(body || '').replace(/\r\n/gu, '\n').split('\n');
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const ids = unique(Array.from(line.matchAll(FUNCTION_ID_GLOBAL), (match) => match[0])).filter((id) => declared.has(id));
-    const rangeMatch = /\b([A-Z][A-Z0-9]{1,7})-(\d{2,4})\s*(?:~|～|–|—)\s*(?:\1-)?(\d{2,4})\b/u.exec(line);
+    const ids = wanted.filter((item) => item.pattern.test(line)).map((item) => item.id);
+    const rangeMatch = FUNCTION_RANGE_PATTERN.exec(line);
     const rangeTouchesDeclared = Boolean(rangeMatch && (declared.has(`${rangeMatch[1]}-${rangeMatch[2]}`) || declared.has(`${rangeMatch[1]}-${rangeMatch[3]}`)));
     if (rangeTouchesDeclared || ids.length > 1) findings.push({ line: index + 1, value: line.trim() });
   }
@@ -99,7 +153,19 @@ function validateImplementationDocument(document, options) {
   }
   const ids = functionIds(meta);
   if (ids.length === 0) issues.push({ code: 'RDL-IMPL-002', severity: 'error', message: '구현 문서는 functionIds에 기능 ID를 하나 이상 선언해야 합니다.' });
-  for (const id of ids) if (!FUNCTION_ID_PATTERN.test(id)) issues.push({ code: 'RDL-IMPL-003', severity: 'error', target: id, message: `기능 ID 형식이 잘못되었습니다: ${id}` });
+  // 표기는 부모가 자명한지로 갈린다. 원천 문서 안에서는 문서 안 표기이고 그 밖에서는
+  // 부모를 단 표기다. 한 자리에서 한 가지만 받는 이유는, 둘 다 받으면 같은 기능을
+  // 가리키는 글자가 둘이 되고 부모를 달아 없앤 중복이 표기 차이로 되돌아오기 때문이다.
+  const owns = type === FUNCTION_SOURCE_TYPE;
+  for (const id of ids) {
+    if (owns ? LOCAL_FUNCTION_ID_PATTERN.test(id) : QUALIFIED_FUNCTION_ID_PATTERN.test(id)) continue;
+    issues.push({
+      code: 'RDL-IMPL-003', severity: 'error', target: id,
+      message: owns
+        ? `기능 ID는 이 문서 안의 표기여야 합니다: ${id} (부모는 이 문서 자신이므로 ${FUNCTION_SUB_KIND}-001처럼 적습니다)`
+        : `기능 ID는 원천 계약을 부모로 달아야 합니다: ${id} (${FUNCTION_SOURCE_TYPE}-033${SUB_ID_SEPARATOR}${FUNCTION_SUB_KIND}-001)`
+    });
+  }
   // 문서 1개 = 기능 1개 기본. 다기능은 groupingReason+groupingFunctions 평면 키로
   // 선언한 opt-in만 허용하고, 유형 정책이 선언의 효력을 정한다. 진단은 001/006과 같은
   // 단계 도입이다 — 일반 검사에서는 경고, 구현 준비도 게이트에서는 오류. 정본 분해가
@@ -149,14 +215,14 @@ function relatedArtifactIds(meta) {
 function artifactImplementation(artifact) {
   const parsed = parseFrontmatter(artifact.source || '');
   const meta = parsed ? parsed.data : {};
-  return { id: artifact.id, type: artifact.type, file: artifact.file, source: artifact.source, meta, functionIds: functionIds(meta), related: relatedArtifactIds(meta), contract: meta.implementationContract || null };
+  return { id: artifact.id, type: artifact.type, file: artifact.file, source: artifact.source, meta, functionIds: qualifiedFunctionIds(artifact.type, artifact.id, meta), related: relatedArtifactIds(meta), contract: meta.implementationContract || null };
 }
 
 function implementationTrace(artifactInput) {
   const artifacts = (artifactInput || []).map(artifactImplementation);
   const functions = new Map();
   for (const artifact of artifacts) for (const id of artifact.functionIds) {
-    if (!functions.has(id)) functions.set(id, { functionId: id, artifacts: {} });
+    if (!functions.has(id)) functions.set(id, { functionId: id, source: subParent(id), artifacts: {} });
     const entry = functions.get(id);
     if (!entry.artifacts[artifact.type]) entry.artifacts[artifact.type] = [];
     entry.artifacts[artifact.type].push(artifact.id);
@@ -172,13 +238,13 @@ function validateImplementationTrace(artifactInput, options) {
   const settings = options || {};
   const artifacts = (artifactInput || []).map(artifactImplementation);
   const issues = [];
-  const reqOwners = new Map();
-  for (const artifact of artifacts.filter((item) => item.type === 'REQ')) for (const id of artifact.functionIds) {
-    if (reqOwners.has(id)) issues.push({ code: 'RDL-IMPL-009', severity: 'error', target: id, artifactId: artifact.id, message: `기능 ID가 여러 REQ에 중복 정의되었습니다: ${id}` });
-    else reqOwners.set(id, artifact.id);
-  }
+  // 여기 있던 RDL-IMPL-009 — 기능 ID가 여러 REQ에 중복 정의됨 — 는 사라졌다. 부모를
+  // 달면 REQ-012#FN-001과 REQ-013#FN-001은 같은 값이 될 수 없고, 한 REQ 안의 중복은
+  // 유일성이 지운다. 검사로 막던 것이 애초에 일어나지 못하는 것이 되었다.
+  //
   // 기능 정본 유일성: 한 기능이 같은 유형의 문서 여럿에 흩어지는 것을 막는다.
-  // REQ는 009가 이미 상시 오류로 지키고 있고, 나머지 유형은 새 계약이므로 단계 도입한다.
+  // REQ가 이 목록에 없는 것도 같은 이유다 — REQ의 선언은 자기 번호로 갈리므로
+  // 애초에 흩어질 수 없고, 없앤 진단을 유형 목록으로 되살릴 이유도 없다.
   for (const type of ['SCR', 'MOD', 'IFC', 'TST']) {
     const owners = new Map();
     for (const artifact of artifacts.filter((item) => item.type === type)) for (const id of artifact.functionIds) {
@@ -187,8 +253,15 @@ function validateImplementationTrace(artifactInput, options) {
     }
   }
   const trace = implementationTrace(artifactInput);
+  // 여기 있던 RDL-IMPL-011 — REQ 원천 계약 없이 하위 산출물이 참조함 — 도 사라졌다.
+  // 하위 산출물은 이제 부모를 적지 않고는 기능을 가리킬 수 없으므로, 원천을 밝히지
+  // 않은 참조라는 것이 표기로 존재하지 못한다. 시나리오가 이미 그렇게 살고 있고
+  // RDL-SCENARIO-003의 범위가 문서 하나인 것이 그 결과다.
+  //
+  // 적힌 부모가 실제로 그 기능을 선언했는지는 남는다. 그러나 그것은 "원천이 없다"가
+  // 아니라 "가리킨 것이 해결되지 않는다"이며, 참조 해결은 링크 계층의 물음이다.
+  // 이름을 옮겼을 뿐인 진단을 여기 다시 세우면 걷어낸 것을 이름만 바꿔 되돌리게 된다.
   for (const entry of trace.entries) {
-    if ((!entry.artifacts.REQ || entry.artifacts.REQ.length === 0) && Object.keys(entry.artifacts).some((type) => type !== 'REQ')) issues.push({ code: 'RDL-IMPL-011', severity: 'error', target: entry.functionId, message: `REQ 원천 계약 없이 하위 산출물이 기능 ID를 참조합니다: ${entry.functionId}` });
     if (entry.artifacts.REQ && entry.artifacts.REQ.length && (!entry.artifacts.TST || entry.artifacts.TST.length === 0)) issues.push({ code: 'RDL-IMPL-012', severity: settings.implementation ? 'error' : 'warning', target: entry.functionId, artifactId: entry.artifacts.REQ[0], message: `기능 ID를 검증하는 TST가 없습니다: ${entry.functionId}` });
   }
   // 화면이 있는 기능은 화면을 근거로 검증되어야 한다. 다만 TST의 필수 관계를 SCR로
@@ -229,12 +302,12 @@ function validateTaskImplementationReadiness(artifactInput, options) {
     return found.length ? ` 이 기능을 덮는 문서: ${found.join(', ')}` : '';
   };
 
-  const linkedIds = unique(implementationArtifacts.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
+  const linkedIds = unique(implementationArtifacts.flatMap((artifact) => qualifiedFunctionIds(artifact.type, artifact.id, artifact.frontmatter && artifact.frontmatter.data)));
   if (requirements.length === 0) issues.push({ code: 'RDL-IMPL-020', severity: 'error', message: `구현 준비도 대상 태스크에는 REQ 문서가 필요합니다.${suggest(linkedIds, 'REQ')}` });
   if (tests.length === 0) issues.push({ code: 'RDL-IMPL-021', severity: 'error', message: `구현 준비도 대상 태스크에는 TST 문서가 필요합니다.${suggest(linkedIds, 'TST')}` });
   for (const artifact of implementationArtifacts) for (const issue of validateImplementationDocument(artifact, { implementation: true })) issues.push(Object.assign({ artifactId: artifact.id }, issue));
-  const requiredIds = unique(requirements.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
-  const testedIds = new Set(tests.flatMap((artifact) => functionIds(artifact.frontmatter && artifact.frontmatter.data)));
+  const requiredIds = unique(requirements.flatMap((artifact) => qualifiedFunctionIds(artifact.type, artifact.id, artifact.frontmatter && artifact.frontmatter.data)));
+  const testedIds = new Set(tests.flatMap((artifact) => qualifiedFunctionIds(artifact.type, artifact.id, artifact.frontmatter && artifact.frontmatter.data)));
   for (const id of requiredIds) if (!testedIds.has(id)) issues.push({ code: 'RDL-IMPL-022', severity: 'error', target: id, message: `태스크의 REQ 기능 ID를 연결된 TST가 검증하지 않습니다: ${id}.${suggest([id], 'TST')}` });
   return issues;
 }
@@ -258,7 +331,8 @@ function renderTestCoverage(ids) {
 }
 
 module.exports = {
-  CONTRACT_VERSION, IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, GROUPING_POLICY, REQUIRED_FUNCTION_FIELDS, REQUIRED_FIELDS_BY_TYPE,
-  functionIds, isIndexArtifact, validateImplementationDocument, implementationTrace, validateImplementationTrace,
+  CONTRACT_VERSION, IMPLEMENTATION_TYPES, GROUPING_POLICY, REQUIRED_FUNCTION_FIELDS, REQUIRED_FIELDS_BY_TYPE,
+  FUNCTION_SUB_KIND, FUNCTION_SOURCE_TYPE, LOCAL_FUNCTION_ID_PATTERN, QUALIFIED_FUNCTION_ID_PATTERN,
+  functionIds, qualifiedFunctionIds, subParent, isIndexArtifact, validateImplementationDocument, implementationTrace, validateImplementationTrace,
   validateTaskImplementationReadiness, renderImplementationMetadata, renderGroupingMetadata, renderFunctionContracts, renderTestCoverage
 };

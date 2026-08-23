@@ -47,6 +47,7 @@ function analyzeDocuments(start, options) {
   const { foldApprovals, readApprovalEvents, trustState } = require('./approval');
   const { queryTasks } = require('./query-index');
   const { parseFrontmatter } = require('./frontmatter');
+  const { qualifiedFunctionIds } = require('./implementation-contract');
   const fs = require('fs');
   const layout = workspaceLayout(start);
   const project = selectProject(layout, settings.project, true);
@@ -71,11 +72,17 @@ function analyzeDocuments(start, options) {
   // 이어져 있다 — 화살표가 검증에서 요구로만 향할 뿐이다. 표시 링크만 보면
   // 모든 TST가 잎 노드라 고아로 잡히고, 그러면 이 신호는 문서 종류 하나를
   // 통째로 잘못 지목하며 죽는다.
+  //
+  // 조인 키는 부모를 단 표기다. 요구는 문서 안 표기로 적고 검증은 부모를 달아 적으므로
+  // 적힌 글자 그대로 맞추면 둘은 영원히 만나지 않는다. 표기를 맞추는 규칙은 한 곳에만
+  // 있어야 하므로 여기서 다시 세우지 않고 구현 계약의 것을 가져다 쓴다.
   const byFunction = new Map();
   const functionIdsOf = new Map();
   for (const document of documents) {
     const parsed = parseFrontmatter(fs.readFileSync(path.join(project.root, document.file), 'utf8'));
-    const declared = (parsed && Array.isArray(parsed.data.functionIds)) ? parsed.data.functionIds : [];
+    // 유형은 식별자에서 읽는다. frontmatter의 type은 'document'이지 문서 유형 코드가
+    // 아니고, 그것을 그대로 넘기면 원천 문서가 원천으로 읽히지 않아 조인이 통째로 빈다.
+    const declared = qualifiedFunctionIds(String(document.id).slice(0, 3), document.id, parsed && parsed.data);
     functionIdsOf.set(document.id, declared);
     for (const functionId of declared) {
       if (!byFunction.has(functionId)) byFunction.set(functionId, []);

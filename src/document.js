@@ -10,12 +10,14 @@ const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
 const { assertBoundaryInput } = require('./document-boundary');
 const {
-  IMPLEMENTATION_TYPES, FUNCTION_ID_PATTERN, GROUPING_POLICY, isIndexArtifact,
+  IMPLEMENTATION_TYPES, GROUPING_POLICY, isIndexArtifact,
+  FUNCTION_SUB_KIND, FUNCTION_SOURCE_TYPE, LOCAL_FUNCTION_ID_PATTERN, QUALIFIED_FUNCTION_ID_PATTERN,
   renderImplementationMetadata, renderGroupingMetadata, renderFunctionContracts
 } = require('./implementation-contract');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
-const RELATED_REQUIRED = new Set(require('./vocabulary').RELATED_REQUIRED_TYPES);
+const { RELATED_REQUIRED_TYPES, SUB_ID_SEPARATOR } = require('./vocabulary');
+const RELATED_REQUIRED = new Set(RELATED_REQUIRED_TYPES);
 
 function markdownFiles(root, output) {
   const result = output || [];
@@ -80,7 +82,15 @@ function createDocument(start, input) {
   const boundary = type === 'NTE' ? null : assertBoundaryInput(type, { scope: input.scope, excludes: input.excludes });
   const functionIds = Array.from(new Set((input.functionIds || []).map((value) => String(value).trim()).filter(Boolean)));
   if (IMPLEMENTATION_TYPES.includes(type) && functionIds.length === 0) throw new Error(`${type} 문서는 --function-id <기능-ID>가 하나 이상 필요합니다.`);
-  for (const functionId of functionIds) if (!FUNCTION_ID_PATTERN.test(functionId)) throw new Error(`기능 ID 형식이 잘못되었습니다: ${functionId}`);
+  // 만드는 자리에서도 표기는 부모가 자명한지로 갈린다. 검사에서만 가르면 어긋난 표기가
+  // 파일에 먼저 들어가고, 사람은 방금 만든 문서에서 진단을 처음 만난다.
+  const ownsFunctions = type === FUNCTION_SOURCE_TYPE;
+  for (const functionId of functionIds) {
+    if (ownsFunctions ? LOCAL_FUNCTION_ID_PATTERN.test(functionId) : QUALIFIED_FUNCTION_ID_PATTERN.test(functionId)) continue;
+    throw new Error(ownsFunctions
+      ? `${type} 문서는 자기 기능을 문서 안 표기로 적습니다: ${functionId} (부모는 이 문서 자신이므로 ${FUNCTION_SUB_KIND}-001)`
+      : `${type} 문서는 원천 계약을 부모로 단 기능 ID가 필요합니다: ${functionId} (${FUNCTION_SOURCE_TYPE}-033${SUB_ID_SEPARATOR}${FUNCTION_SUB_KIND}-001)`);
+  }
   // 문서 1개 = 기능 1개가 기본이다. 합침은 --grouped --reason의 명시적 opt-in이고,
   // forbidden 유형(REQ·SCR)은 선언으로도 열리지 않는다 — 분리가 유일한 길이다.
   const groupingReason = String(input.reason || '').trim();
