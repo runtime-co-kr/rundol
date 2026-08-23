@@ -4027,7 +4027,7 @@
         },
         "AC-002": {
           "text": "세션 worktree나 다른 브랜치에서는 막지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "문서와 설정 등 코드가 아닌 경로는 막지 않는다.",
@@ -4040,7 +4040,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:17:48.196Z",
-      "updatedAt": "2026-08-23T05:21:20.196Z",
+      "updatedAt": "2026-08-23T05:21:24.875Z",
       "statusChangedAt": "2026-08-23T05:18:09.613Z",
       "externalRefs": [],
       "project": "rundol"
