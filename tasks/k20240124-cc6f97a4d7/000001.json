@@ -4291,9 +4291,14 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:49:45.050Z",
-      "updatedAt": "2026-08-23T16:03:54.801Z",
+      "updatedAt": "2026-08-23T16:05:53.839Z",
       "statusChangedAt": "2026-08-23T14:50:20.447Z",
-      "externalRefs": [],
+      "externalRefs": [
+        {
+          "kind": "branch",
+          "value": "session/branchc"
+        }
+      ],
       "project": "rundol"
     },
     "TASK-5298JW3X": {
