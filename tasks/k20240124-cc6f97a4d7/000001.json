@@ -4282,7 +4282,7 @@
         },
         "AC-003": {
           "text": "절차가 대상 종류를 선언하고 rdl run start가 종류에 맞는 대상만 받는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "run.started가 대상 종류와 대상 식별자를 기록하고 접기가 그것을 돌려준다",
@@ -4291,7 +4291,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:49:45.050Z",
-      "updatedAt": "2026-08-23T16:03:25.573Z",
+      "updatedAt": "2026-08-23T16:03:41.115Z",
       "statusChangedAt": "2026-08-23T14:50:20.447Z",
       "externalRefs": [],
       "project": "rundol"
@@ -4429,6 +4429,48 @@
       "createdAt": "2026-08-23T15:21:39.672Z",
       "updatedAt": "2026-08-23T15:22:35.095Z",
       "statusChangedAt": "2026-08-23T15:22:35.095Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-D3KQB067": {
+      "title": "[갈래A] 워크플로 스텝과 판정 함수로 상태 문자열을 걷어낸다",
+      "summary": "상태 문자열 비교 35곳(담당분)을 WORKFLOW_STEPS 기반 판정으로 대체하고, 네 표면(cli/board/check/adapter)이 막는 규칙을 전부 돌려주는 같은 판정 함수를 부르게 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "담당 파일의 상태 문자열 직접 비교가 0이 된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "판정 함수가 막는 규칙을 전부(첫 실패에서 멈추지 않고) 돌려준다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "JUDGMENT_SURFACES 네 표면이 같은 판정 함수를 부른다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "workset.js가 어휘 밖 'open'을 만들지 않는다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "npm test 전체 통과",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T16:03:39.605Z",
+      "updatedAt": "2026-08-23T16:03:39.605Z",
+      "statusChangedAt": "2026-08-23T16:03:39.605Z",
       "externalRefs": [],
       "project": "rundol"
     }
