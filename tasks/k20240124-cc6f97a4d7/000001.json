@@ -3218,7 +3218,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -3243,10 +3243,19 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:55:51.972Z",
-      "updatedAt": "2026-08-20T23:49:41.677Z",
-      "statusChangedAt": "2026-08-20T18:15:28.197Z",
+      "updatedAt": "2026-08-23T04:23:38.112Z",
+      "statusChangedAt": "2026-08-23T04:23:38.112Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gates": [
+          "done-requires-test-link",
+          "implementation-readiness"
+        ],
+        "reason": "완료 게이트를 재량으로 면제한다. 검증 문서가 확인된 것이 아니라, 닫지 못해 doing에 쌓인 태스크를 정리하려고 사람이 임의로 지난 것이다. 이 태스크의 완료를 검증 근거로 읽으면 안 되며, 검증은 별도 TST로 다시 세운다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T04:23:37.698Z"
+      }
     },
     "TASK-CSR5C452": {
       "title": "표를 편집기에서 다룬다",
