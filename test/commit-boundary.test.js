@@ -78,7 +78,16 @@ try {
   // 다른 하나가 면제되면 경계는 둘 중 약한 쪽이 된다.
   assert.strictEqual(commit('main', 'src/b.js', 'feat: 코드\n\nRundol-Task: TASK-1').ok, false, '결박이 브랜치 규칙을 대신하지 않는다');
 
+  // 문서는 대상이 아니다. 이 목록은 Rundol을 쓰는 모든 프로젝트에 실려 나가는 기본값이고,
+  // 남의 저장소에서 문서 한 줄 고치는 데 브랜치를 요구하는 것은 이 도구가 정할 일이 아니다.
   assert.ok(commit('main', 'docs/a.md', 'docs: 문서').ok, '제품 코드가 아니면 기본 브랜치에서도 담는다');
+
+  // 실행되는 코드만 제품 코드가 아니다. 스킬은 세 클라이언트의 홈에 복사되어 에이전트의
+  // 판단을 바꾸고, 배포 워크플로는 무엇이 npm에 올라가는지를 정하며, 시험은 통제가 실제로
+  // 서 있는지를 판정한다. 셋 다 기본 브랜치에서 조용히 바뀌면 안 되는 것들이다.
+  for (const guarded of ['skills/rundol-project-governance/SKILL.md', '.github/workflows/release.yml', 'test/x.test.js']) {
+    assert.strictEqual(commit('main', guarded, `chore: ${guarded}`).ok, false, `${guarded}는 기본 브랜치에서 담을 수 없다`);
+  }
 
   // ── 결박 규칙 (commit-msg) ───────────────────────────────────────────
 
