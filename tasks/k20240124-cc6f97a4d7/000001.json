@@ -4278,7 +4278,7 @@
         },
         "AC-002": {
           "text": "gate만으로 이루어진 절차는 런을 열지 못하고 시작에서 거부된다 (RUN_OPENING_UNIT_KINDS)",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "절차가 대상 종류를 선언하고 rdl run start가 종류에 맞는 대상만 받는다",
@@ -4291,7 +4291,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:49:45.050Z",
-      "updatedAt": "2026-08-23T16:03:09.218Z",
+      "updatedAt": "2026-08-23T16:03:25.573Z",
       "statusChangedAt": "2026-08-23T14:50:20.447Z",
       "externalRefs": [],
       "project": "rundol"
