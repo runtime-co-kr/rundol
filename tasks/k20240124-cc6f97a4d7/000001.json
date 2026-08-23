@@ -3429,7 +3429,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -3458,10 +3458,16 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:10.054Z",
-      "updatedAt": "2026-08-20T22:08:55.883Z",
-      "statusChangedAt": "2026-08-20T18:30:55.163Z",
+      "updatedAt": "2026-08-23T04:11:53.298Z",
+      "statusChangedAt": "2026-08-23T04:11:53.298Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gate": "done-requires-test-link",
+        "reason": "편집기 검증 문서가 36개 TST 어디에도 없다. 편집기 TST를 만들 때까지 완료 판정을 미룬다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T04:11:52.935Z"
+      }
     },
     "TASK-X41SFK10": {
       "title": "댓글 작성 주체를 클라이언트 유형에서 추정하지 않는다",
