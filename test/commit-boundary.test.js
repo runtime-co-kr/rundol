@@ -88,6 +88,24 @@ try {
   assert.deepStrictEqual(installed.map((item) => item.name), HOOKS, '두 훅을 각각 답한다');
   assert.ok(installed.every((item) => item.managed), '설치한 뒤에는 둘 다 관리형이다');
 
+  // 한글 바로 앞의 변수는 중괄호로 묶여 있어야 한다.
+  //
+  // macOS의 /bin/sh는 bash 3.2이고 비UTF-8 로케일에서 뒤따르는 한글 바이트를 변수
+  // 이름으로 빨아들인다. `$default에`는 "default에"라는 없는 변수가 되고 set -u가
+  // 거기서 끝낸다 — 훅은 막지만 왜 막혔는지 말하지 못한다. 우리 안내문은 거의 다
+  // 한글이므로 이 실수는 다음 훅에서도 자연스럽게 다시 나온다.
+  //
+  // 실제 커밋으로는 이 결함이 리눅스·윈도우에서 재현되지 않는다. 그래서 행동이
+  // 아니라 설치된 바이트의 모양을 본다 — 어느 기계에서 돌든 같은 답이 나온다.
+  // 전체 줄 주석은 셸이 확장하지 않으므로 검사에서 뺀다. 이 규칙을 설명하는 주석
+  // 자신이 나쁜 모양을 담고 있어야 하기 때문이다. 이 훅들에는 heredoc이 없으므로
+  // 첫 글자가 #인 줄은 언제나 주석이다.
+  for (const item of installed) {
+    const body = fs.readFileSync(item.file, 'utf8').replace(/^[ \t]*#.*$/gmu, '');
+    const unbraced = body.match(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/gu) || [];
+    assert.deepStrictEqual(unbraced, [], `${item.name}: 한글 앞의 변수를 중괄호로 묶으세요: ${unbraced.join(', ')}`);
+  }
+
   // ── 브랜치 규칙 (pre-commit) ─────────────────────────────────────────
 
   const onMain = commit('main', 'src/a.js', 'feat: 코드');

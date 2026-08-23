@@ -53,8 +53,12 @@ default_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD || echo 
 default=\${default_ref#*/}
 [ "$branch" = "$default" ] || exit 0
 
+# 한글 앞의 변수는 반드시 중괄호로 묶는다. macOS의 /bin/sh는 bash 3.2이고 비UTF-8
+# 로케일에서 뒤따르는 한글 바이트를 변수 이름으로 빨아들인다 — \$default에는
+# "default에"라는 없는 변수가 되고 set -u가 거기서 끝낸다. 훅은 막았는데 왜
+# 막혔는지는 말하지 못하는 상태가 되며, 그 차이는 macOS에서만 드러난다.
 if git diff --cached --name-only | grep -Eq '${codePattern()}'; then
-  echo "rdl: 제품 코드는 $default에 직접 커밋하지 않습니다." >&2
+  echo "rdl: 제품 코드는 \${default}에 직접 커밋하지 않습니다." >&2
   echo "rdl: 세션 작업 공간을 열고 그 안에서 커밋하세요." >&2
   echo "rdl:   rdl session start" >&2
   exit 1
