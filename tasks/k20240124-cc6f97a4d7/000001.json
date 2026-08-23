@@ -4094,7 +4094,7 @@
         },
         "AC-002": {
           "text": "제품 코드 커밋에 Rundol-Task 트레일러가 없으면 거부되고, none과 사유는 통과한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "세션 브랜치와 기능 브랜치에서는 브랜치 규칙이 걸리지 않는다.",
@@ -4111,7 +4111,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:46:59.685Z",
-      "updatedAt": "2026-08-23T06:43:37.081Z",
+      "updatedAt": "2026-08-23T06:43:46.109Z",
       "statusChangedAt": "2026-08-23T05:47:11.793Z",
       "externalRefs": [],
       "project": "rundol"
