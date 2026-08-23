@@ -4155,6 +4155,36 @@
       "statusChangedAt": "2026-08-23T07:09:21.002Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-9M54ZCP4": {
+      "title": "같은 밀리초에 들어온 할당 사건의 순서를 인과로 정한다",
+      "summary": "",
+      "owner": null,
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "같은 recordedAt을 가진 assignment.issued와 report.submitted가 eventId와 무관하게 발급-보고 순으로 접힌다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "인과 순서 어휘가 vocabulary에 있고 WORK_EVENT_TYPES와 집합이 같다는 것을 시험이 지킨다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T09:10:05.195Z",
+      "updatedAt": "2026-08-23T09:10:05.195Z",
+      "statusChangedAt": "2026-08-23T09:10:05.195Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
