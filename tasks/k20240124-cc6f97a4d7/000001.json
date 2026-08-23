@@ -4264,7 +4264,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "review",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -4291,8 +4291,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:49:45.050Z",
-      "updatedAt": "2026-08-23T16:05:53.839Z",
-      "statusChangedAt": "2026-08-23T14:50:20.447Z",
+      "updatedAt": "2026-08-23T16:06:09.479Z",
+      "statusChangedAt": "2026-08-23T16:06:09.479Z",
       "externalRefs": [
         {
           "kind": "branch",
