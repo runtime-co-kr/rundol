@@ -148,10 +148,16 @@ function sameFile(left, right) {
   return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
 }
 
+// 기본 자리는 저장소 안의 .rundol/worktrees다. 형제 경로에 두던 것을 옮긴 이유는
+// 추적 제외 규칙을 제품 브랜치의 .gitignore가 들고 오게 됐기 때문이다. 규칙이
+// clone과 함께 오면 "규칙을 빠뜨린 한 번"이라는 창 자체가 없어지고, 형제로 흩어진
+// 트리를 사람이 찾아다니지 않아도 된다.
+//
+// 규칙이 없는 저장소에서는 여전히 위험하다. 그래서 rdl hook session-start가 세션을
+// 열기 전에 두 규칙의 존재를 확인하고 없으면 채운다 — 자리를 옮기는 결정과 그 자리를
+// 지키는 규칙은 함께 서야 한다.
 function defaultTarget(root, short) {
-  // 저장소 안에 두지 않는다. 안에 두면 추적 제외를 따로 걸어야 하고, 그 규칙을 빠뜨린
-  // 한 번에 세션 트리 전체가 커밋된다. 형제로 두면 그 실수가 불가능하다.
-  return path.join(path.dirname(root), `${path.basename(root)}-${short}`);
+  return path.join(root, '.rundol', 'worktrees', short);
 }
 
 function entry(sessionId, short, branch, target, base) {

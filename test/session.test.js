@@ -109,9 +109,9 @@ try {
   assert.strictEqual(created.short, 'aabbccdd');
   assert.strictEqual(created.branch, 'session/aabbccdd');
   assert.strictEqual(created.sessionIdSource, 'argument');
-  // 기본 자리는 저장소의 형제다. 안에 두면 추적 제외를 빠뜨린 한 번에 세션 트리
-  // 전체가 커밋된다.
-  assert.strictEqual(path.dirname(created.path), path.dirname(repository));
+  // 기본 자리는 저장소 안의 .rundol/worktrees다. 추적 제외는 제품 브랜치의
+  // .gitignore가 들고 오므로 clone과 함께 규칙이 온다.
+  assert.strictEqual(created.path, path.join(repository, '.rundol', 'worktrees', 'aabbccdd'));
   assert.ok(fs.existsSync(path.join(created.path, 'a.txt')), '작업 트리에 내용이 펼쳐진다');
   assert.strictEqual(git(['rev-parse', '--abbrev-ref', 'HEAD'], created.path), 'session/aabbccdd');
 

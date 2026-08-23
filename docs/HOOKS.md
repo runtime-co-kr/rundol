@@ -77,6 +77,10 @@ rdl hook <session-start|post-tool-use|stop|session-end> [--client <claude|codex>
 
 doing 개수를 매번 말하는 이유는 그것이 파생 사다리의 전제이기 때문이다. `single-doing`은 doing이 정확히 하나일 때만 답하므로, 둘 이상이면 저장마다 `--task`가 손으로 필요해진다. 그 사실이 지금은 `rdl task list`를 일부러 쳐야만 보인다.
 
+본 작업 트리라면 추적 제외 규칙도 확인한다. 세션 worktree가 `.rundol/worktrees/`에 서게 되면서 `/projects/*/`와 `.rundol/`은 편의가 아니라 전제가 됐다 — 규칙이 없는 채로 자리를 옮기면 `git add -A` 한 번이 트리를 통째로 담는다. 없으면 채우고 무엇을 채웠는지 말한다. 조용히 고치면 추적 규칙이 언제 어디서 들어왔는지 아무도 답할 수 없다.
+
+세션 worktree에서는 채우지 않는다. 같은 파일이 두 자리에서 갈리면 어느 쪽이 커밋될지가 그때 누가 저장하느냐에 달린다.
+
 여기서 **커서**를 놓는다. `stop`이 "이 턴이 만든 것"을 세려면 지난번에 본 HEAD가 있어야 한다.
 
 **`post-tool-use`** — `git commit`이 실제로 끝난 뒤 그 커밋의 결박 여부를 debug 원장에 적는다. 막지 않는다. `rdl check`의 50건 창은 사후에만 답하지만 이것은 매 커밋을 그 자리에서 센다.

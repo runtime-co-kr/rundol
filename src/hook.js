@@ -18,7 +18,7 @@ const { runGit } = require('./git');
 const { readCommitBindings } = require('./task-commits');
 const { runtimeWorkspace } = require('./runtime');
 
-const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS } = require('./vocabulary');
+const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES } = require('./vocabulary');
 // 한 턴이 만드는 커밋 수의 상한이 아니라, 커서를 잃었을 때 거슬러 볼 창이다.
 const NEW_COMMIT_WINDOW = 50;
 
@@ -144,6 +144,30 @@ function waitingRuns(root) {
   } catch (_) { return null; }
 }
 
+// Rundol이 강제하는 추적 제외를 확인하고 없으면 채운다.
+//
+// 세션 worktree가 저장소 안에 서게 되면서 이 규칙은 편의가 아니라 전제가 됐다.
+// 규칙이 없는 채로 자리를 옮기면 git add -A 한 번이 트리 전체를 커밋한다.
+//
+// 사람의 기억에 맡기지 않는 이유는 규칙보다 먼저 만들어진 저장소와 규칙을 지운
+// 저장소가 있기 때문이다. 새로 clone한 곳에는 이미 있으므로 대개 아무 일도 하지
+// 않고, 없을 때만 채우고 무엇을 채웠는지 말한다 — 조용히 고치면 추적 규칙이 언제
+// 어디서 들어왔는지 아무도 답할 수 없다.
+function ensureIgnoreRules(root) {
+  const file = path.join(root, '.gitignore');
+  let source = '';
+  try { source = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''; }
+  catch (_) { return null; }
+  const present = new Set(source.split(/\r?\n/u).map((line) => line.trim()));
+  const missing = WORKTREE_IGNORE_RULES.filter((rule) => !present.has(rule));
+  if (!missing.length) return [];
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const base = source.replace(/[\r\n]+$/u, '');
+  const block = [base, '', '# Rundol worktree 자리 — rdl hook이 채웠습니다'].concat(missing, ['']).join(eol);
+  try { fs.writeFileSync(file, block, 'utf8'); } catch (_) { return null; }
+  return missing;
+}
+
 // ── 이벤트 ───────────────────────────────────────────────────────────────
 
 // 시작은 주입만 한다. 이 시점에는 판정할 사실이 없고, 막아 봐야 일을 못 하게 할 뿐이다.
@@ -178,6 +202,14 @@ function sessionStart(start, payload) {
 
   const runs = waitingRuns(root);
   if (runs && (runs.waiting || runs.drivable)) context.push(`런: 사람 대기 ${runs.waiting}건 · 진행 가능 ${runs.drivable}건`);
+
+  // 본 트리에서만 채운다. 세션 worktree에서 고치면 같은 파일이 두 자리에서 갈리고,
+  // 어느 쪽이 커밋될지는 그때 누가 저장하느냐에 달리게 된다.
+  if (main) {
+    const added = ensureIgnoreRules(root);
+    if (added === null) context.push('.gitignore를 확인하지 못했습니다. 저장소 안 worktree가 추적될 수 있습니다.');
+    else if (added.length) context.push(`.gitignore에 추적 제외 규칙을 채웠습니다: ${added.join(' · ')}`);
+  }
 
   // 커서를 여기서 놓는다. 이 자리가 없으면 stop이 "이 턴이 만든 것"을 셀 기준을 갖지 못한다.
   writeCursor(root, payload.sessionId, { head: headOf(worktree), branch, at: new Date().toISOString() });

@@ -12,10 +12,12 @@ linked worktree는 저장소 안에 물리 파일을 제공한다.
 
 ```text
 repository/
-└─ projects/
-   ├─ workspace/             # rundol/workspace
-   ├─ crm/                   # rundol/crm
-   └─ tms/                   # rundol/tms
+├─ projects/
+│  ├─ workspace/             # rundol/workspace
+│  ├─ crm/                   # rundol/crm
+│  └─ tms/                   # rundol/tms
+└─ .rundol/worktrees/
+   └─ <id8>/                 # session/<id8> — 코드 작업
 ```
 
 worktree 경로는 제품 브랜치의 `.gitignore`가 숨긴다. 규칙은 둘이다.

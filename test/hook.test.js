@@ -67,6 +67,28 @@ try {
   assert.ok(started.context.some((line) => line.includes('main')), '현재 브랜치를 알린다');
   assert.ok(started.context.some((line) => line.includes('본 트리')), '본 작업 트리임을 알린다');
 
+  // 규칙이 없으면 채운다. 세션 worktree가 저장소 안에 서게 되면서 이 규칙은 편의가
+  // 아니라 전제가 됐다 — 없는 채로 자리를 옮기면 git add -A 한 번이 트리를 통째로 담는다.
+  const ignoreFile = path.join(temporary, '.gitignore');
+  const filled = fs.readFileSync(ignoreFile, 'utf8');
+  assert.ok(filled.includes('/projects/*/'), '문서 worktree 규칙을 채운다');
+  assert.ok(filled.includes('.rundol/'), '코드 worktree 규칙을 채운다');
+  assert.ok(started.context.some((line) => line.includes('추적 제외 규칙을 채웠습니다')), '무엇을 채웠는지 말한다');
+
+  // 이미 있으면 건드리지 않는다. 부를 때마다 덧붙이면 파일이 자란다.
+  const again = hook('session-start', { cwd: temporary, session_id: 'sess-1' });
+  assert.strictEqual(fs.readFileSync(ignoreFile, 'utf8'), filled, '규칙이 있으면 파일을 바꾸지 않는다');
+  assert.ok(!again.context.some((line) => line.includes('채웠습니다')), '할 일이 없으면 말하지 않는다');
+
+  // 하나만 빠져 있으면 그것만 채운다.
+  fs.writeFileSync(ignoreFile, 'node_modules/\n/projects/*/\n', 'utf8');
+  const partial = hook('session-start', { cwd: temporary, session_id: 'sess-1' });
+  const repaired = fs.readFileSync(ignoreFile, 'utf8');
+  assert.ok(repaired.includes('node_modules/'), '있던 내용은 남긴다');
+  assert.strictEqual(repaired.split(/\r?\n/u).filter((line) => line.trim() === '/projects/*/').length, 1, '있는 규칙을 두 번 적지 않는다');
+  assert.ok(repaired.includes('.rundol/'), '빠진 규칙만 채운다');
+  assert.ok(partial.context.some((line) => line.includes('.rundol/')), '채운 규칙을 지목한다');
+
   // ── stop: 새 커밋이 없으면 통과 ────────────────────────────────────────
 
   const quiet = hook('stop', { cwd: temporary, session_id: 'sess-1' });

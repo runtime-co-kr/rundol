@@ -196,6 +196,16 @@ const ID_PATTERNS = Object.freeze({
   member: 'MEMBER-\\d{3}'
 });
 
+/**
+ * 제품 브랜치의 .gitignore가 들고 있어야 하는 추적 제외 규칙. 프로젝트 문서 worktree와
+ * 코드 작업 worktree의 자리이며, 이 규칙이 있어야 저장소 안에 worktree를 둘 수 있다.
+ *
+ * 목록으로 두는 이유는 같은 두 경로를 쓰는 곳이 하나가 아니기 때문이다. attach.js는
+ * 옛 저장소를 위해 info/exclude에도 같은 규칙을 쓴다 — 두 곳이 각자 문자열을 들고 있으면
+ * 한쪽만 고쳐지는 날이 온다.
+ */
+const WORKTREE_IGNORE_RULES = Object.freeze(['/projects/*/', '.rundol/']);
+
 // ── 하네스 훅 ──────────────────────────────────────────────────────────
 
 /**
@@ -250,6 +260,7 @@ module.exports = Object.freeze({
   LEDGERS,
   FLAT_LEDGERS,
   REF_KINDS,
+  WORKTREE_IGNORE_RULES,
   HOOK_EVENTS,
   HOOK_CLIENTS,
   CONVENTIONAL_PRIMARY,
