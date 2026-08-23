@@ -3955,7 +3955,7 @@
         },
         "AC-003": {
           "text": "순서가 필요한 비동기 사슬은 한 워커 안에서 기존 순서대로 돈다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "RUNDOL_TEST_JOBS=1이면 예전처럼 한 프로세스에서 순차로 돈다.",
@@ -3964,7 +3964,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T04:52:56.853Z",
-      "updatedAt": "2026-08-23T05:03:43.140Z",
+      "updatedAt": "2026-08-23T05:03:47.593Z",
       "statusChangedAt": "2026-08-23T04:52:56.853Z",
       "externalRefs": [],
       "project": "rundol"
