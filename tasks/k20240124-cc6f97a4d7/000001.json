@@ -4401,6 +4401,36 @@
       "statusChangedAt": "2026-08-23T15:18:08.492Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-XDPAA1FE": {
+      "title": "[갈래F] board 시험이 죽은 소켓을 재사용하지 않게 한다",
+      "summary": "c41315e가 주석과 에러 메시지만 넣고 옵션 한 줄을 빠뜨렸다. globalAgent의 keep-alive로 소켓이 풀에 남고 서버 유휴 타임아웃 5초가 먼저 지나면 죽은 소켓을 재사용한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "test/board.test.js의 http.request가 agent: false로 연결 재사용을 끈다 — 14번 줄 주석이 이미 설명해 둔 고침이다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "스위트 전체를 돌릴 때 board 시험이 ECONNRESET으로 터지지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T15:21:39.672Z",
+      "updatedAt": "2026-08-23T15:21:39.672Z",
+      "statusChangedAt": "2026-08-23T15:21:39.672Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
