@@ -97,7 +97,7 @@ async function testBoardRuns() {
   fs.writeFileSync(path.join(project, 'procedures.json'), `${JSON.stringify({
     schemaVersion: 1,
     procedures: {
-      'board.fixture': { revision: 1, steps: [{ id: 'approval', human: true }, { id: 'author', executor: 'client' }] }
+      'board.fixture': { revision: 1, targetKind: 'document', steps: [{ id: 'approval', human: true }, { id: 'author', executor: 'client' }] }
     }
   }, null, 2)}\n`, 'utf8');
   command('git', ['add', 'procedures.json'], project);

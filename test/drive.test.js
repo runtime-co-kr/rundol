@@ -467,7 +467,7 @@ const running = (async () => {
     rdl(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
     const projectRoot = path.join(ledgerWorkspace, 'projects', 'crm');
     fs.writeFileSync(path.join(projectRoot, 'procedures.json'), `${JSON.stringify({ schemaVersion: 1, procedures: {
-      'gate.fail': { revision: 1, idempotent: true, steps: [
+      'gate.fail': { revision: 1, targetKind: 'document', idempotent: true, steps: [
         { id: 'gate', gate: { command: 'check', args: ['{artifact}', '--strict'] }, onFail: { goto: 'gate', maxAttempts: 1 } },
         { id: 'sync', human: true }
       ] }
