@@ -3995,12 +3995,12 @@
         },
         "AC-003": {
           "text": "본 작업 트리는 목록에 넣지 않는다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:11:17.633Z",
-      "updatedAt": "2026-08-23T05:14:16.181Z",
+      "updatedAt": "2026-08-23T05:14:20.688Z",
       "statusChangedAt": "2026-08-23T05:11:44.353Z",
       "externalRefs": [],
       "project": "rundol"
