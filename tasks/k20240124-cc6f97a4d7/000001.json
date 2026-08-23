@@ -3757,7 +3757,7 @@
         },
         "AC-003": {
           "text": "루트 .gitignore에 /projects/*/와 .rundol/이 없으면 session-start 훅이 채우고 무엇을 채웠는지 알린다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "이미 규칙이 있으면 훅이 파일을 건드리지 않는다.",
@@ -3766,7 +3766,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T03:11:43.480Z",
-      "updatedAt": "2026-08-23T03:19:11.500Z",
+      "updatedAt": "2026-08-23T03:19:16.293Z",
       "statusChangedAt": "2026-08-23T03:11:58.131Z",
       "externalRefs": [],
       "project": "rundol"
