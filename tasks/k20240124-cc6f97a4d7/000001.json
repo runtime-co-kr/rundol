@@ -3461,7 +3461,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "high",
       "kind": "normal",
       "result": null,
@@ -3490,10 +3490,19 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:57:04.080Z",
-      "updatedAt": "2026-08-20T22:08:51.947Z",
-      "statusChangedAt": "2026-08-20T20:06:00.399Z",
+      "updatedAt": "2026-08-23T04:24:23.677Z",
+      "statusChangedAt": "2026-08-23T04:24:23.677Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gates": [
+          "done-requires-test-link",
+          "implementation-readiness"
+        ],
+        "reason": "완료 게이트를 재량으로 면제한다. 검증 문서가 확인된 것이 아니라, 닫지 못해 doing에 쌓인 태스크를 정리하려고 사람이 임의로 지난 것이다. 이 태스크의 완료를 검증 근거로 읽으면 안 되며, 검증은 별도 TST로 다시 세운다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T04:24:23.263Z"
+      }
     },
     "TASK-3H0C78TH": {
       "title": "새 편집기를 보드에 배선하고 배포 경로를 만든다",
