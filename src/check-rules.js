@@ -13,9 +13,17 @@ const NORMALIZED_BUILTIN = normalizeItemTypes(BUILTIN_ITEM_TYPES);
 //
 // 그래서 기본값을 여기 둔다. 호출자가 정책 층에서 읽은 것을 넘기면 그것이 이기고,
 // 넘기지 않으면 이관 전과 같은 판정이 돈다.
+// 사람이 사유를 대고 면제한 게이트는 판정하지 않는다. 면제를 여기서 보지 않으면 저장
+// 계층이 받아 준 것을 검사가 다시 위반이라 말하고, 그러면 면제는 닫히지 않는 태스크를
+// 닫는 수단이 아니라 경고를 하나 더 만드는 일이 된다.
+function exempted(task, gate) {
+  const exemption = task && task.exemption;
+  return Boolean(exemption && exemption.gate === gate && exemption.reason);
+}
+
 const DEFAULT_TASK_GATES = Object.freeze({
   'done-requires-test-link': (task) => (
-    task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))
+    task.status === 'done' && !exempted(task, 'done-requires-test-link') && !(task.links || []).some((link) => String(link).startsWith('TST-'))
       ? [{ code: 'RDL-TASK-019', message: 'done 태스크는 TST 문서를 연결해야 합니다.' }]
       : []
   )
@@ -500,7 +508,7 @@ module.exports = {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS, REQUIRED_FIELDS, ID_PATTERN,
   NON_CANONICAL_CODES, REQUIRED_TAG_NAMESPACES, NOTE_TAG_NAMESPACES,
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
-  ALLOWED_TASK_STATES, CONTRACT_VIOLATION_CODES,
+  ALLOWED_TASK_STATES, CONTRACT_VIOLATION_CODES, DEFAULT_TASK_GATES,
   MAX_ASSET_BYTES, MAX_ASSET_EDGE, isAssetPath, maskCode,
   governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
   checkContractViolations, checkTaskEntries, checkReference, referenceFromTask,

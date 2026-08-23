@@ -45,6 +45,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                  [--link <ARTIFACT-ID>] [--unlink <ARTIFACT-ID>]
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
+                 완료 게이트 면제는 --status done --exempt <게이트> --reason <사유> [--decided-by <MEMBER-ID>]
   rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
@@ -500,6 +501,21 @@ rdl task set TASK-... --project memo --result none
 판정은 `pass`, `fail`, `blocked`, `skipped` 중 하나이며 `none`은 판정을 지운다. 테스트 태스크가 아닌 태스크에는 둘 수 없다(`RDL-TASK-027`). 완료하는 테스트 태스크에는 판정이 필요하다(`RDL-TASK-028`). 반려는 수행하지 않기로 한 것이므로 요구하지 않는다.
 
 `--decided-by`를 생략하면 태스크의 현재 owner가 결정한 것으로 기록한다. 반려를 되돌려 다른 상태로 바꾸면 반려 사유는 자동으로 지워진다. 종료 상태가 된 태스크는 선행 태스크로서 후행 태스크를 더 이상 막지 않는다.
+
+#### 완료 게이트 면제
+
+```bash
+rdl task set TASK-AWM8ZS3N --project memo --status done \
+  --exempt done-requires-test-link --reason "이 기능의 검증 문서가 아직 없다" --decided-by MEMBER-001
+```
+
+수용조건을 다 채우고도 닫히지 않는 태스크가 있다. 완료가 요구하는 증거가 아직 없을 때이며, 그 상태로 두면 태스크는 밀린 일이 아니라 **닫지 못한 일**로 `doing`에 쌓인다. 쌓인 `doing`은 저장의 태스크 파생을 죽이므로, 닫지 못하는 것 하나가 결박 전체를 요금으로 바꾼다.
+
+`--exempt`는 그 자리를 사람이 사유를 대고 지나게 한다. 반려와 같은 모양인 것은 우연이 아니다 — 둘 다 증거 없이 상태를 옮기는 일이고, 그래서 둘 다 사유와 결정자를 요구한다. 사유가 없으면 면제는 거부되며, 그것이 없으면 면제는 완료 게이트를 우회하는 조용한 통로가 된다.
+
+면제할 수 있는 게이트는 코드가 정한 목록 안이다(`implementation-readiness`, `done-requires-test-link`). 되돌릴 수 없는 관문은 그 목록에 없으며, 그것이 면제가 경계를 여는 수단이 되지 않게 하는 유일한 장치다. 면제는 지목한 게이트 하나에만 걸리고 나머지는 그대로 판정한다.
+
+면제는 게이트·사유·결정자·시각으로 태스크에 남고, 완료가 아닌 상태로 되돌리면 자동으로 지워진다. `rdl check` 요약이 면제 건수를 낸다 — 면제된 게이트는 진단을 내지 않으므로, 요약에 없으면 얼마나 쓰였는지 아무 데서도 보이지 않는다.
 
 태스크 변경 operation은 다음 위치에 기록된다.
 

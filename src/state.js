@@ -8,7 +8,7 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency, assertKindConsistency, assertRoundUniqueness } = require('./tasks');
+const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency, assertExemptionConsistency, assertKindConsistency, assertRoundUniqueness } = require('./tasks');
 const { initSettings, saveSettings, prepareSettings, finalizeSettings } = require('./settings');
 const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
 const { getClient } = require('./collaboration-store');
@@ -385,6 +385,20 @@ function persistTaskChange(config, values) {
 // 반려를 되돌릴 때 사유를 남겨두면 "반려가 아닌데 반려 사유가 있는" 상태가 되어 검증이 막는다.
 // 호출자마다 같은 짝을 다시 쓰게 하는 대신 여기서 정리한다. 결정자를 생략하면 태스크 owner가
 // 결정한 것으로 본다. CLI는 태스크를 읽지 않으므로 그 값을 알 수 없다.
+// 면제도 상태와 짝이다. 완료가 아닌 상태로 옮기면서 면제를 남겨 두면 "완료가 아닌데
+// 면제가 있는" 상태가 되어 저장이 막힌다. 결정자를 생략하면 반려와 같은 규칙으로
+// 태스크 owner가 결정한 것으로 본다 — CLI는 태스크를 읽지 않으므로 그 값을 모른다.
+function normalizeExemptionChange(task, changes) {
+  if (!changes || !Object.prototype.hasOwnProperty.call(changes, 'status')) return;
+  if (changes.status !== 'done') {
+    if (task.exemption && !Object.prototype.hasOwnProperty.call(changes, 'exemption')) changes.exemption = null;
+    return;
+  }
+  const exemption = changes.exemption || task.exemption;
+  if (!exemption) return;
+  changes.exemption = Object.assign({}, exemption, { decidedBy: exemption.decidedBy || changes.owner || task.owner || null });
+}
+
 function normalizeCancellationChange(task, changes) {
   if (!changes || !Object.prototype.hasOwnProperty.call(changes, 'status')) return;
   if (changes.status !== 'cancelled') {
@@ -406,8 +420,10 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   const task = parsed.tasks && parsed.tasks[taskIdValue];
   if (!task) throw new Error(`태스크를 찾지 못했습니다: ${taskIdValue}`);
   normalizeCancellationChange(task, changes);
+  normalizeExemptionChange(task, changes);
   assertBlockerConsistency(task, changes);
   assertCancellationConsistency(task, changes);
+  assertExemptionConsistency(task, changes);
   assertKindConsistency(task, changes);
   assertRoundUniqueness(parsed.tasks, taskIdValue, Object.assign({}, task, changes));
   const before = {};
@@ -475,6 +491,7 @@ function taskCreate(start, input) {
   // 요구가 이것이다. 판정이 필요할 때 링크를 보고 계산한다.
   assertBlockerConsistency(null, task);
   assertCancellationConsistency(null, task);
+  assertExemptionConsistency(null, task);
   assertKindConsistency(null, task);
   assertRoundUniqueness(parsed.tasks, id, task);
   parsed.tasks[id] = task;

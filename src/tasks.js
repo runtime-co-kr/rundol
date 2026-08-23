@@ -56,6 +56,28 @@ function assertCancellationConsistency(current, changes) {
   }
 }
 
+// 완료 게이트의 면제. 닫히지 않는 태스크를 사람이 사유를 대고 닫는 자리다.
+//
+// 반려와 같은 모양인 것은 우연이 아니다. 둘 다 증거가 없는 채로 상태를 옮기는 일이고,
+// 그래서 둘 다 사유와 결정자를 요구한다. 사유를 강제하지 않으면 면제가 완료 게이트를
+// 우회하는 조용한 통로가 된다 — 반려에 대해 이미 내린 판단과 같다.
+//
+// 면제할 수 있는 게이트는 코드가 정한 목록 안이다. 되돌릴 수 없는 관문은 그 목록에
+// 없으며, 그것이 면제가 경계를 여는 수단이 되지 않게 하는 유일한 장치다.
+const EXEMPTABLE = vocabulary.EXEMPTABLE_GATES;
+function assertExemptionConsistency(current, changes) {
+  const next = Object.assign({}, current || {}, changes || {});
+  const exemption = next.exemption;
+  if (!exemption) return;
+  // 면제는 완료를 위한 것이다. 다른 상태에 남겨 두면 무엇을 면제한 것인지가 사라지고,
+  // 되살아난 태스크가 옛 사유를 들고 다시 닫힌다.
+  if (next.status !== 'done') throw inputError('완료 상태가 아닌 태스크에는 게이트 면제를 둘 수 없습니다.');
+  if (!EXEMPTABLE.includes(exemption.gate)) throw inputError(`면제할 수 없는 게이트입니다: ${exemption.gate || '(없음)'}. 면제는 허용 목록 안에서만 선언됩니다(${EXEMPTABLE.join(', ')}).`);
+  for (const [field, label] of [['reason', '면제 사유'], ['decidedBy', '결정자'], ['at', '결정 시각']]) {
+    if (!exemption[field] || !String(exemption[field]).trim()) throw inputError(`${label}가 필요합니다.`);
+  }
+}
+
 // 진행 상태와 판정은 다른 축이다. 실패한 테스트도 수행은 끝난 것이라 done이고, 그
 // 판정이 fail이다. 한 필드에 섞으면 "실패를 확인한 테스트"와 "아직 돌리지 않은 테스트"를
 // 구분할 수 없어, 테스트만 모아 성공 여부를 묻는 일이 처음부터 불가능해진다.
@@ -256,6 +278,7 @@ module.exports = {
   taskKind,
   assertBlockerConsistency,
   assertCancellationConsistency,
+  assertExemptionConsistency,
   assertKindConsistency,
   assertRoundUniqueness,
   holdsRoundSlot,

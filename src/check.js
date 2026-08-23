@@ -63,7 +63,8 @@ const {
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, ID_PATTERN, REQUIRED_FIELDS,
   checkDocumentMetadata, checkCharterMetadata, checkContractViolations, checkTaskEntries,
   governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask,
-  isAssetPath, maskCode, checkAssetReference, checkAssetInventory
+  isAssetPath, maskCode, checkAssetReference, checkAssetInventory,
+  DEFAULT_TASK_GATES,
 } = require('./check-rules');
 const { imageSize } = require('./image-header');
 
@@ -233,13 +234,9 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
     // 완료 태스크에 검증 문서 연결을 요구하는 규칙이 여기로 옮겨 왔다. 전역이던 시절에는
     // 결정 문서만 저작한 태스크가 수용조건을 다 채우고도 완료되지 못했다 — 결정 저작에는
     // 검증 문서가 없기 때문이다. 이제 그 유형이 면제를 선언하면 규칙을 지우지 않고 풀린다.
-    gates: {
-      'done-requires-test-link': (task) => (
-        task.status === 'done' && !(task.links || []).some((link) => String(link).startsWith('TST-'))
-          ? [{ code: 'RDL-TASK-019', message: 'done 태스크는 TST 문서를 연결해야 합니다.' }]
-          : []
-      )
-    },
+    // 게이트 판정은 check-rules가 소유한다. 같은 규칙을 여기 다시 적었던 탓에 면제를
+    // 한쪽에만 넣고도 통과한 줄 알았던 일이 있었다 — 규칙이 두 곳에 있으면 둘은 갈린다.
+    gates: DEFAULT_TASK_GATES,
     readiness: (linked) => validateTaskImplementationReadiness(linked, { coverage })
   });
 }
@@ -1086,6 +1083,9 @@ function checkWorkspace(start, options) {
   // 우회는 막지 않는 통제다. 막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수
   // 있어야 하고, 세려면 보여야 한다 — 진단 목록에만 있으면 경고 수십 개 사이에 묻힌다.
   const taskBinding = { scanned: 0, bound: 0, unbound: 0, excused: 0, dangling: 0, unchecked: [] };
+  // 면제는 막지 않는 통제다. 막지 않는 통제가 값을 가지려면 얼마나 쓰였는지 셀 수
+  // 있어야 하고, 세려면 보여야 한다 — 결박의 우회를 세는 것과 같은 이유다.
+  const exemptions = [];
   for (const project of projects) {
     checkProjectCharter(diagnostics, layout.root, project);
     checkDocumentProfile(diagnostics, layout, project, settings);
@@ -1107,6 +1107,7 @@ function checkWorkspace(start, options) {
     try {
       const parsed = readTaskStore(source.file);
       for (const [taskId, task] of Object.entries(parsed.tasks || {})) {
+        if (task && task.exemption && task.exemption.gate) exemptions.push({ project: source.project, taskId, gate: task.exemption.gate, decidedBy: task.exemption.decidedBy || null, reason: task.exemption.reason || null });
         if (!task.project || !projectKeys.has(task.project) || (source.project && task.project !== source.project)) diagnostic(diagnostics, { code: 'RDL-TASK-022', category: 'task', file: relative(layout.root, source.file), project: source.project, artifactId: taskId, target: task.project || null, message: `태스크의 project가 저장 브랜치의 프로젝트와 일치하지 않습니다: ${task.project || '(없음)'}` });
       }
     } catch (error) {
@@ -1125,6 +1126,7 @@ function checkWorkspace(start, options) {
       documents,
       tasks,
       taskBinding,
+      exemptions,
       errors: diagnostics.filter((item) => item.severity === 'error').length,
       warnings: diagnostics.filter((item) => item.severity === 'warning').length,
       durationMs: Date.now() - startedAt

@@ -50,6 +50,7 @@ Usage:
                  [--link <ARTIFACT-ID>] [--unlink <ARTIFACT-ID>]
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
+                 완료 게이트 면제는 --status done --exempt <게이트> --reason <사유> [--decided-by <MEMBER-ID>]
   rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
@@ -266,7 +267,7 @@ function parseOperationArgs(argv) {
     else if (value === '--since-approval') options.sinceApproval = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
       '--session-id', '--path', '--from', '--reply-to'].includes(value)) {
       i += 1;
@@ -295,6 +296,7 @@ function parseOperationArgs(argv) {
       else if (value === '--approved-by') options.approvedBy = argv[i];
       else if (value === '--commit') options.commit = argv[i];
       else if (value === '--decided-by') options.decidedBy = argv[i];
+      else if (value === '--exempt') options.exempt = argv[i];
       else if (value === '--scope') options.scope = argv[i];
       else if (value === '--exclude') options.excludes.push(argv[i]);
       else if (value === '--function-id') options.functionIds.push(argv[i]);
@@ -577,6 +579,13 @@ function printText(result) {
   }
   if (binding && binding.unchecked.length) {
     process.stdout.write(`  결박을 확인하지 못한 프로젝트: ${binding.unchecked.join(', ')}\n`);
+  }
+  // 면제는 사람이 사유를 대고 통제를 지난 자리다. 요약에 없으면 진단 목록에도 없으므로
+  // (면제된 게이트는 진단을 내지 않는다) 얼마나 쓰였는지 아무 데서도 보이지 않는다.
+  const exemptions = summary.exemptions || [];
+  if (exemptions.length) {
+    process.stdout.write(`  완료 게이트 면제 ${exemptions.length}건: ${exemptions.slice(0, 3).map((item) => `${item.taskId}(${item.gate})`).join(', ')}${exemptions.length > 3 ? ` 외 ${exemptions.length - 3}건` : ''}
+`);
   }
 }
 
@@ -1614,7 +1623,14 @@ async function main() {
       if (!options.reason) throw new Error('반려하려면 --reason이 필요합니다.');
       changes.cancellation = { reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }
-    else if (options.reason) throw new Error('--reason은 --status cancelled에만 사용합니다.');
+    // 면제는 닫히지 않는 태스크를 사람이 사유를 대고 닫는 자리다. 반려와 같은 모양인 것은
+    // 우연이 아니다 — 둘 다 증거 없이 상태를 옮기므로 둘 다 사유와 결정자를 요구한다.
+    else if (options.exempt) {
+      if (options.status !== 'done') throw new Error('--exempt는 --status done에만 사용합니다.');
+      if (!options.reason) throw new Error('면제하려면 --reason이 필요합니다. 증거 없이 닫은 이유가 남지 않으면 면제는 조용한 우회가 됩니다.');
+      changes.exemption = { gate: options.exempt, reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
+    }
+    else if (options.reason) throw new Error('--reason은 --status cancelled 또는 --exempt에만 사용합니다.');
     if (Object.keys(changes).length === 0) throw new Error('--status, --owner, --result, --round, --link, --unlink 또는 --external-ref 중 하나가 필요합니다.');
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);
