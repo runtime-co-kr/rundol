@@ -37,12 +37,70 @@ assert.deepStrictEqual(
   '열린 상태와 끝난 상태를 합쳐도 전체가 되지 않습니다.'
 );
 
+// 스텝도 끝난 것과 열린 것이 서로의 여집합이다.
+assert.deepStrictEqual(
+  vocabulary.OPEN_WORKFLOW_STEPS.concat(vocabulary.TERMINAL_WORKFLOW_STEPS).sort(),
+  vocabulary.WORKFLOW_STEPS.slice().sort(),
+  '열린 스텝과 끝난 스텝을 합쳐도 전체가 되지 않습니다.'
+);
+
+// 스텝 이름은 지금 쓰는 상태값과 하나도 겹치지 않아야 한다. 겹치면 배선이 끝난
+// 뒤에도 `=== 'done'`이 그대로 통과해서, 그 줄이 스텝으로 옮겨진 것인지 빠뜨린
+// 것인지 구분할 방법이 없어진다 — 33곳이 사라졌는지 세는 일이 그 구분에 달려 있다.
+const storedStateValues = new Set([...vocabulary.TASK_STATES, ...vocabulary.DOCUMENT_STATE_KEYS]);
+for (const step of vocabulary.WORKFLOW_STEPS) {
+  assert(!storedStateValues.has(step), `워크플로 스텝 ${step}이 상태값과 겹칩니다.`);
+}
+
+// 실행 단위도 런을 여는 것과 안 여는 것이 서로의 여집합이다.
+assert.deepStrictEqual(
+  vocabulary.RUN_OPENING_UNIT_KINDS.concat(vocabulary.JUDGMENT_ONLY_UNIT_KINDS).sort(),
+  vocabulary.EXECUTION_UNIT_KINDS.slice().sort(),
+  '런을 여는 종류와 안 여는 종류를 합쳐도 전체가 되지 않습니다.'
+);
+
+// 소스마다 성질이 하나씩 있어야 한다. 빠진 소스는 쓸 수 있는 방법이 없어 설정에서
+// 늘 거부되고, 늘 거부되는 소스는 목록에 있으나 없으나 같다.
+assert.deepStrictEqual(
+  Object.keys(vocabulary.VALIDATION_SOURCE_NATURE).sort(),
+  vocabulary.VALIDATION_SOURCE_KINDS.slice().sort(),
+  '검증 소스와 성질 표의 집합이 다릅니다.'
+);
+for (const [source, nature] of Object.entries(vocabulary.VALIDATION_SOURCE_NATURE)) {
+  assert(vocabulary.VALIDATION_SOURCE_NATURES.includes(nature), `${source}의 성질 ${nature}가 정본에 없습니다.`);
+}
+
+// 성질마다 쓸 수 있는 방법이 있어야 하고, 어느 성질도 못 쓰는 방법이 있으면 안 된다.
+// 그런 방법은 진단 코드를 하나 차지하고도 한 번도 발화하지 않는다.
+assert.deepStrictEqual(
+  Object.keys(vocabulary.VALIDATION_METHODS_BY_NATURE).sort(),
+  vocabulary.VALIDATION_SOURCE_NATURES.slice().sort(),
+  '성질과 방법 표의 집합이 다릅니다.'
+);
+const reachableMethods = new Set();
+for (const [nature, methods] of Object.entries(vocabulary.VALIDATION_METHODS_BY_NATURE)) {
+  for (const method of methods) {
+    assert(vocabulary.VALIDATION_METHODS.includes(method), `${nature}의 방법 ${method}가 정본에 없습니다.`);
+    reachableMethods.add(method);
+  }
+}
+assert.deepStrictEqual(
+  Array.from(reachableMethods).sort(),
+  vocabulary.VALIDATION_METHODS.slice().sort(),
+  '어느 성질도 쓸 수 없는 검증 방법이 있습니다.'
+);
+
 const subsets = [
   ['ACTIVE_TASK_STATES', 'OPEN_TASK_STATES'],
   ['TERMINAL_TASK_STATES', 'TASK_STATES'],
   ['IMPLEMENTATION_TYPES', 'REGULAR_TYPES'],
   ['RELATED_REQUIRED_TYPES', 'REGULAR_TYPES'],
-  ['SYNC_HALT_REASONS', 'HALT_REASONS']
+  ['SYNC_HALT_REASONS', 'HALT_REASONS'],
+  ['TERMINAL_WORKFLOW_STEPS', 'WORKFLOW_STEPS'],
+  ['OPEN_WORKFLOW_STEPS', 'WORKFLOW_STEPS'],
+  ['ACTIVE_WORKFLOW_STEPS', 'OPEN_WORKFLOW_STEPS'],
+  ['JUDGMENT_ONLY_UNIT_KINDS', 'EXECUTION_UNIT_KINDS'],
+  ['RUN_OPENING_UNIT_KINDS', 'EXECUTION_UNIT_KINDS']
 ];
 for (const [child, parent] of subsets) {
   for (const value of vocabulary[child]) {
@@ -51,9 +109,15 @@ for (const [child, parent] of subsets) {
 }
 
 // 얼려 두지 않으면 어느 소비자가 배열을 제자리에서 정렬하는 순간 다른 소비자의
-// 순서가 바뀐다. 그런 결함은 부른 쪽이 아니라 엉뚱한 곳에서 드러난다.
+// 순서가 바뀐다. 그런 결함은 부른 쪽이 아니라 엉뚱한 곳에서 드러난다. 표는 배열을
+// 값으로 가지므로, 바깥만 얼리면 안쪽은 그대로 열려 있다.
 for (const [name, value] of Object.entries(vocabulary)) {
-  if (Array.isArray(value)) assert(Object.isFrozen(value), `${name}이 얼어 있지 않습니다.`);
+  if (!value || typeof value !== 'object') continue;
+  assert(Object.isFrozen(value), `${name}이 얼어 있지 않습니다.`);
+  if (Array.isArray(value)) continue;
+  for (const [key, inner] of Object.entries(value)) {
+    if (Array.isArray(inner)) assert(Object.isFrozen(inner), `${name}.${key}가 얼어 있지 않습니다.`);
+  }
 }
 
 // ── 소비자가 정본에서 파생되는가 ────────────────────────────────────────
@@ -184,6 +248,36 @@ assert.deepStrictEqual(
   vocabulary.TERMINAL_TASK_STATES.slice().sort(),
   '보드 화면의 종료 상태가 정본과 다릅니다.'
 );
+
+// ── 타입 선언이 정본과 같은가 ──────────────────────────────────────────
+//
+// types/workflow.d.ts는 판정 계약의 필드 이름이 사는 자리이고, 정본은 값 목록만
+// 갖는다. 그래서 같은 값이 두 번 적히며, 두 번 적힌 것은 언젠가 갈린다. 화면에 쓴
+// 방법을 그대로 쓴다 — 글자가 있는지가 아니라 값을 꺼내서 비교한다.
+
+const declarations = fs.readFileSync(path.resolve(__dirname, '..', 'types', 'workflow.d.ts'), 'utf8');
+
+function declaredUnion(name) {
+  const found = new RegExp(`export type ${name}\\s*=([^;]*);`, 'u').exec(declarations);
+  assert(found, `types/workflow.d.ts에 ${name} 선언이 없습니다.`);
+  return (found[1].match(/'[^']*'/gu) || []).map((quoted) => quoted.slice(1, -1));
+}
+
+const declaredUnions = [
+  ['WorkflowStep', 'WORKFLOW_STEPS'],
+  ['CompletionValidity', 'COMPLETION_VALIDITIES'],
+  ['ValidationSource', 'VALIDATION_SOURCE_KINDS'],
+  ['ValidationMethod', 'VALIDATION_METHODS'],
+  ['RuleOrigin', 'RULE_ORIGINS'],
+  ['JudgmentSurface', 'JUDGMENT_SURFACES']
+];
+for (const [declared, canonical] of declaredUnions) {
+  assert.deepStrictEqual(
+    declaredUnion(declared).slice().sort(),
+    vocabulary[canonical].slice().sort(),
+    `types/workflow.d.ts의 ${declared}이 ${canonical}과 다릅니다.`
+  );
+}
 
 // ── 게시되는 패키지가 정본과 같은가 ────────────────────────────────────
 //
