@@ -46,6 +46,21 @@ export type RuleOrigin = 'item-type' | 'transition';
 /** src/vocabulary.js의 JUDGMENT_SURFACES. 같은 판정 함수를 부르는 네 표면. */
 export type JudgmentSurface = 'cli' | 'board' | 'check' | 'adapter';
 
+/** src/vocabulary.js의 TARGET_KINDS. 판정과 런이 보는 대상이 무엇인가. */
+export type TargetKind = 'task' | 'document';
+
+/**
+ * 런이 움직이는 대상 하나. 런 하나에 대상 하나다 — 전환 하나가 항목 하나를 옮긴다.
+ *
+ * 종류를 식별자와 함께 싣는 이유는 되짚지 않기 위해서다. 식별자만 실으면 읽는 쪽마다
+ * 생김새로 종류를 다시 판정하게 되고, 다시 판정한 것들은 조금씩 달라진다. 그리고
+ * 그 되짚기는 표기가 바뀌는 날 전부 한꺼번에 틀린다.
+ */
+export interface RunTarget {
+  kind: TargetKind;
+  id: string;
+}
+
 /**
  * 판정이 보는 항목. 태스크 또는 문서이며, 이미 읽혀서 값으로 들어온다.
  *
