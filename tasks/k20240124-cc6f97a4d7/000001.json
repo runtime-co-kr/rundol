@@ -4325,6 +4325,48 @@
       "statusChangedAt": "2026-08-23T14:54:53.543Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-S2Z9NK5P": {
+      "title": "[갈래M] 이관 검사기 — 태스크와 문서를 워크플로 스텝에 매핑하고 자리 없는 것을 뱉는다",
+      "summary": "보고서 11절 명세. 태스크와 정본 문서를 WORKFLOW_STEPS 5종에 매핑하고, 자리를 못 찾는 항목과 어려운 절반 다섯 가지를 실측해 11절 표를 갱신한다. 신규 파일로만 만든다.",
+      "owner": null,
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "태스크 전건과 문서 전건이 WORKFLOW_STEPS에 매핑되거나 미매핑으로 분류되어 집계된다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "어려운 절반 다섯 가지가 각각 실측 수치로 보고된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "TST 링크 없이 done인 건이 면제·사유 유무로 구분되어 11절 표를 갱신할 수 있다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "런 소급 생성 대신 이관 노드를 두는 11절 추천이 실측으로 재확인되거나 반박된다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "기존 파일을 하나도 고치지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T14:59:20.118Z",
+      "updatedAt": "2026-08-23T14:59:20.118Z",
+      "statusChangedAt": "2026-08-23T14:59:20.118Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
