@@ -3928,6 +3928,46 @@
         "decidedBy": "MEMBER-001",
         "at": "2026-08-23T04:24:38.032Z"
       }
+    },
+    "TASK-DPFQM9DG": {
+      "title": "시험 스위트를 병렬로 돌린다",
+      "summary": "test/run.js가 78개 파일을 순차 require해 40분이 걸린다. 파일을 워커 프로세스로 나눠 돌리고 순서가 필요한 사슬만 한 워커에 남긴다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "npm test가 워커를 나눠 돌리고 전체 시간이 순차 대비 절반 이하로 준다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "어느 워커가 실패해도 전체 종료 코드가 실패로 나오고 실패한 파일 이름이 보인다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "순서가 필요한 비동기 사슬은 한 워커 안에서 기존 순서대로 돈다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "RUNDOL_TEST_JOBS=1이면 예전처럼 한 프로세스에서 순차로 돈다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T04:52:56.853Z",
+      "updatedAt": "2026-08-23T04:52:56.853Z",
+      "statusChangedAt": "2026-08-23T04:52:56.853Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
