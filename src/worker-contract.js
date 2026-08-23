@@ -323,16 +323,37 @@ function composeAssignment(request, pinned, context) {
 
 const WORK_EVENT_TYPES = new Set(require('./vocabulary').WORK_EVENT_TYPES);
 
+// 같은 밀리초에 든 사건은 유형의 인과가 가른다. 표를 여기서 다시 쓰지 않고
+// 어휘의 자리에서 파생하는 이유는, 두 벌이 되면 새 유형이 한쪽에만 들어가고
+// 그때 그 유형만 조용히 무작위 순서로 돌아가기 때문이다.
+const CAUSAL_RANK = new Map(require('./vocabulary').WORK_EVENT_CAUSAL_ORDER.map((type, index) => [type, index]));
+
 /**
  * 두 클라이언트의 조각이 임의 순서로 병합되므로 순서의 정본이 필요하다.
- * `clientId`가 아니라 `eventId`로 가르는 이유는 한 클라이언트가 같은 밀리초에
- * 둘을 쓸 수 있기 때문이다.
+ *
+ * 기록 시각이 같을 때 `eventId`로만 가르면 순서가 동전 던지기가 된다. 실제로
+ * 그랬다 — 빠른 기계에서 발급과 보고가 같은 밀리초에 들어갔고, 절반의 확률로
+ * 보고가 앞서 접혔으며, 앞선 보고는 가리킬 할당이 없어 RDL-ASG-903으로 버려졌다.
+ * 느린 기계에서는 재현되지 않으므로 이 결함은 배포 검사에서만 모습을 드러냈다.
+ *
+ * 그래서 시각 다음의 열쇠는 인과다. `eventId`는 그다음에 온다 — 같은 시각에
+ * 같은 유형이 둘이면 그때는 무엇으로 갈라도 인과가 깨지지 않으므로, 재현
+ * 가능하기만 하면 된다.
+ *
+ * 이것이 막지 못하는 것은 기계 사이의 시계 어긋남이다. 조각은 클라이언트마다
+ * 따로 쓰이므로 다른 기계의 시계가 밀리초 너머로 어긋나면 인과가 시각에 져서
+ * 다시 뒤집힌다. 그 경우는 순서가 아니라 기준 시각의 문제이며 여기서 풀지 않는다.
  */
 function orderWorkEvents(events) {
   return (Array.isArray(events) ? events.slice() : []).sort((left, right) => {
     const a = String((left || {}).recordedAt || '');
     const b = String((right || {}).recordedAt || '');
     if (a !== b) return a < b ? -1 : 1;
+    // 목록에 없는 유형은 뒤로 보낸다. 앞에 두면 알지 못하는 유형이 아는 유형의
+    // 순서를 밀어내고, 그 결과는 유형을 몰랐다는 사실과 닮지 않은 모습으로 나온다.
+    const rankA = CAUSAL_RANK.has((left || {}).type) ? CAUSAL_RANK.get((left || {}).type) : CAUSAL_RANK.size;
+    const rankB = CAUSAL_RANK.has((right || {}).type) ? CAUSAL_RANK.get((right || {}).type) : CAUSAL_RANK.size;
+    if (rankA !== rankB) return rankA < rankB ? -1 : 1;
     return String((left || {}).eventId || '') < String((right || {}).eventId || '') ? -1 : 1;
   });
 }

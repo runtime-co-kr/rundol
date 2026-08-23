@@ -38,7 +38,27 @@ function commit(branch, relative, message) {
   git(['add', '-A']);
   const result = attempt(['commit', '-m', message]);
   const said = (result.stderr || '').split(/\r?\n/u).filter((line) => line.startsWith('rdl:'));
-  return { ok: result.status === 0, said: said.join(' ') };
+  return { ok: result.status === 0, said: said.join(' '), stderr: result.stderr || '' };
+}
+
+// 훅이 무엇을 보고 그렇게 판정했는지. 셸 안에서 도는 판정은 실패해도 아무것도
+// 남기지 않으므로, 어긋났을 때 이 값들이 없으면 다른 기계의 CI 한 판을 통째로
+// 써서 같은 물음을 다시 물어야 한다. 실제로 macOS에서만 갈리던 판정이 그랬다.
+function hookEvidence() {
+  const file = path.join(temporary, '.git', 'hooks', 'pre-commit');
+  let mode = '(없음)';
+  try { mode = `0${(fs.statSync(file).mode & 0o777).toString(8)}`; } catch (_) { /* 위의 값이 답이다 */ }
+  const ask = (args) => {
+    const answer = attempt(args);
+    return answer.status === 0 ? String(answer.stdout || '').trim() : `(실패 ${answer.status})`;
+  };
+  return [
+    `platform=${process.platform}`,
+    `pre-commit mode=${mode}`,
+    `HEAD=${ask(['symbolic-ref', '--quiet', '--short', 'HEAD'])}`,
+    `origin/HEAD=${ask(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])}`,
+    `staged=${ask(['diff', '--cached', '--name-only']).replace(/\s+/gu, ',')}`
+  ].join(' · ');
 }
 
 try {
@@ -72,7 +92,10 @@ try {
 
   const onMain = commit('main', 'src/a.js', 'feat: 코드');
   assert.strictEqual(onMain.ok, false, '기본 브랜치에서 제품 코드를 담을 수 없다');
-  assert.ok(onMain.said.includes('rdl session start'), '사유가 다음 명령을 담는다');
+  assert.ok(
+    onMain.said.includes('rdl session start'),
+    `사유가 다음 명령을 담는다 — ${hookEvidence()} · stderr=${JSON.stringify(onMain.stderr)}`
+  );
 
   // 트레일러가 있어도 브랜치 규칙이 먼저다. 두 규칙은 다른 물음이며, 하나를 지켰다고
   // 다른 하나가 면제되면 경계는 둘 중 약한 쪽이 된다.

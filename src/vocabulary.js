@@ -148,6 +148,24 @@ const WORK_EVENT_TYPES = Object.freeze([
   'report.submitted', 'report.rejected', 'report.verified'
 ]);
 
+/**
+ * 같은 밀리초에 기록된 사건들의 순서. 기록 시각만으로는 순서가 갈리지 않고,
+ * 그때 무엇으로 가르느냐가 접기의 답을 바꾼다 — 무작위 식별자로 가르면 보고가
+ * 발급보다 앞서고, 앞선 보고는 가리킬 할당이 없어 버려진다.
+ *
+ * 그래서 시각이 같을 때는 인과가 가른다. 있어야 가리킬 수 있고, 접수되어야
+ * 판정할 수 있고, 판정되어야 닫힌다. 이 목록의 자리가 그 순서다.
+ *
+ * WORK_EVENT_TYPES와 집합이 같아야 한다. 갈리면 새 유형이 순서 없이 들어오고,
+ * 순서 없는 유형은 다시 무작위로 갈린다 — 어휘 시험이 그것을 지킨다.
+ */
+const WORK_EVENT_CAUSAL_ORDER = Object.freeze([
+  'assignment.issued', 'assignment.rejected',
+  'report.submitted', 'report.rejected',
+  'report.verified',
+  'assignment.closed'
+]);
+
 /** 워커의 종류. 사람과 에이전트는 같은 계층이며 이 값은 전달 경로만 정한다. */
 const WORKER_KINDS = Object.freeze(['human', 'agent']);
 
@@ -281,6 +299,7 @@ module.exports = Object.freeze({
   SYNC_HALT_REASONS,
   OUTCOME_KINDS,
   WORK_EVENT_TYPES,
+  WORK_EVENT_CAUSAL_ORDER,
   WORKER_KINDS,
   CONSTRAINT_KINDS,
   EXEMPTABLE_GATES,

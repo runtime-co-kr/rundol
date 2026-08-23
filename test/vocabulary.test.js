@@ -21,6 +21,15 @@ assert.deepStrictEqual(
   'TASK_STATES와 TASK_STATUS_ORDER의 집합이 다릅니다.'
 );
 
+// 사건 유형과 그 인과 순서는 순서만 다르고 집합은 같아야 한다. 갈리면 새 유형이
+// 순서 없이 들어오고, 순서 없는 유형은 같은 밀리초에서 무작위로 갈린다 — 그것이
+// 0.39.8 배포를 멈춘 결함의 모습이었다.
+assert.deepStrictEqual(
+  vocabulary.WORK_EVENT_TYPES.slice().sort(),
+  vocabulary.WORK_EVENT_CAUSAL_ORDER.slice().sort(),
+  'WORK_EVENT_TYPES와 WORK_EVENT_CAUSAL_ORDER의 집합이 다릅니다.'
+);
+
 // 끝난 것과 열린 것은 서로의 여집합이다.
 assert.deepStrictEqual(
   vocabulary.OPEN_TASK_STATES.concat(vocabulary.TERMINAL_TASK_STATES).sort(),

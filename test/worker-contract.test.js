@@ -6,7 +6,7 @@
 const assert = require('assert');
 const {
   matchesPath, patternsOverlap, assignmentOverlaps, missingAssignmentFields,
-  unclaimedAcceptance, acceptReport, verifyReport, ContractViolation
+  unclaimedAcceptance, acceptReport, verifyReport, foldAssignments, ContractViolation
 } = require('../src/worker-contract');
 
 const DIGEST = 'a'.repeat(64);
@@ -221,6 +221,46 @@ assert.deepStrictEqual(
 // 계약 결함이 반려로 위장된다.
 for (const broken of [{ assignmentId: 'ASG-999' }, { schema: 'report-v2' }, { worker: { kind: 'human', id: 'x' } }]) {
   assert.throws(() => verifyReport(assignment(), report(broken)), ContractViolation);
+}
+
+// 같은 밀리초에 든 사건의 순서를 무작위 식별자가 정하지 않는다.
+//
+// 이 시험은 실제 자국이다. 0.39.8 배포 검사에서 발급과 보고가 같은 밀리초에
+// 들어갔고, `eventId`가 유일한 갈림쇠였으므로 절반의 확률로 보고가 앞서 접혀
+// RDL-ASG-903으로 버려졌다. 개발 기계에서는 두 사건이 같은 밀리초에 들지 않아
+// 한 번도 재현되지 않았다 — 그래서 시각을 손으로 고정해 양쪽 순서를 다 밟는다.
+{
+  const stamp = '2026-08-23T08:51:47.880Z';
+  const event = (type, eventId, extra) => Object.assign(
+    { type, eventId, recordedAt: stamp, assignmentId: 'ASG-ORDER' }, extra || {}
+  );
+  const issued = (eventId) => event('assignment.issued', eventId, {
+    goal: '순서를 지킨다', reportSchema: 'report-v1', assignee: { kind: 'human', id: 'MEMBER-001' }
+  });
+  const submitted = (eventId) => event('report.submitted', eventId, {
+    reportId: 'RPT-1', report: { id: 'RPT-1', outcome: 'done', claims: [] }
+  });
+  const verified = (eventId) => event('report.verified', eventId, { reportId: 'RPT-1', decision: 'pass' });
+  const closed = (eventId) => event('assignment.closed', eventId, { reason: 'verified' });
+
+  // 식별자를 인과의 역순으로 준다. 유형이 순서를 정하지 않으면 이 배치에서
+  // 닫힘이 가장 먼저 접히고 발급이 가장 나중에 접힌다.
+  const folded = foldAssignments([
+    closed('EVT-A'), verified('EVT-B'), submitted('EVT-C'), issued('EVT-D')
+  ]);
+  assert.deepStrictEqual(folded.diagnostics, [], '같은 시각의 사건이 인과를 거슬러 접혔습니다.');
+
+  const target = folded.assignments.find((item) => item.id === 'ASG-ORDER');
+  assert.strictEqual(target.reports.length, 1, '보고가 발급보다 앞서 접혀 버려졌습니다.');
+  assert.strictEqual(target.reports[0].verdict.decision, 'pass', '판정이 접수보다 앞서 접혔습니다.');
+  assert.strictEqual(target.state, 'closed', '닫힘이 접히지 않았습니다.');
+
+  // 식별자만 뒤집어도 같은 답이 나와야 한다. 같은 사실에 두 답이 나오는 것이
+  // 이 결함의 모습이었으므로, 양쪽을 비교하는 것이 그 모습을 직접 겨눈다.
+  const reversed = foldAssignments([
+    closed('EVT-D'), verified('EVT-C'), submitted('EVT-B'), issued('EVT-A')
+  ]);
+  assert.deepStrictEqual(reversed.assignments, folded.assignments, '식별자가 접기의 답을 바꿉니다.');
 }
 
 process.stdout.write('worker contract tests passed\n');
