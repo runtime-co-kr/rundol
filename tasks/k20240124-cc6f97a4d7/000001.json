@@ -4354,7 +4354,7 @@
         },
         "AC-004": {
           "text": "런 소급 생성 대신 이관 노드를 두는 11절 추천이 실측으로 재확인되거나 반박된다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "기존 파일을 하나도 고치지 않는다",
@@ -4363,7 +4363,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:59:20.118Z",
-      "updatedAt": "2026-08-23T15:22:38.913Z",
+      "updatedAt": "2026-08-23T15:22:55.575Z",
       "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
