@@ -3730,6 +3730,46 @@
       "statusChangedAt": "2026-08-20T22:01:02.716Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-PSGVS4SF": {
+      "title": "코드 worktree 기본 자리를 저장소 안으로 옮긴다",
+      "summary": "rdl session start의 기본 경로를 형제 경로에서 .rundol/worktrees/<id8>로 옮기고, 그 자리를 보호하는 .gitignore 규칙이 없으면 세션 시작 훅이 채운다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl session start가 인자 없이 <repo>/.rundol/worktrees/<id8>에 worktree를 만든다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "형제 경로를 근거로 삼던 주석과 CLI 문서가 새 자리를 말한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "루트 .gitignore에 /projects/*/와 .rundol/이 없으면 session-start 훅이 채우고 무엇을 채웠는지 알린다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "이미 규칙이 있으면 훅이 파일을 건드리지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T03:11:43.480Z",
+      "updatedAt": "2026-08-23T03:11:43.480Z",
+      "statusChangedAt": "2026-08-23T03:11:43.480Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
