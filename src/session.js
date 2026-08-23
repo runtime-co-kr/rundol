@@ -220,17 +220,42 @@ function startSession(start, options) {
   }, registration(registerSession(root, short, pid.pid), pid));
 }
 
-/** 열려 있는 세션 작업 공간. 저장된 목록이 아니라 Git이 아는 사실이다. */
+/**
+ * 이 저장소에 열려 있는 작업 공간. 저장된 목록이 아니라 git worktree list가 아는 사실이다.
+ *
+ * session/ 접두만 걸러 보던 것을 넓혔다. 이 명령이 답하는 물음은 "지금 이 저장소에 누가
+ * 붙어 있는가"인데, 자기가 만든 것만 세면 그 물음에 답하지 못한다. 실제로 손으로 만든
+ * worktree 하나가 목록에 없는 채로 한 주를 지났고, 없다는 사실은 아무 신호도 내지 않았다.
+ *
+ * 세션으로 연 것과 그렇지 않은 것은 값으로 가른다. 하나로 접으면 등록되지 않은 트리가
+ * 죽은 세션처럼 보이고, 그 목록으로는 회수할 것과 남의 작업을 구분할 수 없다.
+ *
+ * 본 작업 트리는 넣지 않는다. 그것은 붙어 있는 누군가가 아니라 저장소 자신이다.
+ */
 function listSessions(start) {
   const root = mainWorktree(start);
   const sessions = worktreeBlocks(start)
-    .filter((item) => item.branch && item.branch.startsWith(BRANCH_PREFIX))
+    // 본 작업 트리와 Workspace가 소유한 트리는 뺀다. rundol/* 브랜치의 worktree는
+    // 붙어 있는 누군가가 아니라 저장소의 구조이고(ADR-004), 늘 있으므로 세면 답이
+    // 언제나 둘 이상이 되어 "혼자인가"를 물을 수 없게 된다.
+    .filter((item) => item.path && !sameFile(item.path, root))
+    .filter((item) => !(item.branch && item.branch.startsWith('rundol/')))
     .map((item) => {
-      const short = item.branch.slice(BRANCH_PREFIX.length);
-      const live = sessionLiveness(root, short);
-      return Object.assign(entry(null, short, item.branch, item.path, null), { head: item.head, sessionPid: live.pid, alive: live.alive });
+      const branch = item.branch || null;
+      const managed = Boolean(branch && branch.startsWith(BRANCH_PREFIX));
+      const short = managed ? branch.slice(BRANCH_PREFIX.length) : null;
+      const live = managed ? sessionLiveness(root, short) : { pid: null, alive: null };
+      return Object.assign(entry(null, short, branch, item.path, null), {
+        head: item.head,
+        // 세션이 연 자리인가. 등록과 생존은 그 다음 물음이며, 이 값이 없으면 등록되지
+        // 않은 트리와 등록했다 끝난 세션이 같은 얼굴을 한다.
+        managed,
+        detached: Boolean(item.detached),
+        sessionPid: live.pid,
+        alive: live.alive
+      });
     })
-    .sort((left, right) => left.branch.localeCompare(right.branch));
+    .sort((left, right) => String(left.branch || left.path).localeCompare(String(right.branch || right.path)));
   return { root, sessions };
 }
 

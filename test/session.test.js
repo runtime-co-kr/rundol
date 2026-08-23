@@ -161,6 +161,26 @@ try {
     assert.strictEqual(listed.sessions[0].sessionPid, process.pid);
   }
 
+// rdl 밖에서 만든 worktree도 본다. 이 명령이 답하는 물음은 "지금 이 저장소에 누가
+// 붙어 있는가"이고, 자기가 만든 것만 세면 그 물음에 답하지 못한다. 실제로 손으로 만든
+// worktree 하나가 목록에 없는 채로 한 주를 지났다.
+{
+  const outside = path.join(temporary, 'by-hand');
+  git(['worktree', 'add', '-b', 'by-hand', outside, 'HEAD'], repository);
+  const listed = session.listSessions(repository).sessions;
+  const found = listed.find((item) => item.branch === 'by-hand');
+  assert.ok(found, '세션이 열지 않은 작업 트리도 목록에 있다');
+  assert.strictEqual(found.managed, false, '세션이 연 것과는 값으로 갈린다');
+  assert.strictEqual(found.alive, null, '등록을 지나지 않은 것은 죽은 것이 아니라 모르는 것이다');
+  assert.strictEqual(found.short, null, '세션 이름이 없는 트리에 이름을 지어내지 않는다');
+
+  const managed = listed.find((item) => item.branch === 'session/aabbccdd');
+  assert.strictEqual(managed.managed, true, '세션이 연 것은 그렇다고 답한다');
+
+  assert.ok(!listed.some((item) => path.resolve(item.path).toLowerCase() === path.resolve(repository).toLowerCase()), '본 작업 트리는 붙어 있는 누군가가 아니다');
+  git(['worktree', 'remove', outside], repository);
+}
+
   // 세션이 만든 커밋. 작업 공간을 닫아도 이건 남아야 하고, 남았다는 사실이
   // 출력에 있어야 한다 — worktree가 사라지면 이 세션은 list에서 빠지므로 여기서
   // 말하지 않으면 아무도 다시 묻지 않는다.
