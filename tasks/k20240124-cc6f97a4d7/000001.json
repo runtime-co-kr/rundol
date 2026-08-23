@@ -4358,12 +4358,12 @@
         },
         "AC-005": {
           "text": "기존 파일을 하나도 고치지 않는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:59:20.118Z",
-      "updatedAt": "2026-08-23T15:22:55.575Z",
+      "updatedAt": "2026-08-23T15:23:14.860Z",
       "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
