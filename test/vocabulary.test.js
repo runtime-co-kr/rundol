@@ -90,6 +90,30 @@ assert.deepStrictEqual(
   '어느 성질도 쓸 수 없는 검증 방법이 있습니다.'
 );
 
+// 서브 종류는 정규 문서 유형과 겹치지 않아야 한다. 겹치면 문서 안 표기 FN-001이
+// 문서 식별자로도 읽히고, 그러면 참조에서 부모의 경계를 찾을 수 없다 — 부모를 단
+// 것 자체가 뜻을 잃는다. 정규 유형이 세 글자이므로 두 글자로 두는 것이 그 강제다.
+for (const kind of vocabulary.SUB_KINDS) {
+  assert(!vocabulary.REGULAR_TYPES.includes(kind), `서브 종류 ${kind}가 문서 유형과 겹칩니다.`);
+  assert(/^[A-Z]{2}$/u.test(kind), `서브 종류 ${kind}가 대문자 두 글자가 아닙니다.`);
+}
+
+// 부모와 서브를 잇는 구분자는 종류와 일련을 가르는 하이픈과 달라야 한다. 같으면
+// REQ-033-FN-001에서 어디까지가 부모인지 문자열만으로는 알 수 없고, 실제로 지금
+// 기능 ID를 훑는 정규식이 그 한 줄에서 REQ-033과 FN-001을 각각 독립된 ID로 집어낸다.
+assert.notStrictEqual(vocabulary.SUB_ID_SEPARATOR, '-', '서브 구분자가 하이픈과 같습니다.');
+
+// 문서 안 표기는 서브 종류만 받고, 지금 사람이 짓던 접두와 두 자리 일련은 받지 않아야
+// 한다. 받으면 이 어휘가 무엇을 닫았는지가 흐려지고 옮겨진 것과 안 옮겨진 것을 셀 수
+// 없다 — 스텝 이름을 상태값과 겹치지 않게 지은 것과 같은 이유다.
+const subPattern = new RegExp(`^${vocabulary.ID_PATTERNS.sub}$`, 'u');
+for (const kind of vocabulary.SUB_KINDS) {
+  assert(subPattern.test(`${kind}-001`), `문서 안 표기가 ${kind}-001을 받지 않습니다.`);
+}
+for (const rejected of ['HRN-02', 'TSK-01', 'S-03', 'FN-1', 'REQ-033']) {
+  assert(!subPattern.test(rejected), `문서 안 표기가 ${rejected}을 받습니다.`);
+}
+
 const subsets = [
   ['ACTIVE_TASK_STATES', 'OPEN_TASK_STATES'],
   ['TERMINAL_TASK_STATES', 'TASK_STATES'],
@@ -255,27 +279,34 @@ assert.deepStrictEqual(
 // 갖는다. 그래서 같은 값이 두 번 적히며, 두 번 적힌 것은 언젠가 갈린다. 화면에 쓴
 // 방법을 그대로 쓴다 — 글자가 있는지가 아니라 값을 꺼내서 비교한다.
 
-const declarations = fs.readFileSync(path.resolve(__dirname, '..', 'types', 'workflow.d.ts'), 'utf8');
+const declarationSources = new Map();
 
-function declaredUnion(name) {
-  const found = new RegExp(`export type ${name}\\s*=([^;]*);`, 'u').exec(declarations);
-  assert(found, `types/workflow.d.ts에 ${name} 선언이 없습니다.`);
+function declaredUnion(file, name) {
+  if (!declarationSources.has(file)) {
+    declarationSources.set(file, fs.readFileSync(path.resolve(__dirname, '..', 'types', file), 'utf8'));
+  }
+  const found = new RegExp(`export type ${name}\\s*=([^;]*);`, 'u').exec(declarationSources.get(file));
+  assert(found, `types/${file}에 ${name} 선언이 없습니다.`);
   return (found[1].match(/'[^']*'/gu) || []).map((quoted) => quoted.slice(1, -1));
 }
 
 const declaredUnions = [
-  ['WorkflowStep', 'WORKFLOW_STEPS'],
-  ['CompletionValidity', 'COMPLETION_VALIDITIES'],
-  ['ValidationSource', 'VALIDATION_SOURCE_KINDS'],
-  ['ValidationMethod', 'VALIDATION_METHODS'],
-  ['RuleOrigin', 'RULE_ORIGINS'],
-  ['JudgmentSurface', 'JUDGMENT_SURFACES']
+  ['workflow.d.ts', 'WorkflowStep', 'WORKFLOW_STEPS'],
+  ['workflow.d.ts', 'CompletionValidity', 'COMPLETION_VALIDITIES'],
+  ['workflow.d.ts', 'ValidationSource', 'VALIDATION_SOURCE_KINDS'],
+  ['workflow.d.ts', 'ValidationMethod', 'VALIDATION_METHODS'],
+  ['workflow.d.ts', 'RuleOrigin', 'RULE_ORIGINS'],
+  ['workflow.d.ts', 'JudgmentSurface', 'JUDGMENT_SURFACES'],
+  // 서브는 workflow.d.ts에 얹지 않았다. 진행 축을 갖지 않으므로 판정 계약과 한
+  // 파일에 두면 읽는 사람이 서브의 전환을 찾게 되고, 없는 것을 찾는 일은 대개
+  // 만들어 넣는 것으로 끝난다. 파일이 둘이 되었으므로 읽는 자리도 파일을 받는다.
+  ['sub.d.ts', 'SubKind', 'SUB_KINDS']
 ];
-for (const [declared, canonical] of declaredUnions) {
+for (const [file, declared, canonical] of declaredUnions) {
   assert.deepStrictEqual(
-    declaredUnion(declared).slice().sort(),
+    declaredUnion(file, declared).slice().sort(),
     vocabulary[canonical].slice().sort(),
-    `types/workflow.d.ts의 ${declared}이 ${canonical}과 다릅니다.`
+    `types/${file}의 ${declared}이 ${canonical}과 다릅니다.`
   );
 }
 
