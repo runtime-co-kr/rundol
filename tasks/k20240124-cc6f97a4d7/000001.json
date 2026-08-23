@@ -4316,12 +4316,12 @@
         },
         "AC-002": {
           "text": "진단 코드가 방법 8종에만 붙고, 판정이 막는 규칙을 전부 Blocker 목록으로 돌려준다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:54:16.491Z",
-      "updatedAt": "2026-08-23T15:18:46.704Z",
+      "updatedAt": "2026-08-23T15:19:06.845Z",
       "statusChangedAt": "2026-08-23T14:54:53.543Z",
       "externalRefs": [],
       "project": "rundol"
