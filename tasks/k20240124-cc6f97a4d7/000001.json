@@ -4185,6 +4185,36 @@
       "statusChangedAt": "2026-08-23T09:10:05.195Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-PBTPJHG0": {
+      "title": "[설계] 워크플로의 관리 계층과 실행 계층을 가르는 결정을 세운다",
+      "summary": "",
+      "owner": null,
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "하드코딩된 규칙 넷이 업무 어휘로 표현되는지를 실제 코드에 대고 검증하고 결과가 ADR에 남는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "런을 여는 경계와 전환 판정 함수의 계약이 ADR에 명시된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T09:39:25.377Z",
+      "updatedAt": "2026-08-23T09:39:25.377Z",
+      "statusChangedAt": "2026-08-23T09:39:25.377Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
