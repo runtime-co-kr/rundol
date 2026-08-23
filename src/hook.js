@@ -18,7 +18,7 @@ const { runGit } = require('./git');
 const { readCommitBindings } = require('./task-commits');
 const { runtimeWorkspace } = require('./runtime');
 
-const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES } = require('./vocabulary');
+const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES, CODE_PATH_PREFIXES } = require('./vocabulary');
 // 한 턴이 만드는 커밋 수의 상한이 아니라, 커서를 잃었을 때 거슬러 볼 창이다.
 const NEW_COMMIT_WINDOW = 50;
 
@@ -246,6 +246,45 @@ function postToolUse(start, payload) {
   return { block: false, context: [], record };
 }
 
+// 저장소의 기본 코드 브랜치. origin/HEAD가 가리키는 곳이며, 없으면 판정하지 않는다 —
+// 기본 브랜치를 추측해서 막으면 그 추측이 틀린 저장소에서 아무 일도 할 수 없게 된다.
+function defaultBranchOf(worktree) {
+  const found = safeGit(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], worktree);
+  if (found.status !== 0 || !found.stdout) return null;
+  const name = found.stdout.trim();
+  const slash = name.indexOf('/');
+  return slash < 0 ? name : name.slice(slash + 1);
+}
+
+// 쓰기 전에 막는다. 되돌릴 것이 없는 유일한 시점이고, 커밋 시점에 막으면 작업은 이미
+// 잘못된 자리에 쌓인 뒤다 — 옮기려면 stash와 cherry-pick이 필요하고 그 왕복 자체가
+// 또 다른 사고 지점이다.
+//
+// 막는 조건은 셋이 모두 참일 때뿐이다. 본 작업 트리이고, 브랜치가 저장소의 기본 코드
+// 브랜치이고, 대상이 제품 코드다. 하나라도 아니면 통과한다 — 문서를 고치는 것도,
+// 세션 worktree에서 코드를 고치는 것도, 기능 브랜치에서 고치는 것도 막을 이유가 없다.
+function preToolUse(start, payload) {
+  if (!payload.filePath) return { block: false, context: [] };
+  const root = repositoryOf(payload.cwd || start);
+  if (!root) return { block: false, context: [] };
+  const worktree = payload.cwd || root;
+  if (isMainWorktree(worktree) !== true) return { block: false, context: [] };
+  const branch = branchOf(worktree);
+  const base = defaultBranchOf(worktree);
+  if (!branch || !base || branch !== base) return { block: false, context: [] };
+  const relative = path.relative(root, path.resolve(worktree, payload.filePath));
+  // 저장소 밖의 파일은 이 저장소의 규칙이 닿는 자리가 아니다.
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return { block: false, context: [] };
+  const shown = relative.split(path.sep).join('/');
+  if (!CODE_PATH_PREFIXES.some((prefix) => shown.startsWith(prefix))) return { block: false, context: [] };
+  const reason = [
+    `제품 코드는 ${base}의 본 작업 트리에서 고치지 않습니다: ${shown}`,
+    '세션 worktree를 열고 그 안에서 고치세요.',
+    '  rdl session start'
+  ].join('\n');
+  return { block: true, reason, context: [] };
+}
+
 // 완료 주장을 Git으로 재확인한다. ADR-007이 결정해 둔 세 값 가운데 결박만 막고
 // 나머지는 알린다 — 진행 중인 트리가 더러운 것은 정상이고, 그것까지 막으면 소음이 된다.
 function stop(start, payload) {
@@ -308,7 +347,7 @@ function sessionEnd(start, payload) {
   return { block: false, context };
 }
 
-const HANDLERS = { 'session-start': sessionStart, 'post-tool-use': postToolUse, stop, 'session-end': sessionEnd };
+const HANDLERS = { 'session-start': sessionStart, 'pre-tool-use': preToolUse, 'post-tool-use': postToolUse, stop, 'session-end': sessionEnd };
 
 function runHook(start, options) {
   const settings = options || {};

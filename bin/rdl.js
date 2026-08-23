@@ -230,7 +230,7 @@ Usage:
                       [--forbidden-touched <항목>]... [--reason <사유>] [--member <MEMBER-ID>] [--json]
   rdl assignment reports <ASG-ID> --project <key> [--json]
   rdl assignment verify <ASG-ID> --project <key> --client-id <id> [--json]
-  rdl hook <session-start|post-tool-use|stop|session-end> [--client <claude|codex>] [--root <path>] [--json]
+  rdl hook <session-start|pre-tool-use|post-tool-use|stop|session-end> [--client <claude|codex>] [--root <path>] [--json]
 
 
 Options:

@@ -33,7 +33,11 @@ try {
   // ── 입력 판정 ──────────────────────────────────────────────────────────
 
   assert.strictEqual(normalizeEvent('Stop'), 'stop', '이벤트 이름은 대소문자를 가리지 않는다');
-  assert.throws(() => normalizeEvent('PreToolUse'), /지원하지 않는 훅 이벤트/u, '아직 없는 이벤트는 거절한다');
+  assert.strictEqual(normalizeEvent('Pre-Tool-Use'), 'pre-tool-use', '쓰기 전 판정도 이 명령이 받는다');
+  // 페이로드의 hook_event_name과 명령의 이벤트 이름은 다른 값이다. 클라이언트가 부르는
+  // 이름(PreToolUse)을 그대로 받아 주면 두 표기가 섞이고, 섞인 뒤에는 어느 쪽이 정본인지
+  // 다투게 된다.
+  assert.throws(() => normalizeEvent('PreToolUse'), /지원하지 않는 훅 이벤트/u, '클라이언트 표기는 명령의 이름이 아니다');
   assert.throws(() => normalizeEvent(''), /지원하지 않는 훅 이벤트/u);
 
   // 두 클라이언트의 페이로드는 필드 이름이 같다. 없는 값은 없는 채로 둔다 —
@@ -131,6 +135,17 @@ try {
   commit('doc work');
   assert.strictEqual(hook('stop', { cwd: temporary, session_id: 'sess-2' }).block, false, '프로젝트 브랜치에서는 두 번 막지 않는다');
   git(['checkout', 'main']);
+
+  // ── pre-tool-use ──────────────────────────────────────────────────────
+
+  // 되돌릴 것이 없는 시점에 막는다. 커밋에서 막으면 작업은 이미 잘못된 자리에 쌓인 뒤다.
+  // 다만 origin/HEAD가 없는 저장소에서는 기본 브랜치를 알 수 없어 판정하지 않는다 —
+  // 이 시험 저장소가 그 경우이며, 추측해서 막지 않는다는 것 자체가 계약이다.
+  const codeWrite = hook('pre-tool-use', { cwd: temporary, tool_name: 'Edit', tool_input: { file_path: path.join(temporary, 'src', 'x.js') } });
+  assert.strictEqual(codeWrite.block, false, '기본 브랜치를 모르면 막지 않는다');
+
+  assert.strictEqual(hook('pre-tool-use', { cwd: temporary, tool_name: 'Edit', tool_input: {} }).block, false, '대상이 없으면 볼 것이 없다');
+  assert.strictEqual(hook('pre-tool-use', { cwd: temporary, tool_name: 'Edit', tool_input: { file_path: path.join(temporary, 'docs', 'a.md') } }).block, false, '코드가 아닌 경로는 막지 않는다');
 
   // ── post-tool-use ─────────────────────────────────────────────────────
 

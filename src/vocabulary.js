@@ -206,6 +206,14 @@ const ID_PATTERNS = Object.freeze({
  */
 const WORKTREE_IGNORE_RULES = Object.freeze(['/projects/*/', '.rundol/']);
 
+/**
+ * 제품 코드가 사는 경로. 본 작업 트리에서 이 아래를 고치려 할 때 훅이 막는다.
+ *
+ * 목록으로 두는 이유는 막는 자리가 하나가 아니기 때문이다. 훅이 쓰기 전에 막고,
+ * 사람이 만든 pre-commit이 커밋에서 막는다면 둘은 같은 목록을 봐야 한다.
+ */
+const CODE_PATH_PREFIXES = Object.freeze(['src/', 'bin/', 'packages/', 'scripts/']);
+
 // ── 하네스 훅 ──────────────────────────────────────────────────────────
 
 /**
@@ -215,7 +223,7 @@ const WORKTREE_IGNORE_RULES = Object.freeze(['/projects/*/', '.rundol/']);
  * 클라이언트가 늘어도 이 목록은 늘지 않는다. Claude Code는 31종, Codex는 11종을
  * 내지만 Rundol이 판정하는 자리는 그 교집합 안의 넷뿐이다.
  */
-const HOOK_EVENTS = Object.freeze(['session-start', 'post-tool-use', 'stop', 'session-end']);
+const HOOK_EVENTS = Object.freeze(['session-start', 'pre-tool-use', 'post-tool-use', 'stop', 'session-end']);
 
 /** 훅을 부르는 클라이언트. 페이로드 모양의 차이를 흡수할 때만 쓴다. */
 const HOOK_CLIENTS = Object.freeze(['claude', 'codex']);
@@ -261,6 +269,7 @@ module.exports = Object.freeze({
   FLAT_LEDGERS,
   REF_KINDS,
   WORKTREE_IGNORE_RULES,
+  CODE_PATH_PREFIXES,
   HOOK_EVENTS,
   HOOK_CLIENTS,
   CONVENTIONAL_PRIMARY,
