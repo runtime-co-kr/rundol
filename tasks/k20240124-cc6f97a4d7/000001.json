@@ -4146,12 +4146,12 @@
         },
         "AC-004": {
           "text": "docs/ 변경은 계속 통과한다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T07:08:52.044Z",
-      "updatedAt": "2026-08-23T07:20:32.830Z",
+      "updatedAt": "2026-08-23T07:20:44.142Z",
       "statusChangedAt": "2026-08-23T07:09:21.002Z",
       "externalRefs": [],
       "project": "rundol"
