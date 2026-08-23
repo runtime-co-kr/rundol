@@ -3968,6 +3968,42 @@
       "statusChangedAt": "2026-08-23T04:52:56.853Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-2TXETKD3": {
+      "title": "session list가 저장소의 모든 작업 트리를 본다",
+      "summary": "listSessions가 session/ 접두 브랜치만 걸러 손으로 만든 worktree가 보이지 않는다. 누가 붙어 있는지를 묻는 명령이 자기가 만든 것만 답하면 그 물음에 답하지 못한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl session list가 rdl 밖에서 만든 linked worktree도 낸다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "세션으로 연 것과 그렇지 않은 것이 값으로 구분된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "본 작업 트리는 목록에 넣지 않는다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T05:11:17.633Z",
+      "updatedAt": "2026-08-23T05:11:17.633Z",
+      "statusChangedAt": "2026-08-23T05:11:17.633Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
