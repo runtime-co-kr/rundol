@@ -293,7 +293,9 @@ assert(app.includes('계약 변경 결정'), '정책 층을 왜 여기서 못 �
 
 // 막힘은 목록에서 바로 읽혀야 한다. blocker뿐 아니라 끝나지 않은 선행 태스크도 막힘이다.
 assert(app.includes('function taskBlockage'), '막힘 판정은 한 곳에서 계산해야 합니다');
-assert(app.includes('!TERMINAL_STATUSES.includes(item.status)'), '끝나지 않은 선행 태스크는 막힘입니다');
+// 종료 판정은 서버가 실어 준 워크플로의 스텝이 답한다. 화면에 상태 이름 사본을
+// 두던 자리이고, 사본은 정본이 늘어도 따라가지 않았다.
+assert(app.includes('!isTerminalStatus(item.status)'), '끝나지 않은 선행 태스크는 막힘입니다');
 assert(app.includes('class="task-blocked"'), '막힌 태스크는 목록에서 배지로 구분되어야 합니다');
 assert(style.includes(".task-blocked[data-blocked='deps']"), '사람 대기와 선행 대기는 구분되어야 합니다');
 
@@ -330,7 +332,9 @@ assert(app.includes("cancelled: '반려'"), '상태 어휘에 반려가 있어�
 assert(app.includes('requestCancellation(task.cancellation)'), '반려 전환은 사유를 먼저 받아야 합니다');
 assert(app.includes('task.cancellation ? { cancellation: null } : null'), '반려를 벗어나면 사유를 같은 변경에서 지워야 합니다');
 assert(app.includes('cancellationText(task.cancellation)'), '태스크 상세는 반려 사유를 보여야 합니다');
-assert(app.includes("const TERMINAL_STATUSES = ['done', 'cancelled']"), '완료와 반려는 함께 종료로 다뤄야 합니다');
+// 완료와 반려를 함께 종료로 다루는 일은 이제 서버가 실어 준 terminalSteps가 답한다.
+// 화면이 목록을 적어 두면 그 목록은 정본과 갈리고, 갈렸다는 사실은 신호를 내지 않는다.
+assert(app.includes('workflowView().terminalSteps'), '완료와 반려는 함께 종료로 다뤄야 합니다');
 assert(!app.includes("task.status !== 'done')"), '종료 판정에 done만 쓰면 반려된 태스크가 열린 것으로 남습니다');
 
 // Notion 순서: 제목 → 속성 → 내용. 속성은 짧고 고정이라 위에서 한눈에 지나가고,
@@ -515,7 +519,7 @@ assert(app.includes('function dismissPeek'), '패널을 접는 일과 선택을 
 }
 
 // 새로 만드는 태스크는 아직 끝나지도 접히지도 않았다. 종료 상태는 고를 수 없어야 한다.
-assert(app.includes('!TERMINAL_STATUSES.includes(value)'), '생성 화면에 종료 상태를 두면 안 됩니다');
+assert(app.includes('!isTerminalStatus(value)'), '생성 화면에 종료 상태를 두면 안 됩니다');
 
 // 명단만 다시 그리면 옆에 열어둔 사람의 태스크·문서 수가 예전 값으로 남는다.
 assert(app.includes('function redrawPerson'), '열어둔 사람도 갱신되어야 합니다');

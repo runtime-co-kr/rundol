@@ -202,10 +202,9 @@ const NOT_VOCABULARY = new Set([
   'NON_CANONICAL_CODES', 'SHARD_LEVEL_LEDGER_CODES', 'SPLIT_SIGNALS',
   'RESERVED_PROJECT_KEYS', 'CONVERGING_COMMANDS', 'COMMIT_PRODUCING_COMMANDS',
   'COMMIT_REQUIRED_STEPS', 'FAN_OUT_SOURCES', 'SUPPORTED_SCHEMA',
-  // 보드 화면은 브라우저에서 그대로 실행되므로 CommonJS를 require할 수 없다.
-  // 면제하는 대신 아래에서 값이 정본과 같은지를 직접 확인한다 — 면제만 하고
-  // 확인하지 않으면 화면만 조용히 갈린다.
-  'TERMINAL_STATUSES'
+  // 보드 화면의 종료 상태 사본은 없앴다. 서버가 스냅숏에 워크플로를 실어 주므로
+  // 화면이 적어 둘 목록이 없고, 그래서 면제할 이름도 없다. 사본이 정말 사라졌는지는
+  // 아래에서 확인한다 — 면제 목록에서 이름만 지우면 사본이 남아도 아무 신호가 없다.
 ]);
 
 // 모듈 최상위 선언만 본다. 함수 안의 지역 변수는 어휘가 아니라 계산의 중간값이다.
@@ -253,24 +252,61 @@ assert.strictEqual(
     violations.map((item) => `  ${item.file}:${item.line}  ${item.name}`).join('\n')}`
 );
 
-// ── 브라우저 쪽 값이 정본과 같은가 ──────────────────────────────────────
+// ── 브라우저 쪽에 사본이 남지 않았는가 ──────────────────────────────────
 //
-// 화면은 require를 쓸 수 없으니 선언이 남는다. 그렇다고 소스에 그 글자가 있는지만
-// 보면(app.includes("const X = [...]")) 아무것도 증명하지 못한다 — 띄어쓰기만
-// 바뀌어도 깨지고, 값이 틀려도 글자가 같으면 통과한다. 값을 꺼내서 비교한다.
+// 화면은 require를 쓸 수 없으니 예전에는 종료 상태를 그대로 적어 두었고, 이 시험은
+// 그 사본이 정본과 같은지를 값으로 확인했다. 이제 서버가 스냅숏에 워크플로를 실어
+// 주므로 사본 자체가 없어야 한다 — 확인할 것이 "같은가"에서 "없는가"로 바뀐다.
+//
+// 그리고 사본을 재는 것만으로는 모자란다. 사본이 없어도 화면이 상태 이름을 그 자리에
+// 직접 적어 비교하면 같은 일이 벌어지기 때문이다. 그래서 이름이 아니라 비교를 잰다 —
+// 상태를 리터럴과 견주는 자리가 화면에 하나도 없어야 한다.
+//
+// 정규식을 쓰지 않는다. 이 판정은 "status를 따옴표와 비교하는가" 하나이고, 그것은
+// 부분 문자열로 답할 수 있다. 값이 틀려도 글자가 같으면 통과하는 종류의 확인이
+// 아니다 — 여기서 세는 것은 값이 아니라 자리 자체다.
 
 const appSource = fs.readFileSync(path.join(sourceRoot, 'board-ui', 'app.js'), 'utf8');
+const appLines = appSource.split('\n').map((line) => line.replace('\r', ''));
 
-function browserArray(name) {
-  const found = new RegExp(`const\\s+${name}\\s*=\\s*\\[([^\\]]*)\\]`, 'u').exec(appSource);
-  assert(found, `보드 화면에 ${name} 선언이 없습니다.`);
-  return (found[1].match(/'[^']*'/gu) || []).map((quoted) => quoted.slice(1, -1));
+// 자국은 "status를 태스크 상태값과 견주는가"다. 화면에는 다른 축의 status도 산다 —
+// 클라이언트의 active와 하부 요소의 disabled가 그렇고, 그것들은 태스크 상태가 아니라
+// 이 갈래의 대상이 아니다. 견주는 값까지 봐야 그 둘을 가른다.
+//
+// 화면 이름(view · taskScope)이 우연히 상태와 같은 글자를 쓰지만 그쪽은 state.view와
+// dataset.view를 견주므로 아래 자국에 걸리지 않는다. 글자가 같다는 이유로 세면 이
+// 시험은 고칠 수 없는 것을 고치라고 말하게 된다.
+const COMPARISON_MARKS = [];
+for (const operator of ['===', '!==', '==', '!=']) {
+  for (const state of vocabulary.TASK_STATES) COMPARISON_MARKS.push(`status ${operator} '${state}'`);
 }
+const browserStateSites = [];
+appLines.forEach((line, index) => {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('//') || trimmed.startsWith('*')) return;
+  for (const mark of COMPARISON_MARKS) {
+    if (line.includes(mark)) browserStateSites.push(`  app.js:${index + 1}  ${mark}`);
+  }
+  if (line.includes('TERMINAL_STATUSES')) browserStateSites.push(`  app.js:${index + 1}  TERMINAL_STATUSES`);
+});
 
 assert.deepStrictEqual(
-  browserArray('TERMINAL_STATUSES').slice().sort(),
-  vocabulary.TERMINAL_TASK_STATES.slice().sort(),
-  '보드 화면의 종료 상태가 정본과 다릅니다.'
+  browserStateSites,
+  [],
+  `보드 화면이 상태 이름을 비교합니다. 스냅숏의 workflow가 준 스텝으로 물으세요.\n${browserStateSites.join('\n')}`
+);
+
+// 사본을 지우기만 하고 대신 읽을 것을 안 만들면 화면은 아무것도 가르지 못한다.
+// 서버가 준 워크플로를 실제로 읽는지, 그리고 서버가 그것을 싣는지를 함께 본다.
+// 한쪽만 있으면 화면은 늘 빈 워크플로를 보고 모든 태스크가 같은 칸에 선다.
+assert(
+  appSource.includes('state.snapshot && state.snapshot.workflow'),
+  '보드 화면이 스냅숏의 workflow를 읽지 않습니다.'
+);
+const boardSource = fs.readFileSync(path.join(sourceRoot, 'board.js'), 'utf8');
+assert(
+  boardSource.includes('workflow: workflow.taskWorkflowView()'),
+  '보드 스냅숏이 워크플로를 싣지 않습니다.'
 );
 
 // ── 타입 선언이 정본과 같은가 ──────────────────────────────────────────

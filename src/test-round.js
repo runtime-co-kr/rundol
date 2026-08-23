@@ -3,6 +3,7 @@
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, testedDocuments } = require('./tasks');
 const { projectArtifacts } = require('./document-contract');
+const workflow = require('./workflow');
 
 // 차수 대상 목록은 어디에도 저장하지 않는다. 태스크를 만든 것이 곧 그 차수의 범위이고,
 // 빠진 것은 TST 문서 전체와 대조해 계산한다. 목록을 파일로 두면 정본이 둘이 되어,
@@ -42,7 +43,7 @@ function testTasks(project) {
 // 판정이 없는 테스트는 아직 돌리지 않은 것이고, 반려한 테스트는 돌리지 않기로 한
 // 것이다. 한 통에 담으면 남은 일감이 실제보다 부풀어 보인다.
 function resultBucket(task) {
-  return task.result || (task.status === 'cancelled' ? 'cancelled' : 'pending');
+  return task.result || (workflow.stepOf(task.status) === 'dropped' ? 'cancelled' : 'pending');
 }
 
 function summarize(tasks) {

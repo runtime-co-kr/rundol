@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { runGit } = require('./git');
+const workflow = require('./workflow');
 
 // 형식이 바뀌면 올린다. 낡은 형식은 읽지 않고 버린다.
 const INDEX_VERSION = 3;
@@ -212,7 +213,7 @@ function queryTasks(start, options) {
         && (settings.round === undefined || settings.round === null || (task.round === undefined ? null : task.round) === settings.round));
       const tasks = scoped.filter((task) => (!settings.kind || (task.kind || 'normal') === settings.kind)
         && (!settings.status || task.status === settings.status)
-        && (!settings.open || ['todo', 'doing', 'waiting', 'review'].includes(task.status)));
+        && (!settings.open || workflow.isOpen(task.status)));
       // 집계는 선택된 프로젝트 범위에서 세고 상태 필터 이전 값을 쓴다 — 무인덱스
       // 경로가 정확히 그렇게 센다. 여기서 갈리면 같은 응답의 목록과 집계가
       // 서로 다른 질문에 답한다.
@@ -221,7 +222,7 @@ function queryTasks(start, options) {
       for (const task of scoped) {
         counts[task.status] = (counts[task.status] || 0) + 1;
         if ((task.kind || 'normal') === 'test') {
-          const bucket = task.result || (task.status === 'cancelled' ? 'cancelled' : 'pending');
+          const bucket = task.result || (workflow.stepOf(task.status) === 'dropped' ? 'cancelled' : 'pending');
           results[bucket] = (results[bucket] || 0) + 1;
         }
       }

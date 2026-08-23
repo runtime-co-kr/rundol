@@ -35,25 +35,48 @@ function inputError(message) {
   return error;
 }
 
-function assertBlockerConsistency(current, changes) {
+// 저장 계층이 보는 것은 "항목이 자기 노드와 맞는가"이다 — 어휘가 origin으로
+// item-type이라 부르는 것, 곧 움직이든 안 움직이든 언제나 참이어야 하는 것이다.
+// 증거를 요구하는 게이트(수용조건 · TST 링크 · 병합 요청 참조)는 여기 없다.
+// 그쪽은 전환에 걸리고 검사기가 소유한다.
+//
+// 규칙을 이 파일에 다시 적지 않는다. 같은 짝이 저장 계층과 검사 계층에 두 벌로
+// 있었고 강도가 서로 달랐다 — 저장은 blocker가 있기만 하면 받았고 검사는 세
+// 부분을 요구했다. 두 벌은 갈린 것이 아니라 갈릴 것이 이미 갈려 있었던 것이다.
+const workflow = require('./workflow');
+
+/**
+ * 노드와 항목의 짝을 본다. 막는 규칙을 전부 모아 한 번에 던진다.
+ *
+ * 하나씩 던지면 부르는 쪽이 고치고 다시 부르고를 되풀이한다 — 태스크 열둘을
+ * 옮길 때 게이트 하나를 면제하자 다음 게이트가 다시 막았던 그 왕복이다.
+ */
+function assertNodeConsistency(current, changes) {
   const next = Object.assign({}, current || {}, changes || {});
-  if (next.status === 'waiting' && !next.blocker) throw inputError('대기 상태로 바꾸려면 대기 대상, 해제 조건과 대기 시작 시각이 필요합니다.');
-  if (next.status !== 'waiting' && next.blocker) throw inputError('대기 상태가 아닌 태스크에는 대기 사유를 둘 수 없습니다.');
+  const blocked = workflow.judgeItem(next, null).filter((blocker) => blocker.origin === 'item-type');
+  if (blocked.length) throw inputError(workflow.blockerReport(blocked));
 }
 
-// 완료와 반려는 둘 다 종료 상태지만 게이트가 반대 방향이다. 완료는 수용조건과 TST 증거를
+// 아래 셋은 좁은 probe다. 저장 경로는 위의 한 번을 부르고, 이 셋은 규칙 하나만
+// 따로 물어야 하는 자리(시험과 Board의 입력 검증)를 위해 남는다. 판정 자체는
+// 셋 다 같은 카탈로그에서 나오므로 답이 갈릴 자리가 없다.
+function assertFieldConsistency(current, changes, path) {
+  const next = Object.assign({}, current || {}, changes || {});
+  const blocked = workflow.judgeItem(next, null)
+    .filter((blocker) => blocker.origin === 'item-type' && String(blocker.target).endsWith(`.${path}`));
+  if (blocked.length) throw inputError(workflow.blockerReport(blocked));
+}
+
+function assertBlockerConsistency(current, changes) {
+  assertFieldConsistency(current, changes, 'blocker');
+}
+
+// 완료와 반려는 둘 다 종료 스텝이지만 게이트가 반대 방향이다. 완료는 수용조건과 TST 증거를
 // 요구하고, 반려는 그 증거가 없다는 것을 전제로 사유를 요구한다. 사유를 강제하지 않으면
 // 반려가 완료 게이트를 우회하는 조용한 통로가 된다.
 const TERMINAL_TASK_STATES = vocabulary.TERMINAL_TASK_STATES;
 function assertCancellationConsistency(current, changes) {
-  const next = Object.assign({}, current || {}, changes || {});
-  if (next.status === 'cancelled' && !next.cancellation) throw inputError('반려하려면 반려 사유와 결정자가 필요합니다.');
-  if (next.status !== 'cancelled' && next.cancellation) throw inputError('반려 상태가 아닌 태스크에는 반려 사유를 둘 수 없습니다.');
-  const cancellation = next.cancellation;
-  if (!cancellation) return;
-  for (const [field, label] of [['reason', '반려 사유'], ['decidedBy', '결정자'], ['at', '결정 시각']]) {
-    if (!cancellation[field] || !String(cancellation[field]).trim()) throw inputError(`${label}가 필요합니다.`);
-  }
+  assertFieldConsistency(current, changes, 'cancellation');
 }
 
 // 완료 게이트의 면제. 닫히지 않는 태스크를 사람이 사유를 대고 닫는 자리다.
@@ -66,20 +89,16 @@ function assertCancellationConsistency(current, changes) {
 // 없으며, 그것이 면제가 경계를 여는 수단이 되지 않게 하는 유일한 장치다.
 const EXEMPTABLE = vocabulary.EXEMPTABLE_GATES;
 // 면제 기록은 gates 배열이 정본이고, gate 하나만 든 옛 기록도 읽는다 — 마이그레이션
-// 없이 공존한다.
-function exemptionGates(exemption) {
-  if (!exemption) return [];
-  if (Array.isArray(exemption.gates)) return exemption.gates.filter(Boolean).map(String);
-  return exemption.gate ? [String(exemption.gate)] : [];
-}
+// 없이 공존한다. 읽는 규칙 자체는 판정부가 갖는다.
+const exemptionGates = workflow.exemptionGates;
 
 function assertExemptionConsistency(current, changes) {
   const next = Object.assign({}, current || {}, changes || {});
   const exemption = next.exemption;
   if (!exemption) return;
-  // 면제는 완료를 위한 것이다. 다른 상태에 남겨 두면 무엇을 면제한 것인지가 사라지고,
+  // 면제는 완료를 위한 것이다. 다른 스텝에 남겨 두면 무엇을 면제한 것인지가 사라지고,
   // 되살아난 태스크가 옛 사유를 들고 다시 닫힌다.
-  if (next.status !== 'done') throw inputError('완료 상태가 아닌 태스크에는 게이트 면제를 둘 수 없습니다.');
+  assertFieldConsistency(current, changes, 'exemption');
   // 한 태스크가 게이트 둘에 걸릴 수 있다. TST가 없다는 사실 하나가 완료 게이트와
   // 구현 준비도 게이트를 함께 막으므로, 면제를 하나만 받으면 나머지가 여전히 닫는다.
   // 사유는 하나다 — 같은 사실에 대한 같은 결정이기 때문이다.
@@ -113,7 +132,7 @@ function assertKindConsistency(current, changes) {
     if (!TEST_RESULTS.includes(result)) throw inputError(`지원하지 않는 테스트 판정입니다: ${result} (${TEST_RESULTS.join(', ')})`);
   }
   // 반려는 수행하지 않았다는 뜻이므로 판정을 요구하지 않는다. 완료만 요구한다.
-  if (kind === 'test' && next.status === 'done' && result === null) throw inputError('완료한 테스트 태스크에는 판정이 필요합니다.');
+  if (kind === 'test' && workflow.stepOf(next.status) === 'completed' && result === null) throw inputError('완료한 테스트 태스크에는 판정이 필요합니다.');
   const round = next.round === undefined ? null : next.round;
   if (kind !== 'test') {
     if (round !== null) throw inputError('테스트 태스크가 아니면 차수를 둘 수 없습니다.');
@@ -140,7 +159,7 @@ function testedDocuments(task) {
 // 다만 반려한 태스크는 자리를 붙잡지 않는다. 붙잡게 하면 잘못 만든 태스크를 반려한 뒤
 // 그 차수에서 다시 만들 방법이 없어져, 차수를 올리는 것이 유일한 해소가 된다.
 function holdsRoundSlot(task) {
-  return Boolean(task) && task.kind === 'test' && task.status !== 'cancelled';
+  return Boolean(task) && task.kind === 'test' && workflow.stepOf(task.status) !== 'dropped';
 }
 
 function assertRoundUniqueness(tasks, taskIdValue, task) {
@@ -291,6 +310,7 @@ module.exports = {
   TASK_KINDS,
   TEST_RESULTS,
   taskKind,
+  assertNodeConsistency,
   assertBlockerConsistency,
   assertCancellationConsistency,
   assertExemptionConsistency,

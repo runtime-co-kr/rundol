@@ -19,27 +19,29 @@ const NORMALIZED_BUILTIN = normalizeItemTypes(BUILTIN_ITEM_TYPES);
 // 면제 판정이 보는 게이트 이름. 문자열을 세 군데에 적으면 한 곳만 고쳐지는 날이 온다.
 const READINESS_GATE = 'implementation-readiness';
 
-// 면제 기록은 gates 배열이 정본이고 gate 하나만 든 옛 기록도 읽는다. tasks.js가 같은
-// 규칙을 갖지만 그쪽은 파일을 읽는 층이라 여기서 부를 수 없다.
-function exemptionGates(exemption) {
-  if (!exemption) return [];
-  if (Array.isArray(exemption.gates)) return exemption.gates.filter(Boolean).map(String);
-  return exemption.gate ? [String(exemption.gate)] : [];
-}
+const workflow = require('./workflow');
 
-function exempted(task, gate) {
-  const exemption = task && task.exemption;
-  if (!exemption || !exemption.reason) return false;
-  const gates = Array.isArray(exemption.gates) ? exemption.gates : (exemption.gate ? [exemption.gate] : []);
-  return gates.includes(gate);
+// 면제 기록은 gates 배열이 정본이고 gate 하나만 든 옛 기록도 읽는다. 그 규칙은
+// 판정부가 갖는다 — 예전에는 같은 다섯 줄이 이 파일과 저장 계층에 따로 있었고,
+// 둘 다 "저쪽은 부를 수 없다"는 이유로 자기 사본을 들고 있었다.
+const exemptionGates = workflow.exemptionGates;
+const exempted = workflow.exempted;
+
+// 게이트의 판정은 workflow.js의 카탈로그가 갖는다. 여기 남는 것은 이름과 그
+// 판정을 잇는 줄 하나뿐이다 — 유형 해석기와 발화 이력이 이 표를 규칙 목록으로
+// 읽으므로 표 자체는 사라지지 않고, 규칙의 내용만 한 곳으로 간다.
+//
+// 같은 규칙이 저장 계층과 여기에 두 벌로 있던 것이 이 설계가 고치려던 것이다.
+// 두 벌은 갈릴 것이 아니라 이미 갈려 있었다 — 저장은 blocker가 있기만 하면
+// 받았고 여기서는 세 부분을 요구했다.
+function gateFor(ruleId) {
+  return (task) => workflow.judgeTransition(null, task && task.status, task, null)
+    .filter((blocker) => blocker.ruleId === ruleId)
+    .map((blocker) => ({ code: blocker.code, message: blocker.message }));
 }
 
 const DEFAULT_TASK_GATES = Object.freeze({
-  'done-requires-test-link': (task) => (
-    task.status === 'done' && !exempted(task, 'done-requires-test-link') && !(task.links || []).some((link) => String(link).startsWith('TST-'))
-      ? [{ code: 'RDL-TASK-019', message: 'done 태스크는 TST 문서를 연결해야 합니다.' }]
-      : []
-  )
+  'done-requires-test-link': gateFor('done-requires-test-link')
 });
 
 // 검사의 판정부. 파일을 읽지 않고 이미 읽어 둔 값만 보고 진단을 만든다.
@@ -399,9 +401,10 @@ function checkContractViolations(list, evaluation, context) {
 }
 
 const TASK_ID_PATTERN = /^TASK-(?:[0-9A-HJKMNP-TV-Z]{8}|[A-Z0-9]{20,32})$/u;
-// 완료와 반려는 둘 다 종료지만 게이트가 다르다. 완료는 수용조건과 검증 증거를,
-// 반려는 사유와 결정자를 요구한다. 반려가 완료 게이트를 우회하는 통로가 되면 안 되므로
-// 아래 규칙들은 두 상태를 하나로 묶지 않는다.
+// 완료와 반려는 둘 다 끝난 스텝이지만 게이트가 다르다. 완료는 수용조건과 검증
+// 증거를, 반려는 사유와 결정자를 요구한다. 그 규칙들은 workflow.js의 카탈로그가
+// 갖고, 여기 남는 것은 사람을 아는 판정 — 이 층만 아는 값이 있어야 답할 수 있는
+// 것들뿐이다.
 const ALLOWED_TASK_STATES = new Set(require('./vocabulary').TASK_STATES);
 const REQUIRED_TASK_FIELDS = ['title', 'summary', 'owner', 'reviewers', 'stakeholders', 'status', 'priority', 'links', 'deps', 'acceptanceCriteria', 'blocker', 'createdAt', 'updatedAt', 'statusChangedAt', 'externalRefs'];
 
@@ -423,7 +426,17 @@ function checkTaskEntries(list, tasks, context) {
       if (!Object.prototype.hasOwnProperty.call(task, field)) diagnostic(list, { code: 'RDL-TASK-005', category: 'task', file: taskFile, artifactId: taskId, message: `필수 태스크 필드가 없습니다: ${field}` });
     }
     if (!ALLOWED_TASK_STATES.has(task.status)) diagnostic(list, { code: 'RDL-TASK-006', category: 'task', file: taskFile, artifactId: taskId, message: `허용되지 않은 상태입니다: ${task.status}` });
-    if (['doing', 'review', 'done', 'cancelled'].includes(task.status) && !task.owner) diagnostic(list, { code: 'RDL-TASK-007', category: 'task', file: taskFile, artifactId: taskId, message: `${task.status} 상태에는 owner가 필요합니다.` });
+    // 노드에 걸린 규칙은 판정부가 한 번에 답한다. 예전에는 여기 일곱 줄이었고
+    // 같은 규칙 다섯이 저장 계층에 두 번째로 적혀 있었다. 판정은 그대로이고
+    // 사는 자리만 옮겼다 — 어느 노드에 무엇이 걸리는지가 규칙 안의 목록이 아니라
+    // 워크플로의 값이 되었고, 그래야 3단계가 그 값을 설정으로 받을 수 있다.
+    //
+    // 이름이 붙은 게이트는 여기서 내지 않는다. 유형 해석기가 게이트 표로 같은
+    // 규칙을 부르므로, 두 자리가 모두 내면 한 위반이 진단 둘로 보인다.
+    for (const blocker of workflow.judgeItem(task, null)) {
+      if (workflow.isGateRule(blocker.ruleId)) continue;
+      diagnostic(list, { code: blocker.code, category: 'task', file: taskFile, artifactId: taskId, message: blocker.message });
+    }
     if (task.owner && !memberIds.has(task.owner)) diagnostic(list, { code: 'RDL-TASK-010', category: 'task', file: taskFile, artifactId: taskId, target: task.owner, message: `존재하지 않는 owner입니다: ${task.owner}` });
     for (const reviewer of Array.isArray(task.reviewers) ? task.reviewers : []) if (!memberIds.has(reviewer)) diagnostic(list, { code: 'RDL-TASK-011', category: 'task', file: taskFile, artifactId: taskId, target: reviewer, message: `존재하지 않는 reviewer입니다: ${reviewer}` });
     for (const stakeholder of Array.isArray(task.stakeholders) ? task.stakeholders : []) if (!stakeholderIds.has(stakeholder)) diagnostic(list, { code: 'RDL-TASK-012', category: 'task', file: taskFile, artifactId: taskId, target: stakeholder, message: `존재하지 않는 stakeholder입니다: ${stakeholder}` });
@@ -431,19 +444,10 @@ function checkTaskEntries(list, tasks, context) {
     const deps = Array.isArray(task.deps) ? task.deps : [];
     dependencies.set(taskId, deps);
     for (const dependency of deps) if (!Object.prototype.hasOwnProperty.call(tasks, dependency)) diagnostic(list, { code: 'RDL-TASK-013', category: 'task', file: taskFile, artifactId: taskId, target: dependency, message: `존재하지 않는 선행 태스크입니다: ${dependency}` });
-    if (task.status === 'waiting' && (!task.blocker || !task.blocker.waitingFor || !task.blocker.condition || !task.blocker.since)) diagnostic(list, { code: 'RDL-TASK-014', category: 'task', file: taskFile, artifactId: taskId, message: 'waiting 상태에는 waitingFor, condition, since가 있는 blocker가 필요합니다.' });
-    if (task.status !== 'waiting' && task.blocker) diagnostic(list, { code: 'RDL-TASK-015', category: 'task', file: taskFile, artifactId: taskId, message: 'waiting이 아닌 태스크에는 blocker를 둘 수 없습니다.' });
     if (task.blocker && !memberIds.has(task.blocker.waitingFor) && !stakeholderIds.has(task.blocker.waitingFor)) diagnostic(list, { code: 'RDL-TASK-016', category: 'task', file: taskFile, artifactId: taskId, target: task.blocker.waitingFor, message: `blocker 대기 대상이 존재하지 않습니다: ${task.blocker.waitingFor}` });
-    // 사유 없는 반려는 "취소됨"만 남기고 왜인지는 남기지 않는다. 뒤에 읽는 사람이
-    // 그 판단을 재현할 수 없으므로 waiting↔blocker와 같은 강도로 짝을 강제한다.
-    if (task.status === 'cancelled' && (!task.cancellation || !task.cancellation.reason || !task.cancellation.decidedBy || !task.cancellation.at)) diagnostic(list, { code: 'RDL-TASK-023', category: 'task', file: taskFile, artifactId: taskId, message: 'cancelled 상태에는 reason, decidedBy, at이 있는 cancellation이 필요합니다.' });
-    if (task.status !== 'cancelled' && task.cancellation) diagnostic(list, { code: 'RDL-TASK-024', category: 'task', file: taskFile, artifactId: taskId, message: 'cancelled가 아닌 태스크에는 cancellation을 둘 수 없습니다.' });
     if (task.cancellation && task.cancellation.decidedBy && !memberIds.has(task.cancellation.decidedBy)) diagnostic(list, { code: 'RDL-TASK-025', category: 'task', file: taskFile, artifactId: taskId, target: task.cancellation.decidedBy, message: `반려 결정자가 존재하지 않습니다: ${task.cancellation.decidedBy}` });
     const criteria = task.acceptanceCriteria && typeof task.acceptanceCriteria === 'object' ? Object.values(task.acceptanceCriteria) : [];
     if (criteria.length === 0) diagnostic(list, { code: 'RDL-TASK-017', category: 'task', file: taskFile, artifactId: taskId, message: '완료조건이 하나 이상 필요합니다.' });
-    // 완료에 미완료 수용조건이 남아 있는지는 유형과 무관하다. 어느 유형이든 조건을
-    // 다 채우지 않고 완료로 넘어갈 수 없으므로 유형 정의로 옮기지 않는다.
-    if (task.status === 'done' && criteria.some((criterion) => !criterion.done)) diagnostic(list, { code: 'RDL-TASK-018', category: 'task', file: taskFile, artifactId: taskId, message: 'done 태스크에 미완료 수용조건이 있습니다.' });
     // 유형별 판정은 여기 없다. 유형이 데이터가 되면서 제약 해석기로 옮겼다 —
     // 분기 일곱이 유형마다 늘어나던 자리이고, 고칠 곳을 하나라도 빠뜨리면 그 유형만
     // 규칙 없이 통과하던 자리다.
@@ -466,16 +470,17 @@ function checkTaskEntries(list, tasks, context) {
     // 원본을 직접 보면 그 어긋남이 생길 자리가 없다. 계약을 쓰지 않는 프로젝트는
     // 예전처럼 이 게이트의 대상이 아니다 — 쓰지 않기로 한 것을 위반으로 세지 않는다.
     const implementationReady = kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
+    const completedNode = workflow.stepOf(task.status) === 'completed';
     // 이 게이트는 유형 해석기 밖에 있다. 발화를 여기서 적지 않으면 이력에는 한 번도
     // 불리지 않은 것으로 남고, 그 침묵은 죽은 규칙과 구분되지 않는다 — 실제로 이력을
     // 처음 켰을 때 이 게이트가 죽은 규칙으로 나왔다.
-    if (task.status === 'done' && implementationReady && exempted(task, 'implementation-readiness') && Array.isArray(firings)) {
+    if (completedNode && implementationReady && exempted(task, 'implementation-readiness') && Array.isArray(firings)) {
       firings.push({
         target: taskId, origin: 'item-type', from: null, to: null, evaluated: [], blocked: [],
         exempted: [{ ruleId: READINESS_GATE, gate: READINESS_GATE, reason: task.exemption.reason || null, decidedBy: task.exemption.decidedBy || null }]
       });
     }
-    if (task.status === 'done' && implementationReady && !exempted(task, 'implementation-readiness')) {
+    if (completedNode && implementationReady && !exempted(task, 'implementation-readiness')) {
       const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
       const declaresAtomic = linked.some((doc) => doc.frontmatter && doc.frontmatter.data && doc.frontmatter.data.implementationContract === 'atomic-v1');
       const mark = list.length;
@@ -493,7 +498,6 @@ function checkTaskEntries(list, tasks, context) {
         exempted: []
       });
     }
-    if (task.status === 'review' && (!Array.isArray(task.externalRefs) || task.externalRefs.length === 0)) diagnostic(list, { code: 'RDL-TASK-020', category: 'task', file: taskFile, artifactId: taskId, message: 'review 태스크는 PR 또는 검토 대상 externalRef가 필요합니다.' });
   }
 
   const visiting = new Set();

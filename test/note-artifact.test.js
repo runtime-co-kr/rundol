@@ -132,8 +132,13 @@ for (const gate of ['RDL-TASK-018', 'RDL-TASK-019']) {
 const { assertBlockerConsistency } = require('../src/tasks');
 assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting' }), /대기 대상/u);
 assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { blocker: { waitingFor: 'MEMBER-001' } }), /대기 상태가 아닌/u);
-assert.doesNotThrow(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }));
-assert.doesNotThrow(() => assertBlockerConsistency({ status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }, { status: 'doing', blocker: null }));
+// 갖춰진 blocker만 받는다. 예전에는 저장이 blocker가 있기만 하면 받고 검사가 세
+// 부분을 요구해서, 같은 규칙이 두 계층에서 다른 강도로 있었다 — 저장을 지난 값이
+// 검사에서 막히는 자리였다. 판정이 하나가 되면서 그 틈이 닫혔다.
+const wholeBlocker = { waitingFor: 'MEMBER-001', condition: '검토 회신', since: '2026-08-15T00:00:00.000Z' };
+assert.throws(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting', blocker: { waitingFor: 'MEMBER-001' } }), /대기 대상/u);
+assert.doesNotThrow(() => assertBlockerConsistency({ status: 'todo', blocker: null }, { status: 'waiting', blocker: wholeBlocker }));
+assert.doesNotThrow(() => assertBlockerConsistency({ status: 'waiting', blocker: wholeBlocker }, { status: 'doing', blocker: null }));
 
 // Client ID는 샤드 디렉터리와 이벤트 파일 이름이 되어 저장소에 커밋된다.
 // 호스트명을 그대로 넣으면 공개 저장소에 기기 이름이 남는다.

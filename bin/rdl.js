@@ -3,6 +3,7 @@
 
 const path = require('path');
 const { TASK_KINDS } = require('../src/tasks');
+const workflow = require('../src/workflow');
 const { doctor } = require('../src/doctor');
 
 const VERSION = require('../package.json').version;
@@ -1623,14 +1624,14 @@ async function main() {
       changes.links = kept.concat(added);
     }
     // 반려는 결정이므로 사유를 함께 받는다. 결정자를 생략하면 taskSet이 태스크 owner로 채운다.
-    if (options.status === 'cancelled') {
+    if (workflow.stepOf(options.status) === 'dropped') {
       if (!options.reason) throw new Error('반려하려면 --reason이 필요합니다.');
       changes.cancellation = { reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }
     // 면제는 닫히지 않는 태스크를 사람이 사유를 대고 닫는 자리다. 반려와 같은 모양인 것은
     // 우연이 아니다 — 둘 다 증거 없이 상태를 옮기므로 둘 다 사유와 결정자를 요구한다.
     else if (options.exempts.length) {
-      if (options.status !== 'done') throw new Error('--exempt는 --status done에만 사용합니다.');
+      if (workflow.stepOf(options.status) !== 'completed') throw new Error('--exempt는 --status done에만 사용합니다.');
       if (!options.reason) throw new Error('면제하려면 --reason이 필요합니다. 증거 없이 닫은 이유가 남지 않으면 면제는 조용한 우회가 됩니다.');
       changes.exemption = { gates: options.exempts.slice(), reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }

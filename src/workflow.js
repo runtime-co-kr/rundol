@@ -1,0 +1,520 @@
+'use strict';
+
+// 워크플로 스텝과 전환 판정. 상태 기계가 코드 안에서 사는 자리다.
+//
+// 이 파일이 하는 일은 둘이다.
+//
+//   1. 상태 이름을 스텝으로 옮긴다. 코드는 노드 이름을 모르고 스텝만 읽는다.
+//   2. 막는 규칙을 전부 돌려준다. 네 표면이 이 함수 하나를 부른다.
+//
+// ── 왜 이 파일이 생겼나 ────────────────────────────────────────────────
+//
+// 태스크 상태를 바꾸는 일에 워크플로가 없었다. 막고 싶은 규칙 넷이 세 파일에
+// 흩어져 있었고, 흩어짐이 실제로 비용을 냈다 — 태스크 열둘을 완료로 옮길 때
+// RDL-TASK-019가 먼저 막고, 하나를 면제하자 RDL-IMPL-021이 다시 막았다.
+// 두 규칙이 같은 사실에서 나오는데 한 화면에 보이지 않아 두 번 왕복했다.
+//
+// 그 왕복의 기계는 판정이 아니라 판정을 꺼내는 자리에 있었다. 검사는 진단을
+// 전부 만들어 놓고, 저장 게이트가 그중 첫 줄만 꺼내 던졌다. 그래서 이 파일의
+// 반환은 불리언이 아니라 목록이고, 부르는 쪽도 목록을 통째로 내보낸다.
+//
+// ── 무엇을 안 하나 ─────────────────────────────────────────────────────
+//
+// 파일을 읽지 않는다. 네 표면은 각자 경로를 갖고 있고, 판정이 경로를 알면 각
+// 표면이 자기 경로로 다시 구현하게 되며 다시 구현한 것들은 조금씩 달라진다.
+//
+// 시각을 읽지 않는다. 인자에 시계가 없는 것이 그 강제다. 어제와 오늘의 답이
+// 다르면 재현되지 않고, 재현되지 않는 판정은 막힌 사람에게 무엇을 고쳐야
+// 하는지 말해 주지 못한다.
+//
+// 발화 레코드를 만들지 않는다. 만들면 판정이 시각과 클라이언트를 알아야 하고,
+// 그 순간 위 두 줄이 깨진다. 부른 표면이 판정의 답을 받아 적는다.
+//
+// require는 vocabulary 하나뿐이다. check-rules.js가 check.js와 갈라선 것과 같은
+// 규율이고, worker-contract-purity.test.js가 전이 의존까지 따라가며 지킨다.
+
+const {
+  WORKFLOW_STEPS, TERMINAL_WORKFLOW_STEPS, OPEN_WORKFLOW_STEPS, ACTIVE_WORKFLOW_STEPS,
+  COMPLETION_VALIDITIES, RULE_ORIGINS, TASK_STATES, EXEMPTABLE_GATES
+} = require('./vocabulary');
+
+// ── 내장 태스크 워크플로 ────────────────────────────────────────────────
+//
+// 3단계에서 workflows.json이 이 표를 대체한다. 지금은 프로젝트가 정의하는 층이
+// 없으므로 내장 하나이며, 그래서 이 표는 "지금 저장된 여섯 상태가 어느 스텝에
+// 서는가"만 답한다.
+//
+// ratified 축을 따로 두는 이유는 근거의 무게가 다르기 때문이다. 넷은 보고서
+// 11절이 실측 위에서 정했고, 둘(waiting · review)은 어느 절도 정하지 않았다.
+// 11절은 그 둘을 "0건이라 옮길 것이 없다"로 넘겼고 실제로 0건이다.
+//
+// 그런데 이관 지도와 달리 제품은 비워 둘 수 없다. 어휘가 여섯을 선언했으므로
+// 저장은 여섯을 받고, 받은 값에 대해 "끝났나 · 붙어 있나"에 답하지 못하면 그
+// 태스크는 어느 목록에도 들지 않는다 — 매핑을 비우는 것은 답을 미루는 것이
+// 아니라 틀린 답을 내는 것이다. 그래서 채우되, 채웠다는 사실을 값에 남긴다.
+// migration-map.js의 source 축이 하던 일과 같고, 아직 안 정해진 것을 정해진
+// 것처럼 보이게 하지 않는 것이 그 축의 목적이다.
+//
+//   waiting  → in-progress   누군가 붙어 있되 막혀 있다. blocker.waitingFor가
+//                            사람을 가리키므로 아무도 안 잡은 것은 아니다.
+//   review   → in-approval   다른 행위자의 동의를 기다린다. RDL-TASK-020이
+//                            병합 요청 참조를 요구하는 것이 그 뜻이다.
+// requiresOwner를 스텝이 아니라 노드가 든다. 스텝으로 물으면 대기와 진행이 같은
+// 칸에 서므로 둘을 가를 수 없는데, 지금 규칙은 그 둘을 가른다 — 대기는 담당자 없이도
+// 성립한다. 아무도 안 잡은 일이 바깥 사정에 막혀 있는 경우가 그것이다.
+//
+// 이 값이 옳은지는 이 갈래가 답하지 않는다. 여기서 정하면 상태 문자열을 걷어내는 일이
+// 규칙을 넓히는 일과 한 커밋에 섞이고, 그러면 나중에 무엇이 어느 쪽 때문에 바뀌었는지
+// 답할 수 없다. 지금 도는 판정을 그대로 옮기고, 그 판정이 값으로 보이게만 한다 —
+// 예전에는 이것이 규칙 안에 손으로 적힌 노드 넷이었고 목록이라 읽히지도 않았다.
+const TASK_NODES = Object.freeze({
+  todo: Object.freeze({ step: 'unclaimed', validity: null, requiresOwner: false, ratified: '11절' }),
+  doing: Object.freeze({ step: 'in-progress', validity: null, requiresOwner: true, ratified: '11절' }),
+  waiting: Object.freeze({ step: 'in-progress', validity: null, requiresOwner: false, ratified: null }),
+  review: Object.freeze({ step: 'in-approval', validity: null, requiresOwner: true, ratified: null }),
+  done: Object.freeze({ step: 'completed', validity: 'valid', requiresOwner: true, ratified: '11절' }),
+  cancelled: Object.freeze({ step: 'dropped', validity: null, requiresOwner: true, ratified: '11절' })
+});
+
+// 내장 워크플로가 어휘를 벗어나지 않는다는 것을 적재 시점에 못박는다. 시험이
+// 아니라 모듈 자신에게 두는 이유는, 돌지 않은 시험은 통과한 시험과 구분되지
+// 않기 때문이다 — 어휘가 갈리면 이 파일을 require하는 모든 실행이 그 자리에서
+// 넘어진다. migration-map.js가 같은 수법을 쓴다.
+for (const [node, target] of Object.entries(TASK_NODES)) {
+  if (!TASK_STATES.includes(node)) throw new Error(`내장 워크플로가 어휘 밖 노드를 갖습니다: ${node}`);
+  if (!WORKFLOW_STEPS.includes(target.step)) throw new Error(`내장 워크플로가 어휘 밖 스텝을 가리킵니다: ${node} → ${target.step}`);
+  if (target.validity !== null && !COMPLETION_VALIDITIES.includes(target.validity)) {
+    throw new Error(`내장 워크플로가 어휘 밖 유효성을 가리킵니다: ${node} → ${target.validity}`);
+  }
+  // 유효성은 completed에서만 뜻이 있다. 다른 스텝에 붙으면 그 값을 읽는 쪽이
+  // 없는 축을 있는 것으로 다룬다.
+  if (target.validity !== null && target.step !== 'completed') {
+    throw new Error(`내장 워크플로가 completed가 아닌 스텝에 유효성을 붙였습니다: ${node} → ${target.step}`);
+  }
+}
+// 어휘가 선언한 값에 설 자리가 없으면 그 값을 가진 태스크는 어느 목록에도 들지
+// 않는다. 목록에서 빠졌다는 사실은 아무 신호도 내지 않으므로 여기서 막는다.
+for (const state of TASK_STATES) {
+  if (!TASK_NODES[state]) throw new Error(`어휘가 선언한 상태에 스텝이 없습니다: ${state}`);
+}
+
+// ── 노드에서 스텝으로 ───────────────────────────────────────────────────
+
+/** 노드(상태 이름) 하나의 스텝. 모르는 노드는 null이다 — 지어내지 않는다. */
+function stepOf(node) {
+  const target = TASK_NODES[node === undefined || node === null ? '' : String(node)];
+  return target ? target.step : null;
+}
+
+/** 완료의 유효성. completed가 아닌 스텝에서는 언제나 null이다. */
+function validityOf(node) {
+  const target = TASK_NODES[node === undefined || node === null ? '' : String(node)];
+  return target ? target.validity : null;
+}
+
+// 아래 넷이 "끝났나 · 붙어 있나 · 아직 안 잡았나"를 묻던 자리를 받는다. 스텝
+// 이름을 리터럴로 비교하는 것은 여기서만 하며, 그 이름은 닫힌 어휘라 팀이
+// 달라도 같다. 노드 이름을 비교하는 것과 다른 종류의 일이다.
+
+/** 더 손대지 않는 항목인가. 완료와 취소는 이유가 다르지만 이 점에서 같다. */
+function isTerminal(node) {
+  const step = stepOf(node);
+  return step !== null && TERMINAL_WORKFLOW_STEPS.includes(step);
+}
+
+/** 아직 끝나지 않았는가. */
+function isOpen(node) {
+  const step = stepOf(node);
+  return step !== null && OPEN_WORKFLOW_STEPS.includes(step);
+}
+
+/** 지금 누군가 붙어 있는가. 열린 것 중 아직 아무도 안 잡은 것을 뺀 것이다. */
+function isActive(node) {
+  const step = stepOf(node);
+  return step !== null && ACTIVE_WORKFLOW_STEPS.includes(step);
+}
+
+/** 아직 아무도 안 잡았는가. */
+function isUnclaimed(node) {
+  return stepOf(node) === 'unclaimed';
+}
+
+/** 그 스텝에 서는 노드들. 목록 필터가 스텝으로 묻고 노드로 좁힐 때 쓴다. */
+function nodesForStep(step) {
+  return Object.keys(TASK_NODES).filter((node) => TASK_NODES[node].step === step);
+}
+
+/**
+ * 화면에 실어 보낼 워크플로. 보드 화면은 브라우저에서 그대로 돌아 require를
+ * 쓸 수 없으므로, 서버가 스냅숏에 실어 준다. 화면이 자기 목록을 따로 적으면
+ * 저장값이 늘어도 화면은 그것을 모른 채 돈다 — board-presentation.js가 키
+ * 목록을 정본에서 가져오는 것과 같은 이유다.
+ */
+function taskWorkflowView() {
+  const nodes = {};
+  for (const [node, target] of Object.entries(TASK_NODES)) {
+    // requires는 그 노드에서만 채워야 하는 필드다. 화면이 "이 노드가 waiting인가"를
+    // 묻는 대신 "이 노드가 blocker를 요구하는가"를 묻게 하려고 싣는다. 앞쪽으로
+    // 물으면 노드 이름이 화면에 박히고, 프로젝트가 이름을 정의하는 날 그 화면은
+    // 남의 이름을 들고 있게 된다.
+    nodes[node] = {
+      step: target.step,
+      validity: target.validity,
+      requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
+    };
+  }
+  return {
+    targetKind: 'task',
+    nodes,
+    steps: WORKFLOW_STEPS.slice(),
+    terminalSteps: TERMINAL_WORKFLOW_STEPS.slice(),
+    openSteps: OPEN_WORKFLOW_STEPS.slice(),
+    activeSteps: ACTIVE_WORKFLOW_STEPS.slice()
+  };
+}
+
+/**
+ * 묶음의 롤업. 가장 덜 진행된 원소가 묶음을 정한다 — 하나라도 남아 있으면 그
+ * 묶음은 아직 안착하지 않았다.
+ *
+ * 진행 순서를 여기 다시 적지 않는다. WORKFLOW_STEPS가 이미 그 순서로 선언되어
+ * 있고 끝난 것은 TERMINAL_WORKFLOW_STEPS가 가른다. 같은 목록을 두 번째로 적을
+ * 수 있으면 언젠가 두 목록은 갈린다.
+ *
+ * 전부 끝났는데 completed와 dropped가 섞이면 답이 하나로 정해지지 않는다.
+ * 성취와 취소는 "더 손대지 않는다"는 점만 같고 뜻이 반대이므로, 여기서 한쪽을
+ * 고르지 않고 섞였다는 사실을 내보낸다 — 결정이 필요한 자리는 결정으로 남긴다.
+ *
+ * 이 계산은 migration-audit.js가 이관 시점에 쓰는 migration-map.js의 것과 같은
+ * 규칙이다. 두 벌인 이유는 한쪽이 이관 산출물이라 언젠가 사라지기 때문이고,
+ * 사라질 파일을 제품이 require하면 그 파일은 사라지지 못한다.
+ */
+function rollupStep(steps) {
+  const list = (steps || []).filter((step) => WORKFLOW_STEPS.includes(step));
+  if (!list.length) return { step: null, ambiguous: false };
+  for (const step of OPEN_WORKFLOW_STEPS) {
+    if (list.includes(step)) return { step, ambiguous: false };
+  }
+  const unique = Array.from(new Set(list));
+  if (unique.length === 1) return { step: unique[0], ambiguous: false };
+  return { step: null, ambiguous: true, mixed: unique.sort() };
+}
+
+/** 노드 목록에서 바로 롤업한다. 부르는 쪽이 스텝으로 옮기는 일을 되풀이하지 않는다. */
+function rollupNodes(nodes) {
+  return rollupStep((nodes || []).map(stepOf).filter(Boolean));
+}
+
+// ── 규칙 카탈로그 ───────────────────────────────────────────────────────
+//
+// 카탈로그는 하나이고 걸리는 자리가 둘이다 — 규칙이 두 군데 사는 것이 아니라
+// 한 카탈로그가 두 자리에 걸린다. 그래서 origin이 규칙마다 붙는다.
+//
+//   item-type   항상 참이어야 함. 지금 고쳐야 한다.
+//   transition  그 전환을 밟을 때만. 다른 전환으로 갈 수도 있다.
+//
+// 막힌 사람에게 이 구분이 필요하다. origin은 규칙의 성질이지 언제 도는지를
+// 정하는 스위치가 아니다 — 완료에 앉아 있는 태스크가 TST를 안 걸고 있으면 그
+// 사실은 전환을 밟지 않아도 여전히 참이고, 검사는 그것을 말해야 한다.
+//
+// 진단 코드는 지금 것을 그대로 쓴다. 06절이 코드를 검증 방법 축(RDL-VAL-*)에
+// 붙이자고 한 것은 옳지만 그 재편은 소스 × 방법 카탈로그를 세우는 갈래의 일이고,
+// 여기서 미리 바꾸면 그 갈래가 두 번 옮기게 된다. source · method 칸은 지금
+// 채워 둔다 — 값이 있어야 그 갈래가 무엇을 어디에 이어야 하는지 보인다.
+
+// 노드 하나에만 붙는 필드. "그 노드면 있어야 하고 아니면 없어야 한다"는 짝이
+// 규칙 둘이 아니라 선언 하나에서 나온다. 짝을 두 줄로 적으면 한 줄만 고쳐지는
+// 날이 오고, 실제로 이 짝은 저장 계층과 검사 계층에 서로 다른 강도로 있었다.
+const NODE_EXCLUSIVE_FIELDS = Object.freeze({
+  blocker: Object.freeze({
+    node: 'waiting',
+    parts: Object.freeze({ waitingFor: '대기 대상', condition: '해제 조건', since: '대기 시작 시각' }),
+    missingRule: 'waiting-requires-blocker',
+    missingCode: 'RDL-TASK-014',
+    missingMessage: '대기 상태로 바꾸려면 대기 대상(waitingFor), 해제 조건(condition), 대기 시작 시각(since)이 필요합니다.',
+    strayRule: 'blocker-only-when-waiting',
+    strayCode: 'RDL-TASK-015',
+    strayMessage: '대기 상태가 아닌 태스크에는 blocker를 둘 수 없습니다.'
+  }),
+  cancellation: Object.freeze({
+    node: 'cancelled',
+    parts: Object.freeze({ reason: '반려 사유', decidedBy: '결정자', at: '결정 시각' }),
+    missingRule: 'dropped-requires-cancellation',
+    missingCode: 'RDL-TASK-023',
+    missingMessage: '반려에는 반려 사유(reason), 결정자(decidedBy), 결정 시각(at)이 모두 필요합니다.',
+    strayRule: 'cancellation-only-when-dropped',
+    strayCode: 'RDL-TASK-024',
+    strayMessage: '반려 상태가 아닌 태스크에는 cancellation을 둘 수 없습니다.'
+  })
+});
+
+function filled(value) {
+  return Boolean(value) && String(value).trim() !== '';
+}
+
+function completeParts(value, parts) {
+  return Boolean(value) && typeof value === 'object' && Object.keys(parts).every((part) => filled(value[part]));
+}
+
+function criteriaOf(item) {
+  const criteria = item && item.acceptanceCriteria;
+  return criteria && typeof criteria === 'object' ? Object.values(criteria) : [];
+}
+
+function linksOf(item) {
+  return Array.isArray(item && item.links) ? item.links : [];
+}
+
+// 면제 기록은 gates 배열이 정본이고 gate 하나만 든 옛 기록도 읽는다.
+function exemptionGates(exemption) {
+  if (!exemption) return [];
+  if (Array.isArray(exemption.gates)) return exemption.gates.filter(Boolean).map(String);
+  return exemption.gate ? [String(exemption.gate)] : [];
+}
+
+/** 사람이 사유를 대고 면제한 게이트인가. 면제된 규칙은 막는 목록에 오지 않는다. */
+function exempted(item, ruleId) {
+  const exemption = item && item.exemption;
+  if (!exemption || !exemption.reason) return false;
+  return exemptionGates(exemption).includes(ruleId);
+}
+
+// 규칙 하나. appliesTo는 노드와 스텝을 둘 다 받는다 — 대부분은 스텝으로 답하고,
+// 노드 하나에만 붙는 필드 짝만 노드로 답한다. 그 둘을 억지로 한 축에 밀어 넣으면
+// waiting과 doing이 같은 스텝이라는 사실 때문에 blocker 규칙이 doing에도 걸린다.
+const TASK_RULES = [];
+
+TASK_RULES.push({
+  ruleId: 'claimed-requires-owner',
+  code: 'RDL-TASK-007',
+  origin: 'item-type',
+  source: 'field',
+  method: 'present',
+  path: 'owner',
+  // 어느 노드가 담당자를 요구하는지는 워크플로가 든다. 예전에는 이 자리에 노드
+  // 넷이 손으로 적혀 있었고, 목록이 규칙 안에 있으면 그 목록이 무엇을 빠뜨렸는지
+  // 읽을 방법이 없다. 3단계에서 workflows.json이 이 칸을 받는다.
+  appliesTo: (node) => Boolean(TASK_NODES[node] && TASK_NODES[node].requiresOwner),
+  holds: (item) => filled(item.owner),
+  message: (item) => `${item.status} 상태에는 owner가 필요합니다.`
+});
+
+for (const [field, spec] of Object.entries(NODE_EXCLUSIVE_FIELDS)) {
+  TASK_RULES.push({
+    ruleId: spec.missingRule,
+    code: spec.missingCode,
+    origin: 'item-type',
+    source: 'field',
+    method: 'present',
+    path: field,
+    appliesTo: (node) => node === spec.node,
+    holds: (item) => completeParts(item[field], spec.parts),
+    message: () => spec.missingMessage
+  });
+  TASK_RULES.push({
+    ruleId: spec.strayRule,
+    code: spec.strayCode,
+    origin: 'item-type',
+    source: 'field',
+    method: 'present',
+    path: field,
+    appliesTo: (node) => node !== spec.node,
+    holds: (item) => !item[field],
+    message: () => spec.strayMessage
+  });
+}
+
+TASK_RULES.push({
+  ruleId: 'exemption-only-when-completed',
+  code: 'RDL-TASK-026',
+  origin: 'item-type',
+  source: 'field',
+  method: 'present',
+  path: 'exemption',
+  // 면제는 완료를 위한 것이다. 다른 스텝에 남겨 두면 무엇을 면제한 것인지가
+  // 사라지고, 되살아난 태스크가 옛 사유를 들고 다시 닫힌다.
+  appliesTo: (node, step) => step !== 'completed',
+  holds: (item) => !item.exemption,
+  message: () => '완료 상태가 아닌 태스크에는 게이트 면제를 둘 수 없습니다.'
+});
+
+TASK_RULES.push({
+  ruleId: 'completion-requires-acceptance',
+  code: 'RDL-TASK-018',
+  origin: 'transition',
+  source: 'acceptance-criteria',
+  method: 'every',
+  path: 'acceptanceCriteria',
+  // 조건을 다 채우지 않고 완료로 넘어갈 수 없다. 어느 항목 유형이든 같으므로
+  // 유형 정의로 내리지 않는다.
+  appliesTo: (node, step) => step === 'completed',
+  holds: (item) => criteriaOf(item).every((criterion) => criterion && criterion.done),
+  message: () => 'done 태스크에 미완료 수용조건이 있습니다.'
+});
+
+TASK_RULES.push({
+  ruleId: 'done-requires-test-link',
+  code: 'RDL-TASK-019',
+  origin: 'transition',
+  source: 'link',
+  method: 'some',
+  path: 'links',
+  // 이름이 붙은 게이트다. 이름으로 부르고 이름으로 면제하므로 유형 해석기가
+  // 게이트 표를 통해 이 규칙을 부르고, 검사기는 같은 규칙을 두 번 내지 않는다.
+  gate: true,
+  appliesTo: (node, step) => step === 'completed',
+  holds: (item) => linksOf(item).some((link) => String(link).startsWith('TST-')),
+  message: () => 'done 태스크는 TST 문서를 연결해야 합니다.'
+});
+
+TASK_RULES.push({
+  ruleId: 'approval-requires-external-ref',
+  code: 'RDL-TASK-020',
+  origin: 'transition',
+  source: 'field',
+  method: 'count',
+  path: 'externalRefs',
+  appliesTo: (node, step) => step === 'in-approval',
+  holds: (item) => Array.isArray(item.externalRefs) && item.externalRefs.length > 0,
+  message: () => 'review 태스크는 PR 또는 검토 대상 externalRef가 필요합니다.'
+});
+
+// 규칙과 목록 둘 다 얼린다. 목록만 얼리면 안쪽 규칙의 판정을 밖에서 갈아끼울 수
+// 있고, 그런 결함은 바꾼 곳이 아니라 엉뚱한 표면에서 드러난다.
+TASK_RULES.forEach(Object.freeze);
+Object.freeze(TASK_RULES);
+
+// 카탈로그가 어휘를 벗어나지 않는지 적재 시점에 본다. 규칙 이름이 어휘에 없는
+// origin을 들면 발화 이력이 그 규칙을 어느 축에도 넣지 못한다.
+for (const rule of TASK_RULES) {
+  if (!RULE_ORIGINS.includes(rule.origin)) throw new Error(`규칙이 어휘 밖 origin을 갖습니다: ${rule.ruleId} → ${rule.origin}`);
+}
+// 면제할 수 있는 게이트는 카탈로그 안의 규칙을 가리켜야 한다. 가리키는 규칙이
+// 없으면 그 면제는 아무것도 열지 않으면서 사유만 받아 간다.
+const RULE_IDS = TASK_RULES.map((rule) => rule.ruleId);
+for (const gate of EXEMPTABLE_GATES) {
+  // 구현 준비도 게이트는 아직 이 카탈로그 밖에 있다. 문서 선언을 읽어야 답하는
+  // 규칙이라 항목만 보고는 답할 수 없고, 그것을 여기 넣으면 판정이 문서를 읽게
+  // 된다. 넘어간다는 사실을 값으로 남긴다.
+  if (gate === 'implementation-readiness') continue;
+  if (!RULE_IDS.includes(gate)) throw new Error(`면제 가능한 게이트에 대응하는 규칙이 없습니다: ${gate}`);
+}
+
+// ── 판정 ────────────────────────────────────────────────────────────────
+
+/**
+ * 이름이 붙은 게이트인가. 유형 해석기가 게이트 표로 부르는 규칙이며, 검사기는
+ * 같은 규칙을 직접 내지 않는다 — 두 자리가 같은 규칙을 내면 한 위반이 진단
+ * 둘로 보이고, 사람은 고칠 것이 둘이라고 읽는다.
+ */
+function isGateRule(ruleId) {
+  return TASK_RULES.some((rule) => rule.ruleId === ruleId && rule.gate === true);
+}
+
+function applicableRules(node) {
+  const step = stepOf(node);
+  if (step === null) return [];
+  return TASK_RULES.filter((rule) => rule.appliesTo(node, step));
+}
+
+/**
+ * 이번 판정이 실제로 본 규칙 전부. 막은 것만 적으면 "한 번도 안 막은 규칙"과
+ * "한 번도 안 불린 규칙"이 같은 침묵이 되고, 그 둘은 정반대의 뜻이다.
+ */
+function evaluatedRules(node) {
+  return applicableRules(node).map((rule) => rule.ruleId);
+}
+
+/** 면제되어 판정을 건너뛴 규칙. 면제는 검증이 아니라 별도 축이라 Blocker가 아니다. */
+function exemptedRules(node, item) {
+  const exemption = item && item.exemption;
+  if (!exemption) return [];
+  const gates = exemptionGates(exemption);
+  return applicableRules(node)
+    .filter((rule) => gates.includes(rule.ruleId))
+    .map((rule) => ({
+      ruleId: rule.ruleId,
+      gate: rule.ruleId,
+      reason: exemption.reason || null,
+      decidedBy: exemption.decidedBy || null
+    }));
+}
+
+/**
+ * 전환 판정. 명령줄 · 보드 · 검사기 · 어댑터 네 표면이 같은 이 함수를 부른다.
+ *
+ * from이 null이면 항목 유형 판정이다 — 움직이지 않고 지금 자리에서 참이어야
+ * 하는 것을 묻는다. 발화 이력이 origin을 item-type으로 적는 자리와 같다.
+ *
+ * item은 이미 읽힌 값이고, 전환을 물을 때는 옮긴 뒤의 모습이어야 한다. 옮기기
+ * 전의 값을 넘기면 "옮겨도 되는가"가 아니라 "지금 괜찮은가"를 묻게 된다.
+ *
+ * 막는 규칙을 전부 돌려준다. 반환이 불리언이 아니라 목록인 것이 그 강제이고,
+ * 빈 목록이 통과다. 면제된 규칙은 목록에 오지 않는다.
+ *
+ * actor는 계약이 정한 자리다. 지금 카탈로그에 행위자를 보는 규칙이 없어 쓰이지
+ * 않지만, 인자를 빼면 그 규칙이 생기는 날 네 표면을 전부 고쳐야 한다.
+ */
+function judgeTransition(from, to, item, actor) {
+  const node = to === undefined || to === null ? null : String(to);
+  if (node === null || stepOf(node) === null) return [];
+  const subject = item || {};
+  const target = subject.id ? String(subject.id) : node;
+  const blockers = [];
+  for (const rule of applicableRules(node)) {
+    if (exempted(subject, rule.ruleId)) continue;
+    if (rule.holds(subject)) continue;
+    blockers.push({
+      ruleId: rule.ruleId,
+      code: rule.code,
+      origin: rule.origin,
+      source: rule.source,
+      method: rule.method,
+      target: rule.path ? `${target}.${rule.path}` : target,
+      message: rule.message(subject)
+    });
+  }
+  return blockers;
+}
+
+/**
+ * 지금 자리에서 참이어야 하는 것만 묻는다. 계약의 from = null 관용을 이름으로
+ * 감싼 것이며 두 번째 계약이 아니다 — 부르는 쪽이 null을 손으로 적으면 그것이
+ * 무슨 뜻인지 자리마다 다시 설명해야 한다.
+ */
+function judgeItem(item, actor) {
+  return judgeTransition(null, item && item.status, item, actor);
+}
+
+/**
+ * 막는 규칙 목록을 사람이 읽는 한 덩어리로 만든다. 표면마다 자기 방식으로
+ * 이어 붙이면 어떤 표면은 첫 줄만 보여 주게 되고, 그 순간 왕복이 돌아온다.
+ */
+function blockerReport(blockers) {
+  const list = blockers || [];
+  if (!list.length) return '';
+  if (list.length === 1) return `${list[0].code} ${list[0].message}`;
+  return `막는 규칙 ${list.length}건: ${list.map((blocker) => `${blocker.code} ${blocker.message}`).join(' / ')}`;
+}
+
+module.exports = {
+  TASK_NODES,
+  stepOf,
+  validityOf,
+  isTerminal,
+  isOpen,
+  isActive,
+  isUnclaimed,
+  nodesForStep,
+  isGateRule,
+  taskWorkflowView,
+  rollupStep,
+  rollupNodes,
+  exemptionGates,
+  exempted,
+  evaluatedRules,
+  exemptedRules,
+  judgeTransition,
+  judgeItem,
+  blockerReport
+};

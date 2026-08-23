@@ -52,9 +52,30 @@ try {
   assert.deepStrictEqual(computed.worksets.map((entry) => entry.branch), ['feature/x', 'feature/y']);
   assert.deepStrictEqual(computed.worksets[0].tasks.map((task) => task.id), ['TASK-A', 'TASK-B']);
   assert.deepStrictEqual(computed.worksets[0].pullRequests, ['https://example.test/pr/1'], '하나의 병합 요청이 여러 태스크를 나른다');
-  // 묶음의 상태는 가장 덜 진행된 태스크가 정한다 — 하나라도 남으면 안착하지 않았다.
-  assert.strictEqual(computed.worksets[0].status, 'review');
-  assert.strictEqual(computed.worksets[1].status, 'doing');
+  // 묶음의 진행은 가장 덜 진행된 태스크가 정한다 — 하나라도 남으면 안착하지 않았다.
+  // 답은 스텝이다. 예전에는 상태 이름 넷을 늘어놓고 어디에도 안 맞으면 어휘 밖의
+  // 'open'을 지어냈다.
+  assert.strictEqual(computed.worksets[0].step, 'in-approval');
+  assert.strictEqual(computed.worksets[1].step, 'in-progress');
+  assert.strictEqual(computed.worksets[0].mixedTerminal, null);
+
+  // 지어낸 일곱 번째 값이 사라졌는지는 그 값이 나오던 자리로 확인한다. 완료와 할 일이
+  // 섞인 묶음이 예전에 'open'을 내던 자리이고, 이제 unclaimed가 그 자리를 받는다.
+  const mixedOpen = worksets([
+    { id: 'TASK-E', title: '끝난 것', status: 'done', externalRefs: [{ kind: 'branch', value: 'feature/z' }] },
+    { id: 'TASK-F', title: '안 잡은 것', status: 'todo', externalRefs: [{ kind: 'branch', value: 'feature/z' }] }
+  ]);
+  assert.strictEqual(mixedOpen.worksets[0].step, 'unclaimed');
+
+  // 전부 끝났는데 성취와 취소가 섞이면 답이 하나로 정해지지 않는다. 예전에는 이것도
+  // 조용히 'open'이 되어 안착한 묶음이 열린 것으로 보였다. 한쪽을 고르지 않고
+  // 섞였다는 사실을 내보내는 것이 그 자리의 정직한 답이다.
+  const mixedTerminal = worksets([
+    { id: 'TASK-G', title: '완료', status: 'done', externalRefs: [{ kind: 'branch', value: 'feature/w' }] },
+    { id: 'TASK-H', title: '반려', status: 'cancelled', externalRefs: [{ kind: 'branch', value: 'feature/w' }] }
+  ]);
+  assert.strictEqual(mixedTerminal.worksets[0].step, null);
+  assert.deepStrictEqual(mixedTerminal.worksets[0].mixedTerminal, ['completed', 'dropped']);
   assert.deepStrictEqual(computed.unassigned.map((task) => task.id), ['TASK-D']);
   assert.strictEqual(refOf(tasks[0], 'pr'), 'https://example.test/pr/1');
   assert.strictEqual(refOf(tasks[3], 'branch'), null);
@@ -91,7 +112,7 @@ try {
     rdl(['task', 'set', taskId, '--project', 'crm', '--status', 'review', '--owner', 'MEMBER-001']);
   }
   const reviewing = rdl(['workset', 'list', '--project', 'crm', '--branch', 'feature/bundle']);
-  assert.strictEqual(reviewing.worksets[0].status, 'review');
+  assert.strictEqual(reviewing.worksets[0].step, 'in-approval');
   assert.deepStrictEqual(reviewing.worksets[0].pullRequests, ['https://example.test/pr/7']);
 
   assert.strictEqual(listWorksets(temporary, { project: 'crm' }).total, 1);
