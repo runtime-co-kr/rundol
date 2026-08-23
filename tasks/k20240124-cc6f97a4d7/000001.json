@@ -3795,7 +3795,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl task set --status done --exempt done-requires-test-link --reason <사유>로 TST 링크 없이 완료할 수 있다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "사유가 없으면 면제가 거부된다.",
@@ -3816,7 +3816,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T04:07:04.165Z",
-      "updatedAt": "2026-08-23T04:07:33.323Z",
+      "updatedAt": "2026-08-23T04:17:13.273Z",
       "statusChangedAt": "2026-08-23T04:07:33.323Z",
       "externalRefs": [],
       "project": "rundol"
