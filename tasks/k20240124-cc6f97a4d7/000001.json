@@ -4478,6 +4478,44 @@
       "statusChangedAt": "2026-08-23T16:52:51.212Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-75YRTBAP": {
+      "title": "[갈래S] 부모를 단 서브 식별자로 기능 ID를 옮기고 진단 둘을 걷어낸다",
+      "summary": "기능 ID 56건을 전역 이름공간에서 부모를 단 서브로 옮긴다. 원천 REQ는 문서 안 표기 FN-001로 적고 하위 산출물은 문서 밖 표기 REQ-033#FN-001로 적는다. 그 결과 RDL-IMPL-009와 RDL-IMPL-011은 막을 것이 없어져 사라진다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "원천 문서는 FN-001, 하위 산출물은 REQ-033#FN-001만 받는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "RDL-IMPL-009와 RDL-IMPL-011이 제품 코드에서 사라진다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "추적 조인이 부모를 단 표기로 이뤄져 요구와 검증이 이어진다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "정본 문서 98건의 기능 ID 선언 117건이 새 표기로 옮겨진다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T17:13:52.374Z",
+      "updatedAt": "2026-08-23T17:13:52.374Z",
+      "statusChangedAt": "2026-08-23T17:13:52.374Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
