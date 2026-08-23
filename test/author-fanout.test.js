@@ -59,7 +59,8 @@ async function main() {
     const siblings = [];
     for (const index of [1, 2, 3]) {
       siblings.push(rdl(['doc', 'create', 'REQ', `형제 요구 ${index}`, '--project', 'crm', '--owner', 'MEMBER-001',
-        '--scope', `${index}번 형제가 다루는 능력`, '--exclude', '그 밖', '--related', prd.id, '--function-id', `FAN-0${index}`]));
+        // 기능은 부모 안에서 세므로 형제마다 일련을 달리 짓지 않는다. 셋 다 자기 요구의 첫 기능이다.
+        '--scope', `${index}번 형제가 다루는 능력`, '--exclude', '그 밖', '--related', prd.id, '--function-id', 'FN-001']));
     }
     git(['add', '.'], projectRoot);
     git(['commit', '-m', 'add siblings'], projectRoot);

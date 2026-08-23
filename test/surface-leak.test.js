@@ -37,7 +37,7 @@ const assignment = {
   id: 'ASG-001',
   goal: '검색이 제목과 본문을 모두 찾는다',
   acceptance: [{ id: 'AC-001', text: '제목으로 찾는다' }],
-  functionIds: ['WRK-01'],
+  functionIds: ['REQ-001#FN-001'],
   allowedPaths: ['src/search/**'],
   forbidden: [],
   procedure: { name: 'impl', revision: 3, digest: 'a'.repeat(64) },
@@ -126,10 +126,10 @@ try {
     '--scope', 'CRM 제품의 사용자 문제와 성공 기준', '--exclude', '개별 고객 등록 동작', '--root', temporary, '--json']);
   setup(process.execPath, [cli, 'doc', 'create', 'REQ', '고객 검색', '--project', 'crm', '--owner', 'MEMBER-001',
     '--scope', '등록된 고객을 조건으로 검색하는 동작', '--exclude', '고객 등록과 색인 구축',
-    '--function-id', 'WRK-01', '--related', 'PRD-001', '--root', temporary, '--json']);
+    '--function-id', 'FN-001', '--related', 'PRD-001', '--root', temporary, '--json']);
   const issued = spawnSync(process.execPath, [cli, 'assignment', 'issue', 'document.authored', '--project', 'crm',
     '--client-id', 'boss-a', '--goal', '고객 검색을 구현한다', '--acceptance', '이름으로 찾는다',
-    '--function-id', 'WRK-01', '--allow-path', 'src/search/**', '--report-schema', 'report-v1',
+    '--function-id', 'REQ-001#FN-001', '--allow-path', 'src/search/**', '--report-schema', 'report-v1',
     '--procedure-revision', '1', '--assignee-client', 'agent-a', '--root', temporary, '--json'], { cwd: repository, encoding: 'utf8', env });
   assert.strictEqual(issued.status, 0, issued.stderr || issued.stdout);
   const assignmentId = JSON.parse(issued.stdout).assignmentId;

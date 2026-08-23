@@ -19,7 +19,7 @@ function assignment(overrides) {
       { id: 'AC-001', text: '제목으로 찾는다' },
       { id: 'AC-002', text: '본문으로 찾는다' }
     ],
-    functionIds: ['WRK-01'],
+    functionIds: ['REQ-048#FN-001'],
     allowedPaths: ['src/search/**', 'test/search/**'],
     forbidden: ['인덱스 스키마 변경'],
     procedure: { name: 'impl', revision: 3, digest: DIGEST },

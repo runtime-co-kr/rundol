@@ -73,7 +73,7 @@ try {
   // 문서가 없으면 저장 스텝에서 멈춘다 — 절차의 문제가 아니라 프로젝트의 문제다.
   rdl(['doc', 'create', 'REQ', '종단 검증 요구', '--project', 'crm', '--owner', 'MEMBER-001',
     '--scope', '종단 경로가 도는지에 대한 요구', '--exclude', '그 밖',
-    '--related', document.id, '--function-id', 'E2E-01']);
+    '--related', document.id, '--function-id', 'FN-001']);
 
   const projectRoot = path.join(temporary, 'projects', 'crm');
   // 스텁의 행동은 파일로 시킨다. 환경 변수는 어댑터 경계를 넘지 못한다 — 하네스가

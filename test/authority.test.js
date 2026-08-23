@@ -73,7 +73,7 @@ try {
   // 뒤에는 project.md를 고치는 명령이 사전 검사에서 정당하게 막힌다.
   for (const [type, title, scope] of [['PRD', '제품 요구사항', '제품 범위와 목표'], ['REQ', '기능 요구사항', '기능 하나의 요구']]) {
     const args = ['doc', 'create', type, title, '--owner', 'MEMBER-001', '--scope', scope, '--exclude', '그 밖', '--project', 'crm'];
-    if (type === 'REQ') args.push('--related', created.id, '--function-id', 'AUT-01');
+    if (type === 'REQ') args.push('--related', created.id, '--function-id', 'FN-001');
     rdl(args);
   }
   const roles = require('../src/collaboration').readCollaboration(temporary, 'crm').roles || [];

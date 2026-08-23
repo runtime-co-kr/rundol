@@ -143,6 +143,9 @@ function readAssignments(start, projectKey) {
 /**
  * 정규 문서가 선언한 기능 ID. 여기서 문서를 다시 훑지 않고 계약 추적을 부르는
  * 이유는, 다시 훑으면 `rdl contract trace`와 다른 답을 낼 수 있기 때문이다.
+ *
+ * 돌려주는 값은 부모를 단 표기다 — REQ-033#FN-001. 할당은 문서 밖에서 기능을
+ * 가리키는 일이므로 부모 없이는 어느 요구의 기능인지가 정해지지 않는다.
  */
 function declaredFunctionIds(project) {
   const { projectArtifacts } = require('./document-contract');

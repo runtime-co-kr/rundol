@@ -258,7 +258,7 @@ try {
   assert.strictEqual(resumedJournal.children[resumeChildKey].phase, 'complete');
   assert.strictEqual(resumedJournal.invocations[resumeChildKey].phase, 'complete');
 
-  const rejectedCreate = rdlRaw(['doc', 'create', 'REQ', '결제 요구', '--project', 'crm', '--owner', 'MEMBER-001', '--scope', '결제 승인 요구', '--exclude', '환불 흐름', '--function-id', 'PAY-01', '--function-id', 'PAY-02', '--grouped', '--reason', '사유']);
+  const rejectedCreate = rdlRaw(['doc', 'create', 'REQ', '결제 요구', '--project', 'crm', '--owner', 'MEMBER-001', '--scope', '결제 승인 요구', '--exclude', '환불 흐름', '--function-id', 'FN-001', '--function-id', 'FN-002', '--grouped', '--reason', '사유']);
   assert.notStrictEqual(rejectedCreate.status, 0);
   assert(/기능 1개만/u.test(rejectedCreate.stderr), rejectedCreate.stderr);
 

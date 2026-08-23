@@ -88,8 +88,11 @@ try {
   // 추적성도 연결이다. 검증 문서는 요구를 참조하지만 화살표가 되돌아오지 않으므로,
   // 표시 링크만 보면 모든 TST가 잎 노드라 영구히 고아가 된다 — 문서 종류 하나를
   // 통째로 오탐하면 이 신호는 죽는다.
-  const requirement = rdl(['doc', 'create', 'REQ', '기능 ID를 선언하는 요구', '--owner', 'MEMBER-001', '--scope', '기능 ID를 선언하는 요구', '--exclude', '그 밖', '--function-id', 'ANL-01', '--related', referenced.id, '--project', 'crm']);
-  const verification = rdl(['doc', 'create', 'TST', '같은 기능 ID를 덮는 검증', '--owner', 'MEMBER-001', '--scope', '같은 기능 ID를 덮는 검증', '--exclude', '그 밖', '--function-id', 'ANL-01', '--related', requirement.id, '--project', 'crm']);
+  //
+  // 요구는 자기 기능을 문서 안 표기로 적고 검증은 부모를 달아 적는다. 조인이 글자
+  // 그대로였다면 둘은 여기서 만나지 못하고, 만나지 못하면 검증이 다시 고아가 된다.
+  const requirement = rdl(['doc', 'create', 'REQ', '기능 ID를 선언하는 요구', '--owner', 'MEMBER-001', '--scope', '기능 ID를 선언하는 요구', '--exclude', '그 밖', '--function-id', 'FN-001', '--related', referenced.id, '--project', 'crm']);
+  const verification = rdl(['doc', 'create', 'TST', '같은 기능 ID를 덮는 검증', '--owner', 'MEMBER-001', '--scope', '같은 기능 ID를 덮는 검증', '--exclude', '그 밖', '--function-id', `${requirement.id}#FN-001`, '--related', requirement.id, '--project', 'crm']);
   const traced = analyzeDocuments(temporary, { project: 'crm' });
   const verificationEntry = traced.documents.find((entry) => entry.id === verification.id);
   const requirementEntry = traced.documents.find((entry) => entry.id === requirement.id);
