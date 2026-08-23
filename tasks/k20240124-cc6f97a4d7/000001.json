@@ -4329,10 +4329,10 @@
     "TASK-S2Z9NK5P": {
       "title": "[갈래M] 이관 검사기 — 태스크와 문서를 워크플로 스텝에 매핑하고 자리 없는 것을 뱉는다",
       "summary": "보고서 11절 명세. 태스크와 정본 문서를 WORKFLOW_STEPS 5종에 매핑하고, 자리를 못 찾는 항목과 어려운 절반 다섯 가지를 실측해 11절 표를 갱신한다. 신규 파일로만 만든다.",
-      "owner": null,
+      "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "todo",
+      "status": "doing",
       "priority": "mid",
       "kind": "normal",
       "result": null,
@@ -4363,8 +4363,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:59:20.118Z",
-      "updatedAt": "2026-08-23T14:59:20.118Z",
-      "statusChangedAt": "2026-08-23T14:59:20.118Z",
+      "updatedAt": "2026-08-23T15:00:55.658Z",
+      "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
     }
