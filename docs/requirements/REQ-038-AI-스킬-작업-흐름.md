@@ -12,7 +12,7 @@ excludes:
   - 특정 AI 제품의 내부 구현
 implementationContract: atomic-v1
 functionIds:
-  - HRN-06
+  - FN-001
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
@@ -49,7 +49,7 @@ AI 스킬 작업 흐름은 [[REQ-012-명령줄-AI-스킬-보드-통합-규격|RE
 
 ## 기능별 설계 계약
 
-### HRN-06
+### FN-001
 
 #### 입력
 

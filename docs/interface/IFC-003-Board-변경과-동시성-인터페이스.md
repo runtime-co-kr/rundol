@@ -4,12 +4,12 @@ uid: ZJXB14PS
 type: document
 kind: interface
 title: 보드 변경과 동시성 인터페이스
-description: BOP-02의 token 인증, 문서·태스크·contract 낙관적 revision, Client·lease·refresh·sync 변경 endpoint를 정의한다.
+description: REQ-022#FN-001의 token 인증, 문서·태스크·contract 낙관적 revision, Client·lease·refresh·sync 변경 endpoint를 정의한다.
 granularity: bounded-v1
 implementationContract: atomic-v1
 functionIds:
-  - BOP-02
-scope: "BOP-02 token과 revision으로 보호되는 Board 변경 HTTP 인터페이스"
+  - REQ-022#FN-001
+scope: "REQ-022#FN-001 token과 revision으로 보호되는 Board 변경 HTTP 인터페이스"
 excludes:
   - "읽기 전용 snapshot의 집계와 정렬"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
@@ -85,7 +85,7 @@ lease endpoint는 active Client, 프로젝트 member인 owner, 존재하는 docu
 
 ## 기능별 설계 계약
 
-### BOP-02
+### REQ-022#FN-001
 
 #### 오퍼레이션과 경로
 

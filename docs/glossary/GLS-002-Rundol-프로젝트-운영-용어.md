@@ -36,7 +36,7 @@ related:
 | linked worktree | 한 Git object database의 branch를 canonical 별도 경로에 checkout한 작업 디렉터리 | `projects/rundol/` | 복사본, mount symlink |
 | 문서 계약 | `project.md.documentProfile`의 type policy, enforcement, revision | contract check | Board 표시 설정, 프로필 프리셋 |
 | canonical artifact | 정해진 type·ID·frontmatter·경로를 가진 프로젝트 정본 문서 | `REQ-019`, `ARC-004` | INDEX, 추적성 표 |
-| atomic-v1 | 구현 기능 ID마다 유형별 필수 명세를 독립적으로 완성하는 계약 | `functionIds: [COL-01]` | 여러 기능 공통 placeholder |
+| atomic-v1 | 구현 기능 ID마다 유형별 필수 명세를 독립적으로 완성하는 계약 | `functionIds: [REQ-019#FN-001]` | 여러 기능 공통 placeholder |
 | Client | device·agent·service 중 하나로 등록되고 MEMBER owner가 있는 협업 실행 주체 | `test-device` | 사용자 계정, HTTP session |
 | ~~soft lease~~ (폐기) | 문서 편집 의도를 5분 동안 알리던 advisory 잠금. [[ADR-015-문서-소프트-리스-폐기와-동시성-판정의-일원화\|ADR-015]]로 폐기했다. 새 문서와 대화에서 쓰지 않는다 | (없음) | 로컬 append 락, 태스크 클레임, Driver 임대 |
 | 로컬 append 락 | 같은 장치의 여러 프로세스가 이벤트 원장에 동시에 쓰는 것을 직렬화하는 파일 락. 같은 파일시스템 안이라 실제로 보장된다 | append lock | soft lease, 분산 잠금 |
@@ -59,7 +59,7 @@ related:
 |---|---|---|---|
 | 문서 ID | `<TYPE>-NNN` | canonical artifact 식별자 | `ARC-004` |
 | 프로젝트 charter ID | `project:<key>` | 프로젝트 정본 charter | `project:rundol` |
-| 기능 ID | `<DOMAIN>-NN` | 독립 구현 기능 | `COL-01`, `BOP-02` |
+| 기능 ID | `<DOMAIN>-NN` | 독립 구현 기능 | `REQ-019#FN-001`, `REQ-022#FN-001` |
 | Member ID | `MEMBER-NNN` | project.md의 책임자 block | `MEMBER-001` |
 | Client ID | 소문자 kebab-case | Client manifest와 event 파일 식별 | `test-device` |
 | Lease ID | `LEASE-` + 20자리 대문자 hex | acquire부터 release까지 같은 lease | `LEASE-0123ABCDEF0123ABCDEF` |

@@ -12,7 +12,7 @@ excludes:
   - 범용 지식 그래프와 중앙 협업 서버
 implementationContract: atomic-v1
 functionIds:
-  - HRN-01
+  - FN-001
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
@@ -241,7 +241,7 @@ sequenceDiagram
 
 ## 기능별 설계 계약
 
-### HRN-01
+### FN-001
 
 #### 입력
 

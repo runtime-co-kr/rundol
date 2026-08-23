@@ -12,7 +12,7 @@ excludes:
   - 원격 저장소 호스팅 방식
 implementationContract: atomic-v1
 functionIds:
-  - HRN-05
+  - FN-001
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
@@ -49,7 +49,7 @@ related:
 
 ## 기능별 설계 계약
 
-### HRN-05
+### FN-001
 
 #### 입력
 

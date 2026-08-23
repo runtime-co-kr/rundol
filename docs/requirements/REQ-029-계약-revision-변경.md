@@ -12,7 +12,7 @@ excludes:
   - Board 화면의 편집 상호작용
 implementationContract: atomic-v1
 functionIds:
-  - DCP-05
+  - FN-001
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
@@ -48,7 +48,7 @@ related:
 
 ## 기능별 설계 계약
 
-### DCP-05
+### FN-001
 
 #### 입력
 

@@ -4,12 +4,12 @@ uid: KY9721FA
 type: document
 kind: interface
 title: 보드 조회와 스냅샷 인터페이스
-description: BOP-01의 loopback 읽기 전용 HTTP endpoint, 필터, 통합 snapshot 응답과 영역별 revision 계약을 정의한다.
+description: REQ-021#FN-001의 loopback 읽기 전용 HTTP endpoint, 필터, 통합 snapshot 응답과 영역별 revision 계약을 정의한다.
 granularity: bounded-v1
 implementationContract: atomic-v1
 functionIds:
-  - BOP-01
-scope: "BOP-01 문서 태스크 Client lease sync contract를 조회하는 HTTP 인터페이스"
+  - REQ-021#FN-001
+scope: "REQ-021#FN-001 문서 태스크 Client lease sync contract를 조회하는 HTTP 인터페이스"
 excludes:
   - "변경 요청의 token 인증과 baseRevision 충돌 처리"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
@@ -102,7 +102,7 @@ sync는 `{project,head,remoteRef,ahead,behind,dirty,changedFiles,conflicts,state
 
 ## 기능별 설계 계약
 
-### BOP-01
+### REQ-021#FN-001
 
 #### 오퍼레이션과 경로
 

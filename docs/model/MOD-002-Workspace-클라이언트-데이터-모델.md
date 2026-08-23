@@ -4,12 +4,12 @@ uid: NAGQ8DHT
 type: document
 kind: model
 title: 작업공간 클라이언트 데이터 모델
-description: COL-01 협업 Client manifest의 식별자, 소유자, 유형, 활성 상태, revision과 보존 규칙을 정의한다.
+description: REQ-019#FN-001 협업 Client manifest의 식별자, 소유자, 유형, 활성 상태, revision과 보존 규칙을 정의한다.
 granularity: bounded-v1
 implementationContract: atomic-v1
 functionIds:
-  - COL-01
-scope: "COL-01 Client manifest의 생성·상태 변경·조회 데이터 계약"
+  - REQ-019#FN-001
+scope: "REQ-019#FN-001 Client manifest의 생성·상태 변경·조회 데이터 계약"
 excludes:
   - "프로젝트 task shard"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
@@ -98,7 +98,7 @@ schemaVersion 6 미만 Workspace는 Client 저장을 거절하고 `rdl workspace
 
 ## 기능별 설계 계약
 
-### COL-01
+### REQ-019#FN-001
 
 #### 책임과 소유 데이터
 
