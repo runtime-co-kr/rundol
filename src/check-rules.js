@@ -18,7 +18,9 @@ const NORMALIZED_BUILTIN = normalizeItemTypes(BUILTIN_ITEM_TYPES);
 // 닫는 수단이 아니라 경고를 하나 더 만드는 일이 된다.
 function exempted(task, gate) {
   const exemption = task && task.exemption;
-  return Boolean(exemption && exemption.gate === gate && exemption.reason);
+  if (!exemption || !exemption.reason) return false;
+  const gates = Array.isArray(exemption.gates) ? exemption.gates : (exemption.gate ? [exemption.gate] : []);
+  return gates.includes(gate);
 }
 
 const DEFAULT_TASK_GATES = Object.freeze({
@@ -456,7 +458,7 @@ function checkTaskEntries(list, tasks, context) {
     // 원본을 직접 보면 그 어긋남이 생길 자리가 없다. 계약을 쓰지 않는 프로젝트는
     // 예전처럼 이 게이트의 대상이 아니다 — 쓰지 않기로 한 것을 위반으로 세지 않는다.
     const implementationReady = kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
-    if (task.status === 'done' && implementationReady) {
+    if (task.status === 'done' && implementationReady && !exempted(task, 'implementation-readiness')) {
       const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
       const declaresAtomic = linked.some((doc) => doc.frontmatter && doc.frontmatter.data && doc.frontmatter.data.implementationContract === 'atomic-v1');
       for (const issue of (declaresAtomic ? readiness(linked) : [])) diagnostic(list, {

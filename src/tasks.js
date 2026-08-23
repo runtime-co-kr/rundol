@@ -65,6 +65,14 @@ function assertCancellationConsistency(current, changes) {
 // 면제할 수 있는 게이트는 코드가 정한 목록 안이다. 되돌릴 수 없는 관문은 그 목록에
 // 없으며, 그것이 면제가 경계를 여는 수단이 되지 않게 하는 유일한 장치다.
 const EXEMPTABLE = vocabulary.EXEMPTABLE_GATES;
+// 면제 기록은 gates 배열이 정본이고, gate 하나만 든 옛 기록도 읽는다 — 마이그레이션
+// 없이 공존한다.
+function exemptionGates(exemption) {
+  if (!exemption) return [];
+  if (Array.isArray(exemption.gates)) return exemption.gates.filter(Boolean).map(String);
+  return exemption.gate ? [String(exemption.gate)] : [];
+}
+
 function assertExemptionConsistency(current, changes) {
   const next = Object.assign({}, current || {}, changes || {});
   const exemption = next.exemption;
@@ -72,7 +80,14 @@ function assertExemptionConsistency(current, changes) {
   // 면제는 완료를 위한 것이다. 다른 상태에 남겨 두면 무엇을 면제한 것인지가 사라지고,
   // 되살아난 태스크가 옛 사유를 들고 다시 닫힌다.
   if (next.status !== 'done') throw inputError('완료 상태가 아닌 태스크에는 게이트 면제를 둘 수 없습니다.');
-  if (!EXEMPTABLE.includes(exemption.gate)) throw inputError(`면제할 수 없는 게이트입니다: ${exemption.gate || '(없음)'}. 면제는 허용 목록 안에서만 선언됩니다(${EXEMPTABLE.join(', ')}).`);
+  // 한 태스크가 게이트 둘에 걸릴 수 있다. TST가 없다는 사실 하나가 완료 게이트와
+  // 구현 준비도 게이트를 함께 막으므로, 면제를 하나만 받으면 나머지가 여전히 닫는다.
+  // 사유는 하나다 — 같은 사실에 대한 같은 결정이기 때문이다.
+  const gates = exemptionGates(exemption);
+  if (!gates.length) throw inputError('면제할 게이트가 필요합니다.');
+  for (const gate of gates) {
+    if (!EXEMPTABLE.includes(gate)) throw inputError(`면제할 수 없는 게이트입니다: ${gate || '(없음)'}. 면제는 허용 목록 안에서만 선언됩니다(${EXEMPTABLE.join(', ')}).`);
+  }
   for (const [field, label] of [['reason', '면제 사유'], ['decidedBy', '결정자'], ['at', '결정 시각']]) {
     if (!exemption[field] || !String(exemption[field]).trim()) throw inputError(`${label}가 필요합니다.`);
   }
@@ -279,6 +294,7 @@ module.exports = {
   assertBlockerConsistency,
   assertCancellationConsistency,
   assertExemptionConsistency,
+  exemptionGates,
   assertKindConsistency,
   assertRoundUniqueness,
   holdsRoundSlot,

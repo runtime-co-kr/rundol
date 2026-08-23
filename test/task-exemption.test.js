@@ -85,4 +85,26 @@ assert.strictEqual(
   '사유 없는 면제는 판정을 열지 않는다'
 );
 
+// ── 여러 게이트 ───────────────────────────────────────────────────────────
+
+// TST가 없다는 사실 하나가 완료 게이트와 구현 준비도 게이트를 함께 막는다. 하나만
+// 면제받으면 나머지가 여전히 닫으므로, 한 결정이 여러 게이트를 지목할 수 있어야 한다.
+const both = { gates: ['done-requires-test-link', 'implementation-readiness'], reason: '검증 문서가 없다.', decidedBy: 'MEMBER-001', at: '2026-08-23T00:00:00.000Z' };
+assert.doesNotThrow(() => assertExemptionConsistency(null, { status: 'done', exemption: both }), '여러 게이트를 한 결정으로 면제한다');
+assert.deepStrictEqual(gate({ status: 'done', links: [], exemption: both }), [], '목록에 든 게이트는 열린다');
+
+assert.throws(
+  () => assertExemptionConsistency(null, { status: 'done', exemption: Object.assign({}, both, { gates: [] }) }),
+  /면제할 게이트가 필요합니다/u,
+  '빈 목록은 면제가 아니다'
+);
+assert.throws(
+  () => assertExemptionConsistency(null, { status: 'done', exemption: Object.assign({}, both, { gates: ['done-requires-test-link', 'no-such-gate'] }) }),
+  /면제할 수 없는 게이트입니다/u,
+  '하나라도 목록 밖이면 거절한다'
+);
+
+// 옛 기록은 gate 하나만 든다. 마이그레이션 없이 읽혀야 이미 닫힌 태스크가 다시 열리지 않는다.
+assert.deepStrictEqual(gate({ status: 'done', links: [], exemption: exemption() }), [], 'gate 하나만 든 옛 기록도 읽는다');
+
 console.log('task exemption tests passed');

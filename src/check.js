@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readTaskStore } = require('./tasks');
+const { readTaskStore, exemptionGates } = require('./tasks');
 const { parseFrontmatter } = require('./frontmatter');
 const { validateDocumentProfile } = require('./document-profile');
 const { evaluateDocumentContract, projectArtifacts } = require('./document-contract');
@@ -1107,7 +1107,8 @@ function checkWorkspace(start, options) {
     try {
       const parsed = readTaskStore(source.file);
       for (const [taskId, task] of Object.entries(parsed.tasks || {})) {
-        if (task && task.exemption && task.exemption.gate) exemptions.push({ project: source.project, taskId, gate: task.exemption.gate, decidedBy: task.exemption.decidedBy || null, reason: task.exemption.reason || null });
+        const exemptedGates = exemptionGates(task && task.exemption);
+        if (exemptedGates.length) exemptions.push({ project: source.project, taskId, gates: exemptedGates, decidedBy: task.exemption.decidedBy || null, reason: task.exemption.reason || null });
         if (!task.project || !projectKeys.has(task.project) || (source.project && task.project !== source.project)) diagnostic(diagnostics, { code: 'RDL-TASK-022', category: 'task', file: relative(layout.root, source.file), project: source.project, artifactId: taskId, target: task.project || null, message: `태스크의 project가 저장 브랜치의 프로젝트와 일치하지 않습니다: ${task.project || '(없음)'}` });
       }
     } catch (error) {

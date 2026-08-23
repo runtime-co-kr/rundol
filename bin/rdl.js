@@ -242,7 +242,7 @@ Options:
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -296,7 +296,7 @@ function parseOperationArgs(argv) {
       else if (value === '--approved-by') options.approvedBy = argv[i];
       else if (value === '--commit') options.commit = argv[i];
       else if (value === '--decided-by') options.decidedBy = argv[i];
-      else if (value === '--exempt') options.exempt = argv[i];
+      else if (value === '--exempt') options.exempts.push(argv[i]);
       else if (value === '--scope') options.scope = argv[i];
       else if (value === '--exclude') options.excludes.push(argv[i]);
       else if (value === '--function-id') options.functionIds.push(argv[i]);
@@ -584,7 +584,7 @@ function printText(result) {
   // (면제된 게이트는 진단을 내지 않는다) 얼마나 쓰였는지 아무 데서도 보이지 않는다.
   const exemptions = summary.exemptions || [];
   if (exemptions.length) {
-    process.stdout.write(`  완료 게이트 면제 ${exemptions.length}건: ${exemptions.slice(0, 3).map((item) => `${item.taskId}(${item.gate})`).join(', ')}${exemptions.length > 3 ? ` 외 ${exemptions.length - 3}건` : ''}
+    process.stdout.write(`  완료 게이트 면제 ${exemptions.length}건: ${exemptions.slice(0, 3).map((item) => `${item.taskId}(${(item.gates || []).join(', ')})`).join(', ')}${exemptions.length > 3 ? ` 외 ${exemptions.length - 3}건` : ''}
 `);
   }
 }
@@ -1625,10 +1625,10 @@ async function main() {
     }
     // 면제는 닫히지 않는 태스크를 사람이 사유를 대고 닫는 자리다. 반려와 같은 모양인 것은
     // 우연이 아니다 — 둘 다 증거 없이 상태를 옮기므로 둘 다 사유와 결정자를 요구한다.
-    else if (options.exempt) {
+    else if (options.exempts.length) {
       if (options.status !== 'done') throw new Error('--exempt는 --status done에만 사용합니다.');
       if (!options.reason) throw new Error('면제하려면 --reason이 필요합니다. 증거 없이 닫은 이유가 남지 않으면 면제는 조용한 우회가 됩니다.');
-      changes.exemption = { gate: options.exempt, reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
+      changes.exemption = { gates: options.exempts.slice(), reason: options.reason, decidedBy: options.decidedBy || options.owner || null, at: new Date().toISOString() };
     }
     else if (options.reason) throw new Error('--reason은 --status cancelled 또는 --exempt에만 사용합니다.');
     if (Object.keys(changes).length === 0) throw new Error('--status, --owner, --result, --round, --link, --unlink 또는 --external-ref 중 하나가 필요합니다.');
