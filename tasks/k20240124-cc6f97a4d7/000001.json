@@ -4031,7 +4031,7 @@
         },
         "AC-003": {
           "text": "문서와 설정 등 코드가 아닌 경로는 막지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "판정하지 못하면 통과시킨다.",
@@ -4040,7 +4040,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:17:48.196Z",
-      "updatedAt": "2026-08-23T05:21:24.875Z",
+      "updatedAt": "2026-08-23T05:21:29.427Z",
       "statusChangedAt": "2026-08-23T05:18:09.613Z",
       "externalRefs": [],
       "project": "rundol"
