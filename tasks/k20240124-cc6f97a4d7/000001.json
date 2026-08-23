@@ -3263,7 +3263,7 @@
       "owner": "MEMBER-001",
       "reviewers": [],
       "stakeholders": [],
-      "status": "doing",
+      "status": "done",
       "priority": "mid",
       "kind": "normal",
       "result": null,
@@ -3288,10 +3288,19 @@
       },
       "blocker": null,
       "createdAt": "2026-08-20T17:56:22.185Z",
-      "updatedAt": "2026-08-20T22:00:26.874Z",
-      "statusChangedAt": "2026-08-20T18:57:47.238Z",
+      "updatedAt": "2026-08-23T04:23:42.755Z",
+      "statusChangedAt": "2026-08-23T04:23:42.755Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gates": [
+          "done-requires-test-link",
+          "implementation-readiness"
+        ],
+        "reason": "완료 게이트를 재량으로 면제한다. 검증 문서가 확인된 것이 아니라, 닫지 못해 doing에 쌓인 태스크를 정리하려고 사람이 임의로 지난 것이다. 이 태스크의 완료를 검증 근거로 읽으면 안 되며, 검증은 별도 TST로 다시 세운다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T04:23:42.359Z"
+      }
     },
     "TASK-F1CRPS7K": {
       "title": "인라인 서식과 목록 조작을 손으로 할 수 있게 한다",
