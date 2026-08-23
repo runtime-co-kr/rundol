@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "clientId": "c1c0cf4-f6d73ad62a",
+  "segment": 1,
+  "tasks": {
+    "TASK-71QR6GWQ": {
+      "title": "[개선] 미등록 기기의 편집 진입을 화면 등록으로 잇는다",
+      "summary": "웹에서 편집을 누른 미등록 기기에 명령줄을 주지 않고, 같은 화면에서 등록을 마치고 하던 편집으로 이어지게 한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-019",
+        "TST-009"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "미등록 기기가 문서 편집을 누르면 명령줄 문자열 대신 화면의 등록 절차가 열린다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "화면에서 등록을 마치면 누르려던 편집이 이어서 열린다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "Board가 돌려주는 미등록 안내가 화면 경로를 먼저 가리킨다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "REQ-019와 TST-009에 화면 등록 경로가 기록된다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "rdl check --strict와 npm test가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T04:00:27.298Z",
+      "updatedAt": "2026-08-21T04:23:13.765Z",
+      "statusChangedAt": "2026-08-21T04:00:33.454Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-3SQ1HYXT": {
+      "title": "[기능] 보드에서 사람 게이트 승인 — 런 대기 면과 승인 API",
+      "summary": "사람 게이트에서 멈춘 런을 Board 런 면에서 보고, 화면에서 고른 활성 human Client 자격으로 승인한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-067",
+        "TST-039"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "GET /api/projects/:key/runs가 run-pending의 갈래 판정을 그대로 실어 내고 조회가 런 원장을 바꾸지 않는다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "POST /api/projects/:key/runs/:runId/approve가 활성 human Client와 사유를 갖춘 요청만 기록한다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "승인 화면이 활성 human Client만 승인자로 제시하고 기기 작성자 신원은 제시하지 않는다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "하네스 자식으로 실행한 Board는 조회는 제공하고 승인은 거부한다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "test/board-run.test.js가 TST-039의 시나리오를 자동 검증하고 종료 코드 0이다",
+          "done": true
+        },
+        "AC-006": {
+          "text": "docs/CLI.md가 런 면과 승인 표면을 반영한다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T04:05:35.999Z",
+      "updatedAt": "2026-08-21T04:31:01.873Z",
+      "statusChangedAt": "2026-08-21T04:05:42.600Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-0XP26XSF": {
+      "title": "[개선] 승인 화면에서 대상 문서를 읽고 승인한다",
+      "summary": "사람 게이트 승인 모달이 런의 목표·지나온 스텝·대상 문서 본문을 문서 화면과 같은 방식으로 보여 준다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-067",
+        "TST-039"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "GET /api/projects/:key/runs/:runId가 목표·태스크·대상 문서 ID·사건 이력을 돌려주고 원장을 바꾸지 않는다",
+          "done": true
+        },
+        "AC-002": {
+          "text": "승인 모달이 대상 문서 본문을 markdown·mermaid 포함해 문서 화면과 같은 경로로 그린다",
+          "done": true
+        },
+        "AC-003": {
+          "text": "대상 문서가 여럿이면 탭으로 고르고, 찾지 못하면 그 사실을 말한다",
+          "done": true
+        },
+        "AC-004": {
+          "text": "문서 화면에서 열기로 같은 문서를 본 화면으로 이어 간다",
+          "done": true
+        },
+        "AC-005": {
+          "text": "test/board-run.test.js가 상세 조회 시나리오(S11~S13)를 검증한다",
+          "done": true
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T06:48:58.539Z",
+      "updatedAt": "2026-08-21T06:49:23.322Z",
+      "statusChangedAt": "2026-08-21T06:49:10.722Z",
+      "externalRefs": [],
+      "project": "rundol"
+    },
+    "TASK-GGVKZC04": {
+      "title": "[기능] 태스크 댓글에 답글과 지라식 표면",
+      "summary": "댓글 원장에 1단계 답글을 더하고, 아바타·상대시간·펼침 입력칸·문서 편집기 재사용으로 댓글 표면을 다시 짠다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "doing",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "답글이 원장에 parentId로 남고 답글의 답글은 같은 줄기 뿌리로 접힌다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "뿌리 댓글에는 parentId 키가 생기지 않아 지난 이벤트의 다이제스트가 흔들리지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "명령줄과 Board가 같은 답글 판정을 쓴다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "댓글 입력은 문서와 같은 편집기를 써서 그림과 문서 링크가 들어간다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "REQ와 TST에 댓글과 답글 계약이 기록된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-21T07:09:07.653Z",
+      "updatedAt": "2026-08-21T07:09:20.738Z",
+      "statusChangedAt": "2026-08-21T07:09:20.738Z",
+      "externalRefs": [],
+      "project": "rundol"
+    }
+  }
+}
