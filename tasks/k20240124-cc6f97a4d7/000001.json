@@ -3753,7 +3753,7 @@
         },
         "AC-002": {
           "text": "형제 경로를 근거로 삼던 주석과 CLI 문서가 새 자리를 말한다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "루트 .gitignore에 /projects/*/와 .rundol/이 없으면 session-start 훅이 채우고 무엇을 채웠는지 알린다.",
@@ -3766,7 +3766,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T03:11:43.480Z",
-      "updatedAt": "2026-08-23T03:19:06.672Z",
+      "updatedAt": "2026-08-23T03:19:11.500Z",
       "statusChangedAt": "2026-08-23T03:11:58.131Z",
       "externalRefs": [],
       "project": "rundol"
