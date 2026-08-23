@@ -4215,6 +4215,48 @@
       "statusChangedAt": "2026-08-23T09:39:25.377Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-14T7BM7F": {
+      "title": "[계약] 워크플로 어휘와 판정 계약을 갈래보다 먼저 못박는다",
+      "summary": "상태 기계를 데이터로 내리는 설계에서 A·B·C 갈래는 담당 파일이 겹치지 않지만 vocabulary.js를 함께 require한다. 어휘를 말로 맞추면 한쪽이 조용히 넓힌 것이 병합에서야 드러나므로, 목록과 시그니처만 먼저 커밋해 갈래의 분기점으로 삼는다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "vocabulary.js가 워크플로 스텝 5종·검증 소스 종류·검증 방법·실행 단위 종류를 내보낸다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "판정 함수 시그니처 (from, to, item, actor)와 Blocker 목록 반환이 타입으로 선언된다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "발화 이력의 저장 자리와 레코드 모양이 계약에 적혀 B 갈래가 vocabulary.js를 안 건드리고 뻗는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "어휘 시험이 스텝과 상태값의 비겹침, 성질-방법 표의 완전성, 타입 선언과 정본의 일치를 못박는다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "이 커밋만으로는 어느 판정도 달라지지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T12:46:41.959Z",
+      "updatedAt": "2026-08-23T12:46:41.959Z",
+      "statusChangedAt": "2026-08-23T12:46:41.959Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
