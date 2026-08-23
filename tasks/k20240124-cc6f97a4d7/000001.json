@@ -4071,6 +4071,50 @@
         "decidedBy": "MEMBER-001",
         "at": "2026-08-23T05:33:38.585Z"
       }
+    },
+    "TASK-RWCYV7VN": {
+      "title": "훅이 꺼져도 서는 커밋 경계를 세운다",
+      "summary": "Git pre-commit과 commit-msg로 브랜치 경계와 태스크 결박을 강제한다. 클라이언트 훅과 달리 사람이 손으로 치는 커밋에도 걸린다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "기본 코드 브랜치에서 제품 코드를 커밋하면 거부되고 다음 명령이 사유에 담긴다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "제품 코드 커밋에 Rundol-Task 트레일러가 없으면 거부되고, none과 사유는 통과한다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "세션 브랜치와 기능 브랜치에서는 브랜치 규칙이 걸리지 않는다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "기존 사용자 pre-commit과 commit-msg 훅을 보존하고 먼저 실행한다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl git boundary가 두 훅의 설치 상태를 함께 낸다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T05:46:59.685Z",
+      "updatedAt": "2026-08-23T05:46:59.685Z",
+      "statusChangedAt": "2026-08-23T05:46:59.685Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
