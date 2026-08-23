@@ -13,6 +13,16 @@ excludes:
 implementationContract: atomic-v1
 functionIds:
   - FN-001
+diagnostics:
+  - RDL-BRANCH-001
+  - RDL-BRANCH-002
+  - RDL-BRANCH-003
+  - RDL-BRANCH-004
+  - RDL-BRANCH-005
+  - RDL-BRANCH-006
+  - RDL-PUSH-001
+  - RDL-PUSH-002
+  - RDL-PUSH-003
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
 state: active
 tags:
