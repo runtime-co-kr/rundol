@@ -4,7 +4,26 @@ const token = document.querySelector('meta[name="rdl-token"]').content;
 const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, clientIntent: null, commentComposer: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id', presentationScope: 'project', presentationSettling: false, runs: null, runsError: '', approvingRun: null, review: null };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
-const TERMINAL_STATUSES = ['done', 'cancelled'];
+// 워크플로는 서버가 스냅숏에 실어 준다. 화면은 브라우저에서 그대로 돌아 require를
+// 쓸 수 없고, 그래서 예전에는 종료 상태 사본을 여기 적어 두었다 — 정본과 같은지를
+// 시험이 값으로 확인해야 했던 이유가 그것이다. 실어 주면 확인할 사본이 없다.
+//
+// 상태 이름을 비교하지 않는다. 이름은 프로젝트가 정의하는 값이고, 화면이 그 값을
+// 알면 남의 이름이 화면에 박힌다. 화면이 묻는 것은 스텝과 노드의 요구 필드다.
+const EMPTY_WORKFLOW = { nodes: {}, steps: [], terminalSteps: [], openSteps: [], activeSteps: [] };
+function workflowView() { return (state.snapshot && state.snapshot.workflow) || EMPTY_WORKFLOW; }
+function workflowNode(status) { return workflowView().nodes[status] || null; }
+function stepOf(status) { const node = workflowNode(status); return node ? node.step : null; }
+function inStep(status, step) { return stepOf(status) === step; }
+function isTerminalStatus(status) { const step = stepOf(status); return step !== null && workflowView().terminalSteps.indexOf(step) >= 0; }
+// 그 노드에서만 채워야 하는 필드를 요구하는가. 대기와 반려가 저마다 다이얼로그를
+// 여는 자리가 이것을 묻는다.
+function nodeRequires(status, field) { const node = workflowNode(status); return Boolean(node) && (node.requires || []).indexOf(field) >= 0; }
+// 상태 목록은 서버가 준 것이 정본이다. 화면이 자기 목록을 따로 적으면 저장값이
+// 늘어도 화면은 그것을 모른 채 돈다. 라벨은 표시의 몫이라 statusLabels에 남는다.
+function statusKeys() { const keys = Object.keys(workflowView().nodes); return keys.length ? keys : Object.keys(statusLabels); }
+function statusesInStep(step) { return statusKeys().filter((key) => inStep(key, step)); }
+function defaultStatus() { return statusesInStep('unclaimed')[0] || statusKeys()[0] || 'todo'; }
 const typeLabels = {
   project: '프로젝트', charter: '프로젝트 헌장', prd: '제품 요구사항', requirement: '요구사항',
   architecture: '아키텍처', screen: '화면 설계', model: '데이터 모델', interface: '인터페이스',
@@ -346,7 +365,7 @@ function renderHome() {
   const metrics = [
     [tasks.length, '전체 태스크', 'data-view="tasks"'],
     [documents.length, '프로젝트 문서', 'data-view="documents"'],
-    [tasks.filter((task) => task.status === 'review').length, '검토 요청', 'data-view="review"'],
+    [tasks.filter((task) => inStep(task.status, 'in-approval')).length, '검토 요청', 'data-view="review"'],
     [attention.length, '조치 필요', 'data-focus-attention="1"']
   ];
   el('metrics').innerHTML = metrics.map(([value, label, action]) => `<button type="button" class="metric" ${action}><strong>${value}</strong><span>${label}</span></button>`).join('');
@@ -365,10 +384,10 @@ function renderMyQueue(tasks) {
     el('my-queue').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 내 작업과 검토 요청을 여기 모아 보여줍니다.</p>';
     return;
   }
-  const mine = tasks.filter((task) => task.owner === state.currentMember && !TERMINAL_STATUSES.includes(task.status));
+  const mine = tasks.filter((task) => task.owner === state.currentMember && !isTerminalStatus(task.status));
   const ready = mine.filter((task) => !taskBlockage(task));
   const blocked = mine.filter((task) => taskBlockage(task));
-  const reviews = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember));
+  const reviews = tasks.filter((task) => inStep(task.status, 'in-approval') && (task.reviewers || []).includes(state.currentMember));
   const buckets = [
     ['지금 시작할 수 있는 일', ready, '내게 배정되었고 막힌 것이 없는 작업입니다.'],
     ['내 검토 대기', reviews, '내가 검토자로 지정된 작업입니다.'],
@@ -588,7 +607,7 @@ function taskDetailHtml(task, mode) {
 
   const row = (label, value) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>`;
   const properties = `<dl class="task-properties">${[
-    row('상태', contextSelect('status', task.status, labelledEntries('taskStatuses', Object.keys(statusLabels)))),
+    row('상태', contextSelect('status', task.status, labelledEntries('taskStatuses', statusKeys()))),
     row('우선순위', contextSelect('priority', task.priority, labelledEntries('priorities', ['high', 'mid', 'low']))),
     row('소유자', contextSelect('owner', task.owner, members)),
     // 종류·차수·판정은 테스트 태스크만 갖는다. 일반 태스크에 "일반 / 차수 없음 / 판정 없음"을
@@ -676,7 +695,7 @@ function renderDocument(id) { const item = state.snapshot.documents.find((docume
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
 function taskBlockage(task) {
   if (task.blocker) return { kind: 'waiting', label: `${personName(task.blocker.waitingFor)} 대기`, detail: task.blocker.condition || '' };
-  const open = (task.deps || []).map((id) => state.snapshot.tasks.tasks.find((item) => item.id === id)).filter((item) => item && !TERMINAL_STATUSES.includes(item.status));
+  const open = (task.deps || []).map((id) => state.snapshot.tasks.tasks.find((item) => item.id === id)).filter((item) => item && !isTerminalStatus(item.status));
   if (!open.length) return null;
   return { kind: 'deps', label: `선행 ${open.length}건`, detail: open.map((item) => `${item.id} ${item.title}`).join('\n') };
 }
@@ -700,7 +719,7 @@ function taskRow(task) {
 // 묶음. 평평한 목록은 33행이 한 벽으로 보여 무엇이 남았는지 읽히지 않는다.
 // 상태로 묶으면 완료 묶음이 생기고 기본으로 접는다. 개수는 남으므로 진행감은 잃지 않는다.
 const groupers = {
-  status: { order: () => Object.keys(statusLabels), key: (task) => task.status, label: (key) => taskStatusLabel(key) },
+  status: { order: () => statusKeys(), key: (task) => task.status, label: (key) => taskStatusLabel(key) },
   owner: { order: null, key: (task) => task.owner || '', label: (key) => personName(key) || '미지정' },
   priority: { order: () => ['high', 'mid', 'low'], key: (task) => task.priority, label: (key) => priorityLabel(key) },
   // 테스트는 차수로 읽는다. 같은 TST가 1차·2차에 각각 태스크를 가지므로, 차수로 묶어야
@@ -728,7 +747,7 @@ function previewRows(groupBy, key, items) {
 function groupCollapsed(groupBy, key) {
   const saved = viewOption(`collapse.${groupBy}.${key}`, null);
   if (saved !== null) return saved === '1';
-  return groupBy === 'status' && TERMINAL_STATUSES.includes(key);
+  return groupBy === 'status' && isTerminalStatus(key);
 }
 function taskGroups(tasks) {
   const groupBy = viewOption('groupBy', 'status');
@@ -743,12 +762,12 @@ function taskGroups(tasks) {
     })
     .join('');
 }
-function renderTasks() { redrawTaskPeek(); const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => task.status === 'review' && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)
+function renderTasks() { redrawTaskPeek(); const scopes = { all: ['전체 태스크', '프로젝트의 모든 작업을 목록과 Board로 확인합니다.'], mine: ['내 작업', '현재 사용자에게 할당된 작업입니다.'], review: ['내 검토', '현재 사용자가 검토자로 지정된 검토 대기 작업입니다.'] }; const [heading, description] = scopes[state.taskScope]; el('tasks-heading').textContent = heading; el('tasks-description').textContent = description; let tasks = state.snapshot.tasks.tasks; if (state.taskScope !== 'all' && !state.currentMember) { el('task-list').hidden = false; el('board').hidden = true; el('task-graph').hidden = true; el('task-list').innerHTML = '<p class="identity-prompt">헤더에서 보기 기준을 고르면 개인 작업과 검토 요청을 정확히 구분할 수 있습니다.</p>'; return; } if (state.taskScope === 'mine') tasks = tasks.filter((task) => task.owner === state.currentMember); if (state.taskScope === 'review') tasks = tasks.filter((task) => inStep(task.status, 'in-approval') && (task.reviewers || []).includes(state.currentMember)); const query = state.query.toLowerCase(); tasks = tasks.filter((task) => (!query || `${task.id} ${task.title} ${task.summary || ''}`.toLowerCase().includes(query)) && (!el('owner').value || task.owner === el('owner').value) && (!el('priority').value || task.priority === el('priority').value)
     && (!el('task-kind').value || (task.kind || 'normal') === el('task-kind').value)
     && (!el('task-round').value || String(task.round) === el('task-round').value));
   // 완료 숨기기는 접기와 다른 일을 한다. 접기는 묶음 머리글을 남기고, 숨기기는 항목을 뺀다.
   // 담당자나 우선순위로 묶으면 완료 묶음이 없으므로 그때는 이 필터가 그 역할을 한다.
-  if (el('hide-done').checked) tasks = tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status));
+  if (el('hide-done').checked) tasks = tasks.filter((task) => !isTerminalStatus(task.status));
   el('task-list').hidden = state.taskMode !== 'list';
   el('board').hidden = state.taskMode !== 'board';
   el('task-graph').hidden = state.taskMode !== 'graph';
@@ -774,7 +793,7 @@ function boardCard(task) {
     + `</span></button>`;
 }
 function renderBoard(tasks) {
-  el('board').innerHTML = Object.keys(statusLabels).map((status) => {
+  el('board').innerHTML = statusKeys().map((status) => {
     const items = tasks.filter((task) => task.status === status);
     return `<section class="column"><header class="column-head"><h2 title="${escapeHtml(presentationHint('taskStatuses', status))}">${escapeHtml(taskStatusLabel(status))}</h2><span class="badge">${items.length}</span></header>`
       + `<div class="column-cards">${items.length ? items.map(boardCard).join('') : '<p class="column-empty">없음</p>'}</div></section>`;
@@ -790,7 +809,7 @@ function renderTaskGraph(tasks) {
   if (!edges.length) return void (el('task-graph').innerHTML = '<p class="empty-state">지금 보이는 태스크 사이에 의존 관계가 없습니다. 태스크 상세에서 선행 작업을 연결하면 여기에 순서가 그려집니다.</p>');
   // 색은 테마를 따라가야 하므로 mermaid classDef 대신 라벨로 상태를 말한다.
   const nodes = tasks.filter((task) => (task.deps || []).some((id) => visible.has(id)) || tasks.some((other) => (other.deps || []).includes(task.id)))
-    .map((task) => `  ${task.id}["${nodeLabel(`${task.status === 'done' ? '✓ ' : ''}${task.id} ${task.title}`)}"]`);
+    .map((task) => `  ${task.id}["${nodeLabel(`${inStep(task.status, 'completed') ? '✓ ' : ''}${task.id} ${task.title}`)}"]`);
   const diagram = ['flowchart LR'].concat(nodes, edges).join('\n');
   el('task-graph').innerHTML = `<pre class="mermaid">${escapeHtml(diagram)}</pre>`;
   renderMermaid();
@@ -845,7 +864,7 @@ function personDetailHtml(entry, group) {
   const labels = { members: '멤버', roles: '역할', stakeholders: '이해관계자' };
   const fields = Object.entries(entry.fields || {}).filter(([, value]) => String(value || '').trim());
   const tasks = state.snapshot.tasks.tasks.filter((task) => task.owner === entry.id || (task.reviewers || []).includes(entry.id) || (task.stakeholders || []).includes(entry.id));
-  const open = tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status));
+  const open = tasks.filter((task) => !isTerminalStatus(task.status));
   const documents = state.snapshot.documents.filter((item) => String(item.owner || '').includes(entry.id));
   return `<article class="task-detail"><header class="task-detail-head"><p class="eyebrow">${escapeHtml(labels[group] || group)} · ${escapeHtml(entry.id)}</p><h1>${escapeHtml(entry.name || entry.id)}</h1></header>`
     + `<dl class="task-properties">${fields.map(([label, value]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(plainText(value))}</dd></div>`).join('') || '<div class="property"><dt>설명</dt><dd>없음</dd></div>'}</dl>`
@@ -883,7 +902,7 @@ function populateControls() { const members = state.snapshot.people.members; el(
   el('group-by').value = groupers[viewOption('groupBy', 'status')] ? viewOption('groupBy', 'status') : 'status';
   el('hide-done').checked = viewOption('hideDone', '') === '1'; el('task-owner').replaceChildren(new Option('미지정', ''), ...members.map((item) => new Option(item.name, item.id))); // 새로 만드는 태스크는 아직 끝나지도, 접히지도 않았다. 종료 상태를 고르게 두면
 // 완료는 수용조건과 TST를, 반려는 사유를 요구해 생성이 그대로 거부된다.
-el('task-status').replaceChildren(...labelledEntries('taskStatuses', Object.keys(statusLabels).filter((value) => !TERMINAL_STATUSES.includes(value))).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
+el('task-status').replaceChildren(...labelledEntries('taskStatuses', statusKeys().filter((value) => !isTerminalStatus(value))).map(([value, label]) => new Option(label, value))); const saved = localStorage.getItem(`rundol.currentMember.${state.project}`) || ''; state.currentMember = members.some((item) => item.id === saved) ? saved : ''; el('current-member').replaceChildren(new Option('사용자 선택', ''), ...members.map((item) => new Option(item.name, item.id))); el('current-member').value = state.currentMember; }
 function updateHealth() { const count = state.snapshot.attention.length; const health = el('health'); health.className = `health ${count ? 'warning' : ''}`; el('health-label').textContent = count ? '조치 필요' : '정상'; el('operation-count').textContent = count || ''; renderSyncStatus(); }
 
 // 동기화는 값을 바꾸는 설정이 아니라 되돌리기 어려운 동작이다. 설정 화면이 아니라
@@ -1131,12 +1150,12 @@ document.addEventListener('change', async (event) => {
   if (status === task.status) return;
   // 상태를 벗어날 때 그 상태에만 허용된 부가 정보를 같이 지운다. 남겨두면 저장 시 검증이 막는다.
   const cleared = Object.assign({}, task.blocker ? { blocker: null } : null, task.cancellation ? { cancellation: null } : null);
-  if (status === 'waiting') {
+  if (nodeRequires(status, 'blocker')) {
     const blocker = await requestBlocker(task.blocker);
     if (!blocker) { input.value = task.status; return message('대기 사유를 입력하지 않아 상태를 바꾸지 않았습니다.'); }
     return queueTaskUpdate(task, Object.assign(cleared, { status, blocker }));
   }
-  if (status === 'cancelled') {
+  if (nodeRequires(status, 'cancellation')) {
     const cancellation = await requestCancellation(task.cancellation);
     if (!cancellation) { input.value = task.status; return message('반려 사유를 입력하지 않아 상태를 바꾸지 않았습니다.'); }
     return queueTaskUpdate(task, Object.assign(cleared, { status, cancellation }));
@@ -1268,17 +1287,17 @@ el('cancellation-form').addEventListener('submit', (event) => {
   el('cancellation-dialog').close();
 });
 el('task-status').addEventListener('change', async () => {
-  if (el('task-status').value !== 'waiting') { state.newTaskBlocker = null; return; }
+  if (!nodeRequires(el('task-status').value, 'blocker')) { state.newTaskBlocker = null; return; }
   const blocker = await requestBlocker(state.newTaskBlocker);
   if (blocker) { state.newTaskBlocker = blocker; return; }
-  el('task-status').value = 'todo';
+  el('task-status').value = defaultStatus();
   state.newTaskBlocker = null;
   message('대기 사유를 입력하지 않아 상태를 할 일로 되돌렸습니다.');
 });
 // Plane의 quick add. 흔한 경우는 제목 하나뿐인데 모달을 열게 하면 매번 여섯 필드를 지나야 한다.
 // 한 줄 추가는 없앴다. 태스크에는 완료조건이 반드시 있어야 하고, 그걸 한 줄에 끼워 넣으면
 // 빠르지도 않으면서 대충 적게 만든다. 만드는 길은 다이얼로그 하나로 둔다.
-el('new-task').addEventListener('click', () => { el('task-id').textContent = 'NEW TASK'; el('task-title').value = ''; el('task-summary').value = ''; el('task-acceptance').value = ''; el('task-links').value = ''; el('task-status').value = 'todo'; state.newTaskBlocker = null; el('task-dialog').showModal(); el('task-title').focus(); });
+el('new-task').addEventListener('click', () => { el('task-id').textContent = 'NEW TASK'; el('task-title').value = ''; el('task-summary').value = ''; el('task-acceptance').value = ''; el('task-links').value = ''; el('task-status').value = defaultStatus(); state.newTaskBlocker = null; el('task-dialog').showModal(); el('task-title').focus(); });
 // ── 편집 시작 ─────────────────────────────────────────────
 // 문서 편집 소프트 리스는 ADR-015로 폐기했다. 만료 시각에 기대는 배타는 중앙 권위
 // 없이 보장되지 않는데 화면은 그것을 잠금처럼 보여 주었고, 브라우저가 갱신 중 죽으면
@@ -1501,7 +1520,7 @@ el('save-document').addEventListener('click', async () => {
     message(`${error.message} 편집 내용은 편집기에 그대로 있습니다.`, true);
   }
 });
-el('task-form').addEventListener('submit', async (event) => { event.preventDefault(); const status = el('task-status').value; if (status === 'waiting' && !state.newTaskBlocker) return message('대기 상태로 만들려면 대기 사유를 먼저 입력하세요.', true); const lines = el('task-acceptance').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const acceptanceCriteria = Object.fromEntries(lines.map((text, index) => [`AC-${String(index + 1).padStart(3, '0')}`, { text, done: false }])); try { await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title: el('task-title').value, summary: el('task-summary').value, status, priority: el('task-priority').value, owner: el('task-owner').value || null, blocker: status === 'waiting' ? state.newTaskBlocker : null, links: el('task-links').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), acceptanceCriteria }) }); el('task-dialog').close(); await loadSnapshot(true); message('태스크를 생성했습니다.'); } catch (error) { message(error.message, true); } });
+el('task-form').addEventListener('submit', async (event) => { event.preventDefault(); const status = el('task-status').value; if (nodeRequires(status, 'blocker') && !state.newTaskBlocker) return message('대기 상태로 만들려면 대기 사유를 먼저 입력하세요.', true); const lines = el('task-acceptance').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const acceptanceCriteria = Object.fromEntries(lines.map((text, index) => [`AC-${String(index + 1).padStart(3, '0')}`, { text, done: false }])); try { await api(projectPath('/tasks'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token }, body: JSON.stringify({ title: el('task-title').value, summary: el('task-summary').value, status, priority: el('task-priority').value, owner: el('task-owner').value || null, blocker: nodeRequires(status, 'blocker') ? state.newTaskBlocker : null, links: el('task-links').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), acceptanceCriteria }) }); el('task-dialog').close(); await loadSnapshot(true); message('태스크를 생성했습니다.'); } catch (error) { message(error.message, true); } });
 // push는 이 화면에서 가장 되돌리기 어려운 동작이다. 무엇이 나가는지 보여주고 확인받는다.
 async function runSync() {
   const sync = state.snapshot.sync;

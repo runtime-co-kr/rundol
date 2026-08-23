@@ -10,7 +10,8 @@ const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValu
 const { taskCreate, taskUpdate, refreshState, syncState } = require('./state');
 const { readCollaboration } = require('./collaboration');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, shardFiles, clientId, TERMINAL_TASK_STATES } = require('./tasks');
+const { readTaskStore, shardFiles, clientId, assertNodeConsistency } = require('./tasks');
+const workflow = require('./workflow');
 const { entityRevision, listDocuments, syncStatus } = require('./board-data');
 const { listClients, registerClient, setClientStatus } = require('./collaboration-store');
 const { addComment, listComments } = require('./comment');
@@ -292,10 +293,10 @@ function attentionItems(tasks, documents, sync) {
   for (const task of tasks) {
     if (!task.owner) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '담당자 없음' });
     if (!task.acceptanceCriteria || Object.keys(task.acceptanceCriteria).length === 0) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '완료조건 없음' });
-    if (task.status === 'review' && (!task.reviewers || task.reviewers.length === 0)) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '검토자 없음' });
+    if (workflow.stepOf(task.status) === 'in-approval' && (!task.reviewers || task.reviewers.length === 0)) items.push({ severity: 'warning', kind: 'task', id: task.id, title: task.title, reason: '검토자 없음' });
     // 반려된 선행 태스크는 끝나지 않았지만 더 이상 진행되지도 않는다. 종료로 보지 않으면
     // 후행 태스크가 영영 막힌 것으로 표시되고 풀 방법이 없다.
-    for (const dependency of task.deps || []) if (taskIds.has(dependency) && !TERMINAL_TASK_STATES.includes(tasks.find((item) => item.id === dependency).status)) items.push({ severity: 'info', kind: 'task', id: task.id, title: task.title, reason: `선행 태스크 미완료: ${dependency}` });
+    for (const dependency of task.deps || []) if (taskIds.has(dependency) && !workflow.isTerminal(tasks.find((item) => item.id === dependency).status)) items.push({ severity: 'info', kind: 'task', id: task.id, title: task.title, reason: `선행 태스크 미완료: ${dependency}` });
     for (const link of task.links || []) if (!documentIds.has(link)) items.push({ severity: 'error', kind: 'task', id: task.id, title: task.title, reason: `깨진 문서 연결: ${link}` });
   }
   // 동기화는 여기 들어오지 않는다. 이 목록은 "봐야 할 문제"이고 동기화는 "누르면
@@ -352,6 +353,10 @@ function workspaceSnapshot(root, projectKey, search) {
     projects: overview(root).projects,
     documents,
     tasks: tasksResult,
+    // 화면은 브라우저에서 그대로 돌아 require를 쓸 수 없다. 목록을 실어 주지
+    // 않으면 화면이 자기 사본을 적게 되고, 저장값이 늘어도 화면은 그것을 모른 채
+    // 돈다 — board-presentation.js가 키를 정본에서 가져오는 것과 같은 이유다.
+    workflow: workflow.taskWorkflowView(),
     attention: attentionItems(tasksResult.tasks, documents, sync),
     people: collaboration,
     clients,
@@ -558,11 +563,16 @@ function cancellationInput(value) {
   return { reason, decidedBy, at: new Date(at).toISOString() };
 }
 
-function requireBlockerConsistency(current, changes) {
-  const status = Object.prototype.hasOwnProperty.call(changes, 'status') ? changes.status : current && current.status;
-  const blocker = Object.prototype.hasOwnProperty.call(changes, 'blocker') ? changes.blocker : current && current.blocker;
-  if (status === 'waiting' && !blocker) inputError('대기 상태로 바꾸려면 대기 대상, 해제 조건과 대기 시작 시각이 필요합니다.');
-  if (status !== 'waiting' && blocker) inputError('대기 상태가 아닌 태스크에는 대기 사유를 둘 수 없습니다.');
+// 노드와 항목의 짝은 저장 계층이 부르는 것과 같은 판정부가 답한다. 여기 같은
+// 규칙을 다시 적어 두었던 동안 두 벌은 강도가 갈려 있었다 — 저장은 blocker가
+// 있기만 하면 받았고 검사는 세 부분을 요구했다. Board가 400으로 돌려줄 근거를
+// 갖는 것과 그 근거를 여기서 다시 짓는 것은 다른 일이다.
+//
+// 판정이 던지는 것은 statusCode 400을 단 오류이므로 그대로 올려 보낸다. 막는
+// 규칙이 여럿이면 여럿이 한 줄에 실려 온다 — 화면이 하나씩 만나며 왕복하지
+// 않게 하는 것이 이 설계의 목적이다.
+function requireNodeConsistency(current, changes) {
+  assertNodeConsistency(current, changes);
 }
 
 function validateTaskAssignments(root, input, projectKey) {
@@ -792,7 +802,7 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const input = taskInput(body, true);
         input.project = projectTasksMatch[1];
-        requireBlockerConsistency(null, input);
+        requireNodeConsistency(null, input);
         validateTaskAssignments(config.root, input, input.project);
         return json(response, 201, taskCreate(config.root, input));
       }
@@ -800,7 +810,7 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const current = requireRevision(requestedConfig, projectTaskMatch[2], body.baseRevision);
         const changes = taskInput(body, false);
-        requireBlockerConsistency(current, changes);
+        requireNodeConsistency(current, changes);
         validateTaskAssignments(config.root, changes, projectTaskMatch[1]);
         return json(response, 200, taskUpdate(config.root, projectTaskMatch[2], changes, projectTaskMatch[1]));
       }
@@ -859,7 +869,7 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const input = taskInput(body, true);
         input.project = activeConfig.project;
-        requireBlockerConsistency(null, input);
+        requireNodeConsistency(null, input);
         validateTaskAssignments(activeConfig.root, input, activeConfig.project);
         return json(response, 201, taskCreate(activeConfig.root, input));
       }
@@ -909,7 +919,7 @@ function createBoardServer(start, options) {
         const current = requireRevision(activeConfig, taskMatch[1], body.baseRevision);
         const changes = taskInput(body, false);
         if (Object.keys(changes).length === 0) return json(response, 400, { error: '변경할 태스크 필드가 필요합니다.' });
-        requireBlockerConsistency(current, changes);
+        requireNodeConsistency(current, changes);
         validateTaskAssignments(activeConfig.root, changes, activeConfig.project);
         const result = taskUpdate(activeConfig.root, taskMatch[1], changes, activeConfig.project);
         return json(response, 200, result);

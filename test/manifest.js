@@ -23,7 +23,8 @@ const PARALLEL = Object.freeze([
   'board-ui', 'document-roundtrip', 'worker-contract', 'worker-contract-purity',
   'vocabulary', 'surface-leak', 'human-intervention', 'task-link', 'asset',
   'comment', 'assignment', 'approval-mode', 'item-type', 'item-type-migration',
-  'diagnostic-rules', 'run-driver', 'manifest-coverage', 'commit-boundary', 'rule-telemetry'
+  'diagnostic-rules', 'run-driver', 'manifest-coverage', 'commit-boundary', 'rule-telemetry',
+  'workflow'
 ]);
 
 // remark(ESM 전용)를 동적 import로 읽어 promise를 내보내는 시험. 서로 얹지 않는

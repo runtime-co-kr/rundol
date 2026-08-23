@@ -9,6 +9,7 @@
 // 목록이 아니라 조회 결과가 된다(ADR-009와 같은 계산형 추적 원칙).
 
 const { REF_KINDS } = require('./vocabulary');
+const { rollupNodes } = require('./workflow');
 
 const BRANCH_NAME = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*[\\~^: ?*[\]])[\w.\-/]+(?<![./])$/u;
 
@@ -76,16 +77,27 @@ function worksets(tasks) {
     const sorted = members.slice().sort((left, right) => String(left.id).localeCompare(String(right.id)));
     const pullRequests = Array.from(new Set(sorted.map((task) => refOf(task, 'pr')).filter(Boolean))).sort();
     const statuses = sorted.map((task) => task.status);
+    // 묶음의 진행은 가장 덜 진행된 태스크가 정한다. 하나라도 남아 있으면 그
+    // 묶음은 아직 안착하지 않았다.
+    //
+    // 예전에는 이 자리가 상태 이름 넷을 늘어놓고 어디에도 안 맞으면 'open'을
+    // 지어냈다. TASK_STATES 여섯 중 어디에도 없는 일곱 번째 값이었고, 어휘
+    // 파일이 정본이라고 선언해 놓고도 코드가 몰래 값을 만드는 모양이 그것이다.
+    // 그 자리를 unclaimed가 그대로 받는다 — 지어낸 것이 아니라 어휘 안의 값이다.
+    //
+    // 그리고 끝난 것이 섞이는 경우가 새로 드러난다. 전부 끝났는데 완료와 취소가
+    // 섞이면 예전에는 조용히 'open'이 되어 안착한 묶음이 열린 것으로 보였다.
+    // 이제 답이 하나로 정해지지 않는다는 사실이 값으로 나온다.
+    const rolled = rollupNodes(statuses);
     return {
       branch,
       pullRequests,
       tasks: sorted.map((task) => ({ id: task.id, title: task.title, status: task.status, project: task.project || null })),
       counts: statuses.reduce((totals, status) => Object.assign(totals, { [status]: (totals[status] || 0) + 1 }), {}),
-      // 묶음의 상태는 가장 덜 진행된 태스크가 정한다. 하나라도 남아 있으면 그
-      // 묶음은 아직 안착하지 않았다.
-      status: statuses.every((status) => status === 'done') ? 'done'
-        : statuses.some((status) => status === 'doing') ? 'doing'
-          : statuses.every((status) => ['review', 'done'].includes(status)) ? 'review' : 'open'
+      step: rolled.step,
+      // 성취와 취소는 "더 손대지 않는다"는 점만 같고 뜻이 반대다. 섞였을 때
+      // 한쪽을 고르면 그것은 이 파일이 정한 것이 되므로 고르지 않고 내보낸다.
+      mixedTerminal: rolled.ambiguous ? rolled.mixed : null
     };
   });
   return { worksets: result, unassigned: unassigned.map((task) => ({ id: task.id, title: task.title, status: task.status })) };

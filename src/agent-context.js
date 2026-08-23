@@ -13,6 +13,7 @@ const vocabulary = require('./vocabulary');
 const STATUS_ORDER = vocabulary.TASK_STATUS_ORDER;
 const PRIORITY_ORDER = vocabulary.TASK_PRIORITIES;
 const ACTIVE_STATES = new Set(vocabulary.ACTIVE_TASK_STATES);
+const workflow = require('./workflow');
 const OPEN_STATES = new Set(vocabulary.OPEN_TASK_STATES);
 
 function rank(order, value) {
@@ -69,7 +70,7 @@ function listTasks(start, options) {
       counts[entry.status] = (counts[entry.status] || 0) + 1;
       if (entry.kind === 'test') {
         // 반려한 테스트는 수행하지 않기로 한 것이라 아직 돌리지 않은 것과 다르다.
-        const bucket = entry.result || (entry.status === 'cancelled' ? 'cancelled' : 'pending');
+        const bucket = entry.result || (workflow.stepOf(entry.status) === 'dropped' ? 'cancelled' : 'pending');
         results[bucket] = (results[bucket] || 0) + 1;
       }
       if (settings.kind && entry.kind !== settings.kind) continue;
@@ -157,14 +158,19 @@ function diagnosticSummary(root, projectKey) {
 function nextActions(context) {
   const actions = [];
   if (context.diagnostics.errors) actions.push(`검사 오류 ${context.diagnostics.errors}건을 먼저 해소하세요: rdl check --json`);
-  for (const task of context.tasks.active.filter((item) => item.status === 'doing')) {
-    actions.push(`진행 중인 태스크를 이어서 작업하세요: ${task.id} ${task.title}`);
-  }
-  for (const task of context.tasks.active.filter((item) => item.status === 'review')) {
-    actions.push(`검토 중인 태스크는 PR 병합 후 done으로 전환하세요: ${task.id}`);
-  }
-  for (const task of context.tasks.active.filter((item) => item.status === 'waiting')) {
-    actions.push(`대기 중인 태스크의 해제 조건을 확인하세요: ${task.id} (${task.waitingFor || '대상 미상'})`);
+  // 안내는 스텝으로 가른다. 상태 이름 셋을 늘어놓던 자리인데, 그러면 이름이
+  // 하나 늘 때 그 상태의 태스크만 아무 안내도 받지 못하고 그 사실은 신호를
+  // 내지 않는다. 막혀 있는가는 스텝이 아니라 blocker가 답한다 — 대기와 진행은
+  // 같은 스텝에 서고, 둘을 가르는 것은 노드 이름이 아니라 그 필드다.
+  for (const task of context.tasks.active) {
+    const step = workflow.stepOf(task.status);
+    if (step === 'in-progress' && task.blocker) {
+      actions.push(`대기 중인 태스크의 해제 조건을 확인하세요: ${task.id} (${task.waitingFor || '대상 미상'})`);
+    } else if (step === 'in-progress') {
+      actions.push(`진행 중인 태스크를 이어서 작업하세요: ${task.id} ${task.title}`);
+    } else if (step === 'in-approval') {
+      actions.push(`검토 중인 태스크는 PR 병합 후 done으로 전환하세요: ${task.id}`);
+    }
   }
   if (!context.tasks.active.length && context.tasks.todo.length) {
     const first = context.tasks.todo[0];
@@ -194,7 +200,7 @@ function agentContext(start, options) {
       source: listed.source,
       counts: listed.counts,
       active: open.filter((task) => ACTIVE_STATES.has(task.status)),
-      todo: open.filter((task) => task.status === 'todo')
+      todo: open.filter((task) => workflow.isUnclaimed(task.status))
     }
   };
   context.next = nextActions(context);

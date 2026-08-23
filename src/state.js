@@ -8,7 +8,8 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
-const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertBlockerConsistency, assertCancellationConsistency, assertExemptionConsistency, assertKindConsistency, assertRoundUniqueness } = require('./tasks');
+const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertNodeConsistency, assertExemptionConsistency, assertKindConsistency, assertRoundUniqueness } = require('./tasks');
+const workflow = require('./workflow');
 const { initSettings, saveSettings, prepareSettings, finalizeSettings } = require('./settings');
 const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
 const { getClient } = require('./collaboration-store');
@@ -321,8 +322,16 @@ function validateProjection(config, options) {
   const settings = options || {};
   const result = checkWorkspace(config.root, { strict: true, project: config.project || null, skipProfilePolicy: settings.skipProfilePolicy === true });
   if (result.summary.errors > 0) {
-    const first = result.diagnostics.find((item) => item.severity === 'error');
-    throw new Error(`workspace 변경 검증 실패: ${first ? `${first.code} ${first.message}` : '알 수 없는 오류'}`);
+    // 막는 것을 전부 내보낸다. 예전에는 첫 줄만 꺼내 던졌고, 그것이 01절이 적은
+    // 왕복의 실제 기계였다 — 검사는 진단을 다 만들어 놓았는데 이 자리가 하나만
+    // 보여 주었다. 하나를 고치면 다음 것이 다시 막고, 두 규칙이 같은 사실에서
+    // 나와도 한 화면에 보이지 않는다.
+    const errors = result.diagnostics.filter((item) => item.severity === 'error');
+    if (!errors.length) throw new Error('workspace 변경 검증 실패: 알 수 없는 오류');
+    const lines = errors.map((item) => `${item.code} ${item.message}${item.artifactId ? ` (${item.artifactId})` : ''}`);
+    throw new Error(errors.length === 1
+      ? `workspace 변경 검증 실패: ${lines[0]}`
+      : `workspace 변경 검증 실패 ${errors.length}건:\n  ${lines.join('\n  ')}`);
   }
   return result;
 }
@@ -390,7 +399,7 @@ function persistTaskChange(config, values) {
 // 태스크 owner가 결정한 것으로 본다 — CLI는 태스크를 읽지 않으므로 그 값을 모른다.
 function normalizeExemptionChange(task, changes) {
   if (!changes || !Object.prototype.hasOwnProperty.call(changes, 'status')) return;
-  if (changes.status !== 'done') {
+  if (workflow.stepOf(changes.status) !== 'completed') {
     if (task.exemption && !Object.prototype.hasOwnProperty.call(changes, 'exemption')) changes.exemption = null;
     return;
   }
@@ -401,7 +410,7 @@ function normalizeExemptionChange(task, changes) {
 
 function normalizeCancellationChange(task, changes) {
   if (!changes || !Object.prototype.hasOwnProperty.call(changes, 'status')) return;
-  if (changes.status !== 'cancelled') {
+  if (workflow.stepOf(changes.status) !== 'dropped') {
     if (task.cancellation && !Object.prototype.hasOwnProperty.call(changes, 'cancellation')) changes.cancellation = null;
     return;
   }
@@ -421,8 +430,9 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   if (!task) throw new Error(`태스크를 찾지 못했습니다: ${taskIdValue}`);
   normalizeCancellationChange(task, changes);
   normalizeExemptionChange(task, changes);
-  assertBlockerConsistency(task, changes);
-  assertCancellationConsistency(task, changes);
+  // 노드와 항목의 짝은 한 번에 본다. 셋을 줄지어 부르면 첫 번째가 던지는 순간
+  // 나머지 둘은 판정되지 않고, 부르는 쪽은 고치고 다시 부르기를 되풀이한다.
+  assertNodeConsistency(task, changes);
   assertExemptionConsistency(task, changes);
   assertKindConsistency(task, changes);
   assertRoundUniqueness(parsed.tasks, taskIdValue, Object.assign({}, task, changes));
@@ -489,8 +499,7 @@ function taskCreate(start, input) {
   // 구현 준비도는 저장하지 않는다. 링크에서 결정되는 값이라 저장하면 링크가 바뀌어도
   // 갱신 경로가 없어 조용히 어긋난다 — 계산되는 값을 저장하지 않는다는 REQ-047의
   // 요구가 이것이다. 판정이 필요할 때 링크를 보고 계산한다.
-  assertBlockerConsistency(null, task);
-  assertCancellationConsistency(null, task);
+  assertNodeConsistency(null, task);
   assertExemptionConsistency(null, task);
   assertKindConsistency(null, task);
   assertRoundUniqueness(parsed.tasks, id, task);
@@ -608,10 +617,9 @@ function stageScoped(config, scope) {
 // 그 사실이 따로 움직이고, 나중에 둘이 어긋났을 때 어느 쪽이 사실인지 알 수 없다.
 const TASK_TRAILER = 'Rundol-Task';
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 그 뒤에 생긴 커밋은
-// 그 태스크의 일일 수 없다. 목록은 tasks.js가 정본에서 가져온 것을 그대로 쓴다 —
-// 이 자리에 같은 목록을 다시 적었던 것이 이 파일이 이미 tasks를 require 하면서도
-// 다른 이름으로 선언해 두는 결과를 낳았다.
-const TERMINAL_TASK_STATUSES = require('./vocabulary').TERMINAL_TASK_STATES;
+// 그 태스크의 일일 수 없다. 예전에는 그 둘을 상태 이름 목록으로 물었고, 목록을
+// 이 파일에 다시 적었던 탓에 같은 것이 세 이름으로 있었다. 이제 스텝이 답한다 —
+// workflow.isTerminal 하나이고, 프로젝트가 이름을 정의해도 이 판정은 그대로다.
 const TASK_REASON_TRAILER = 'Rundol-Task-Reason';
 
 function taskTrailer(binding) {
@@ -672,9 +680,22 @@ function derivationLadder(config, settings, tasks) {
     });
     sources.push({ name: 'workset', label: `브랜치 ${branch}의 작업 묶음`, taskId: onBranch.length === 1 ? onBranch[0] : null });
   }
-  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
+  const doing = Object.keys(tasks).filter((id) => underway(tasks[id])).sort();
   sources.push({ name: 'single-doing', label: '진행 중인 태스크', taskId: doing.length === 1 ? doing[0] : null });
   return sources;
+}
+
+// 지금 손이 가 있는 태스크. 붙어 있는 스텝 중 막혀 있지 않은 것이다.
+//
+// 스텝만으로 묻지 않는 이유는 대기가 진행중과 같은 스텝에 서기 때문이다. 대기는
+// 사람이 붙어 있되 남을 기다리는 자리이고, 그 태스크에 커밋을 결박하면 결박이
+// 가리키는 일은 지금 일어나고 있지 않다. 틀린 결박은 결박이 없는 것보다 나쁘다 —
+// 없는 것은 비어 있고 틀린 것은 거짓이다.
+//
+// 막혀 있다는 것은 blocker가 있다는 것이고, 그 짝은 저장 계층의 불변식이라
+// 여기서 상태 이름을 다시 물을 필요가 없다.
+function underway(task) {
+  return Boolean(task) && workflow.stepOf(task.status) === 'in-progress' && !task.blocker;
 }
 
 function resolveTaskBinding(config, settings) {
@@ -696,7 +717,7 @@ function resolveTaskBinding(config, settings) {
     // 끝난 태스크에도 묶을 수 있으면, 결박이 증명하는 것은 "활성 작업에 속한다"가
     // 아니라 "존재하는 문자열이다"가 된다. 완료·반려된 태스크를 가리키는 커밋은 그
     // 태스크가 끝난 뒤에 생긴 일이므로 그 태스크의 일일 수 없다.
-    if (TERMINAL_TASK_STATUSES.includes(tasks[requested].status)) throw new Error(`RDL-TASK-037: 이미 끝난 태스크에는 묶을 수 없습니다: ${requested} (${tasks[requested].status}). 진행 중인 태스크를 지정하거나 새로 만드세요.`);
+    if (workflow.isTerminal(tasks[requested].status)) throw new Error(`RDL-TASK-037: 이미 끝난 태스크에는 묶을 수 없습니다: ${requested} (${tasks[requested].status}). 진행 중인 태스크를 지정하거나 새로 만드세요.`);
     return { level, taskId: requested, inferred: false, source: 'explicit', reason: null, notices };
   }
   if (excuse) return { level, taskId: null, inferred: false, reason: excuse, notices };
@@ -712,12 +733,12 @@ function resolveTaskBinding(config, settings) {
     if (!Object.prototype.hasOwnProperty.call(tasks, source.taskId)) continue;
     // 파생된 태스크도 결박의 조건을 그대로 지난다. 끝난 태스크는 파생으로도 묶이지
     // 않는다 — 파생이 사람이 지정할 수 없는 것을 묶어 주면 파생이 우회가 된다.
-    if (TERMINAL_TASK_STATUSES.includes(tasks[source.taskId].status)) continue;
+    if (workflow.isTerminal(tasks[source.taskId].status)) continue;
     notices.push(`태스크를 지정하지 않아 ${source.label}에서 ${source.taskId}(으)로 기록합니다.`);
     return { level, taskId: source.taskId, inferred: true, source: source.name, reason: null, notices };
   }
 
-  const doing = Object.keys(tasks).filter((id) => tasks[id] && tasks[id].status === 'doing').sort();
+  const doing = Object.keys(tasks).filter((id) => underway(tasks[id])).sort();
   // 둘 이상이면 추론하지 않는다. 골라 주는 것이 편해 보이지만, 틀린 결박은 결박이
   // 없는 것보다 나쁘다 — 없는 것은 비어 있고 틀린 것은 거짓이다.
   const why = doing.length ? `진행 중인 태스크가 ${doing.length}건입니다: ${doing.join(', ')}` : '진행 중인 태스크가 없습니다';
