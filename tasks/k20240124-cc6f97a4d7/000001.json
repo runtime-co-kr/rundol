@@ -4350,7 +4350,7 @@
         },
         "AC-003": {
           "text": "TST 링크 없이 done인 건이 면제·사유 유무로 구분되어 11절 표를 갱신할 수 있다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "런 소급 생성 대신 이관 노드를 두는 11절 추천이 실측으로 재확인되거나 반박된다",
@@ -4363,7 +4363,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T14:59:20.118Z",
-      "updatedAt": "2026-08-23T15:22:13.536Z",
+      "updatedAt": "2026-08-23T15:22:38.913Z",
       "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
