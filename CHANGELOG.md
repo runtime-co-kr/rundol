@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.39.7] - 2026-08-23
+
 ### 훅이 꺼져도 서는 커밋 경계
 
 `rdl git init`이 관리형 `pre-commit`과 `commit-msg`를 함께 설치한다. `pre-commit`은 기본 코드 브랜치에서 제품 코드를 담는 것을 거절하고, `commit-msg`는 제품 코드 커밋에 `Rundol-Task` 트레일러를 요구한다.
