@@ -3959,12 +3959,12 @@
         },
         "AC-004": {
           "text": "RUNDOL_TEST_JOBS=1이면 예전처럼 한 프로세스에서 순차로 돈다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T04:52:56.853Z",
-      "updatedAt": "2026-08-23T05:03:47.593Z",
+      "updatedAt": "2026-08-23T05:03:51.834Z",
       "statusChangedAt": "2026-08-23T04:52:56.853Z",
       "externalRefs": [],
       "project": "rundol"
