@@ -4138,7 +4138,7 @@
         },
         "AC-002": {
           "text": "배포를 결정하는 .github/ 변경이 거부된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "시험 코드 변경이 거부된다.",
@@ -4151,7 +4151,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T07:08:52.044Z",
-      "updatedAt": "2026-08-23T07:20:11.658Z",
+      "updatedAt": "2026-08-23T07:20:21.650Z",
       "statusChangedAt": "2026-08-23T07:09:21.002Z",
       "externalRefs": [],
       "project": "rundol"
