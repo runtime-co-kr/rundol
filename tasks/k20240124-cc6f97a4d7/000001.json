@@ -4295,6 +4295,36 @@
       "statusChangedAt": "2026-08-23T14:50:20.447Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-5298JW3X": {
+      "title": "[갈래D′] 검증 판정기를 소스 × 방법으로 세운다",
+      "summary": "보고서 06절 소스×방법 카탈로그의 판정기 절반. 배선(check.js·check-rules.js·item-type.js)은 A 병합 뒤 D의 몫이라 기존 파일은 건드리지 않는다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "src/validation-catalog.js가 vocabulary의 소스·방법·성질만 읽는 순수 함수로 서고, 성질에 안 맞는 조합을 파일 경로·키 경로·이유와 함께 거부한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "진단 코드가 방법 8종에만 붙고, 판정이 막는 규칙을 전부 Blocker 목록으로 돌려준다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T14:54:16.491Z",
+      "updatedAt": "2026-08-23T14:54:16.491Z",
+      "statusChangedAt": "2026-08-23T14:54:16.491Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
