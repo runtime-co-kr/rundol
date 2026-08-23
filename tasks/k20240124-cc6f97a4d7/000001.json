@@ -3770,6 +3770,50 @@
       "statusChangedAt": "2026-08-23T03:11:58.131Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-PEN4C08J": {
+      "title": "완료 게이트를 사람의 사유로 면제한다",
+      "summary": "TST 링크가 없어 닫히지 않는 태스크를 사람이 사유를 대고 완료할 수 있게 한다. 면제는 허용 목록 안의 게이트에만 걸리고 사유와 결정자가 태스크에 남으며 검사가 그 수를 낸다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [
+        "STAKEHOLDER-001"
+      ],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl task set --status done --exempt done-requires-test-link --reason <사유>로 TST 링크 없이 완료할 수 있다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "사유가 없으면 면제가 거부된다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "허용 목록 밖의 게이트 이름은 거부된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "면제는 태스크에 게이트·사유·결정자·시각으로 남고, 면제하지 않은 게이트는 그대로 판정한다.",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl check 요약이 면제 건수를 낸다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T04:07:04.165Z",
+      "updatedAt": "2026-08-23T04:07:04.165Z",
+      "statusChangedAt": "2026-08-23T04:07:04.165Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
