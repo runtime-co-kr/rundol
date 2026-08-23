@@ -214,6 +214,15 @@ const WORKTREE_IGNORE_RULES = Object.freeze(['/projects/*/', '.rundol/']);
  */
 const CODE_PATH_PREFIXES = Object.freeze(['src/', 'bin/', 'packages/', 'scripts/']);
 
+/**
+ * 커밋 시점의 경계를 세우는 Git 훅. 브랜치와 경로는 메시지 없이 판정할 수 있어
+ * pre-commit이 보고, 결박 트레일러는 메시지가 있어야 하므로 commit-msg가 본다.
+ *
+ * 목록으로 두는 이유는 설치와 진단이 같은 둘을 봐야 하기 때문이다. 하나만 서 있는
+ * 상태를 어느 쪽도 알아채지 못하면 경계는 반쪽인 채로 초록이 된다.
+ */
+const COMMIT_BOUNDARY_HOOKS = Object.freeze(['pre-commit', 'commit-msg']);
+
 // ── 하네스 훅 ──────────────────────────────────────────────────────────
 
 /**
@@ -270,6 +279,7 @@ module.exports = Object.freeze({
   REF_KINDS,
   WORKTREE_IGNORE_RULES,
   CODE_PATH_PREFIXES,
+  COMMIT_BOUNDARY_HOOKS,
   HOOK_EVENTS,
   HOOK_CLIENTS,
   CONVENTIONAL_PRIMARY,

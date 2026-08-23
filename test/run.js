@@ -28,9 +28,14 @@ const startedAt = Date.now();
 function jobCount() {
   const requested = Number.parseInt(process.env.RUNDOL_TEST_JOBS || '', 10);
   if (Number.isSafeInteger(requested) && requested > 0) return requested;
-  // 하나는 사슬 워커가 쓰고, 하나는 이 프로세스와 OS에 남긴다. 코어를 모두 채우면
-  // 시험이 띄우는 자식 프로세스들이 서로 밀려 오히려 느려지고 소켓이 끊긴다.
-  return Math.max(2, Math.min(8, (os.cpus() || []).length - 1 || 2));
+  // 상한이 4인 이유는 코어가 아니라 프로세스 때문이다. 워커 하나가 node와 git을 쉴 새
+  // 없이 spawn하므로, 코어 수만큼 채우면 Windows가 프로세스 생성에서 무너진다 —
+  // 실제로 8개로 돌렸을 때 git init이 0xC0000142(DLL 초기화 실패)로 끝났다. 그 실패는
+  // 시험의 실패처럼 보이지만 시험과 무관하고, 다시 돌리면 사라져 진단할 수도 없다.
+  //
+  // 더 늘리고 싶으면 RUNDOL_TEST_JOBS로 올린다. 기본값이 감당하지 못하는 실패를 만드는
+  // 것보다, 감당하는 값을 두고 필요한 사람이 올리는 편이 낫다.
+  return Math.max(2, Math.min(4, (os.cpus() || []).length - 1 || 2));
 }
 
 // 나누는 방식은 라운드로빈이다. 파일별 소요를 모르므로 균등하게 나눌 수 없고, 목록

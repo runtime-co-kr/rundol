@@ -92,8 +92,13 @@ function branchBoundaryStatus(start, options) {
     }
   }
   const hook = hookStatus(root);
+  // 커밋 경계도 함께 답한다. 미는 자리만 보면 담는 자리가 열려 있어도 초록이 된다.
+  const commitHooks = require('./commit-boundary').commitBoundaryStatus(root);
+  for (const item of commitHooks.filter((entry) => !entry.managed)) {
+    violations.push({ code: 'RDL-BRANCH-006', role: 'commit', message: item.status === 'missing' ? `Rundol ${item.name} 경계가 설치되지 않았습니다.` : `관리되지 않는 ${item.name} hook이 경계 설치를 막고 있습니다.`, hook: item.file });
+  }
   if (!hook.managed) violations.push({ code: 'RDL-BRANCH-004', role: 'push', message: hook.status === 'missing' ? 'Rundol pre-push 경계가 설치되지 않았습니다.' : '관리되지 않는 pre-push hook이 경계 설치를 막고 있습니다.', hook: hook.file });
-  return { root, valid: violations.length === 0, primaryBranch: roles[0] && roles[0].defaultBranch, currentCodeBranch: roles[0] && roles[0].branch, pushDefault: runGit(['config', '--local', '--get', 'push.default'], { cwd: root, allowFailure: true }).stdout || null, hook, roles, worktrees: actual, violations };
+  return { root, valid: violations.length === 0, primaryBranch: roles[0] && roles[0].defaultBranch, currentCodeBranch: roles[0] && roles[0].branch, pushDefault: runGit(['config', '--local', '--get', 'push.default'], { cwd: root, allowFailure: true }).stdout || null, hook, commitHooks, roles, worktrees: actual, violations };
 }
 
 function validatePushLines(source, options) {
@@ -199,7 +204,10 @@ function assertWorktreeBoundary(input) {
     const expected = input.role === 'workspace' ? path.join(root, 'projects', 'workspace') : input.role === 'project' ? path.join(root, 'projects', input.project) : root;
     if (!samePath(input.worktree, expected)) throw new Error(`Rundol ${input.role || '작업'} 경로 경계 위반: ${input.worktree} != ${expected}`);
   }
-  return { root, role: input.role, project: input.project || null, branch, worktree: actualRoot };
+  // 미는 경계만 세우고 담는 경계를 두면 반쪽이다. 두 훅은 같은 결정의 두 자리이므로
+  // 함께 선다 — 하나만 서 있는 상태를 사람이 알아채기를 기대하지 않는다.
+  const commit = require('./commit-boundary').installCommitBoundary(root);
+  return { commitHooks: commit, root, role: input.role, project: input.project || null, branch, worktree: actualRoot };
 }
 
 module.exports = { HOOK_MARKER, USER_HOOK_NAME, currentBranch, primaryBranch, worktrees, hookStatus, branchBoundaryStatus, validatePushLines, installBranchBoundary, assertWorktreeBoundary };

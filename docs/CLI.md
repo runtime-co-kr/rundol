@@ -353,9 +353,17 @@ Client는 사람 자체가 아니라 장치·Agent·Service 실행 주체다.
 
 관리형 hook은 로컬 ref와 원격 ref 이름이 다른 교차 push 및 브랜치 삭제를 차단한다. 기존 `pre-push` hook은 `pre-push.rundol-user`로 보존하고 먼저 실행한다. 반복 실행해도 기존 ref와 커밋을 바꾸지 않는 멱등 명령이다.
 
+커밋 시점의 경계도 함께 세운다. `pre-commit`은 기본 코드 브랜치에서 제품 코드를 담는 것을 거절하고, `commit-msg`는 제품 코드 커밋에 `Rundol-Task` 트레일러를 요구한다. 두 훅으로 나눈 것은 필요한 값이 다르기 때문이다 — 브랜치와 경로는 메시지 없이 판정할 수 있지만 결박은 메시지가 있어야 보인다. 기존 훅은 `<이름>.rundol-user`로 보존해 먼저 실행한다.
+
+클라이언트 훅과 층이 다르다. `PreToolUse`와 `Stop`은 AI 클라이언트 안에서만 돌고 설정 한 줄로 꺼지므로, 그 통제에는 사람 모양의 구멍이 남는다. 사람 워커와 에이전트 워커가 같은 계층이라면 같은 경계를 지나야 한다.
+
+기본 코드 브랜치는 `origin/HEAD`에서 읽고 없으면 판정하지 않는다 — 추측해서 막으면 그 추측이 틀린 저장소에서 아무 커밋도 할 수 없게 된다. 병합은 지난다: git은 `git merge`에 `pre-commit`을 돌리지 않고, `commit-msg`는 `Merge`·`Revert`로 시작하는 메시지에 결박을 묻지 않는다. 막기만 하고 안착할 길이 없으면 경계가 아니라 벽이다.
+
+우회는 `--no-verify`로 열려 있고 막지 않는다. 여기서 하려는 것은 손을 묶는 것이 아니라 기본값을 바꾸는 일이다 — 지금은 우회가 기본이고 규칙이 예외인데, 그 방향을 뒤집으면 규칙을 벗어나는 것이 매번 선택이 된다.
+
 ### `rdl git boundary`
 
-루트 worktree의 코드 브랜치, `projects/workspace`의 `rundol/workspace`, `projects/<key>`의 `rundol/<key>` 연결을 확인한다. worktree 경로·브랜치·관리형 push hook 중 하나라도 어긋나면 종료 코드 1과 `violations`를 반환한다.
+루트 worktree의 코드 브랜치, `projects/workspace`의 `rundol/workspace`, `projects/<key>`의 `rundol/<key>` 연결을 확인한다. worktree 경로·브랜치·관리형 push hook 중 하나라도 어긋나면 종료 코드 1과 `violations`를 반환한다. 커밋 경계 두 훅의 설치 상태도 함께 답하며, 서 있지 않으면 `RDL-BRANCH-006`을 낸다 — 미는 자리만 보면 담는 자리가 열려 있어도 초록이 된다.
 
 ### `rdl refresh`
 

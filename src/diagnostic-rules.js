@@ -164,6 +164,7 @@ const RULES = Object.freeze({
   'RDL-BRANCH-003': { document: 'REQ-037', functionId: 'HRN-05' },
   'RDL-BRANCH-004': { document: 'REQ-037', functionId: 'HRN-05' },
   'RDL-BRANCH-005': { document: 'REQ-037', functionId: 'HRN-05' },
+  'RDL-BRANCH-006': { document: 'REQ-037', functionId: 'HRN-05' },
   // push 차단도 같은 경계를 지키는 장치다. 경계를 정한 문서가 하나이므로 소관도 하나다
   'RDL-PUSH-001': { document: 'REQ-037', functionId: 'HRN-05' },
   'RDL-PUSH-002': { document: 'REQ-037', functionId: 'HRN-05' },
