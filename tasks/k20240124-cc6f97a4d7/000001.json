@@ -4124,7 +4124,7 @@
       "stakeholders": [
         "STAKEHOLDER-001"
       ],
-      "status": "todo",
+      "status": "doing",
       "priority": "mid",
       "kind": "normal",
       "result": null,
@@ -4151,8 +4151,8 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T07:08:52.044Z",
-      "updatedAt": "2026-08-23T07:08:52.044Z",
-      "statusChangedAt": "2026-08-23T07:08:52.044Z",
+      "updatedAt": "2026-08-23T07:09:21.002Z",
+      "statusChangedAt": "2026-08-23T07:09:21.002Z",
       "externalRefs": [],
       "project": "rundol"
     }
