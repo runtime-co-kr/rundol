@@ -4257,6 +4257,44 @@
       "statusChangedAt": "2026-08-23T12:47:47.891Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-3JV2QZY8": {
+      "title": "[갈래C] 런과 절차에 대상 종류를 단다",
+      "summary": "런이 태스크와 문서를 둘 다 대상으로 받는다. 절차가 대상 종류를 선언하고, 원장이 그 종류와 대상을 기록하며, 실행 단위 종류는 vocabulary의 EXECUTION_UNIT_KINDS에서 나온다. 담당: src/procedure.js · src/run-ledger.js · src/run.js",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "stepClass가 EXECUTION_UNIT_KINDS에서 파생되고 어휘 시험이 그것을 값으로 확인한다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "gate만으로 이루어진 절차는 런을 열지 못하고 시작에서 거부된다 (RUN_OPENING_UNIT_KINDS)",
+          "done": false
+        },
+        "AC-003": {
+          "text": "절차가 대상 종류를 선언하고 rdl run start가 종류에 맞는 대상만 받는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "run.started가 대상 종류와 대상 식별자를 기록하고 접기가 그것을 돌려준다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T14:49:45.050Z",
+      "updatedAt": "2026-08-23T14:49:45.050Z",
+      "statusChangedAt": "2026-08-23T14:49:45.050Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
