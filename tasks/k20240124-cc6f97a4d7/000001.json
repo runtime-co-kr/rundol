@@ -4495,7 +4495,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "원천 문서는 FN-001, 하위 산출물은 REQ-033#FN-001만 받는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "RDL-IMPL-009와 RDL-IMPL-011이 제품 코드에서 사라진다",
@@ -4512,7 +4512,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T17:13:52.374Z",
-      "updatedAt": "2026-08-23T17:14:30.665Z",
+      "updatedAt": "2026-08-23T20:57:39.524Z",
       "statusChangedAt": "2026-08-23T17:14:30.665Z",
       "externalRefs": [],
       "project": "rundol"
