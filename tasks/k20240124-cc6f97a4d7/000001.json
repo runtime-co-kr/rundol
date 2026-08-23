@@ -4023,7 +4023,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "본 작업 트리가 기본 코드 브랜치일 때 src/bin/packages 쓰기가 거부되고 다음 명령이 사유에 담긴다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "세션 worktree나 다른 브랜치에서는 막지 않는다.",
@@ -4040,7 +4040,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:17:48.196Z",
-      "updatedAt": "2026-08-23T05:18:09.613Z",
+      "updatedAt": "2026-08-23T05:21:20.196Z",
       "statusChangedAt": "2026-08-23T05:18:09.613Z",
       "externalRefs": [],
       "project": "rundol"
