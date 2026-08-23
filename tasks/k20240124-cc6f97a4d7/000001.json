@@ -4098,7 +4098,7 @@
         },
         "AC-003": {
           "text": "세션 브랜치와 기능 브랜치에서는 브랜치 규칙이 걸리지 않는다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "기존 사용자 pre-commit과 commit-msg 훅을 보존하고 먼저 실행한다.",
@@ -4111,7 +4111,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:46:59.685Z",
-      "updatedAt": "2026-08-23T06:43:46.109Z",
+      "updatedAt": "2026-08-23T06:43:55.284Z",
       "statusChangedAt": "2026-08-23T05:47:11.793Z",
       "externalRefs": [],
       "project": "rundol"
