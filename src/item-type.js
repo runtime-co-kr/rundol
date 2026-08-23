@@ -617,6 +617,35 @@ function checkUnique(list, entry, task, taskId, claimed) {
  * 게이트는 이 모듈 밖에 있다. 이름으로 부르고 이름으로 면제하는 이유는, 진단 코드로
  * 면제하면 한 게이트가 코드 둘을 내는 순간 절반만 면제되기 때문이다.
  */
+// 데이터로 정의된 규칙의 식별자. 유형 하나가 제약 종류마다 규칙 하나를 갖고, 게이트는
+// 이름 자체가 규칙이다. 이 표기를 여기서 만드는 이유는 규칙이 여기서 정의되기
+// 때문이다 — 정의하는 자리가 이름도 지어야 부르는 쪽이 이름을 지어내지 않는다.
+function constraintRuleId(typeId, kind) {
+  return `${typeId}.${kind}`;
+}
+
+// 진단 코드에서 제약 종류로 돌아오는 길. ITEM_DIAGNOSTICS의 역방향이며 목록을 다시
+// 적지 않고 뒤집는다 — 다시 적으면 코드를 하나 더할 때 한쪽만 고쳐진다.
+const KIND_BY_DIAGNOSTIC = Object.freeze(Object.fromEntries(Object.entries(ITEM_DIAGNOSTICS).map(([kind, code]) => [code, kind])));
+
+// 판정이 실제로 본 규칙. 선언되지 않은 제약은 보지 않은 것이고, 보지 않은 것을 본
+// 것으로 세면 "한 번도 안 불린 규칙"이 사라진다 — 발화 이력이 가르려는 것이 그것이다.
+//
+// 목록으로 적지 않고 제약 종류에서 뺀다. 적어 두면 제약 종류가 늘 때 여기 넣는 것을
+// 잊을 수 있고, 잊으면 새 제약이 조용히 "본 적 없는 규칙"으로 남는다. exempt를 빼는
+// 이유는 그것이 판정하는 제약이 아니라 판정을 건너뛰게 하는 축이기 때문이다.
+const EVALUATED_KINDS = Object.freeze(CONSTRAINT_KINDS.filter((kind) => kind !== 'exempt'));
+
+function declaredRules(entry, typeId) {
+  const rules = [];
+  for (const kind of EVALUATED_KINDS) {
+    const declared = entry.constraints[kind];
+    if (!declared) continue;
+    if (Array.isArray(declared) ? declared.length : Object.keys(declared).length) rules.push(constraintRuleId(typeId, kind));
+  }
+  return rules;
+}
+
 function evaluateItemTypes(tasks, definitions, options) {
   assertNormalized(definitions);
   const settings = options || {};
@@ -646,21 +675,48 @@ function evaluateItemTypes(tasks, definitions, options) {
         message: `사용 안 함으로 표시된 업무 유형의 태스크입니다: ${typeId}`
       });
     }
+    // 이 항목의 판정이 무엇을 봤는지는 판정을 도는 여기서만 알 수 있다. 밖에서 진단만
+    // 보고 되짚으면 걸린 것밖에 못 세고, 걸리지 않은 규칙은 안 본 규칙과 같아진다.
+    const mark = diagnostics.length;
     checkFields(diagnostics, entry, task, id, foreignFields);
     checkRequiresLink(diagnostics, entry, task, id);
     checkRequiredWhen(diagnostics, entry, task, id);
     checkUnique(diagnostics, entry, task, id, claimed);
     const exempt = entry.constraints.exempt || [];
+    const evaluated = declaredRules(entry, typeId);
+    const exempted = [];
     for (const gate of Object.keys(gates).sort()) {
       // 면제는 판정하고 결과를 감추는 것이 아니라 판정 자체를 돌지 않는 것이다. 감추는
       // 방식이면 통계와 목록에는 위반이 남아 두 숫자가 어긋난다.
-      if (exempt.includes(gate)) continue;
+      //
+      // 건너뛴 규칙은 건너뛰었다고 적는다. 적지 않으면 면제로 조용해진 게이트와 지킬
+      // 것이 없어 조용한 게이트가 같아 보이고, 앞의 것은 죽은 규칙이 아니라 지금
+      // 우회되고 있는 규칙이다. 결정자가 없는 것은 설정이 미리 면제한 것이다.
+      if (exempt.includes(gate)) { exempted.push({ ruleId: gate, gate, reason: null, decidedBy: null }); continue; }
+      evaluated.push(gate);
       for (const issue of gates[gate](task, entry) || []) {
         itemDiagnostic(diagnostics, {
           code: issue.code, severity: issue.severity || 'error', artifactId: id, target: typeId,
           field: issue.target === undefined ? null : issue.target, gate, message: issue.message
         });
       }
+    }
+    // 부르는 쪽이 배열을 주면 채운다. 판정 함수가 시각도 클라이언트도 모르는 채로
+    // 남으려면 레코드를 여기서 만들 수 없고, 만들 수 있는 것은 판정의 답뿐이다.
+    if (Array.isArray(settings.firings)) {
+      settings.firings.push({
+        target: id, origin: 'item-type', from: null, to: null,
+        evaluated: evaluated.slice().sort(),
+        blocked: diagnostics.slice(mark).map((item) => ({
+          ruleId: item.gate || constraintRuleId(typeId, KIND_BY_DIAGNOSTIC[item.code] || 'unknown'),
+          code: item.code, origin: 'item-type',
+          // 소스와 방법은 판정 카탈로그가 정한다. 모르는 것을 지어내면 그 추측이
+          // 카탈로그가 서는 날 조용히 어긋난 채로 이력에 남는다.
+          source: null, method: null,
+          target: item.field ? `${id}.${item.field}` : id, message: item.message
+        })),
+        exempted
+      });
     }
   }
   return diagnostics;

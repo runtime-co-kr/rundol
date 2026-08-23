@@ -27,7 +27,15 @@ const KINDS = {
   // 작업 할당과 보고. kind를 하나로 두는 이유는 닫힘과 대체가 같은 fold에서
   // 결정되어야 하기 때문이다 — 둘로 나누면 두 저장소를 시계로 엮어야 하고,
   // 시계로 엮는 순서는 run 원장이 이미 한 번 무너진 자리다.
-  assignment: { flat: false, pattern: new RegExp(`^assignment-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
+  assignment: { flat: false, pattern: new RegExp(`^assignment-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') },
+  // 제약과 전환의 발화 이력. 이름은 vocabulary의 LEDGERS가 먼저 정했고 여기가 그것을
+  // 받는다 — 두 목록은 같은 등록부의 두 쪽이므로 한쪽에만 있으면 그 원장의 샤드를
+  // isLedgerShard가 알아보지 못한다.
+  //
+  // 로컬 로그가 아니라 원장인 이유는 물음이 프로젝트 전체의 것이기 때문이다. "이 규칙이
+  // 한 번도 안 불렸나"를 내 기계에서만 세면 각자 자기 침묵만 보게 되고, 침묵은 원래
+  // 아무 신호도 내지 않는다.
+  firing: { flat: false, pattern: new RegExp(`^firing-(${PART})-(${PART})-(\\d{6})\\.jsonl$`, 'u') }
 };
 
 function kindDefinition(kind) {

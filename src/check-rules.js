@@ -16,6 +16,17 @@ const NORMALIZED_BUILTIN = normalizeItemTypes(BUILTIN_ITEM_TYPES);
 // 사람이 사유를 대고 면제한 게이트는 판정하지 않는다. 면제를 여기서 보지 않으면 저장
 // 계층이 받아 준 것을 검사가 다시 위반이라 말하고, 그러면 면제는 닫히지 않는 태스크를
 // 닫는 수단이 아니라 경고를 하나 더 만드는 일이 된다.
+// 면제 판정이 보는 게이트 이름. 문자열을 세 군데에 적으면 한 곳만 고쳐지는 날이 온다.
+const READINESS_GATE = 'implementation-readiness';
+
+// 면제 기록은 gates 배열이 정본이고 gate 하나만 든 옛 기록도 읽는다. tasks.js가 같은
+// 규칙을 갖지만 그쪽은 파일을 읽는 층이라 여기서 부를 수 없다.
+function exemptionGates(exemption) {
+  if (!exemption) return [];
+  if (Array.isArray(exemption.gates)) return exemption.gates.filter(Boolean).map(String);
+  return exemption.gate ? [String(exemption.gate)] : [];
+}
+
 function exempted(task, gate) {
   const exemption = task && task.exemption;
   if (!exemption || !exemption.reason) return false;
@@ -405,7 +416,7 @@ const REQUIRED_TASK_FIELDS = ['title', 'summary', 'owner', 'reviewers', 'stakeho
  * 같은 판정을 부를 수 없어 자기 경로로 다시 구현하게 된다.
  */
 function checkTaskEntries(list, tasks, context) {
-  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, itemTypes, gates, testedDocuments, readiness } = context;
+  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, itemTypes, gates, testedDocuments, readiness, firings } = context;
   const dependencies = new Map();
 
   for (const taskId of taskIds) {
@@ -458,12 +469,31 @@ function checkTaskEntries(list, tasks, context) {
     // 원본을 직접 보면 그 어긋남이 생길 자리가 없다. 계약을 쓰지 않는 프로젝트는
     // 예전처럼 이 게이트의 대상이 아니다 — 쓰지 않기로 한 것을 위반으로 세지 않는다.
     const implementationReady = kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
+    // 이 게이트는 유형 해석기 밖에 있다. 발화를 여기서 적지 않으면 이력에는 한 번도
+    // 불리지 않은 것으로 남고, 그 침묵은 죽은 규칙과 구분되지 않는다 — 실제로 이력을
+    // 처음 켰을 때 이 게이트가 죽은 규칙으로 나왔다.
+    if (task.status === 'done' && implementationReady && exempted(task, 'implementation-readiness') && Array.isArray(firings)) {
+      firings.push({
+        target: taskId, origin: 'item-type', from: null, to: null, evaluated: [], blocked: [],
+        exempted: [{ ruleId: READINESS_GATE, gate: READINESS_GATE, reason: task.exemption.reason || null, decidedBy: task.exemption.decidedBy || null }]
+      });
+    }
     if (task.status === 'done' && implementationReady && !exempted(task, 'implementation-readiness')) {
       const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
       const declaresAtomic = linked.some((doc) => doc.frontmatter && doc.frontmatter.data && doc.frontmatter.data.implementationContract === 'atomic-v1');
+      const mark = list.length;
       for (const issue of (declaresAtomic ? readiness(linked) : [])) diagnostic(list, {
         code: issue.code, category: 'implementation', severity: issue.severity, file: taskFile,
         artifactId: taskId, target: issue.target || issue.artifactId || null, message: issue.message
+      });
+      if (Array.isArray(firings)) firings.push({
+        target: taskId, origin: 'item-type', from: null, to: null,
+        evaluated: [READINESS_GATE],
+        blocked: list.slice(mark).map((item) => ({
+          ruleId: READINESS_GATE, code: item.code, origin: 'item-type',
+          source: null, method: null, target: item.target || taskId, message: item.message
+        })),
+        exempted: []
       });
     }
     if (task.status === 'review' && (!Array.isArray(task.externalRefs) || task.externalRefs.length === 0)) diagnostic(list, { code: 'RDL-TASK-020', category: 'task', file: taskFile, artifactId: taskId, message: 'review 태스크는 PR 또는 검토 대상 externalRef가 필요합니다.' });
@@ -487,8 +517,25 @@ function checkTaskEntries(list, tasks, context) {
   // 검사기의 순수성이 유지되며, 유형이 늘어도 이 호출 하나는 그대로다.
   const itemTasks = {};
   for (const id of taskIds) itemTasks[id] = tasks[id];
-  for (const issue of evaluateItemTypes(itemTasks, itemTypes || NORMALIZED_BUILTIN, { gates: gates || DEFAULT_TASK_GATES })) {
+  for (const issue of evaluateItemTypes(itemTasks, itemTypes || NORMALIZED_BUILTIN, { gates: gates || DEFAULT_TASK_GATES, firings })) {
     diagnostic(list, Object.assign({ category: 'task', file: taskFile }, issue));
+  }
+  // 태스크가 든 면제는 게이트 함수 안에서 걸러진다. 해석기가 보기에는 게이트가 돌고
+  // 아무것도 안 낸 것과 같아, 그대로 두면 면제로 조용해진 게이트가 "다들 지키는
+  // 규칙"으로 집계된다. 판정하지 않은 것을 판정했다고 세지 않으려면 여기서 옮겨야
+  // 한다 — 사유와 결정자를 아는 것도 이 층이다.
+  if (Array.isArray(firings)) {
+    for (const firing of firings) {
+      const task = tasks[firing.target];
+      const gateNames = exemptionGates(task && task.exemption);
+      if (!gateNames.length) continue;
+      for (const gate of gateNames) {
+        const at = firing.evaluated.indexOf(gate);
+        if (at < 0) continue;
+        firing.evaluated.splice(at, 1);
+        firing.exempted.push({ ruleId: gate, gate, reason: task.exemption.reason || null, decidedBy: task.exemption.decidedBy || null });
+      }
+    }
   }
   return taskIds.length;
 }

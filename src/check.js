@@ -195,7 +195,7 @@ function inspectMarkdown(file, root) {
   return { file, fileStem: path.basename(file, '.md'), relativeFile: relative(root, file), source, frontmatter, body, bodyStartLine, headings, blocks };
 }
 
-function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, projectKey) {
+function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, projectKey, firings) {
   if (!taskPath || !fs.existsSync(taskPath)) {
     diagnostic(list, { code: 'RDL-TASK-001', category: 'task', file: taskPath ? relative(root, taskPath) : null, message: '태스크 원본 또는 로컬 projection을 찾지 못했습니다.' });
     return 0;
@@ -223,7 +223,7 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
   // 읽기는 여기서 끝났다. 아래 판정은 값만 본다 — 종류·판정 목록과 검증 문서 추출,
   // 구현 준비도 판정은 각자 다른 모듈이 갖고 있으므로 위임으로 넘긴다.
   return checkTaskEntries(list, parsed.tasks, {
-    taskIds, taskFile, registry, memberIds, stakeholderIds,
+    taskIds, taskFile, registry, memberIds, stakeholderIds, firings,
     kinds: TASK_KINDS, results: TEST_RESULTS, testedDocuments,
     // 유형 정의는 정책 층에서 온다. 이제 board.json에 유형을 적으면 코드를 고치지
     // 않고도 새 유형이 판정을 받는다.
@@ -492,7 +492,7 @@ function checkLegacyWorkspace(start, options, scope) {
   // 자산을 고아라고 말하게 된다.
   checkAssetInventory(diagnostics, { assets, referenced: referencedAssets });
 
-  const taskCount = checkTasks(diagnostics, root, taskPath, registry, memberIds, stakeholderIds, scope && scope.key);
+  const taskCount = checkTasks(diagnostics, root, taskPath, registry, memberIds, stakeholderIds, scope && scope.key, options && options.firings);
   if (!scope) checkObsidian(diagnostics, root, canonicalDocuments.some((doc) => Array.isArray(doc.frontmatter.data.tags) && doc.frontmatter.data.tags.length > 0));
   diagnostics.sort((a, b) => (a.file || '').localeCompare(b.file || '') || a.line - b.line || a.code.localeCompare(b.code));
   return {
@@ -1070,6 +1070,10 @@ function checkWorkspace(start, options) {
   const layout = workspaceLayout(start);
   if (layout.schemaVersion < 2) return checkLegacyWorkspace(start, settings, null);
   const startedAt = Date.now();
+  // 판정이 무엇을 봤는지는 판정을 도는 자리에서만 알 수 있으므로 그릇을 여기서 만들어
+  // 내려보낸다. 걸린 것만 되짚으면 걸리지 않은 규칙과 아예 안 불린 규칙이 같아지고,
+  // 그 둘은 정반대의 뜻이다.
+  const firings = [];
   const allProjects = listProjects(layout);
   const projects = settings.project ? allProjects.filter((project) => project.key === settings.project) : allProjects;
   const diagnostics = [];
@@ -1091,7 +1095,7 @@ function checkWorkspace(start, options) {
     checkDocumentProfile(diagnostics, layout, project, settings);
     checkCompositeViews(diagnostics, layout, project);
     checkTaskBinding(diagnostics, layout, project, taskBinding);
-    const result = checkLegacyWorkspace(layout.root, settings, project);
+    const result = checkLegacyWorkspace(layout.root, Object.assign({}, settings, { firings }), project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
     documents += result.summary.documents + 1;
     tasks += result.summary.tasks;
@@ -1136,12 +1140,15 @@ function checkWorkspace(start, options) {
   // 판정이 끝난 뒤에 그 결과만 넘긴다. 무엇을 어떻게 적을지는 계측이 정한다 —
   // 여기서 정하면 발화 지점마다 계측이 흩어지고, 흩어진 계측은 지점이 늘 때 빠진다.
   // 빠졌다는 사실은 아무 신호도 내지 않으며, 그것이 이 계측이 생긴 이유다.
-  require('./rule-telemetry').recordCheck(start, result, settings);
+  require('./rule-telemetry').recordCheck(start, result, firings, settings);
   return result;
 }
 
 module.exports = {
   checkWorkspace,
+  // 발화 이력이 "선언된 규칙 전부"를 알아야 한 번도 안 불린 규칙을 셀 수 있다. 유형
+  // 정의를 읽는 규칙은 이미 여기 있으므로 다시 구현하지 않고 내보낸다.
+  resolveItemTypes,
   listMarkdownFiles,
   findWorkspaceRoot,
   readWorkspaceManifest,
