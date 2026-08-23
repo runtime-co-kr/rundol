@@ -53,7 +53,6 @@ const DEFAULT_TASK_GATES = Object.freeze({
 // 값을 보고 옳고 그름을 말하는 일만 여기서 한다. worker-contract-purity.test.js가
 // 전이 의존까지 따라가며 이 경계를 지킨다.
 
-const { ruleSource } = require('./diagnostic-rules');
 const { isAssetPath } = require('./image-header');
 
 // 자산 한계. 이 값들은 취향이 아니라 저장소 규모에서 나온다 — 문서 93개 전체가
@@ -203,13 +202,11 @@ function lineOf(source, needle) {
 }
 
 function diagnostic(list, values) {
-  const entry = Object.assign({ severity: 'error', category: 'metadata', file: null, line: 1, artifactId: null, target: null }, values);
-  // 진단이 자기 규칙의 정본 문서를 들고 다닌다. 없으면 사람도 에이전트도 이 코드가
-  // 왜 존재하는지 알려면 검사기 소스를 뒤져야 한다. 모르는 코드에는 붙이지 않는다 —
-  // 틀린 근거는 근거가 없는 것보다 나쁘다.
-  const rule = ruleSource(entry.code);
-  if (rule) entry.rule = rule;
-  list.push(entry);
+  // 진단은 자기 코드와 메시지와 대상만 나른다. 여기서 정본 문서 번호를 붙여 내보내던
+  // 때에는 남의 저장소에서 검사를 돌려도 그 저장소에 없는 REQ 번호가 근거로 실렸다.
+  // 진단 코드는 제품 것이고 문서 번호는 그 프로젝트 것이라, 둘은 섞이는 게 아니라
+  // 만나지 않는다. 근거는 문서가 선언하고 조회가 모은다 — diagnostic-rules.js 머리말.
+  list.push(Object.assign({ severity: 'error', category: 'metadata', file: null, line: 1, artifactId: null, target: null }, values));
 }
 
 function resolveArtifact(registry, id) {
