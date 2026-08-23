@@ -4367,6 +4367,40 @@
       "statusChangedAt": "2026-08-23T15:00:55.658Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-4BQDFENB": {
+      "title": "[갈래N] 진단의 근거를 문서 선언으로 뒤집는다",
+      "summary": "diagnostic-rules.js의 진단↔요구 매핑 136건을 걷어내고, 요구 문서가 자기 소관 진단을 선언하면 그것을 모으는 방향으로 다시 세운다. 문서 쪽 선언 형식을 함께 정한다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "제품 코드에 요구 문서 번호가 값으로 남지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "rdl check 진단이 rule 필드로 문서 번호를 내보내지 않는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "문서 frontmatter의 diagnostics 선언을 모아 역방향 조회가 성립한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-23T15:17:36.813Z",
+      "updatedAt": "2026-08-23T15:17:36.813Z",
+      "statusChangedAt": "2026-08-23T15:17:36.813Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
