@@ -4031,7 +4031,7 @@
       "stakeholders": [
         "STAKEHOLDER-001"
       ],
-      "status": "doing",
+      "status": "done",
       "priority": "mid",
       "kind": "normal",
       "result": null,
@@ -4058,10 +4058,19 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:17:48.196Z",
-      "updatedAt": "2026-08-23T05:21:33.954Z",
-      "statusChangedAt": "2026-08-23T05:18:09.613Z",
+      "updatedAt": "2026-08-23T05:33:38.899Z",
+      "statusChangedAt": "2026-08-23T05:33:38.899Z",
       "externalRefs": [],
-      "project": "rundol"
+      "project": "rundol",
+      "exemption": {
+        "gates": [
+          "done-requires-test-link",
+          "implementation-readiness"
+        ],
+        "reason": "완료 게이트를 재량으로 면제한다. 이 작업을 검증하는 TST가 아직 없다 — 하네스 훅과 시험 실행기는 서른여섯 개 TST 어디에도 대응 문서가 없다. 완료를 검증 근거로 읽으면 안 되며, 검증은 별도 TST로 다시 세운다.",
+        "decidedBy": "MEMBER-001",
+        "at": "2026-08-23T05:33:38.585Z"
+      }
     }
   }
 }
