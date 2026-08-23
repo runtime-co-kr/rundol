@@ -3803,7 +3803,7 @@
         },
         "AC-003": {
           "text": "허용 목록 밖의 게이트 이름은 거부된다.",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "면제는 태스크에 게이트·사유·결정자·시각으로 남고, 면제하지 않은 게이트는 그대로 판정한다.",
@@ -3816,7 +3816,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T04:07:04.165Z",
-      "updatedAt": "2026-08-23T04:17:17.601Z",
+      "updatedAt": "2026-08-23T04:17:22.105Z",
       "statusChangedAt": "2026-08-23T04:07:33.323Z",
       "externalRefs": [],
       "project": "rundol"
