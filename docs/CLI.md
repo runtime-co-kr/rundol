@@ -134,6 +134,9 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                     [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
   rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
   rdl debug summary [--json]
+  rdl rule history [--rule <코드|게이트>] [--project <key>] [--json]
+  rdl rule bypasses [--rule <코드|게이트>] [--project <key>] [--json]
+  rdl rule dead [--project <key>] [--json]
   rdl assignment issue <절차이름> --project <key> --client-id <id> --goal <목표> --acceptance <조건>...
                       --function-id <기능-ID>... --allow-path <패턴>... --report-schema <이름>
                       --procedure-revision <n> (--assignee-member <MEMBER-ID> | --assignee-client <client-id>)
@@ -251,6 +254,7 @@ Linux는 systemd 사용자 유닛 `~/.config/systemd/user/rundol-driver.service`
 Operation 결과가 서로 다른 digest로 충돌하면 drive는 후보를 임의로 선택하지 않습니다. 현재 owner는 `rdl run operation resolve`로 기존 candidate event를 선택하며, 다른 active project-member agent/service는 `--force`가 있어야 합니다. 이 명령은 이미 기록된 결과를 적용할 뿐 작업을 다시 실행하지 않습니다.
 | `rdl conflict` | pending 충돌 조회·전략 해결·기록 정리 | 해결 커밋 또는 pending | 없음 |
 | `rdl debug` | 명령 진단과 클라이언트 제공 토큰 사용량 기록·요약 | 로컬 JSONL 로그 | 없음 |
+| `rdl rule` | 제약·게이트의 발화 이력, 우회와 사유, 한 번도 걸리지 않은 제약 조회 | 로컬 JSONL 로그 | 없음 |
 | `rdl action` | CLI·LLM·혼합 실행 주체 권장, 실제 선택과 fallback 기록 | 로컬 JSONL 로그 | 없음 |
 | `rdl doctor` | 설치·PATH·버전·스킬과 선택적 Git URL 진단 | 없음 | `--git-url`일 때 ls-remote |
 | `rdl board` | 로컬 태스크·협업 보드 실행 | UI 작업에 따라 프로젝트 파일 변경 | 서버 자체는 없음; Sync 버튼은 원격 사용 |
@@ -715,6 +719,29 @@ rdl debug summary
 ```
 
 `--debug` 또는 `RUNDOL_DEBUG=1`은 명령명·소요시간·종료 코드와 성공 여부를 프로젝트 `.rundol/logs/debug.jsonl`에 남긴다. 여러 프로젝트에서는 `--project`가 필요하다. 프롬프트와 문서 본문은 기록하지 않는다. Rundol 자체는 모델 공급자의 토큰을 추정하지 않으며 AI 클라이언트가 보고한 수치만 집계한다.
+
+## 제약 발화 이력
+
+```bash
+rdl rule history --project memo
+rdl rule history --project memo --rule RDL-TASK-019
+rdl rule bypasses --project memo
+rdl rule dead --project memo
+```
+
+진단 코드는 이백 개가 넘고, 그중 무엇이 실제로 막고 있는지는 세어 보기 전에는 알 수 없다. 발화 이력이 없으면 "한 번도 안 걸린 제약"과 "완벽해서 안 걸리는 제약"이 같아 보이며, 둘은 정반대다. 어휘를 데이터로 여는 설계에서는 이것이 필수다 — 열린 어휘의 제약은 설정을 잘못 고치는 것만으로 죽고, 그 죽음은 아무 신호도 내지 않는다.
+
+기록은 검사가 진단을 다 모은 자리에서 한 번 일어나고 프로젝트 `.rundol/logs/rules.jsonl`에 쌓인다. 저장·보드·감시도 모두 그 검사를 지나므로 표면마다 계측을 따로 심지 않는다. 지금은 넷 다 `check` 표면으로 쌓이며, 부르는 쪽이 자기 이름을 대면 `surfaces`가 그때부터 나눠 센다. 계측은 판정을 바꾸지 않는다 — 기록에 실패해도 검사의 진단과 종료 코드는 같다.
+
+`history`는 제약마다 `occurrences`(진단 건수), `sweeps`(걸린 검사 횟수), `blocking`(그중 실제로 막은 건수)과 처음·마지막 발화 시각을 낸다. 세 축을 따로 두는 이유는 셋이 다른 질문에 답하기 때문이다. 검사를 자주 돌리면 `occurrences`는 부풀지만 `sweeps`는 부풀지 않고, `advisory`로 내린 제약은 `occurrences`가 커도 `blocking`이 0이다. 정본 문서를 아는 코드는 `document`와 `functionId`를 함께 달고 나온다.
+
+`bypasses`는 우회를 사유·결정자와 함께 낸다. 게이트 면제처럼 태스크에 남아 있는 우회는 검사를 다시 돌려도 한 건이며 본 횟수만 `observations`로 늘어난다. `--no-task <사유>` 저장처럼 지나가면 끝인 우회는 그 자리에서 한 번 기록되고 접히지 않는다 — 사유가 사라지면 이 조회가 답해야 하는 "왜"가 사라지기 때문이다.
+
+`dead`는 한 번도 걸린 적 없는 제약을 낸다. 이 목록이 곧 "지워도 되는 제약"은 아니다. 돌린 적 없는 표면의 제약과 돌렸는데 안 걸린 제약이 함께 들어 있고 둘을 가르는 값이 `checks`이므로, 검사를 한 번도 돌리지 않은 저장소에서는 모든 제약이 여기 나온다. 면제로 조용해진 게이트는 `exempted`가 참이며, 죽은 것이 아니라 지금 우회되고 있는 것이다.
+
+**이 계측이 보지 못하는 것.** 셸 훅(`pre-commit`·`commit-msg`)은 `--no-verify`로 우회되고 그 사실은 여기 오지 않는다. 게이트 이름을 진단에 찍지 않는 발화는 코드로만 잡힌다. 로그는 원장이 아니라 이 체크아웃의 로컬 파일이므로 다른 기기의 발화는 들어 있지 않다. 그래서 여기의 "한 번도 안 걸림"은 언제나 하한이며, 결과가 `measures`와 `lowerBound`로 그 사실을 함께 낸다.
+
+로그가 상한에 닿으면 오래된 항목을 버리지 않고 접는다. 버리면 오래전에 한 번 걸린 제약이 죽은 제약으로 바뀌어, 이 계측이 존재하는 이유를 정확히 뒤집기 때문이다.
 
 ## CLI·LLM 액션 라우팅
 

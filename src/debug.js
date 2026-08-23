@@ -4,11 +4,15 @@ const fs = require('fs');
 const path = require('path');
 const { workspaceLayout, selectProject } = require('./workspace');
 
-function logFile(start, projectKey) {
+// 로컬 계측이 쌓이는 자리. 이 규칙을 함수로 내보내는 이유는 계측이 하나가 아니기
+// 때문이다 — 토큰과 행위는 debug.jsonl에, 규칙 발화는 rules.jsonl에 쌓이고 둘은 같은
+// 디렉터리에 있어야 한다. 경로 규칙을 두 번 적으면 언젠가 두 계측이 다른 곳에 쌓이고,
+// 그때 한쪽을 지우는 정리가 다른 쪽을 남긴다.
+function logDirectory(start, projectKey) {
   const layout = workspaceLayout(start);
   if (layout.schemaVersion < 6) {
-    const legacy = path.join(layout.root, '.rundol', 'logs', 'debug.jsonl');
-    return layout.runtime ? path.join(layout.runtime.logs, 'debug.jsonl') : legacy;
+    const legacy = path.join(layout.root, '.rundol', 'logs');
+    return layout.runtime ? layout.runtime.logs : legacy;
   }
   let project = null;
   if (projectKey) project = selectProject(layout, projectKey, true);
@@ -18,7 +22,11 @@ function logFile(start, projectKey) {
     if (!project && layout.projects.length === 1) project = layout.projects[0];
   }
   if (!project) throw new Error('로그를 기록하려면 --project <프로젝트키>가 필요합니다.');
-  return path.join(project.root, '.rundol', 'logs', 'debug.jsonl');
+  return path.join(project.root, '.rundol', 'logs');
+}
+
+function logFile(start, projectKey) {
+  return path.join(logDirectory(start, projectKey), 'debug.jsonl');
 }
 
 // 로그는 진단이지 정본이 아니다. 무제한으로 자라게 두면 계측을 기본으로 켜는 순간
@@ -158,4 +166,4 @@ function debugSummary(start, project) {
   };
 }
 
-module.exports = { appendDebug, recordTokens, debugSummary, humanInterventionSummary, MAX_LOG_BYTES };
+module.exports = { appendDebug, recordTokens, debugSummary, humanInterventionSummary, logDirectory, MAX_LOG_BYTES };

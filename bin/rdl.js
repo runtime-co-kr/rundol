@@ -217,6 +217,9 @@ Usage:
                     [--artifact-id <ID>] [--task-id <ID>] [--fallback-reason <reason>] [--json]
   rdl debug record --input-tokens <n> --output-tokens <n> [--model <name>] [--provider <name>] [--unreported] [--json]
   rdl debug summary [--json]
+  rdl rule history [--rule <코드|게이트>] [--project <key>] [--json]
+  rdl rule bypasses [--rule <코드|게이트>] [--project <key>] [--json]
+  rdl rule dead [--project <key>] [--json]
   rdl assignment issue <절차이름> --project <key> --client-id <id> --goal <목표> --acceptance <조건>...
                       --function-id <기능-ID>... --allow-path <패턴>... --report-schema <이름>
                       --procedure-revision <n> (--assignee-member <MEMBER-ID> | --assignee-client <client-id>)
@@ -242,7 +245,7 @@ Options:
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], rule: null, sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -269,7 +272,7 @@ function parseOperationArgs(argv) {
     else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
-      '--session-id', '--path', '--from', '--reply-to'].includes(value)) {
+      '--session-id', '--path', '--from', '--reply-to', '--rule'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -305,6 +308,7 @@ function parseOperationArgs(argv) {
       else if (value === '--role') options.roles.push(argv[i]);
       else if (value === '--member') options.member = argv[i];
       else if (value === '--reply-to') options.replyTo = argv[i];
+      else if (value === '--rule') options.rule = argv[i];
       else if (value === '--organization') options.organization = argv[i];
       else if (value === '--account') options.account = argv[i];
       else if (value === '--responsibility') options.responsibility = argv[i];
@@ -1750,6 +1754,21 @@ async function main() {
     if (subcommand === 'record') printOperation(recordTokens(options.root, options), options.json);
     else if (subcommand === 'summary') printOperation(debugSummary(options.root, options.project), options.json);
     else throw new Error('지원하는 debug 하위 명령은 record와 summary입니다.');
+    return 0;
+  }
+  // 제약이 실제로 발화한 이력. 무엇이 막고 있고 무엇이 죽었는지는 세어 보기 전에는
+  // 알 수 없고, 세려면 보여야 한다. debug 옆에 두는 이유는 이것도 계측이기 때문이다 —
+  // 판정을 바꾸지 않고 판정이 실제로 일어났는지만 말한다.
+  if (command === 'rule') {
+    const subcommand = argv.shift();
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl rule 명령에는 위치 인수를 사용할 수 없습니다.');
+    const telemetry = require('../src/rule-telemetry');
+    const settings = { project: options.project, rule: options.rule };
+    if (subcommand === 'history') printOperation(telemetry.ruleHistory(options.root, settings), options.json);
+    else if (subcommand === 'bypasses') printOperation(telemetry.ruleBypasses(options.root, settings), options.json);
+    else if (subcommand === 'dead') printOperation(telemetry.deadRules(options.root, settings), options.json);
+    else throw new Error('지원하는 rule 하위 명령은 history, bypasses와 dead입니다.');
     return 0;
   }
   if (command === 'board') {

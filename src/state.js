@@ -699,7 +699,15 @@ function resolveTaskBinding(config, settings) {
     if (TERMINAL_TASK_STATUSES.includes(tasks[requested].status)) throw new Error(`RDL-TASK-037: 이미 끝난 태스크에는 묶을 수 없습니다: ${requested} (${tasks[requested].status}). 진행 중인 태스크를 지정하거나 새로 만드세요.`);
     return { level, taskId: requested, inferred: false, source: 'explicit', reason: null, notices };
   }
-  if (excuse) return { level, taskId: null, inferred: false, reason: excuse, notices };
+  // 결박의 우회는 지나가면 끝이다. 면제는 태스크에 남아 검사가 다시 볼 수 있지만 이
+  // 사유는 커밋 트레일러 말고는 어디에도 서 있지 않아, 여기서 넘기지 않으면 무엇이
+  // 얼마나 우회되는지를 물을 수 없다. 막지 않는 통제가 값을 가지려면 얼마나 쓰였는지
+  // 셀 수 있어야 한다. 넘기기만 하고 결과를 보지 않는 이유는, 기록의 성패가 결박의
+  // 답을 바꾸면 그 순간 계측이 규칙이 되기 때문이다.
+  if (excuse) {
+    require('./rule-telemetry').recordBypass(config.root, { project: config.project, surface: 'save', rule: 'RDL-TASK-033', reason: excuse });
+    return { level, taskId: null, inferred: false, reason: excuse, notices };
+  }
 
   // 파생 사다리. 대부분의 경우 기계가 이미 안다 — 런이 돌고 있으면 그 런이 무엇을
   // 하는 중인지 원장에 있고, 작업 묶음은 브랜치로 이미 묶여 있다. 아는 것을 묻는

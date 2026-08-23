@@ -1117,7 +1117,7 @@ function checkWorkspace(start, options) {
   }
   for (const project of projects) checkObsidian(diagnostics, project.root, documents > 0);
   diagnostics.sort((a, b) => (a.file || '').localeCompare(b.file || '') || (a.line || 0) - (b.line || 0) || a.code.localeCompare(b.code));
-  return {
+  const result = {
     schemaVersion: layout.schemaVersion,
     root: layout.root,
     projects: projects.map((project) => project.key),
@@ -1133,6 +1133,11 @@ function checkWorkspace(start, options) {
       durationMs: Date.now() - startedAt
     }
   };
+  // 판정이 끝난 뒤에 그 결과만 넘긴다. 무엇을 어떻게 적을지는 계측이 정한다 —
+  // 여기서 정하면 발화 지점마다 계측이 흩어지고, 흩어진 계측은 지점이 늘 때 빠진다.
+  // 빠졌다는 사실은 아무 신호도 내지 않으며, 그것이 이 계측이 생긴 이유다.
+  require('./rule-telemetry').recordCheck(start, result, settings);
+  return result;
 }
 
 module.exports = {
