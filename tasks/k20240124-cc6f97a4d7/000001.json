@@ -4106,12 +4106,12 @@
         },
         "AC-005": {
           "text": "rdl git boundary가 두 훅의 설치 상태를 함께 낸다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T05:46:59.685Z",
-      "updatedAt": "2026-08-23T06:44:04.227Z",
+      "updatedAt": "2026-08-23T06:44:12.431Z",
       "statusChangedAt": "2026-08-23T05:47:11.793Z",
       "externalRefs": [],
       "project": "rundol"
