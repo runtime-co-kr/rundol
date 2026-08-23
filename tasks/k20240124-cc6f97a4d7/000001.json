@@ -3761,12 +3761,12 @@
         },
         "AC-004": {
           "text": "이미 규칙이 있으면 훅이 파일을 건드리지 않는다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T03:11:43.480Z",
-      "updatedAt": "2026-08-23T03:19:16.293Z",
+      "updatedAt": "2026-08-23T03:19:21.233Z",
       "statusChangedAt": "2026-08-23T03:11:58.131Z",
       "externalRefs": [],
       "project": "rundol"
