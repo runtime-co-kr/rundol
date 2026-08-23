@@ -3811,12 +3811,12 @@
         },
         "AC-005": {
           "text": "rdl check 요약이 면제 건수를 낸다.",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-23T04:07:04.165Z",
-      "updatedAt": "2026-08-23T04:17:27.107Z",
+      "updatedAt": "2026-08-23T04:17:31.813Z",
       "statusChangedAt": "2026-08-23T04:07:33.323Z",
       "externalRefs": [],
       "project": "rundol"
