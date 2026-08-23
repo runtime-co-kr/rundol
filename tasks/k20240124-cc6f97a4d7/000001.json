@@ -3799,7 +3799,7 @@
         },
         "AC-002": {
           "text": "사유가 없으면 면제가 거부된다.",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "허용 목록 밖의 게이트 이름은 거부된다.",
@@ -3816,7 +3816,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T04:07:04.165Z",
-      "updatedAt": "2026-08-23T04:17:13.273Z",
+      "updatedAt": "2026-08-23T04:17:17.601Z",
       "statusChangedAt": "2026-08-23T04:07:33.323Z",
       "externalRefs": [],
       "project": "rundol"
