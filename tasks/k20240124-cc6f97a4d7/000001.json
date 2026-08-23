@@ -3749,7 +3749,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "rdl session start가 인자 없이 <repo>/.rundol/worktrees/<id8>에 worktree를 만든다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "형제 경로를 근거로 삼던 주석과 CLI 문서가 새 자리를 말한다.",
@@ -3766,7 +3766,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T03:11:43.480Z",
-      "updatedAt": "2026-08-23T03:11:58.131Z",
+      "updatedAt": "2026-08-23T03:19:06.672Z",
       "statusChangedAt": "2026-08-23T03:11:58.131Z",
       "externalRefs": [],
       "project": "rundol"
