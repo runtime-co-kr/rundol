@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "workflows": {
+    "task-default": {
+      "targetKind": "task",
+      "label": "런돌 태스크 흐름",
+      "nodes": {
+        "todo": { "step": "unclaimed", "label": "할 일" },
+        "doing": { "step": "in-progress", "requiresOwner": true, "label": "진행중" },
+        "waiting": { "step": "in-progress", "label": "대기" },
+        "review": { "step": "in-approval", "requiresOwner": true, "label": "검토중" },
+        "done": { "step": "completed", "validity": "valid", "requiresOwner": true, "label": "완료" },
+        "cancelled": { "step": "dropped", "requiresOwner": true, "label": "취소" }
+      },
+      "transitions": [
+        { "from": "todo", "to": "doing", "title": "착수" },
+        { "from": "doing", "to": "waiting", "title": "대기로" },
+        { "from": "waiting", "to": "doing", "title": "재개" },
+        { "from": "doing", "to": "review", "title": "검토 요청" },
+        { "from": "review", "to": "doing", "title": "반려" },
+        { "from": "review", "to": "done", "title": "승인" },
+        { "from": "doing", "to": "done", "title": "완료" },
+        { "to": "cancelled", "title": "취소" }
+      ]
+    }
+  },
+  "bindings": {
+    "task": {
+      "*": "task-default"
+    }
+  }
+}
