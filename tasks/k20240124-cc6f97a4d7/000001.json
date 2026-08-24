@@ -4516,6 +4516,48 @@
       "statusChangedAt": "2026-08-23T17:14:30.665Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-H6TDTMTC": {
+      "title": "[갈래E] 워크플로를 workflows.json으로 열고 3단 상속에 얹는다",
+      "summary": "노드와 전환과 슬롯을 프로젝트가 정의하는 데이터로 내리고, 항목 유형과 문서 유형이 이름으로 워크플로를 가리키게 한다. 전환의 승인 슬롯이 휴먼 게이트다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "workflows.json이 노드·전환·슬롯을 정의하고 3단 상속(내장→workspace→project)을 탄다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "항목 유형과 문서 유형이 이름으로 워크플로를 가리킨다 (N:1)",
+          "done": false
+        },
+        "AC-003": {
+          "text": "전환의 승인 슬롯에 건 사람 게이트가 런을 열고, 상속으로 제거되지 않는다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "workflow.js의 내장 TASK_NODES를 설정이 대체하고 설정이 없으면 내장으로 떨어진다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "rdl check --strict와 npm test가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-24T03:10:02.461Z",
+      "updatedAt": "2026-08-24T03:10:02.461Z",
+      "statusChangedAt": "2026-08-24T03:10:02.461Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
