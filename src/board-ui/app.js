@@ -1837,6 +1837,169 @@ function renderItemTypeSettings() {
     + '<div class="note-block absent"><h4>생기지 않습니다</h4><ul><li>유형 전용 집계 화면</li><li>유형의 의미를 알아야 만들 수 있는 통계</li></ul></div></div>';
 }
 
+// ── 워크플로 ────────────────────────────────────────────────────────────
+//
+// 노드 이름과 전환은 프로젝트가 workflows.json에 정의하는 값이고, 코드가 보는 것은 그
+// 이름이 매핑된 스텝뿐이다. 그래서 이 패널은 자기 목록을 하나도 갖지 않는다 — 스냅숏의
+// workflow가 정본이고, 거기 없는 것은 여기서도 없다. 사본을 두면 설정을 고쳐도 화면은
+// 그대로이던 버그가 그 자리에 다시 선다. 종료 상태 사본을 걷어내면서 어휘 시험의 면제
+// 목록에서 이름까지 지운 것이 그 규율이다.
+//
+// 업무 유형 패널과 같은 조각으로 그린다 — 같은 물음("이 값이 어느 층에서 왔는가")에 두
+// 벌의 그림이 생기면 언젠가 한 벌만 고쳐진다.
+const STEP_LABELS = { unclaimed: '안 잡음', 'in-progress': '진행 중', 'in-approval': '승인 대기', completed: '완료', dropped: '취소' };
+const COMPLETION_VALIDITY_LABELS = { valid: '유효', retired: '폐기' };
+// 슬롯 이름과 실행 단위 종류는 닫힌 어휘다. 라벨만 들고 목록은 들지 않는다 — 라벨 없는
+// 이름은 받은 그대로 보이고, 그 편이 안 보이는 것보다 낫다.
+const TRANSITION_SLOT_LABELS = { validation: '검증', input: '입력', execution: '수행' };
+const UNIT_KIND_LABELS = { gate: '게이트', client: 'Client', cli: '명령', adapter: '어댑터', human: '사람' };
+const NODE_FIELD_LABELS = { blocker: '대기 사유', cancellation: '취소 결정' };
+
+// 어느 칸이 슬롯인지를 목록으로 적지 않고 값의 모양으로 가른다. 슬롯은 실행 단위 이름의
+// 목록으로 실려 오고 나머지 칸은 문자열이거나 참·거짓이다. 목록을 적어 두면 어휘가
+// 슬롯을 늘린 날 그 칸만 조용히 안 보인다.
+function transitionSlots(transition) {
+  return Object.keys(transition).filter((key) => Array.isArray(transition[key]) && transition[key].length > 0);
+}
+
+// 실행 단위 하나를 사람이 읽는 말로. 스냅숏이 이름과 함께 종류를 실어 주므로 화면이
+// 이름만 보고 무엇인지 추측하지 않는다.
+function executionUnitText(view, name) {
+  const unit = (view.executionUnits || {})[name] || null;
+  if (!unit) return `${name} · 선언되지 않은 단위`;
+  return `${unit.label || name} · ${UNIT_KIND_LABELS[unit.kind] || unit.kind}`;
+}
+
+// 전환의 출발과 도착을 이름으로. 이 흐름의 노드가 아니면 받은 값을 그대로 보이고 그
+// 사실을 곁에 적는다 — 출발을 적지 않은 전환이 그렇게 실려 오며, 그 표기를 화면이 알고
+// 있으면 표기가 바뀌는 날 화면만 옛 이름을 들고 남는다.
+function workflowNodeText(view, node) {
+  const key = node === null || node === undefined ? '' : String(node);
+  const entry = view.nodes[key];
+  if (entry) return `<b>${escapeHtml(entry.label || taskStatusLabel(key))}</b> <code>${escapeHtml(key)}</code>`;
+  return `<b>${escapeHtml(key)}</b> <small>출발을 적지 않은 전환</small>`;
+}
+
+// 스텝이 어느 갈래인가. 갈래 목록도 스냅숏이 실어 준 것을 쓴다 — 화면이 "끝난 스텝은 이
+// 둘"이라고 적으면 그 둘이 바뀌는 날 화면만 옛 답을 들고 남는다.
+function workflowStepNote(view, step) {
+  if ((view.terminalSteps || []).indexOf(step) >= 0) return '끝난 스텝 — 더 손대지 않습니다';
+  if ((view.activeSteps || []).indexOf(step) >= 0) return '누군가 붙어 있는 스텝입니다';
+  if ((view.openSteps || []).indexOf(step) >= 0) return '열려 있고 아직 아무도 안 잡았습니다';
+  return '스냅숏이 이 스텝을 어느 갈래로도 세지 않았습니다';
+}
+
+function renderWorkflowSettings() {
+  if (!el('workflow-settings')) {
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header><h2>워크플로</h2><p>노드와 전환이 <b>무엇이 허용되는지</b>를 정합니다. 상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 흐름 정의는 표시가 아니라 정책이라 이 화면에서 바꾸지 않습니다 — 정책 층 변경은 계약 변경 결정을 함께 남겨야 저장되고, Board에는 아직 그 결정을 남길 자리가 없습니다. 지금은 <code>workflows.json</code>을 고치고 <code>rdl save</code>로 남깁니다.</p></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
+  }
+  // workflowView()를 쓰지 않는다. 그쪽은 못 받았을 때 빈 워크플로를 돌려주어 부르는
+  // 쪽이 판정을 이어가게 하는 자리이고, 여기서 필요한 것은 그 반대다 — "안 실렸다"와
+  // "실렸는데 비었다"가 같아 보이면 화면은 옛 서버를 흐름 없는 프로젝트로 그린다.
+  const view = state.snapshot.workflow;
+  if (!view || !view.nodes) {
+    // 빈 화면 대신 무엇이 없는지 말한다. 빈 화면은 흐름이 없다는 뜻으로 읽힌다.
+    el('workflow-current').innerHTML = '<p class="empty-state">이 Board 서버는 워크플로를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
+    for (const host of ['workflow-nodes', 'workflow-transitions', 'workflow-layers', 'workflow-scope']) el(host).innerHTML = '';
+    return;
+  }
+
+  const current = [
+    `<div class="property"><dt>흐름</dt><dd><strong>${escapeHtml(view.label || view.id || '내장 흐름')}</strong><small>${view.id ? `<code>${escapeHtml(view.id)}</code> · 이 프로젝트의 기본 배정입니다.` : '설정이 이 대상 종류를 잡지 않아 내장 흐름이 섭니다.'}</small></dd></div>`,
+    `<div class="property"><dt>정의한 층</dt><dd>${originIndicator(view.origin || 'builtin')}<small>흐름을 마지막으로 적은 층입니다.</small></dd></div>`,
+    `<div class="property"><dt>대상 종류</dt><dd><strong>${escapeHtml(view.targetKind || '알 수 없음')}</strong><small>이 흐름이 붙는 마스터입니다. 보드가 그리는 판은 태스크입니다.</small></dd></div>`
+  ];
+  // 내장으로 떨어졌다는 사실을 값으로 싣는 이유가 이 줄이다. 조용히 물러서면 화면은
+  // 자기가 무엇을 보고 있는지 모른 채 그린다.
+  if (view.error) current.push(`<div class="property"><dt>설정 오류</dt><dd><strong class="workflow-error">내장 흐름으로 물러섰습니다</strong><small>${escapeHtml(view.error)}</small></dd></div>`);
+  el('workflow-current').innerHTML = current.join('');
+
+  const nodeEntries = Object.entries(view.nodes);
+  const placed = new Set();
+  const groups = (view.steps || []).map((step) => {
+    const nodes = nodeEntries.filter((entry) => entry[1].step === step);
+    for (const entry of nodes) placed.add(entry[0]);
+    return { key: step, label: STEP_LABELS[step] || step, note: workflowStepNote(view, step), nodes };
+  });
+  // 어느 스텝에도 안 걸린 노드는 따로 세운다. 안 보이면 그 노드에 앉은 태스크가 어느
+  // 칸에도 서지 않는데 화면은 아무 신호도 내지 않는다.
+  const stray = nodeEntries.filter((entry) => !placed.has(entry[0]));
+  if (stray.length) groups.push({ key: null, label: '스텝이 없는 노드', note: '코드가 이 노드를 어느 칸으로도 세지 못합니다', nodes: stray });
+
+  el('workflow-nodes').innerHTML = '<h3 class="approval-heading">노드와 그 노드가 선 스텝</h3>'
+    + '<p class="approval-note">이름은 이 프로젝트의 것이고 스텝은 코드의 것입니다. 스텝은 닫힌 어휘라 프로젝트가 늘리지 못하며, 늘리는 것은 이름 쪽입니다 — 이름 하나하나가 이 다섯 중 하나에 매핑되고 코드는 매핑된 스텝만 봅니다.</p>'
+    + groups.map((group) => {
+      const rows = group.nodes.length
+        ? group.nodes.map((entry) => {
+          const node = entry[1];
+          const parts = [`<code>${escapeHtml(entry[0])}</code>`];
+          if (node.validity) parts.push(`완료 유효성 ${escapeHtml(COMPLETION_VALIDITY_LABELS[node.validity] || node.validity)}`);
+          if ((node.requires || []).length) parts.push(`${node.requires.map((field) => escapeHtml(NODE_FIELD_LABELS[field] || field)).join(' · ')} 필요`);
+          return `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(node.label || taskStatusLabel(entry[0]))}</strong><small>${parts.join(' · ')}</small></div></div>`;
+        }).join('')
+        : '<div class="presentation-row"><div class="presentation-row-main"><small>이 스텝에 선 노드가 이 흐름에 없습니다.</small></div></div>';
+      return `<section class="presentation-group"><h3>${escapeHtml(group.label)}<span class="group-count">${group.key ? `<code>${escapeHtml(group.key)}</code> · ` : ''}${escapeHtml(group.note)}</span></h3><div class="presentation-rows">${rows}</div></section>`;
+    }).join('');
+
+  const transitionNote = '<h3 class="approval-heading">전환과 그 전환이 부르는 것</h3>'
+    + '<p class="approval-note">전환은 <b>어느 노드에서 어느 노드로 갈 수 있는가</b>이고, 슬롯은 <b>그때 무엇을 부르는가</b>입니다. 검증은 항목만 보고 답하므로 그 자리에서 끝나고, 입력·수행·승인은 판정 함수가 혼자 답할 수 없어 런을 엽니다. 어느 전환이 런을 여는지는 서버가 어휘의 경계에서 계산해 실어 주므로 이 화면이 다시 세지 않습니다.</p>';
+  if (!view.transitions) {
+    el('workflow-transitions').innerHTML = transitionNote + '<p class="empty-state">이 흐름은 전환을 선언하지 않았습니다. 선언하지 않은 흐름은 전환을 막지 않으므로 어느 노드에서 어느 노드로든 갑니다 — 닫는 것은 선언으로 합니다.</p>';
+  } else if (!view.transitions.length) {
+    el('workflow-transitions').innerHTML = transitionNote + '<p class="empty-state">전환 목록이 비어 있습니다. 빈 목록도 선언이라, 같은 노드에 머무는 것 말고는 전부 막힙니다.</p>';
+  } else {
+    el('workflow-transitions').innerHTML = transitionNote + `<div class="workflow-transitions">${view.transitions.map((item) => {
+      const chips = transitionSlots(item).map((slot) => item[slot]
+        .map((name) => `<span class="chip"><b>${escapeHtml(TRANSITION_SLOT_LABELS[slot] || slot)}</b> ${escapeHtml(executionUnitText(view, name))}</span>`).join('')).join('');
+      // 승인은 이름 목록이 아니라 참·거짓으로 실려 온다. 그 칸이 아직 이름으로 수렴하지
+      // 않았다는 사실이 계약에 적혀 있고, 화면은 실려 온 모양대로 그린다.
+      const approval = item.approval ? '<span class="chip workflow-gate"><b>승인</b> 사람 게이트</span>' : '';
+      const run = typeof item.opensRun === 'boolean'
+        ? `<span class="chip">${item.opensRun ? '런이 열립니다' : '런 없이 판정으로 끝납니다'}</span>`
+        : '';
+      const called = (chips || approval)
+        ? `${chips}${approval}${run}`
+        : `<span class="guidance-empty">부르는 것이 없습니다 — 도착 노드가 요구하는 필드만 봅니다</span>${run}`;
+      return '<article class="workflow-transition">'
+        + `<header><span class="workflow-endpoint">${workflowNodeText(view, item.from)}</span><span class="workflow-arrow" aria-hidden="true">→</span><span class="workflow-endpoint">${workflowNodeText(view, item.to)}</span></header>`
+        + `<strong>${escapeHtml(item.title || '이름 없는 전환')}</strong><div class="chip-row">${called}</div></article>`;
+    }).join('')}</div>`;
+  }
+
+  const workflowSources = (view.sources && view.sources.workflows) || {};
+  const bindingSources = ((view.sources && view.sources.bindings) || {})[view.targetKind] || null;
+  const bindings = view.bindings || {};
+  const itemTypes = (state.snapshot.presentation && state.snapshot.presentation.itemTypes) || {};
+
+  const workflowRows = Object.keys(workflowSources).sort().map((id) => {
+    const entry = workflowSources[id] || {};
+    const fields = Object.keys(entry.fields || {});
+    const detail = fields.length
+      ? fields.map((field) => `${field} ← ${ORIGIN_LABELS[entry.fields[field]] || entry.fields[field]}`).join(' · ')
+      : '적은 칸이 없습니다';
+    return `<div class="presentation-row"><div class="presentation-row-main"><strong><code>${escapeHtml(id)}</code>${id === view.id ? ' — 이 판이 쓰는 흐름' : ''}</strong><small>${escapeHtml(detail)}</small></div>${originIndicator(entry.entry || 'builtin')}</div>`;
+  }).join('');
+
+  const bindingRows = Object.keys(bindings).sort().map((typeId) => {
+    const origin = (bindingSources && bindingSources.fields && bindingSources.fields[typeId]) || 'builtin';
+    const known = itemTypes[typeId];
+    const note = known ? `업무 유형 ${known.label || typeId}` : '이 프로젝트의 업무 유형 목록에 없는 키입니다';
+    return `<div class="presentation-row"><div class="presentation-row-main"><strong><code>${escapeHtml(typeId)}</code> → <code>${escapeHtml(bindings[typeId])}</code></strong><small>${escapeHtml(note)}</small></div>${originIndicator(origin)}</div>`;
+  }).join('');
+
+  el('workflow-layers').innerHTML = '<h3 class="approval-heading">정의한 층</h3>'
+    + '<p class="approval-note">흐름은 <b>내장 → Workspace → 이 프로젝트</b> 순으로 겹칩니다. 노드는 항목 단위로 합쳐지고 전환은 층 단위로 갈아탑니다 — 하위가 전환 하나만 지우려 해도 목록 전체를 다시 적어야 한다는 뜻입니다. 아래 표시는 서버가 층별 원본을 따로 읽어 계산한 것이라, 상위와 같은 값을 명시한 경우도 상속이 아니라 명시로 보입니다.</p>'
+    + `<section class="presentation-group"><h3>흐름 정의<span class="group-count">설정이 적은 흐름 ${Object.keys(workflowSources).length}개</span></h3><div class="presentation-rows">${workflowRows || '<div class="presentation-row"><div class="presentation-row-main"><small>설정 파일이 흐름을 적지 않았습니다. 내장 흐름이 그대로 답합니다.</small></div></div>'}</div></section>`
+    + `<section class="presentation-group"><h3>유형별 배정<span class="group-count">${Object.keys(bindings).length}줄</span></h3><p class="approval-note">배정 키는 업무 유형의 id입니다. 어느 유형에도 안 맞는 항목이 탈 기본을 적는 키가 따로 있고, 그 키가 무엇인지는 이 화면이 정하지 않습니다 — 스냅숏이 배정 표를 그대로 실어 줍니다.</p><div class="presentation-rows">${bindingRows || '<div class="presentation-row"><div class="presentation-row-main"><small>배정이 없습니다. 모든 태스크가 내장 흐름을 탑니다.</small></div></div>'}</div></section>`;
+
+  // 못 하는 것을 말하지 않는 화면은 사람이 되는 줄 알고 시도한다. 업무 유형 패널이 유형
+  // 추가로 무엇이 따라오지 않는지를 적는 것과 같은 자리다.
+  el('workflow-scope').innerHTML = '<h3 class="approval-heading">이 화면이 하는 것과 안 하는 것</h3>'
+    + '<p class="approval-note">이 판은 <b>이 프로젝트의 기본 배정</b> 하나를 그립니다. 유형마다 흐름이 갈리는 프로젝트에서 "이 태스크는 어느 흐름인가"는 태스크마다 판정 엔드포인트가 답하며, 그 답을 여기서 미리 그리면 같은 물음에 두 답이 생깁니다.</p>'
+    + '<div class="split-note"><div class="note-block"><h4>여기서 보입니다</h4><ul><li>노드와 그 노드가 선 스텝</li><li>노드가 요구하는 필드</li><li>전환과 그 전환이 부르는 실행 단위</li><li>전환이 런을 여는지</li><li>각 값을 적은 층</li></ul></div>'
+    + '<div class="note-block absent"><h4>여기서 바꾸지 않습니다</h4><ul><li>노드 추가와 이름 변경</li><li>전환 추가·삭제와 슬롯 배선</li><li>유형별 흐름 배정</li><li>승인 슬롯을 걸고 푸는 일</li></ul></div></div>';
+}
+
 function renderApprovalSettings() {
   if (!el('approval-settings')) {
     el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 승인 모드도 정책이라 이 화면에서 바꾸지 않습니다 — 정책 층 변경은 계약 변경 결정을 함께 남겨야 저장됩니다. 지금은 <code>board.json</code>의 <code>approval</code>을 고치고 <code>rdl save</code>로 남깁니다.</p></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
@@ -2201,7 +2364,7 @@ function renderSettings() {
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
   renderClientRegistration();
-  renderPresentationSettings(); renderApprovalSettings(); renderItemTypeSettings(); renderContractSettings(); renderContractCompliance();
+  renderPresentationSettings(); renderApprovalSettings(); renderItemTypeSettings(); renderWorkflowSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');
 }

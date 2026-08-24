@@ -3660,6 +3660,78 @@ dialog label textarea {
 
 .note-block.absent ul { color: var(--tertiary-TextColor); }
 
+/* 워크플로. 읽기만 하는 패널이라 조작 요소가 하나도 없고, 그 사실이 형태로도 읽혀야
+   한다 — 단추처럼 생긴 것을 두면 사람은 눌러 보고, 눌리지 않는 것을 결함으로 읽는다.
+   조각은 업무 유형·표시 규칙 패널의 것을 그대로 쓴다. 같은 물음에 두 벌의 그림이
+   생기면 언젠가 한 벌만 고쳐지기 때문이고, 여기서 새로 만드는 것은 전환 한 줄의
+   모양과 그 줄이 쓰는 간격뿐이다. */
+#workflow-current .property dd small {
+  display: block;
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+}
+
+.workflow-error { color: var(--danger-Color); }
+
+.workflow-transitions {
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+/* 전환 한 줄은 "어디서 어디로"와 "그때 무엇을 부르는가" 둘로 읽힌다. 위아래로 쌓아
+   두면 눈이 출발·도착을 먼저 잡고 슬롯은 그 아래에서 찾는다 — 한 줄에 밀어 넣으면
+   슬롯이 셋 이상인 전환에서 화살표가 오른쪽 끝으로 밀려 흐름이 안 보인다. */
+.workflow-transition {
+  display: grid;
+  gap: var(--spacing-0_5);
+  padding: var(--spacing-1_5) var(--spacing-2);
+  border: 1px solid var(--surface-01-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  background: var(--surface-01-BackgroundColor);
+}
+
+.workflow-transition header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+}
+
+.workflow-endpoint {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-0_5);
+}
+
+.workflow-endpoint code,
+.workflow-endpoint small {
+  color: var(--tertiary-TextColor);
+  font-size: var(--caption-FontSize);
+}
+
+.workflow-arrow {
+  color: var(--tertiary-TextColor);
+}
+
+.workflow-transition > strong {
+  font-size: var(--small-FontSize);
+  color: var(--secondary-TextColor);
+}
+
+.workflow-transition .chip-row { margin-top: var(--spacing-0_5); }
+
+/* .chip은 inline-flex라 슬롯 이름과 그 슬롯이 부르는 것 사이의 공백 문자가
+   사라진다. 간격은 값으로 준다 — 공백을 &nbsp;로 박아 두면 글자가 아닌 것이
+   글자 자리에 남는다. */
+.workflow-transition .chip { gap: var(--spacing-0_5); }
+
+/* 사람 게이트는 다른 슬롯과 다른 종류다. 나머지는 기계가 답하고 이 칸만 다른
+   행위자의 동의를 기다리므로, 목록에서 눈에 먼저 걸려야 한다. */
+.chip.workflow-gate {
+  border-color: var(--accent-BorderColor);
+  color: var(--accent-TextColor);
+}
+
 /* 이 기기 등록. 미등록이 드러나는 자리는 대개 무언가를 하려던 순간이라, 그때 사람을
    터미널로 보내면 하던 일이 끊긴다. 등록은 신원을 적는 일이지 위험한 일이 아니다. */
 /* 등록 칸은 대화상자가 담는다. dialog form의 간격은 바로 아래 자식에만 걸리므로
