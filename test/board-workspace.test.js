@@ -186,7 +186,13 @@ async function testWorkspaceBoard() {
 
       const configured = await request(port, '/api/projects/crm/board-snapshot', board.token);
       assert.strictEqual(configured.json.workflow.transitions.length, 3, 'workflows.json을 고쳤는데 화면이 받는 값이 그대로입니다.');
-      assert.deepStrictEqual(configured.json.workflow.transitions[0], { from: 'todo', to: 'doing', title: '착수', approval: false });
+      // 모양을 통째로 못박는다. 화면이 받는 칸이 늘거나 줄면 여기서 먼저 넘어지고,
+      // 그때 이 줄을 고치는 사람이 화면도 함께 보게 된다 — 슬롯 셋과 런 여부는 이
+      // 전환이 무엇을 여는지를 그리는 데 필요한 값이라, 빠지면 화면이 다시 추측한다.
+      assert.deepStrictEqual(configured.json.workflow.transitions[0], {
+        from: 'todo', to: 'doing', title: '착수', approval: false,
+        validation: null, input: null, execution: null, opensRun: false
+      });
       assert.strictEqual(configured.json.workflow.transitions[2].approval, true, '사람 게이트는 전환에 붙어 와야 합니다.');
       assert.strictEqual(configured.json.workflow.sources.workflows['task-strict'].entry, 'workspace', '위층이 정의한 흐름은 위층의 것으로 표시되어야 합니다.');
       assert.strictEqual(configured.json.workflow.sources.workflows['task-default'].entry, 'project');
