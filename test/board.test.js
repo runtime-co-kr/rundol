@@ -93,6 +93,64 @@ async function testBoard() {
     assert.strictEqual(typeof snapshotValue.revision.tasks, 'string');
     assert(snapshotValue.documents.some((document) => typeof document.body === 'string'));
 
+    // ── 스냅숏이 싣는 워크플로 ──────────────────────────────────────────────
+    //
+    // 이 픽스처에는 workflows.json이 없다. 설정을 안 쓴 저장소에서 답이 판올림 전과
+    // 같아야 한다는 것이 설정 층이 건 계약이고, 화면이 받는 값도 그 계약 안에 있다.
+    //
+    // 다만 "같다"가 "모른다"여서는 안 된다. 예전에는 내장을 보고 있다는 사실이 값에
+    // 없었고, 그래서 workflows.json을 고쳐도 화면이 그대로인 것과 설정이 없어서
+    // 그대로인 것이 구분되지 않았다.
+    assert.strictEqual(snapshotValue.workflow.id, null, '배정이 없으면 흐름 이름이 없다.');
+    assert.strictEqual(snapshotValue.workflow.origin, 'builtin', '내장으로 떨어졌다는 사실이 값에 있어야 한다.');
+    assert.strictEqual(snapshotValue.workflow.error, null, '설정이 없는 것은 오류가 아니다.');
+    assert.strictEqual(snapshotValue.workflow.transitions, null, '전환을 선언하지 않은 흐름은 전환을 막지 않는다.');
+    assert.deepStrictEqual(snapshotValue.workflow.bindings, {}, '배정 표는 파일이 없어도 서 있어야 한다.');
+    assert.deepStrictEqual(snapshotValue.workflow.sources, { workflows: {}, bindings: {} }, '출처 그룹도 파일이 없어도 서 있어야 한다.');
+    // 노드는 step만으로 부족하다. label과 requires가 함께 와야 화면이 상태 이름을
+    // 비교하지 않고도 대기 다이얼로그를 열 수 있다.
+    assert.deepStrictEqual(Object.keys(snapshotValue.workflow.nodes).sort(), ['cancelled', 'doing', 'done', 'review', 'todo', 'waiting']);
+    assert.strictEqual(snapshotValue.workflow.nodes.waiting.label, null, '내장 노드에는 라벨이 없다 — 라벨은 설정이 심는다.');
+    assert.deepStrictEqual(snapshotValue.workflow.nodes.waiting.requires, ['blocker']);
+    assert.deepStrictEqual(snapshotValue.workflow.nodes.cancelled.requires, ['cancellation']);
+
+    // ── 전환 판정 엔드포인트 ────────────────────────────────────────────────
+    //
+    // 없으면 화면이 자체 판정을 만들고, 그 순간 JUDGMENT_SURFACES 넷 밖에 다섯 번째
+    // 표면이 생긴다. 그래서 이 시험이 확인하는 것은 "답이 온다"가 아니라 "저장이
+    // 막는 것과 같은 것을 막는다"이다.
+    const judgedTask = result.tasks[0];
+    const judged = await request(port, `/api/projects/tms/tasks/${judgedTask.id}/transitions`);
+    assert.strictEqual(judged.status, 200);
+    const judgment = JSON.parse(judged.body);
+    assert.strictEqual(judgment.task, judgedTask.id);
+    assert.strictEqual(judgment.from, judgedTask.status);
+    assert.strictEqual(judgment.workflow.origin, 'builtin');
+    // 자기 자신을 뺀 나머지 노드가 전부 후보다. 선언이 없는 흐름에서 못 가는 자리를
+    // 미리 지우면 화면은 "왜 이 단추가 없는가"에 답할 수 없다.
+    assert.deepStrictEqual(judgment.transitions.map((item) => item.to).sort(), ['cancelled', 'done', 'review', 'todo', 'waiting']);
+    assert(judgment.transitions.every((item) => item.declared === true), '전환 목록이 없는 흐름은 전부 열려 있다.');
+    const toWaiting = judgment.transitions.find((item) => item.to === 'waiting');
+    assert.strictEqual(toWaiting.allowed, false, '대기 사유 없이 대기로 가는 것은 저장이 막는다.');
+    assert(toWaiting.blockers.some((blocker) => blocker.ruleId === 'waiting-requires-blocker'), '막는 규칙을 이유와 함께 돌려줘야 한다.');
+    const toTodo = judgment.transitions.find((item) => item.to === 'todo');
+    assert.strictEqual(toTodo.allowed, true);
+    assert.deepStrictEqual(toTodo.blockers, []);
+
+    // 하나만 묻는 것도 같은 자리가 답한다. 화면이 단추 하나를 두고 묻는 물음이다.
+    const single = await request(port, `/api/projects/tms/tasks/${judgedTask.id}/transitions?to=waiting`);
+    assert.strictEqual(single.status, 200);
+    assert.strictEqual(JSON.parse(single.body).transitions.length, 1);
+    assert.strictEqual(JSON.parse(single.body).transitions[0].to, 'waiting');
+
+    // 없는 노드는 거절한다. 판정은 모르는 노드에 빈 목록으로 답하고 빈 목록은 "막는
+    // 것이 없다"는 뜻이라, 그대로 내보내면 갈 수 없는 자리가 갈 수 있는 자리로 읽힌다.
+    const unknownNode = await request(port, `/api/projects/tms/tasks/${judgedTask.id}/transitions?to=${encodeURIComponent('없는노드')}`);
+    assert.strictEqual(unknownNode.status, 400);
+    assert.strictEqual(JSON.parse(unknownNode.body).code, 'unknown-node');
+    const unknownTask = await request(port, '/api/projects/tms/tasks/TASK-00000000/transitions');
+    assert.strictEqual(unknownTask.status, 404);
+
     const documents = await request(port, '/api/projects/tms/documents');
     assert.strictEqual(documents.status, 200);
     assert(JSON.parse(documents.body).documents.some((document) => document.id === 'project:tms'));

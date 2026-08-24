@@ -12,7 +12,7 @@ const { readCollaboration } = require('./collaboration');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, shardFiles, clientId, assertNodeConsistency } = require('./tasks');
 const workflow = require('./workflow');
-const { entityRevision, listDocuments, syncStatus } = require('./board-data');
+const { entityRevision, listDocuments, syncStatus, boardWorkflow, taskWorkflow } = require('./board-data');
 const { listClients, registerClient, setClientStatus } = require('./collaboration-store');
 const { addComment, listComments } = require('./comment');
 const { addAsset } = require('./asset');
@@ -329,6 +329,55 @@ function projectDiagnostics(root, projectKey, revision) {
   return value;
 }
 
+/**
+ * 이 태스크를 어디로 옮길 수 있는가. 화면이 전환 단추를 그리기 전에 묻는 자리다.
+ *
+ * 판정은 한 줄도 여기 없다. 조건을 하나라도 다시 적으면 JUDGMENT_SURFACES 넷
+ * (cli · board · check · adapter) 밖에 다섯 번째 표면이 생기고, 다섯 번째는 나머지
+ * 넷과 조금씩 다른 답을 낸다 — 두 규칙이 같은 사실에서 나오는데 한 화면에 보이지
+ * 않아 사람을 두 번 왕복시킨 사고가 이 파일이 생긴 이유였다. 이 함수가 하는 일은
+ * workflow.js의 답을 옮기는 것뿐이다.
+ *
+ * 흐름은 그 태스크의 유형이 타는 것으로 고른다. 기본 흐름으로 판정하면 유형마다
+ * 흐름이 갈리는 프로젝트에서 화면과 저장이 다른 답을 내고, 그때 막히는 쪽은 저장이라
+ * 사람은 통과할 줄 알았던 단추에서 막힌다.
+ *
+ * 선언되지 않은 전환도 목록에 남긴다. 빼 버리면 화면은 "왜 이 단추가 없는가"에 답할
+ * 수 없고, 그 물음은 결국 파일을 열어야만 풀린다.
+ */
+function taskTransitions(root, projectKey, task, to) {
+  const flow = taskWorkflow(root, projectKey, task.kind);
+  const nodes = Object.keys(flow.engine.nodes);
+  // 없는 노드는 여기서 막는다. 판정은 모르는 노드에 대해 빈 목록을 돌려주는데 빈
+  // 목록은 "막는 것이 없다"는 뜻이라, 그대로 내보내면 갈 수 없는 자리가 갈 수 있는
+  // 자리로 읽힌다.
+  const asked = to === undefined || to === null || to === '' ? null : String(to);
+  if (asked !== null && !nodes.includes(asked)) inputError(`이 워크플로에 없는 노드입니다: ${asked}`, 'unknown-node');
+  const targets = asked !== null ? [asked] : nodes.filter((node) => node !== task.status);
+  return {
+    project: projectKey,
+    task: task.id,
+    kind: task.kind || null,
+    from: task.status,
+    workflow: { id: flow.id, label: flow.label, origin: flow.origin, targetKind: flow.engine.targetKind },
+    transitions: targets.map((node) => {
+      const declared = flow.engine.transitions ? flow.engine.transitionFor(task.status, node) : null;
+      const blockers = flow.engine.judgeTransition(task.status, node, task, null);
+      return {
+        from: task.status,
+        to: node,
+        title: declared ? declared.title : null,
+        // 전환 목록이 없는 흐름은 막지 않는다. 그 경우 "선언되었다"는 물음 자체가
+        // 성립하지 않으므로 전부 열린 것으로 적는다 — workflow.js가 같은 규칙으로 판정한다.
+        declared: flow.engine.transitions ? Boolean(declared) : true,
+        approval: Boolean(declared && declared.approval && declared.approval.human),
+        allowed: blockers.length === 0,
+        blockers
+      };
+    })
+  };
+}
+
 function workspaceSnapshot(root, projectKey, search) {
   const layout = workspaceLayout(root);
   const project = selectProject(layout, projectKey, true);
@@ -356,7 +405,12 @@ function workspaceSnapshot(root, projectKey, search) {
     // 화면은 브라우저에서 그대로 돌아 require를 쓸 수 없다. 목록을 실어 주지
     // 않으면 화면이 자기 사본을 적게 되고, 저장값이 늘어도 화면은 그것을 모른 채
     // 돈다 — board-presentation.js가 키를 정본에서 가져오는 것과 같은 이유다.
-    workflow: workflow.taskWorkflowView(),
+    //
+    // 이 자리는 오래 workflow.taskWorkflowView()였다. 그것은 모듈 최상위 export,
+    // 즉 transitions: null로 만든 내장 인스턴스의 뷰라 전환도 라벨도 언제나 비어
+    // 있었고, 그래서 workflows.json을 고쳐도 화면은 그대로였다 — 설정 층은 있는데
+    // 그 층을 보여 주는 화면이 없었다는 뜻이다. 이제 프로젝트 설정을 태운다.
+    workflow: boardWorkflow(root, project.key),
     attention: attentionItems(tasksResult.tasks, documents, sync),
     people: collaboration,
     clients,
@@ -571,8 +625,22 @@ function cancellationInput(value) {
 // 판정이 던지는 것은 statusCode 400을 단 오류이므로 그대로 올려 보낸다. 막는
 // 규칙이 여럿이면 여럿이 한 줄에 실려 온다 — 화면이 하나씩 만나며 왕복하지
 // 않게 하는 것이 이 설계의 목적이다.
-function requireNodeConsistency(current, changes) {
-  assertNodeConsistency(current, changes);
+//
+// 흐름은 그 항목의 유형이 타는 것으로 고른다. 넘기지 않으면 판정이 내장으로
+// 떨어지고, 그러면 화면 앞의 이 게이트는 프로젝트가 선언한 전환을 모른 채 답한다.
+// 저장이 뒤에서 알고 막으므로 사람이 잘못된 자리로 가지는 않지만, 같은 파일 안에서
+// 두 판정이 다른 표를 보는 것은 다섯 번째 표면을 만드는 첫걸음이다.
+//
+// 설정을 읽지 못하면 내장으로 떨어진다. 저장이 설정 파일 하나에 인질이 되면 안 되기
+// 때문이고 state.js가 같은 규율을 쓴다 — 설정이 틀렸다는 사실은 rdl check가 말한다.
+function requireNodeConsistency(root, projectKey, current, changes) {
+  let flow = null;
+  try {
+    flow = taskWorkflow(root, projectKey, (changes && changes.kind) || (current && current.kind)).engine;
+  } catch (_) {
+    flow = null;
+  }
+  assertNodeConsistency(current, changes, flow);
 }
 
 function validateTaskAssignments(root, input, projectKey) {
@@ -739,6 +807,9 @@ function createBoardServer(start, options) {
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/u);
       const projectTasksMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks$/u);
       const projectTaskMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks\/(TASK-[A-Za-z0-9-]+)$/u);
+      // 옮기지 않고 판정만 묻는 자리. 태스크 저장 경로와 나란히 두어 같은 판정을 쓴다 —
+      // 문서의 check가 저장 경로 옆에 선 것과 같은 규율이고, 이유도 같다.
+      const projectTaskTransitionsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/tasks\/(TASK-[A-Za-z0-9-]+)\/transitions$/u);
       const projectDocumentsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents$/u);
       const projectDocumentMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)$/u);
       // 저장하지 않고 검사만 하는 자리. 문서 저장 경로와 나란히 두어 같은 판정을 쓴다.
@@ -752,7 +823,7 @@ function createBoardServer(start, options) {
       const projectRunsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs$/u);
       const projectRunApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs\/(RUN-[A-Za-z0-9]+)\/approve$/u);
       const projectRunMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs\/(RUN-[A-Za-z0-9]+)$/u);
-      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectDocumentsMatch, projectDocumentCheckMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
+      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectTaskTransitionsMatch, projectDocumentsMatch, projectDocumentCheckMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
       const requestedConfig = requestedProject ? boardConfig(config.root, requestedProject[1]) : config;
       if (request.method === 'GET' && projectMatch) {
         const summary = overview(config.root).projects.find((item) => item.key === projectMatch[1]);
@@ -762,6 +833,11 @@ function createBoardServer(start, options) {
       if (request.method === 'GET' && projectTaskMatch) {
         const task = readTasks(requestedConfig).find((item) => item.id === projectTaskMatch[2]);
         return task ? json(response, 200, task) : json(response, 404, { error: '태스크를 찾지 못했습니다.' });
+      }
+      if (request.method === 'GET' && projectTaskTransitionsMatch) {
+        const task = readTasks(requestedConfig).find((item) => item.id === projectTaskTransitionsMatch[2]);
+        if (!task) return json(response, 404, { error: '태스크를 찾지 못했습니다.' });
+        return json(response, 200, taskTransitions(config.root, projectTaskTransitionsMatch[1], task, url.searchParams.get('to')));
       }
       if (request.method === 'GET' && projectDocumentsMatch) return json(response, 200, { project: projectDocumentsMatch[1], documents: listDocuments(selectProject(workspaceLayout(config.root), projectDocumentsMatch[1], true)) });
       if (request.method === 'GET' && projectDocumentMatch) {
@@ -802,7 +878,7 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const input = taskInput(body, true);
         input.project = projectTasksMatch[1];
-        requireNodeConsistency(null, input);
+        requireNodeConsistency(config.root, input.project, null, input);
         validateTaskAssignments(config.root, input, input.project);
         return json(response, 201, taskCreate(config.root, input));
       }
@@ -810,7 +886,7 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const current = requireRevision(requestedConfig, projectTaskMatch[2], body.baseRevision);
         const changes = taskInput(body, false);
-        requireNodeConsistency(current, changes);
+        requireNodeConsistency(config.root, projectTaskMatch[1], current, changes);
         validateTaskAssignments(config.root, changes, projectTaskMatch[1]);
         return json(response, 200, taskUpdate(config.root, projectTaskMatch[2], changes, projectTaskMatch[1]));
       }
@@ -869,7 +945,7 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         const input = taskInput(body, true);
         input.project = activeConfig.project;
-        requireNodeConsistency(null, input);
+        requireNodeConsistency(activeConfig.root, activeConfig.project, null, input);
         validateTaskAssignments(activeConfig.root, input, activeConfig.project);
         return json(response, 201, taskCreate(activeConfig.root, input));
       }
@@ -919,7 +995,7 @@ function createBoardServer(start, options) {
         const current = requireRevision(activeConfig, taskMatch[1], body.baseRevision);
         const changes = taskInput(body, false);
         if (Object.keys(changes).length === 0) return json(response, 400, { error: '변경할 태스크 필드가 필요합니다.' });
-        requireNodeConsistency(current, changes);
+        requireNodeConsistency(activeConfig.root, activeConfig.project, current, changes);
         validateTaskAssignments(activeConfig.root, changes, activeConfig.project);
         const result = taskUpdate(activeConfig.root, taskMatch[1], changes, activeConfig.project);
         return json(response, 200, result);
@@ -971,4 +1047,4 @@ function startBoard(start, options) {
   });
 }
 
-module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, attentionItems, composeDocumentFile, createBoardServer, startBoard };
+module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, composeDocumentFile, createBoardServer, startBoard };
