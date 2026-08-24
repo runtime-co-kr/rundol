@@ -207,14 +207,28 @@ assert.deepStrictEqual(workflow.judgeTransition('doing', '배포완료', whole, 
 //
 // 계약이 정한 것이고, 인자에 시계가 없는 것이 그 강제다. 같은 입력에 같은 답이
 // 나오지 않으면 막힌 사람에게 무엇을 고쳐야 하는지 말해 줄 수 없다.
-const source = fs.readFileSync(path.join(sourceRoot, 'workflow.js'), 'utf8');
-for (const forbidden of ["require('fs')", "require('path')", 'Date.now(', 'new Date(']) {
-  assert(!source.includes(forbidden), `판정부가 ${forbidden}을 씁니다.`);
+// 판정부의 폐포. 목록 하나로 못박지 않고 전이 의존을 따라가는 이유는 목록만 짧고
+// 폐포는 저장 계층에 닿는 모양이 실제로 있었기 때문이다 — 겉으로 순수해 보이는 모듈이
+// 작업공간 모듈을 타고 파일 시스템에 닿았다. 여기 이름을 올리는 것은 "이 모듈은 값만
+// 보고 답한다"는 선언이고, 아래 두 물음이 그 선언을 강제한다.
+const JUDGMENT_CLOSURE = ['workflow', 'validation-catalog', 'vocabulary'];
+const reached = [];
+for (const moduleName of JUDGMENT_CLOSURE) {
+  const text = fs.readFileSync(path.join(sourceRoot, `${moduleName}.js`), 'utf8');
+  for (const forbidden of ["require('fs')", "require('path')", 'Date.now(', 'new Date(']) {
+    assert(!text.includes(forbidden), `판정부가 ${forbidden}을 씁니다: ${moduleName}.js`);
+  }
+  for (const call of text.match(/require\('([^']+)'\)/gu) || []) {
+    const specifier = call.slice("require('".length, -2);
+    assert(specifier.startsWith('./'), `판정부가 바깥 모듈을 뭅니다: ${moduleName} -> ${specifier}`);
+    const target = specifier.slice(2);
+    assert(JUDGMENT_CLOSURE.includes(target), `판정부의 전이 의존이 폐포 밖입니다: ${moduleName} -> ${target}`);
+    reached.push(target);
+  }
 }
-// require는 정본 하나뿐이다. 파일을 읽는 모듈을 하나라도 들이면 그 순간 판정이
-// 저장 계층에 묶이고, 표면들이 자기 경로로 다시 구현하게 된다.
-const required = (source.match(/require\('([^']+)'\)/gu) || []);
-assert.deepStrictEqual(required, ["require('./vocabulary')"], `판정부의 require가 정본 하나가 아닙니다: ${required.join(', ')}`);
+// 검증 슬롯의 판정기를 새로 짓지 않았는지 본다. 같은 규칙을 두 벌로 판정하면 같은
+// 항목이 어디서 보느냐에 따라 다른 답을 받는다.
+assert(reached.includes('validation-catalog'), '판정부가 소스 × 방법 판정기를 부르지 않습니다.');
 
 // 같은 입력에 같은 답. 두 번 물어서 다르면 어딘가 시계나 순서를 보고 있다.
 assert.deepStrictEqual(
@@ -414,5 +428,69 @@ for (const [file, allowed] of ALLOWED) {
   if ((counted.get(file) || 0) < allowed) stale.push(`  ${file}  허용 ${allowed}인데 실제 ${counted.get(file) || 0}`);
 }
 assert.deepStrictEqual(stale, [], `허용 목록이 실제보다 큽니다. 줄여 두세요.\n${stale.join('\n')}`);
+
+// ── 승인 근거를 값으로 읽는다 ───────────────────────────────────────────
+//
+// 승인 슬롯은 "다른 행위자가 동의했는가"를 묻고, 그 답은 항목이 무엇을 갖췄는지로는
+// 서지 않는다. 그래서 근거가 값으로 실려 와야 하고, 실려 오지 않으면 막힌 채로 둔다 —
+// 없는 동의를 있는 것으로 세면 게이트가 아니라 통과 도장이 된다.
+//
+// 파일도 시각도 읽지 않는 것은 그대로다. 승인 기록의 정본은 원장이고 그것을 읽어 이
+// 모양으로 실어 주는 것은 부른 표면의 몫이며, 위의 폐포 시험이 그 갈라섬을 지킨다.
+
+const pass = (actor) => ({ kind: 'read', verdict: 'pass', actor, delegatedFrom: null });
+
+assert.strictEqual(workflow.approvalShortfall({}, null), '', '근거가 없으면 덧붙일 말이 없는 모자람이다.');
+assert.strictEqual(workflow.approvalShortfall({ approvals: [pass('MEMBER-002')] }, { memberId: 'MEMBER-001' }), null, '다른 행위자의 동의가 슬롯을 연다.');
+assert.strictEqual(workflow.approvalShortfall({ approvals: [pass('MEMBER-002')] }, null), null, '행위자를 모르면 근거를 그대로 받는다 — 모르는 것을 같다고 세면 게이트가 다시 벽이 된다.');
+assert.match(workflow.approvalShortfall({ approvals: [pass('MEMBER-001')] }, { memberId: 'MEMBER-001' }), /자기 자신/u, '자기 승인은 승인이 아니다.');
+assert.strictEqual(workflow.approvalShortfall({ approvals: [pass('MEMBER-001'), pass('MEMBER-002')] }, { memberId: 'MEMBER-001' }), null, '자기 것 말고 하나라도 있으면 열린다.');
+
+// 신원은 책임을 지는 이름에서 고른다. 승인의 책임은 멤버가 지므로 멤버가 먼저다.
+assert.match(workflow.approvalShortfall({ approvals: [pass('MEMBER-001')] }, 'MEMBER-001'), /자기 자신/u, '행위자를 문자열로 넘겨도 같은 답이어야 한다.');
+assert.strictEqual(workflow.approvalShortfall({ approvals: [pass('MEMBER-001')] }, { memberId: 'MEMBER-002', clientId: 'MEMBER-001' }), null, '멤버가 다르면 다른 행위자다.');
+
+// 모양이 아닌 줄은 세지 않는다. 세면 아무 필드나 담은 객체 하나가 사람 게이트를 연다.
+for (const broken of [
+  { kind: '읽음', verdict: 'pass', actor: 'MEMBER-002', delegatedFrom: null },
+  { kind: 'read', verdict: '통과', actor: 'MEMBER-002', delegatedFrom: null },
+  { kind: 'read', verdict: 'pass', actor: '', delegatedFrom: null },
+  // 위임된 근거는 누구에게서 왔는지가 근거의 일부다. 그 자리가 비면 책임이 어디로
+  // 갔는지 아무도 답할 수 없고, 답할 수 없는 승인은 승인이 아니다.
+  { kind: 'delegated', verdict: 'pass', actor: 'MEMBER-002', delegatedFrom: null },
+  'MEMBER-002'
+]) {
+  assert.strictEqual(workflow.approvalShortfall({ approvals: [broken] }, null), '', `모양이 아닌 근거가 슬롯을 엽니다: ${JSON.stringify(broken)}`);
+}
+assert.strictEqual(
+  workflow.approvalShortfall({ approvals: [{ kind: 'delegated', verdict: 'pass', actor: 'MEMBER-002', delegatedFrom: 'MEMBER-003' }] }, null),
+  null,
+  '위임한 사람이 적힌 근거는 선다.'
+);
+
+// 기권과 반려를 가른 것이 여기서 값이 된다 — "보지 못했다"는 아직 답이 아니지만
+// "보고 아니라 했다"는 답이며, 답은 다른 동의로 덮이지 않는다.
+assert.match(workflow.approvalShortfall({ approvals: [{ kind: 'read', verdict: 'abstain', actor: 'MEMBER-002', delegatedFrom: null }] }, null), /기권/u, '기권은 동의가 아니다.');
+assert.match(
+  workflow.approvalShortfall({ approvals: [pass('MEMBER-002'), { kind: 'verdict', verdict: 'refuted', actor: 'MEMBER-003', delegatedFrom: null }] }, null),
+  /반려/u,
+  '반려는 동의보다 뒤에 적혀도 이긴다.'
+);
+
+// 근거의 어휘를 새로 짓지 않았는지 본다. 전환이 자기 어휘를 세우면 같은 물음에 두 벌의
+// 답이 생기고, 두 벌은 갈린다.
+for (const kind of vocabulary.BASIS_KINDS) {
+  const basis = { kind, verdict: 'pass', actor: 'MEMBER-002', delegatedFrom: kind === 'delegated' ? 'MEMBER-003' : null };
+  assert.strictEqual(workflow.approvalShortfall({ approvals: [basis] }, null), null, `어휘가 선언한 근거 종류를 못 읽습니다: ${kind}`);
+}
+assert.deepStrictEqual(vocabulary.VERDICTS.slice(), ['pass', 'refuted', 'abstain'], '판정 어휘가 바뀌면 위 세 갈래를 다시 봐야 한다.');
+
+// 설정이 없는 저장소는 그대로다. 내장 흐름에는 전환 목록이 없으므로 승인 슬롯도 없고,
+// 근거를 실어도 판정이 달라지지 않는다 — 달라지면 그것은 기능이 아니라 사고다.
+assert.deepStrictEqual(
+  workflow.judgeTransition('doing', 'done', whole, null),
+  workflow.judgeTransition('doing', 'done', Object.assign({}, whole, { approvals: [pass('MEMBER-002')] }), null),
+  '내장 흐름의 판정이 승인 근거에 흔들립니다.'
+);
 
 process.stdout.write('workflow tests passed\n');
