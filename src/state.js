@@ -8,6 +8,7 @@ const { runGit, refExists, gitRoot } = require('./git');
 const { mergeTaskDocuments } = require('./merge');
 const { checkWorkspace, findWorkspaceRoot, readWorkspaceManifest, yamlNestedValue } = require('./check');
 const { workspaceLayout, selectProject } = require('./workspace');
+const { loadWorkflows, workflowFor } = require('./workflow-config');
 const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, materializeTaskStore, migrateTaskStore, assertNodeConsistency, assertExemptionConsistency, assertKindConsistency, assertRoundUniqueness } = require('./tasks');
 const workflow = require('./workflow');
 const { initSettings, saveSettings, prepareSettings, finalizeSettings } = require('./settings');
@@ -419,6 +420,18 @@ function normalizeCancellationChange(task, changes) {
   changes.cancellation = Object.assign({}, cancellation, { decidedBy: cancellation.decidedBy || changes.owner || task.owner || null });
 }
 
+// 이 태스크가 탈 흐름. 설정이 없으면 내장이 답하고, 그때 판정은 판올림 전과 같다.
+// 읽지 못한 것을 오류로 올리지 않는 이유는 저장이 설정 파일 하나에 인질이 되면
+// 안 되기 때문이다 — 설정이 틀렸다는 사실은 rdl check가 말한다.
+function taskFlow(root, projectKey, kind) {
+  try {
+    const config = loadWorkflows(root, projectKey);
+    return workflowFor(config, 'task', kind);
+  } catch (error) {
+    return null;
+  }
+}
+
 function taskUpdate(start, taskIdValue, changes, projectKey) {
   const config = workspaceStateConfig(start, projectKey);
   if (!refExists(config.root, config.ref)) initState(config.root, { project: config.project });
@@ -432,7 +445,7 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   normalizeExemptionChange(task, changes);
   // 노드와 항목의 짝은 한 번에 본다. 셋을 줄지어 부르면 첫 번째가 던지는 순간
   // 나머지 둘은 판정되지 않고, 부르는 쪽은 고치고 다시 부르기를 되풀이한다.
-  assertNodeConsistency(task, changes);
+  assertNodeConsistency(task, changes, taskFlow(config.root, config.project, (changes && changes.kind) || task.kind));
   assertExemptionConsistency(task, changes);
   assertKindConsistency(task, changes);
   assertRoundUniqueness(parsed.tasks, taskIdValue, Object.assign({}, task, changes));

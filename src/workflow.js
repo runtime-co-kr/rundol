@@ -35,7 +35,7 @@
 
 const {
   WORKFLOW_STEPS, TERMINAL_WORKFLOW_STEPS, OPEN_WORKFLOW_STEPS, ACTIVE_WORKFLOW_STEPS,
-  COMPLETION_VALIDITIES, RULE_ORIGINS, TASK_STATES, EXEMPTABLE_GATES
+  COMPLETION_VALIDITIES, RULE_ORIGINS, TASK_STATES, EXEMPTABLE_GATES, TARGET_KINDS
 } = require('./vocabulary');
 
 // ── 내장 태스크 워크플로 ────────────────────────────────────────────────
@@ -97,6 +97,189 @@ for (const [node, target] of Object.entries(TASK_NODES)) {
 for (const state of TASK_STATES) {
   if (!TASK_NODES[state]) throw new Error(`어휘가 선언한 상태에 스텝이 없습니다: ${state}`);
 }
+
+// ── 설정으로 정의하는 워크플로 ──────────────────────────────────────────
+//
+// 위 표는 내장이다. workflows.json이 그것을 대체하며, 대체하지 않으면 내장이
+// 그대로 답한다. 설정이 없는 저장소에서 판정이 달라지지 않는 것이 이 층의 계약이다.
+//
+// 정규화가 판정보다 먼저 도는 이유는 item-type.js와 같다 — 알 수 없는 키를 판정
+// 시점까지 끌고 가면 그 규칙은 아무 항목에도 맞지 않는 채로 살고, 그렇게 사는 동안
+// 아무 신호도 내지 않는다. 파일 경로와 키 경로와 이유를 함께 물어 거부한다.
+//
+// 전환 목록이 없는 워크플로는 전환을 막지 않는다. 비면 전부 막는 쪽이 형식적으로는
+// 깔끔하지만, 그러면 노드에 이름만 붙이려던 프로젝트가 자기 태스크를 하나도 못 옮기게
+// 된다. 닫는 것은 선언으로 하고, 선언하지 않은 것은 지금 동작을 유지한다.
+const TRANSITION_WILDCARD = '(ALL)';
+const WORKFLOW_ENTRY_KEYS = Object.freeze(['targetKind', 'nodes', 'transitions', 'label', 'description', 'disabled']);
+const NODE_ENTRY_KEYS = Object.freeze(['step', 'validity', 'requiresOwner', 'label', 'description', 'order', 'disabled']);
+const TRANSITION_KEYS = Object.freeze(['from', 'to', 'title', 'description', 'approval']);
+const APPROVAL_KEYS = Object.freeze(['human', 'reason']);
+
+function rejectAt(context, at, reason) {
+  return new Error(`${(context && context.file) || 'workflows.json'}: ${at}: ${reason}`);
+}
+
+function plainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function unknownKeys(entry, allowed, context, at) {
+  for (const key of Object.keys(entry)) {
+    if (!allowed.includes(key)) throw rejectAt(context, `${at}.${key}`, `알 수 없는 키입니다. 쓸 수 있는 것: ${allowed.join(' · ')}`);
+  }
+}
+
+// disabled는 true만 받는다. 되살리려면 그 줄을 지운다 — 사용 안 함은 값이 아니라
+// 항목의 상태이고, 없앴다는 판단이 파일에 남아야 나중에 왜 없앴는지 답할 수 있다.
+function checkDisabled(entry, context, at) {
+  if (entry.disabled !== undefined && entry.disabled !== true) {
+    throw rejectAt(context, `${at}.disabled`, 'disabled는 true만 쓸 수 있습니다. 되살리려면 그 줄을 지우세요.');
+  }
+}
+
+function normalizeNode(raw, context, at) {
+  if (!plainObject(raw)) throw rejectAt(context, at, '노드 정의는 객체여야 합니다.');
+  unknownKeys(raw, NODE_ENTRY_KEYS, context, at);
+  checkDisabled(raw, context, at);
+  if (raw.disabled === true) return { disabled: true };
+  if (!WORKFLOW_STEPS.includes(raw.step)) {
+    throw rejectAt(context, `${at}.step`, `스텝은 다음 중 하나여야 합니다: ${WORKFLOW_STEPS.join(' · ')}`);
+  }
+  const validity = raw.validity === undefined ? null : raw.validity;
+  if (validity !== null) {
+    if (!COMPLETION_VALIDITIES.includes(validity)) {
+      throw rejectAt(context, `${at}.validity`, `유효성은 다음 중 하나여야 합니다: ${COMPLETION_VALIDITIES.join(' · ')}`);
+    }
+    // 유효성은 completed에서만 뜻이 있다. 다른 스텝에 붙으면 그 값을 읽는 쪽이
+    // 없는 축을 있는 것으로 다룬다.
+    if (raw.step !== 'completed') {
+      throw rejectAt(context, `${at}.validity`, '유효성은 completed 스텝에서만 쓸 수 있습니다.');
+    }
+  }
+  if (raw.requiresOwner !== undefined && typeof raw.requiresOwner !== 'boolean') {
+    throw rejectAt(context, `${at}.requiresOwner`, 'requiresOwner는 참 또는 거짓이어야 합니다.');
+  }
+  return {
+    step: raw.step,
+    validity,
+    requiresOwner: raw.requiresOwner === true,
+    label: raw.label === undefined ? null : String(raw.label),
+    ratified: null
+  };
+}
+
+function normalizeTransition(raw, nodeIds, context, at) {
+  if (!plainObject(raw)) throw rejectAt(context, at, '전환은 객체여야 합니다.');
+  unknownKeys(raw, TRANSITION_KEYS, context, at);
+  const from = raw.from === undefined ? TRANSITION_WILDCARD : String(raw.from);
+  const to = raw.to === undefined ? '' : String(raw.to);
+  // (ALL)의 범위는 이 워크플로의 노드 목록 안이다. 바깥으로 열면 노드를 하나
+  // 더하는 것만으로 기존 전환이 조용히 바뀐다 — 지라의 global transition이
+  // 사고 나는 자리가 그것이다.
+  if (from !== TRANSITION_WILDCARD && !nodeIds.includes(from)) {
+    throw rejectAt(context, `${at}.from`, `이 워크플로에 없는 노드입니다: ${from}`);
+  }
+  if (!nodeIds.includes(to)) throw rejectAt(context, `${at}.to`, `이 워크플로에 없는 노드입니다: ${to || '(비었음)'}`);
+  let approval = null;
+  if (raw.approval !== undefined) {
+    if (!plainObject(raw.approval)) throw rejectAt(context, `${at}.approval`, '승인 슬롯은 객체여야 합니다.');
+    unknownKeys(raw.approval, APPROVAL_KEYS, context, `${at}.approval`);
+    if (raw.approval.human !== true) {
+      throw rejectAt(context, `${at}.approval.human`, '승인 슬롯은 human: true만 쓸 수 있습니다. 걸지 않으려면 approval을 지우세요.');
+    }
+    approval = { human: true, reason: raw.approval.reason === undefined ? null : String(raw.approval.reason) };
+  }
+  return { from, to, title: raw.title === undefined ? null : String(raw.title), approval };
+}
+
+/**
+ * 설정 한 층을 판정이 읽을 수 있는 모양으로 옮긴다. 파일을 읽지 않는다 — 읽는
+ * 일은 workflow-config.js가 맡고 이 파일은 값만 보고 답한다.
+ */
+function normalizeWorkflows(raw, options) {
+  const context = options || {};
+  if (raw === undefined || raw === null) return {};
+  if (!plainObject(raw)) throw rejectAt(context, 'workflows', '워크플로 정의는 객체여야 합니다.');
+  const out = {};
+  for (const [id, entry] of Object.entries(raw)) {
+    const at = `workflows.${id}`;
+    if (!plainObject(entry)) throw rejectAt(context, at, '워크플로 정의는 객체여야 합니다.');
+    unknownKeys(entry, WORKFLOW_ENTRY_KEYS, context, at);
+    checkDisabled(entry, context, at);
+    if (entry.disabled === true) { out[id] = { disabled: true }; continue; }
+    if (entry.targetKind !== undefined && !TARGET_KINDS.includes(entry.targetKind)) {
+      throw rejectAt(context, `${at}.targetKind`, `대상 종류는 다음 중 하나여야 합니다: ${TARGET_KINDS.join(' · ')}`);
+    }
+    const nodes = {};
+    const rawNodes = entry.nodes === undefined ? {} : entry.nodes;
+    if (!plainObject(rawNodes)) throw rejectAt(context, `${at}.nodes`, '노드 목록은 객체여야 합니다.');
+    for (const [nodeId, node] of Object.entries(rawNodes)) nodes[nodeId] = normalizeNode(node, context, `${at}.nodes.${nodeId}`);
+    out[id] = {
+      targetKind: entry.targetKind === undefined ? 'task' : entry.targetKind,
+      label: entry.label === undefined ? null : String(entry.label),
+      nodes,
+      // 전환은 층을 합친 뒤에 푼다. 상위가 선언한 노드를 하위 전환이 가리킬 수
+      // 있어야 하는데, 층마다 풀면 그 참조가 자기 층 안에서만 성립한다.
+      rawTransitions: entry.transitions === undefined ? null : entry.transitions
+    };
+  }
+  return out;
+}
+
+/**
+ * 3단 상속. 내장 → workspace → project 순으로 겹친다.
+ *
+ * 노드는 항목 단위로 합치고 전환은 층 단위로 갈아탄다. 전환을 항목 단위로 합치면
+ * 하위가 상위의 전환 하나만 지우려 해도 목록 전체를 다시 적어야 하는데, 그렇게 적은
+ * 목록은 상위가 바뀔 때 따라가지 못한다. 흐름은 통째로 읽히는 것이 낫다 —
+ * JSON 한 덩어리를 읽으면 그 흐름이 전부 보여야 하기 때문이다.
+ */
+function mergeWorkflows(layers) {
+  const merged = {};
+  for (const layer of layers || []) {
+    for (const [id, entry] of Object.entries(layer || {})) {
+      const before = merged[id];
+      if (entry.disabled === true) { merged[id] = { disabled: true }; continue; }
+      const inherited = before && before.disabled !== true ? before : null;
+      const nodes = Object.assign({}, inherited && inherited.nodes, entry.nodes);
+      merged[id] = Object.assign({}, inherited, entry, { nodes });
+      if ((entry.rawTransitions === null || entry.rawTransitions === undefined) && inherited && inherited.rawTransitions) {
+        merged[id].rawTransitions = inherited.rawTransitions;
+      }
+    }
+  }
+  const out = {};
+  for (const id of Object.keys(merged).sort()) {
+    const entry = merged[id];
+    if (entry.disabled === true) continue;
+    const nodes = {};
+    // 없앤 노드를 따로 센다. 없앤 것과 오타는 다르게 다뤄야 하기 때문이다 —
+    // 없앤 노드를 가리키던 전환은 갈 곳을 잃었으므로 함께 사라지고, 없던 노드를
+    // 가리키는 전환은 사람이 틀린 것이므로 막는다. 둘을 같이 처리하면 한쪽은
+    // 지우려던 것을 못 지우고 다른 쪽은 오타가 조용히 통과한다.
+    const removed = [];
+    for (const [nodeId, node] of Object.entries(entry.nodes || {})) {
+      if (node.disabled === true) { removed.push(nodeId); continue; }
+      nodes[nodeId] = node;
+    }
+    const nodeIds = Object.keys(nodes);
+    let transitions = null;
+    if (entry.rawTransitions !== null && entry.rawTransitions !== undefined) {
+      if (!Array.isArray(entry.rawTransitions)) throw rejectAt({}, `workflows.${id}.transitions`, '전환 목록은 배열이어야 합니다.');
+      transitions = entry.rawTransitions
+        .filter((item) => {
+          if (!plainObject(item)) return true;
+          const ends = [item.from, item.to].filter((value) => value !== undefined && value !== null).map(String);
+          return !ends.some((value) => removed.includes(value));
+        })
+        .map((item, index) => normalizeTransition(item, nodeIds, {}, `workflows.${id}.transitions[${index}]`));
+    }
+    out[id] = { targetKind: entry.targetKind || 'task', label: entry.label || null, nodes, transitions };
+  }
+  return out;
+}
+
 
 // ── 노드에서 스텝으로 ───────────────────────────────────────────────────
 
@@ -294,7 +477,7 @@ TASK_RULES.push({
   // 어느 노드가 담당자를 요구하는지는 워크플로가 든다. 예전에는 이 자리에 노드
   // 넷이 손으로 적혀 있었고, 목록이 규칙 안에 있으면 그 목록이 무엇을 빠뜨렸는지
   // 읽을 방법이 없다. 3단계에서 workflows.json이 이 칸을 받는다.
-  appliesTo: (node) => Boolean(TASK_NODES[node] && TASK_NODES[node].requiresOwner),
+  appliesTo: (node, step, nodes) => { const table = nodes || TASK_NODES; return Boolean(table[node] && table[node].requiresOwner); },
   holds: (item) => filled(item.owner),
   message: (item) => `${item.status} 상태에는 owner가 필요합니다.`
 });
@@ -497,24 +680,187 @@ function blockerReport(blockers) {
   return `막는 규칙 ${list.length}건: ${list.map((blocker) => `${blocker.code} ${blocker.message}`).join(' / ')}`;
 }
 
-module.exports = {
+// ── 워크플로 인스턴스 ───────────────────────────────────────────────────
+//
+// 노드 표를 인자로 받아 같은 판정을 돌린다. 내장도 이 팩토리를 거치므로 설정이
+// 있는 저장소와 없는 저장소가 서로 다른 코드를 타지 않는다 — 두 벌이 되면 한쪽만
+// 고쳐지는 날이 오고, 그날 어느 쪽이 정본인지 말할 근거가 없다.
+//
+// 규칙 카탈로그는 나누지 않는다. 노드 이름은 프로젝트가 정의하지만 "완료로 가려면
+// 무엇이 필요한가"는 제품이 정하므로, 카탈로그 하나가 모든 인스턴스에 걸린다.
+function createWorkflow(definition) {
+  const nodes = (definition && definition.nodes) || {};
+  const transitions = (definition && definition.transitions) || null;
+  const targetKind = (definition && definition.targetKind) || 'task';
+
+  function stepOfNode(node) {
+    const target = nodes[node === undefined || node === null ? '' : String(node)];
+    return target ? target.step : null;
+  }
+
+  function validityOfNode(node) {
+    const target = nodes[node === undefined || node === null ? '' : String(node)];
+    return target && target.step === 'completed' ? target.validity : null;
+  }
+
+  function nodesForStepIn(step) {
+    return Object.keys(nodes).filter((node) => nodes[node].step === step);
+  }
+
+  function rulesFor(node) {
+    const step = stepOfNode(node);
+    if (step === null) return [];
+    return TASK_RULES.filter((rule) => rule.appliesTo(node, step, nodes));
+  }
+
+  /**
+   * 이 전환이 선언되어 있는가. 전환 목록이 없으면 막지 않는다.
+   *
+   * 자기 자신은 (ALL)에 들지 않는다. A→(ALL)에 A→A가 있으면 "제자리 걸음"이 모든
+   * 워크플로에 조용히 생기고, 그 전환은 아무도 선언한 적이 없다.
+   */
+  function transitionFor(from, to) {
+    if (!transitions) return null;
+    const source = from === undefined || from === null ? null : String(from);
+    const target = String(to);
+    return transitions.find((item) => {
+      if (item.to !== target) return false;
+      if (item.from === TRANSITION_WILDCARD) return source === null || source !== target;
+      return item.from === source;
+    }) || null;
+  }
+
+  function transitionAllowed(from, to) {
+    if (!transitions) return true;
+    // from이 없으면 항목 판정이다 — 움직이지 않으므로 전환 목록을 묻지 않는다.
+    if (from === undefined || from === null) return true;
+    if (String(from) === String(to)) return true;
+    return Boolean(transitionFor(from, to));
+  }
+
+  /**
+   * 전환 판정. 막는 규칙을 전부 돌려주며 빈 목록이 통과다.
+   *
+   * 순서가 있다. 선언되지 않은 전환이면 그 사실 하나만 돌려준다 — 갈 수 없는 자리에
+   * 대해 "가면 무엇이 모자란가"를 함께 말하면 사람은 그 모자란 것을 채우려 들고,
+   * 채워도 여전히 못 간다.
+   */
+  function judge(from, to, item, actor) {
+    const node = to === undefined || to === null ? null : String(to);
+    if (node === null || stepOfNode(node) === null) return [];
+    const subject = item || {};
+    const target = subject.id ? String(subject.id) : node;
+    if (!transitionAllowed(from, node)) {
+      return [{
+        ruleId: 'transition-not-declared',
+        code: 'RDL-FLOW-001',
+        origin: 'transition',
+        source: 'field',
+        method: 'equals',
+        target: `${target}.status`,
+        message: `${from} 에서 ${node} 로 가는 전환이 이 워크플로에 없습니다.`
+      }];
+    }
+    const blockers = [];
+    for (const rule of rulesFor(node)) {
+      if (exempted(subject, rule.ruleId)) continue;
+      if (rule.holds(subject)) continue;
+      blockers.push({
+        ruleId: rule.ruleId,
+        code: rule.code,
+        origin: rule.origin,
+        source: rule.source,
+        method: rule.method,
+        target: rule.path ? `${target}.${rule.path}` : target,
+        message: rule.message(subject)
+      });
+    }
+    // 승인 슬롯은 규칙 카탈로그가 아니라 전환이 든다. 카탈로그는 "항목이 무엇을
+    // 갖췄는가"를 묻고 승인은 "다른 행위자가 동의했는가"를 묻는데, 뒤엣것은 항목만
+    // 보고 답할 수 없다. 그래서 판정은 승인이 필요하다는 사실만 내보내고 판정을
+    // 누가 했는지는 승인 원장이 답한다.
+    const transition = transitionFor(from, node);
+    if (transition && transition.approval && transition.approval.human) {
+      blockers.push({
+        ruleId: 'transition-requires-approval',
+        code: 'RDL-FLOW-002',
+        origin: 'transition',
+        source: 'field',
+        method: 'present',
+        target: `${target}.status`,
+        human: true,
+        message: transition.approval.reason
+          || `${transition.title || `${from} → ${node}`} 전환은 다른 행위자의 승인이 필요합니다.`
+      });
+    }
+    return blockers;
+  }
+
+  /** 화면에 실어 보낼 워크플로. 화면이 자기 목록을 따로 적으면 저장값이 늘어도 모른다. */
+  function view() {
+    const out = {};
+    for (const [node, target] of Object.entries(nodes)) {
+      out[node] = {
+        step: target.step,
+        validity: target.validity,
+        label: target.label || null,
+        requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
+      };
+    }
+    return {
+      targetKind,
+      nodes: out,
+      transitions: transitions
+        ? transitions.map((item) => ({ from: item.from, to: item.to, title: item.title, approval: Boolean(item.approval && item.approval.human) }))
+        : null,
+      steps: WORKFLOW_STEPS.slice(),
+      terminalSteps: TERMINAL_WORKFLOW_STEPS.slice(),
+      openSteps: OPEN_WORKFLOW_STEPS.slice(),
+      activeSteps: ACTIVE_WORKFLOW_STEPS.slice()
+    };
+  }
+
+  return {
+    nodes,
+    transitions,
+    targetKind,
+    stepOf: stepOfNode,
+    validityOf: validityOfNode,
+    isTerminal: (node) => TERMINAL_WORKFLOW_STEPS.includes(stepOfNode(node)),
+    isOpen: (node) => OPEN_WORKFLOW_STEPS.includes(stepOfNode(node)),
+    isActive: (node) => ACTIVE_WORKFLOW_STEPS.includes(stepOfNode(node)),
+    isUnclaimed: (node) => stepOfNode(node) === 'unclaimed',
+    nodesForStep: nodesForStepIn,
+    transitionAllowed,
+    transitionFor,
+    evaluatedRules: (node) => rulesFor(node).map((rule) => rule.ruleId),
+    exemptedRules: (node, item) => {
+      const exemption = item && item.exemption;
+      if (!exemption) return [];
+      const gates = exemptionGates(exemption);
+      return rulesFor(node)
+        .filter((rule) => gates.includes(rule.ruleId))
+        .map((rule) => ({ ruleId: rule.ruleId, gate: rule.ruleId, reason: exemption.reason || null, decidedBy: exemption.decidedBy || null }));
+    },
+    judgeTransition: judge,
+    judgeItem: (item, actor) => judge(null, item && item.status, item, actor),
+    rollupNodes: (list) => rollupStep((list || []).map(stepOfNode).filter(Boolean)),
+    taskWorkflowView: view
+  };
+}
+
+// 내장 인스턴스. 설정이 없는 저장소가 타는 길이며, 아래 export가 전부 이것을 가리킨다.
+const BUILTIN = createWorkflow({ nodes: TASK_NODES, transitions: null, targetKind: 'task' });
+
+module.exports = Object.assign({}, BUILTIN, {
   TASK_NODES,
-  stepOf,
-  validityOf,
-  isTerminal,
-  isOpen,
-  isActive,
-  isUnclaimed,
-  nodesForStep,
+  TRANSITION_WILDCARD,
+  createWorkflow,
+  normalizeWorkflows,
+  mergeWorkflows,
   isGateRule,
-  taskWorkflowView,
-  rollupStep,
-  rollupNodes,
   exemptionGates,
   exempted,
-  evaluatedRules,
-  exemptedRules,
-  judgeTransition,
-  judgeItem,
+  rollupStep,
   blockerReport
-};
+});

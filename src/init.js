@@ -8,6 +8,7 @@ const { manifestSource, gitExclude } = require('./attach');
 const { renderWorkspaceBoardConfig, renderProjectBoardConfig } = require('./board-presentation');
 const { COMPOSITE_DIRECTORY } = require('./document-composite');
 
+const { renderProjectWorkflows } = require('./workflow-seed');
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
 const PROJECT_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RESERVED_PROJECT_KEYS = new Set(['workspace']);
@@ -51,6 +52,10 @@ function writeProject(mount, key, name, schemaVersion) {
   fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
   atomicWrite(path.join(root, 'project.md'), renderProject(key, name));
   atomicWrite(path.join(root, 'board.json'), renderProjectBoardConfig());
+  // 흐름은 프로젝트가 받는다. 파일을 두는 이유는 열려 있다는 사실이 보이게 하려는
+  // 것이고, 전환이 비어 있는 이유는 아직 아무도 흐름을 정하지 않았기 때문이다 —
+  // 정하지 않은 것을 정해진 것처럼 심으면 그 프로젝트는 남의 흐름을 물려받는다.
+  atomicWrite(path.join(root, 'workflows.json'), renderProjectWorkflows());
   atomicWrite(path.join(root, '.gitignore'), `.rundol/\n.obsidian/\n${COMPOSITE_DIRECTORY}/\n`);
   if (schemaVersion >= 3) fs.mkdirSync(path.join(root, 'tasks'), { recursive: true });
   const obsidian = path.join(root, '.obsidian');

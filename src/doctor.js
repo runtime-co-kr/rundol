@@ -9,6 +9,8 @@ const { findWorkspaceRoot } = require('./workspace');
 const { skillSource, skillTargets, SKILL_NAME } = require('./skill');
 const { loadHarnessSettings } = require('./harness-settings');
 const { probeAdapter } = require('./adapter');
+const { loadWorkflows } = require('./workflow-config');
+const { TASK_STATES } = require('./vocabulary');
 
 // doctor가 통과라고 하는데 실행이 깨지면 진단이 거짓말이 된다. package.json을 런타임에
 // 읽으면 설치 레이아웃마다 상대 경로가 달라 깨지므로 값을 여기 두고, engines와 같은지는
@@ -160,6 +162,41 @@ function doctor(start, options) {
 
 
   if (workspace) {
+    // 흐름 설정과 저장된 상태 어휘가 맞는지 본다. 설정을 고칠 때 나는 이슈라
+    // 여기서 잡는다 — 노드를 없애면 그 자리에 서 있던 태스크가 갈 곳을 잃는데,
+    // 저장 게이트는 앞으로 들어올 것만 막고 이미 있는 것은 보지 않는다.
+    try {
+      const config = loadWorkflows(workspace, settings.project || null);
+      const ids = Object.keys(config.workflows || {});
+      if (!ids.length) {
+        checks.push({ id: 'workflows', status: 'info', message: '흐름 설정이 없어 내장 워크플로로 돕니다.', remediation: 'projects/<key>/workflows.json에 노드와 전환을 적으면 그때부터 이 프로젝트의 흐름이 됩니다.' });
+      } else {
+        const closed = ids.filter((id) => Array.isArray(config.workflows[id].transitions));
+        const stranded = [];
+        for (const id of ids) {
+          const entry = config.workflows[id];
+          if (entry.targetKind !== 'task') continue;
+          for (const state of TASK_STATES) {
+            if (!entry.nodes[state]) stranded.push(`${id}: ${state}`);
+          }
+        }
+        checks.push({ id: 'workflows', status: 'ok', message: `흐름 ${ids.length}개 · 전환을 선언한 것 ${closed.length}개`, workflows: ids, sources: (config.sources || []).map((item) => item.file) });
+        if (stranded.length) {
+          checks.push({
+            id: 'workflow-nodes',
+            status: 'warn',
+            message: `저장된 상태에 설 노드가 없는 흐름이 있습니다: ${stranded.join(', ')}`,
+            stranded,
+            remediation: '그 상태의 노드를 workflows.json에 세우거나, 그 상태로 저장된 태스크를 먼저 다른 노드로 옮기세요. 노드가 없는 상태의 태스크는 어느 목록에도 들지 않습니다.'
+          });
+        } else {
+          checks.push({ id: 'workflow-nodes', status: 'ok', message: '저장된 상태 어휘가 모두 흐름의 노드에 섭니다.' });
+        }
+      }
+    } catch (error) {
+      checks.push({ id: 'workflows', status: 'error', message: error.message, remediation: '설정 파일의 그 줄을 고치거나 지우세요. 파일이 없으면 내장 흐름으로 돕니다.' });
+    }
+
     try {
       const harness = loadHarnessSettings(workspace, { project: settings.project });
       for (const [name, adapter] of Object.entries(harness.runtimeResolved.adapters).sort(([left], [right]) => left.localeCompare(right))) {

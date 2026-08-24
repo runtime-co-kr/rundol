@@ -51,9 +51,20 @@ const workflow = require('./workflow');
  * 하나씩 던지면 부르는 쪽이 고치고 다시 부르고를 되풀이한다 — 태스크 열둘을
  * 옮길 때 게이트 하나를 면제하자 다음 게이트가 다시 막았던 그 왕복이다.
  */
-function assertNodeConsistency(current, changes) {
+function assertNodeConsistency(current, changes, flow) {
   const next = Object.assign({}, current || {}, changes || {});
-  const blocked = workflow.judgeItem(next, null).filter((blocker) => blocker.origin === 'item-type');
+  // 흐름을 넘기지 않으면 내장으로 떨어진다. 넘기지 않는 호출자를 던져서 막으면
+  // 설정이 없는 저장소에서 저장이 통째로 멈춘다 — check-rules.js가 유형 정의에
+  // 대해 같은 규율을 쓴다.
+  const engine = flow || workflow;
+  // 자리를 옮기는가 아닌가로 묻는 것이 다르다. 옮기지 않으면 전환은 물을 것이
+  // 없고, 옮기면 "그 전환이 이 흐름에 있는가"가 먼저다. current가 없는 것은
+  // 새로 만드는 것이므로 전환이 아니다.
+  const moving = Boolean(current) && current.status !== undefined && changes && changes.status !== undefined
+    && String(current.status) !== String(changes.status);
+  const blocked = moving
+    ? engine.judgeTransition(current.status, next.status, next, null)
+    : engine.judgeItem(next, null).filter((blocker) => blocker.origin === 'item-type');
   if (blocked.length) throw inputError(workflow.blockerReport(blocked));
 }
 
