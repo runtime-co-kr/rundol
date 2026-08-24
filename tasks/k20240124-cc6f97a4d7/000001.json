@@ -4676,6 +4676,44 @@
       "statusChangedAt": "2026-08-24T19:34:29.435Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-89SG0FSR": {
+      "title": "[갈래J] 전환 하나가 절차 하나가 된다",
+      "summary": "ADR-023 결정 본문에 해당하는 코드를 세운다. 전환의 슬롯을 실행 단위로 읽어 절차의 스텝으로 컴파일하고, 런을 여는 경계는 정본의 RUN_OPENING_SLOTS에서 끌어온다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "전환 하나가 절차 하나가 된다 — 슬롯이 정본의 순서대로 스텝이 되고 절차 이름이 출처(워크플로·from·to)에서 파생된다.",
+          "done": false
+        },
+        "AC-002": {
+          "text": "경계가 정본에서 나온다 — 입력·수행·승인이 걸린 전환만 런을 열고, 검증만 걸린 전환은 절차를 갖지 않는다.",
+          "done": false
+        },
+        "AC-003": {
+          "text": "대상 종류를 워크플로에서 받는다 — 태스크 흐름의 전환이 태스크를 움직이는 절차가 된다.",
+          "done": false
+        },
+        "AC-004": {
+          "text": "사람 게이트는 상속으로 제거되지 않는다 — 하위 층이 같은 전환을 승인 칸 없이 다시 적으면 거부된다.",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-24T19:55:47.926Z",
+      "updatedAt": "2026-08-24T19:55:47.926Z",
+      "statusChangedAt": "2026-08-24T19:55:47.926Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
