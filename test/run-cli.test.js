@@ -19,14 +19,18 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { loadProcedures, validateOverride, validateDriveSafety, stepClass, opensRun, BUILTIN } = require('../src/procedure');
+const {
+  loadProcedures, validateOverride, validateDriveSafety, stepClass, opensRun, BUILTIN,
+  TRANSITION_PROCEDURE_PREFIX, transitionProcedureName, transitionOpensRun, procedureFromTransition, resolveTransitionProcedures
+} = require('../src/procedure');
+const workflow = require('../src/workflow');
 const vocabulary = require('../src/vocabulary');
 const { runtimeWorkspace } = require('../src/runtime');
 const requestJournal = require('../src/request-journal');
 const { canonicalJson } = require('../src/event-store');
 const runLedger = require('../src/run-ledger');
 const driverLease = require('../src/driver-lease');
-const { recordVerificationResult } = require('../src/run');
+const { recordVerificationResult, startTransitionRun } = require('../src/run');
 const { verifyCommandDigest, validatorInstanceId, invocationId, invocationDescriptor } = require('../src/verify');
 const { pinInstruction } = require('../src/instruction-registry');
 
@@ -205,6 +209,181 @@ assert.throws(() => validateOverride(
   { targetKind: 'task', steps: [{ id: 'author', executor: 'client' }] },
   'fixture'
 ), /대상 종류를 바꿀 수 없습니다/u);
+
+// ── 전환에서 절차로 ────────────────────────────────────────────────────
+//
+// ADR-023의 결정 본문 "전환 하나가 절차 하나"가 값으로 서는지 본다.
+//
+// 경계 목록을 이 시험이 따로 적지 않는다. 적으면 그것이 세 번째 선언이 되고, 정본이
+// 바뀐 날 시험만 옛 답으로 통과한다 — 여기서는 정본이 계산한 답과 같은지만 묻는다.
+{
+  // 스텝 모양 표에서 몸통만 떼어 실행 단위 정의로 쓴다. 정본에 종류가 늘면 위 표에
+  // 빈칸이 생겨 이미 멈추므로, 여기서 다시 세지 않는다.
+  const unitBodies = {};
+  for (const [kind, step] of Object.entries(SHAPED_STEPS)) {
+    const body = Object.assign({}, step);
+    delete body.id;
+    unitBodies[kind] = body;
+  }
+
+  // 칸을 갖지 않는 슬롯은 실행 단위와 맞물리지 않는 슬롯뿐이다. 그것이 컴파일되는 것은
+  // 실행 단위가 아니라 전환 목록에서의 제외이고, 칸이 생기면 그 칸은 아무것으로도
+  // 컴파일되지 않는 죽은 칸이 된다.
+  const fieldlessSlots = vocabulary.TRANSITION_SLOTS.filter((slot) => !vocabulary.TRANSITION_SLOT_UNIT_KINDS[slot].length);
+  assert.deepStrictEqual(fieldlessSlots, ['restriction'], '칸 없는 슬롯이 제한 하나가 아닙니다.');
+  for (const slot of fieldlessSlots) {
+    assert.throws(() => transitionOpensRun({ from: 'todo', to: 'doing', [slot]: ['unit'] }), /칸을 갖지 않습니다/u);
+  }
+
+  function slotFixture(slot) {
+    if (slot === 'approval') return { transition: { from: 'todo', to: 'doing', approval: { human: true, reason: null } }, units: {} };
+    const units = {};
+    for (const kind of vocabulary.TRANSITION_SLOT_UNIT_KINDS[slot]) units[`unit-${kind}`] = unitBodies[kind];
+    return { transition: { from: 'todo', to: 'doing', [slot]: Object.keys(units) }, units };
+  }
+
+  // 슬롯 하나만 걸린 전환을 만들어 두 번 묻는다. 슬롯으로 물은 답과 만들어진 절차의
+  // 스텝으로 물은 답이 같아야 한다 — 갈리면 검증만 걸린 전환이 런을 열거나, 런을 여는
+  // 전환이 절차 없이 지나간다.
+  for (const slot of vocabulary.TRANSITION_SLOTS) {
+    if (fieldlessSlots.includes(slot)) continue;
+    const { transition, units } = slotFixture(slot);
+    const opens = vocabulary.RUN_OPENING_SLOTS.includes(slot);
+    assert.strictEqual(transitionOpensRun(transition), opens, `${slot} 슬롯이 런을 여는지가 정본과 다릅니다.`);
+    const definition = procedureFromTransition(transition, { workflow: 'task-default', targetKind: 'task', units });
+    assert.strictEqual(definition !== null, opens, `${slot} 슬롯의 절차 유무가 경계와 다릅니다.`);
+    if (definition) assert(definition.steps.some(opensRun), `${slot}에서 만든 절차가 런을 열지 않습니다.`);
+  }
+
+  // 슬롯이 무는 실행 단위 종류는 정본의 표가 정한다. 표 밖의 단위를 슬롯에 넣으면
+  // 거부한다 — 통과시키면 승인 자리에 기계 게이트가 서는 일이 설정 한 줄로 생긴다.
+  for (const slot of vocabulary.TRANSITION_SLOTS) {
+    const allowed = vocabulary.TRANSITION_SLOT_UNIT_KINDS[slot];
+    if (!allowed.length || slot === 'approval') continue;
+    for (const kind of vocabulary.EXECUTION_UNIT_KINDS) {
+      if (allowed.includes(kind)) continue;
+      assert.throws(
+        () => procedureFromTransition(
+          { from: 'todo', to: 'doing', [slot]: ['unit'], approval: { human: true, reason: null } },
+          { workflow: 'task-default', targetKind: 'task', units: { unit: unitBodies[kind] } }
+        ),
+        /슬롯에는/u,
+        `${slot} 슬롯이 ${kind} 실행 단위를 받았습니다.`
+      );
+    }
+  }
+
+  const taskUnits = {
+    'has-owner': { gate: { command: 'check', args: ['{task}', '--strict'] } },
+    claim: { executor: 'cli', command: 'task', args: ['claim', '{task}'] },
+    note: { executor: 'client' }
+  };
+
+  {
+    const definition = procedureFromTransition(
+      { from: 'todo', to: 'doing', validation: ['has-owner'], execution: ['claim'] },
+      { workflow: 'task-default', targetKind: 'task', units: taskUnits }
+    );
+    // 스텝 순서는 정본의 슬롯 순서다 — 판정이 실행보다 앞선다.
+    assert.deepStrictEqual(definition.steps.map((step) => step.id), ['has-owner', 'claim']);
+    assert.deepStrictEqual(definition.steps.map(stepClass), ['gate', 'cli']);
+    // 대상 종류는 워크플로가 준다. 이 자리가 문서만 다루면 태스크 흐름의 전환은 절차를
+    // 갖지 못하고, 갖지 못한 전환은 런도 원장도 없이 지나간다.
+    assert.strictEqual(definition.targetKind, 'task');
+    assert(vocabulary.TARGET_KINDS.includes(definition.targetKind));
+    // 출처는 값으로 갖는다. 이름이 그 셋에서 파생되지만 반대로 읽지 않는다.
+    assert.deepStrictEqual(definition.transition, { workflow: 'task-default', from: 'todo', to: 'doing' });
+    assert.strictEqual(definition.name, transitionProcedureName(definition.transition));
+    assert(definition.name.startsWith(`${TRANSITION_PROCEDURE_PREFIX}.`));
+  }
+
+  // 조각을 점으로 가르므로 붙임표가 든 노드 이름이 섞이지 않는다. 붙임표로 이으면
+  // a-b → c와 a → b-c가 한 이름이 되고, 두 전환이 한 절차를 나눠 갖는다.
+  assert.notStrictEqual(
+    transitionProcedureName({ workflow: 'w', from: 'a-b', to: 'c' }),
+    transitionProcedureName({ workflow: 'w', from: 'a', to: 'b-c' })
+  );
+  // (ALL)은 이름에서 any로 선다. 그래서 any라는 노드는 출발 자리에 설 수 없다.
+  assert.strictEqual(transitionProcedureName({ workflow: 'w', from: workflow.TRANSITION_WILDCARD, to: 'done' }), 'transition.w.any.done');
+  assert.throws(() => transitionProcedureName({ workflow: 'w', from: 'any', to: 'done' }), /any/u);
+  // 이름 조각이 될 수 없는 노드는 조용히 뭉개지 않는다. 뭉개면 서로 다른 두 전환이
+  // 같은 이름에 도착한다.
+  assert.throws(() => transitionProcedureName({ workflow: 'w', from: '진행중', to: 'done' }), /절차 이름을 지을 수 없습니다/u);
+
+  // 빈 목록은 걸린 것도 안 걸린 것도 아니다. 지운 것과 같은 뜻으로 읽으면 런을 여는지가
+  // 아무도 안 보는 빈 배열 하나로 뒤집힌다.
+  assert.throws(() => transitionOpensRun({ from: 'todo', to: 'doing', execution: [] }), /비어 있습니다/u);
+  // 승인 칸은 지금 모양 그대로만 받는다. 걸지 않으려면 칸을 지우는 것이 그 뜻이다.
+  assert.throws(
+    () => procedureFromTransition({ from: 'todo', to: 'doing', approval: { human: false } }, { workflow: 'w', targetKind: 'task', units: taskUnits }),
+    /human: true/u
+  );
+  // 시작할 수 있는 절차는 자기가 무엇을 움직이는지 밝힌다. 워크플로가 대상 종류를 주지
+  // 않으면 그 전환에서 만든 절차는 대상 없는 절차가 된다.
+  assert.throws(
+    () => procedureFromTransition({ from: 'todo', to: 'doing', execution: ['claim'] }, { workflow: 'w', targetKind: undefined, units: taskUnits }),
+    /대상 종류가 없거나/u
+  );
+  // 이름이 곧 스텝 ID다. 정의가 자기 ID를 들면 워크플로가 부르는 이름과 원장에 남는
+  // 이름이 갈린다.
+  assert.throws(
+    () => procedureFromTransition({ from: 'todo', to: 'doing', execution: ['claim'] }, { workflow: 'w', targetKind: 'task', units: { claim: { id: 'other', executor: 'cli' } } }),
+    /이름이 곧 ID/u
+  );
+  // 가리키는 정의가 없으면 그 슬롯은 아무것으로도 컴파일되지 않는다. 조용히 건너뛰면
+  // 설정에 적힌 단위가 도는 줄 알면서 아무 일도 일어나지 않는다.
+  assert.throws(
+    () => procedureFromTransition({ from: 'todo', to: 'doing', execution: ['missing'] }, { workflow: 'w', targetKind: 'task', units: taskUnits }),
+    /실행 단위 정의가 없습니다/u
+  );
+
+  // ── 사람 게이트는 상속으로 제거되지 않는다 ────────────────────────────
+  //
+  // 워크플로는 전환 목록을 층 단위로 갈아탄다. 하위 층이 같은 전환을 승인 칸 없이 다시
+  // 적으면 그 전환에 걸렸던 사람 게이트가 사라지는데, 손으로 적은 절차에는 그것을 막는
+  // 규율이 이미 있다. 전환에서 만든 절차도 같은 규율을 탄다.
+  {
+    const layer = (source, transitions) => ({ source, workflow: 'task-default', targetKind: 'task', units: taskUnits, transitions });
+    const gated = [{ from: 'review', to: 'done', execution: ['claim'], approval: { human: true, reason: '릴리스는 되돌릴 수 없다' } }];
+    assert.throws(
+      () => resolveTransitionProcedures([layer('작업공간', gated), layer('프로젝트', [{ from: 'review', to: 'done', execution: ['claim'] }])]),
+      /제거할 수 없습니다/u,
+      '하위 층이 사람 게이트를 지웠는데 통과했습니다.'
+    );
+    // 조이는 방향은 통과해야 한다. 전부 막으면 상속이 아니라 동결이고, 얼어붙은 규율은
+    // 사람들이 꺼 버린다.
+    assert.doesNotThrow(() => resolveTransitionProcedures([
+      layer('작업공간', gated),
+      layer('프로젝트', [{ from: 'review', to: 'done', input: ['note'], execution: ['claim'], approval: { human: true, reason: '릴리스는 되돌릴 수 없다' } }])
+    ]));
+    // 승인 칸의 이유가 사람 앞까지 간다. 이유가 절차에 실리지 않으면 게이트에 선 사람은
+    // 자기가 무엇을 판단해야 하는지를 설정 파일에서 찾아야 한다.
+    const registry = resolveTransitionProcedures([layer('작업공간', gated)]);
+    assert.deepStrictEqual(registry.names, ['transition.task-default.review.done']);
+    const resolvedGate = registry.resolve('transition.task-default.review.done');
+    assert.strictEqual(resolvedGate.source, '작업공간');
+    assert.deepStrictEqual(
+      resolvedGate.resolved.steps.map((step) => [step.id, step.human === true, step.reason === undefined ? null : step.reason]),
+      [['claim', false, null], ['approval', true, '릴리스는 되돌릴 수 없다']]
+    );
+    // 한 층에 같은 전환이 둘이면 어느 것이 절차인지 갈린다. 이긴 쪽이 승인 칸을 안 든
+    // 쪽일 수 있으므로 조용히 첫 번째를 쓰지 않는다.
+    assert.throws(() => resolveTransitionProcedures([layer('작업공간', gated.concat(gated))]), /같은 전환이 이 층에 둘/u);
+    // 검증만 걸린 전환은 절차가 없으므로 표에도 서지 않는다.
+    assert.deepStrictEqual(resolveTransitionProcedures([layer('작업공간', [{ from: 'todo', to: 'doing', validation: ['has-owner'] }])]).names, []);
+  }
+
+  // 반쪽만 채워진 전환 출처는 없는 것보다 나쁘다. 없으면 물을 수 없다는 것을 알지만,
+  // 반쪽만 있으면 원장이 답할 수 있는 것처럼 보이고 그 답은 틀리다.
+  for (const origin of [{ workflow: 'w', from: 'a' }, { workflow: 'w', from: 'a', to: '' }, { workflow: 'w', from: 'a', to: 'b', extra: 1 }]) {
+    assert.throws(
+      () => runLedger.validateProcedure({ name: 'p', revision: 1, transition: origin, steps: [{ id: 'do', executor: 'client' }] }),
+      /전환 출처/u,
+      `반쪽 출처가 통과했습니다: ${JSON.stringify(origin)}`
+    );
+  }
+}
+
 
 try {
   const bare = path.join(temporary, 'origin.git');
@@ -445,6 +624,35 @@ try {
       { kind: 'task', id: moved.taskId },
       '태스크 런이 자기 대상을 답하지 않습니다'
     );
+
+    // 전환 하나가 절차 하나가 되어 런을 연다. 절차 목록에 없는 이름으로 런이 열린다는
+    // 것이 곧 전환이 절차를 만들었다는 뜻이다 — 오늘 보드에서 상태를 바꾸면 아무 기록도
+    // 남지 않는 자리가 여기서 런 하나가 된다.
+    const transitionRun = startTransitionRun(temporary, {
+      project: 'crm', clientId: 'laptop-a', task: moved.taskId,
+      workflow: 'task-default', targetKind: 'task',
+      transition: { from: 'doing', to: 'review', input: ['decide'], approval: { human: true, reason: '검토는 다른 사람이 연다' } },
+      units: { decide: { executor: 'client' } }
+    });
+    const transitionNext = rdl(['run', 'next', '--run', transitionRun.runId, '--project', 'crm']);
+    assert.strictEqual(transitionNext.procedure.name, 'transition.task-default.doing.review');
+    assert.deepStrictEqual(transitionNext.target, { kind: 'task', id: moved.taskId }, '전환에서 연 런이 자기 대상을 답하지 않습니다');
+    const transitionStarted = rdl(['run', 'log', '--run', transitionRun.runId, '--project', 'crm']).events.find((event) => event.type === 'run.started');
+    // 원장은 어느 전환을 수행했는지에 pin된 절차로 답한다. 이벤트에 따로 적으면 같은
+    // 사실이 두 곳에 있게 되고, 두 곳은 갈린다.
+    assert.deepStrictEqual(transitionStarted.procedure.resolved.transition, { workflow: 'task-default', from: 'doing', to: 'review' });
+    assert.deepStrictEqual(
+      transitionStarted.procedure.resolved.steps.map((step) => [step.id, step.reason === undefined ? null : step.reason]),
+      [['decide', null], ['approval', '검토는 다른 사람이 연다']]
+    );
+    // 검증만 걸린 전환으로는 런을 열 수 없다. 열면 그 런은 판정 함수가 이미 답한 것을
+    // 다시 묻고, 원장에 남길 것이 없다.
+    assert.throws(() => startTransitionRun(temporary, {
+      project: 'crm', clientId: 'laptop-a', task: moved.taskId,
+      workflow: 'task-default', targetKind: 'task',
+      transition: { from: 'doing', to: 'review', validation: ['owned'] },
+      units: { owned: { gate: { command: 'check', args: ['{task}', '--strict'] } } }
+    }), /런을 열지 않습니다/u);
   }
 
   // 종류를 밝히지 않은 새 절차는 열리지 않는다. 부모가 없으면 상속받을 곳도 없다.
@@ -458,6 +666,22 @@ try {
     assert.match(rejected.stderr, /대상 종류가 없거나/u, rejected.stderr);
     delete kindless.procedures['kindless'];
     fs.writeFileSync(proceduresFile, `${JSON.stringify(kindless, null, 2)}
+`, 'utf8');
+  }
+
+  // 전환이 만드는 절차의 이름 공간은 워크플로가 갖는다. procedures.json이 그 자리에
+  // 서면 워크플로가 세운 절차를 조용히 대신하게 되고, 그 절차에 걸린 사람 게이트가
+  // 사라진 것을 아무도 모른다.
+  {
+    const squatted = JSON.parse(fs.readFileSync(proceduresFile, 'utf8'));
+    squatted.procedures[`${TRANSITION_PROCEDURE_PREFIX}.task-default.review.done`] = { revision: 1, targetKind: 'task', steps: [{ id: 'do', executor: 'client' }] };
+    fs.writeFileSync(proceduresFile, `${JSON.stringify(squatted, null, 2)}
+`, 'utf8');
+    const rejected = rdlRaw(['run', 'procedures', '--project', 'crm']);
+    assert.notStrictEqual(rejected.status, 0, '전환 이름 공간을 손으로 적은 절차가 열렸습니다');
+    assert.match(rejected.stderr, /이름 공간은 워크플로 전환이 갖습니다/u, rejected.stderr);
+    delete squatted.procedures[`${TRANSITION_PROCEDURE_PREFIX}.task-default.review.done`];
+    fs.writeFileSync(proceduresFile, `${JSON.stringify(squatted, null, 2)}
 `, 'utf8');
   }
 
