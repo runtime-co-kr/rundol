@@ -49,6 +49,76 @@ export type JudgmentSurface = 'cli' | 'board' | 'check' | 'adapter';
 /** src/vocabulary.js의 TARGET_KINDS. 판정과 런이 보는 대상이 무엇인가. */
 export type TargetKind = 'task' | 'document';
 
+/** src/vocabulary.js의 EXECUTION_UNIT_KINDS. 슬롯이 무엇으로 컴파일되는가. */
+export type ExecutionUnitKind = 'gate' | 'client' | 'cli' | 'adapter' | 'human';
+
+/**
+ * src/vocabulary.js의 TRANSITION_SLOTS. 전환에 걸리는 것이 드는 다섯 자리.
+ *
+ * 전환 ↔ 실행 단위 정의 N:M이 이 값을 나른다. 슬롯이 런을 여는지는 여기 적지 않는다 —
+ * 정본이 TRANSITION_SLOT_UNIT_KINDS에서 계산하므로, 여기 적으면 그 계산과 갈릴 자리가
+ * 하나 생긴다. 타입은 값의 목록만 받아 적는다.
+ */
+export type TransitionSlot = 'restriction' | 'validation' | 'input' | 'execution' | 'approval';
+
+/** src/vocabulary.js의 BASIS_KINDS. 승인을 만족시킨 근거가 무엇이었나. */
+export type BasisKind = 'read' | 'verdict' | 'check' | 'delegated';
+
+/** src/vocabulary.js의 VERDICTS. 기권을 실패와 가른다 — "보지 못했다"와 "보고 아니라 했다"는 다르다. */
+export type Verdict = 'pass' | 'refuted' | 'abstain';
+
+/**
+ * 승인이 만족되었다는 근거 한 줄.
+ *
+ * 어휘를 새로 짓지 않는다. 근거의 종류는 BASIS_KINDS이고 판정은 VERDICTS이며 둘 다
+ * src/approval-mode.js가 이미 쓰고 있다. 전환이 자기 어휘를 따로 세우면 같은 물음에
+ * 두 벌의 답이 생기고, 두 벌은 갈린다.
+ *
+ * 이것은 승인 슬롯이 무엇으로 채워지는가의 모양이지 런 스텝 기록의 모양이 아니다.
+ * 기록은 런 1:N의 행이고 그 행의 필드는 원장을 세우는 갈래가 갖는다.
+ */
+export interface ApprovalBasis {
+  kind: BasisKind;
+  verdict: Verdict;
+  /** 동의한 행위자. 승인은 다른 행위자를 기다리는 일이므로 누구인지가 근거의 일부다. */
+  actor: string;
+  /** 위임된 근거일 때 누구에게서 왔나. delegated가 아니면 null이다. */
+  delegatedFrom: string | null;
+}
+
+/**
+ * 전환 항목에서 슬롯이 담기는 칸.
+ *
+ * 칸의 이름은 슬롯 값과 같은 글자를 쓴다. 다른 글자를 쓰면 설정에 적힌 칸과 N:M이 나르는
+ * 슬롯 값 사이에 사람이 외워야 하는 대응표가 하나 생기고, 외우는 대응표는 한쪽만 늘어난다.
+ *
+ * restriction에는 칸이 없다. 그 슬롯이 컴파일되는 것은 실행 단위가 아니라 "전환 목록에서
+ * 제외"이고, 목록에 있는가 없는가가 곧 그 슬롯의 데이터이기 때문이다. 그래서 다섯 중 넷만
+ * 여기 선다.
+ *
+ * 값은 이 워크플로가 이름 붙여 갖고 있는 실행 단위 정의를 가리키는 이름의 목록이고, 순서는
+ * 목록의 순서다. 실행 단위 정의 자체의 모양과 onFail이 전환에 붙는지 실행 단위에 붙는지는
+ * 이 커밋이 정하지 않는다 — 값 목록과 칸 이름만 못박고 멈춘다.
+ */
+export interface TransitionSlots {
+  validation?: ReadonlyArray<string>;
+  input?: ReadonlyArray<string>;
+  execution?: ReadonlyArray<string>;
+  /**
+   * 승인 칸은 이미 있고, 모양이 ADR-023보다 앞선다 — 지금은 `{ human: true, reason }`이라
+   * 실행 단위를 가리키지 않고 사람 게이트가 걸렸다는 사실만 담는다. 나머지 셋과 같은
+   * 이름 목록으로 수렴시키는 것은 설정을 이미 쓰고 있는 저장소를 건드리는 일이라 이
+   * 커밋의 몫이 아니다. 여기 적어 두는 것은 그 칸이 빠진 것이 아니라 뒤처져 있다는 뜻이다.
+   */
+  approval?: TransitionApproval;
+}
+
+/** 지금 workflows.json이 받는 승인 칸의 모양. src/workflow.js의 APPROVAL_KEYS와 짝이다. */
+export interface TransitionApproval {
+  human: true;
+  reason: string | null;
+}
+
 /**
  * 런이 움직이는 대상 하나. 런 하나에 대상 하나다 — 전환 하나가 항목 하나를 옮긴다.
  *

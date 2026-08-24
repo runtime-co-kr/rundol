@@ -59,6 +59,53 @@ assert.deepStrictEqual(
   '런을 여는 종류와 안 여는 종류를 합쳐도 전체가 되지 않습니다.'
 );
 
+// 슬롯마다 컴파일되는 실행 단위 종류가 정해져 있어야 한다. 빠진 슬롯은 전환에 걸려도
+// 아무것으로도 컴파일되지 않고, 아무것으로도 컴파일되지 않는 슬롯은 설정에 적을 수는
+// 있으나 아무 일도 하지 않는다 — 죽은 칸이 생기는 경로가 그것이다.
+assert.deepStrictEqual(
+  Object.keys(vocabulary.TRANSITION_SLOT_UNIT_KINDS).sort(),
+  vocabulary.TRANSITION_SLOTS.slice().sort(),
+  '전환 슬롯과 실행 단위 표의 집합이 다릅니다.'
+);
+
+// 실행 단위 종류 다섯은 슬롯 표에 정확히 한 번씩 나와야 한다. 두 번 나오면 그 종류를
+// 어느 슬롯이 무는지가 갈리고, 한 번도 안 나오면 그 종류는 어느 슬롯에도 걸리지 못해
+// 죽는다 — 성질이 못 쓰는 검증 방법을 잡는 단언과 같은 물음이다.
+const slottedUnitKinds = [];
+for (const [slot, kinds] of Object.entries(vocabulary.TRANSITION_SLOT_UNIT_KINDS)) {
+  for (const kind of kinds) {
+    assert(vocabulary.EXECUTION_UNIT_KINDS.includes(kind), `${slot}의 실행 단위 종류 ${kind}가 정본에 없습니다.`);
+    slottedUnitKinds.push(kind);
+  }
+}
+assert.deepStrictEqual(
+  slottedUnitKinds.slice().sort(),
+  vocabulary.EXECUTION_UNIT_KINDS.slice().sort(),
+  '실행 단위 종류가 슬롯 표에 한 번씩 나오지 않습니다. 두 번 나오면 무는 슬롯이 갈리고, 안 나오면 그 종류는 죽습니다.'
+);
+
+// 슬롯도 런을 여는 것과 안 여는 것이 서로의 여집합이다.
+assert.deepStrictEqual(
+  vocabulary.RUN_OPENING_SLOTS.concat(vocabulary.JUDGMENT_ONLY_SLOTS).sort(),
+  vocabulary.TRANSITION_SLOTS.slice().sort(),
+  '런을 여는 슬롯과 안 여는 슬롯을 합쳐도 전체가 되지 않습니다.'
+);
+
+// ADR-023이 그은 경계를 값으로 못박는다. 위 단언들은 표가 서로 맞물리는지만 보므로,
+// 표를 통째로 바꾸면 전부 통과한 채 경계가 옮겨간다. 제한과 검증은 런을 열지 않고
+// 나머지 셋은 연다는 것이 그 결정이고, 결정이 바뀌면 이 줄이 먼저 걸려야 한다 —
+// 걸리지 않으면 갈래 셋이 서로 다른 경계 위에서 각자 배선한다.
+assert.deepStrictEqual(
+  Array.from(vocabulary.JUDGMENT_ONLY_SLOTS),
+  ['restriction', 'validation'],
+  '런을 열지 않는 슬롯이 ADR-023의 결정과 다릅니다.'
+);
+assert.deepStrictEqual(
+  Array.from(vocabulary.RUN_OPENING_SLOTS),
+  ['input', 'execution', 'approval'],
+  '런을 여는 슬롯이 ADR-023의 결정과 다릅니다.'
+);
+
 // 소스마다 성질이 하나씩 있어야 한다. 빠진 소스는 쓸 수 있는 방법이 없어 설정에서
 // 늘 거부되고, 늘 거부되는 소스는 목록에 있으나 없으나 같다.
 assert.deepStrictEqual(
@@ -124,7 +171,9 @@ const subsets = [
   ['OPEN_WORKFLOW_STEPS', 'WORKFLOW_STEPS'],
   ['ACTIVE_WORKFLOW_STEPS', 'OPEN_WORKFLOW_STEPS'],
   ['JUDGMENT_ONLY_UNIT_KINDS', 'EXECUTION_UNIT_KINDS'],
-  ['RUN_OPENING_UNIT_KINDS', 'EXECUTION_UNIT_KINDS']
+  ['RUN_OPENING_UNIT_KINDS', 'EXECUTION_UNIT_KINDS'],
+  ['JUDGMENT_ONLY_SLOTS', 'TRANSITION_SLOTS'],
+  ['RUN_OPENING_SLOTS', 'TRANSITION_SLOTS']
 ];
 for (const [child, parent] of subsets) {
   for (const value of vocabulary[child]) {
@@ -336,6 +385,11 @@ const declaredUnions = [
   ['workflow.d.ts', 'ValidationMethod', 'VALIDATION_METHODS'],
   ['workflow.d.ts', 'RuleOrigin', 'RULE_ORIGINS'],
   ['workflow.d.ts', 'JudgmentSurface', 'JUDGMENT_SURFACES'],
+  ['workflow.d.ts', 'TargetKind', 'TARGET_KINDS'],
+  ['workflow.d.ts', 'ExecutionUnitKind', 'EXECUTION_UNIT_KINDS'],
+  ['workflow.d.ts', 'TransitionSlot', 'TRANSITION_SLOTS'],
+  ['workflow.d.ts', 'BasisKind', 'BASIS_KINDS'],
+  ['workflow.d.ts', 'Verdict', 'VERDICTS'],
   // 서브는 workflow.d.ts에 얹지 않았다. 진행 축을 갖지 않으므로 판정 계약과 한
   // 파일에 두면 읽는 사람이 서브의 전환을 찾게 되고, 없는 것을 찾는 일은 대개
   // 만들어 넣는 것으로 끝난다. 파일이 둘이 되었으므로 읽는 자리도 파일을 받는다.
@@ -348,6 +402,36 @@ for (const [file, declared, canonical] of declaredUnions) {
     `types/${file}의 ${declared}이 ${canonical}과 다릅니다.`
   );
 }
+
+// 전환 항목의 칸 이름은 슬롯 값과 같은 글자여야 한다. 갈리면 설정에 적는 칸과 N:M이
+// 나르는 슬롯 값 사이에 사람이 외워야 하는 대응표가 하나 생기고, 외우는 대응표는
+// 한쪽만 늘어난다 — 그리고 늘어난 쪽은 아무 신호도 내지 않는다.
+//
+// 위의 유니온 표는 `export type`만 보므로 인터페이스의 속성 이름은 그 그물에 걸리지
+// 않는다. 그래서 여기서 한 번 더 본다. 주석을 먼저 걷어내는 것은 설명 안의 중괄호가
+// 본문의 끝으로 읽히기 때문이고, 값을 꺼내 비교한다는 원칙은 그대로다 — 글자가 있는지가
+// 아니라 꺼낸 이름이 정본에 있는지를 묻는다.
+// 위 표가 이미 읽어 둔 원본을 그대로 쓴다. 다시 읽으면 두 번 읽은 것이 같은 파일인지를
+// 아무도 지키지 않는다.
+const workflowTypes = declarationSources.get('workflow.d.ts');
+const slotsBody = /export interface TransitionSlots\s*\{([^}]*)\}/u.exec(workflowTypes.replace(/\/\*[\s\S]*?\*\//gu, ''));
+assert(slotsBody, 'types/workflow.d.ts에 TransitionSlots 선언이 없습니다.');
+
+const slotCans = (slotsBody[1].match(/^\s*([A-Za-z][A-Za-z0-9]*)\??:/gmu) || [])
+  .map((line) => line.trim().replace(/\??:$/u, ''));
+assert(slotCans.length > 0, 'TransitionSlots에서 칸을 하나도 읽지 못했습니다. 선언 모양이 바뀌었다면 이 확인도 함께 고치세요.');
+for (const can of slotCans) {
+  assert(vocabulary.TRANSITION_SLOTS.includes(can), `전환 항목의 칸 ${can}이 슬롯 정본에 없습니다.`);
+}
+
+// restriction만 칸을 갖지 않는다. 그 슬롯이 컴파일되는 것은 실행 단위가 아니라 "전환
+// 목록에서 제외"이고, 목록에 있는가 없는가가 곧 그 슬롯의 데이터이기 때문이다. 이 줄이
+// 없으면 칸이 넷인 것이 결정인지 빠뜨린 것인지 다음 사람이 구분하지 못한다.
+assert.deepStrictEqual(
+  vocabulary.TRANSITION_SLOTS.filter((slot) => !slotCans.includes(slot)),
+  ['restriction'],
+  '칸을 갖지 않는 슬롯이 restriction 하나가 아닙니다.'
+);
 
 // ── 게시되는 패키지가 정본과 같은가 ────────────────────────────────────
 //

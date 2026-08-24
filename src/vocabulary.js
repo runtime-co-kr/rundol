@@ -311,6 +311,72 @@ const JUDGMENT_ONLY_UNIT_KINDS = Object.freeze(['gate']);
 const RUN_OPENING_UNIT_KINDS = Object.freeze(EXECUTION_UNIT_KINDS.filter((kind) => !JUDGMENT_ONLY_UNIT_KINDS.includes(kind)));
 
 /**
+ * 전환의 슬롯. ADR-023이 가른 다섯이며, 전환에 걸리는 것은 전부 이 중 하나에 든다.
+ *
+ *   restriction  이 전환을 목록에 올릴 것인가 — 실행 이전의 판정
+ *   validation   항목이 조건을 만족하는가
+ *   input        사람이나 에이전트가 새로 댈 값이 있다
+ *   execution    항목 밖을 바꾼다
+ *   approval     다른 행위자의 동의를 기다린다
+ *
+ * 슬롯은 전환 ↔ 실행 단위 정의 N:M이 나르는 값이다. 그 관계가 슬롯 · 순서 · onFail을
+ * 부가 속성으로 갖고 그중 슬롯만 닫힌 목록이라 여기 온다. 슬롯 이름이 필드 이름처럼
+ * 보이는 것은 아래 표의 키로도 쓰이기 때문이지 그것이 이 값의 정체는 아니다.
+ *
+ * 목록의 순서는 판정이 실행보다 앞선다는 사실만 담는다. 실제 스텝 순서는 위 N:M의 순서
+ * 속성이 갖는다 — 한 슬롯에 실행 단위가 여럿 들 수 있으므로 이 목록만으로는 정해지지 않는다.
+ *
+ * 다섯으로 닫는 이유는 EXECUTION_UNIT_KINDS 다섯과 이 다섯이 아래 표에서 빠짐없이
+ * 맞물리기 때문이다. 여섯째 슬롯은 새 실행 단위 종류를 데리고 오거나, 아무 실행 단위와도
+ * 맞물리지 않는 죽은 칸이 된다 — DOCUMENT_STATE_KEYS 여덟 중 다섯이 그 결과다.
+ *
+ * 승인은 마스터가 아니라 이 목록의 한 값이다. 승인을 만족시키는 근거의 어휘는 새로 짓지
+ * 않는다 — 근거의 종류는 BASIS_KINDS이고 판정은 VERDICTS이며 둘 다 approval-mode.js가
+ * 이미 쓰고 있다. 전환이 그것을 다시 정의하면 두 벌이 되고, 두 벌은 갈린다.
+ */
+const TRANSITION_SLOTS = Object.freeze(['restriction', 'validation', 'input', 'execution', 'approval']);
+
+/**
+ * 슬롯이 컴파일되는 실행 단위의 종류.
+ *
+ * restriction만 비어 있다. 컴파일되는 것이 실행 단위가 아니라 "전환 목록에서 제외"이기
+ * 때문이고, 그래서 restriction은 전환 항목에 칸도 갖지 않는다 — 목록에 있는가 없는가가
+ * 곧 그 슬롯의 데이터다.
+ *
+ * 실행 단위 종류 다섯이 여기 정확히 한 번씩 나온다. 두 번 나오면 어느 슬롯이 그 종류를
+ * 무는지가 갈리고, 한 번도 안 나오면 그 종류는 어느 슬롯에도 걸리지 못해 죽는다 —
+ * vocabulary.test.js가 둘 다 본다.
+ */
+const TRANSITION_SLOT_UNIT_KINDS = Object.freeze({
+  restriction: Object.freeze([]),
+  validation: Object.freeze(['gate']),
+  input: Object.freeze(['client']),
+  execution: Object.freeze(['cli', 'adapter']),
+  approval: Object.freeze(['human'])
+});
+
+/**
+ * 런을 여는 슬롯. 목록으로 적지 않고 위 표에서 계산한다.
+ *
+ * 경계는 "규칙이 있는가"가 아니라 "판정 함수가 혼자 답할 수 없는 것이 있는가"다. 그
+ * 물음의 답은 이미 실행 단위 종류가 갖고 있으므로 — gate는 항목만 보고 답하고 나머지
+ * 넷은 못 답한다 — 여기 다시 적으면 같은 사실이 두 벌이 된다. 계산하면 경계 자체가
+ * 코드가 되어, 슬롯이 무는 종류를 바꾸는 순간 이 목록도 따라 바뀐다.
+ *
+ * "규칙이 없으면 즉시"로 그으면 validation만 걸린 전환이 런을 열고, 그 런은 판정 함수가
+ * 이미 답한 것을 다시 묻는다.
+ */
+const RUN_OPENING_SLOTS = Object.freeze(
+  TRANSITION_SLOTS.filter((slot) => TRANSITION_SLOT_UNIT_KINDS[slot].some((kind) => RUN_OPENING_UNIT_KINDS.includes(kind)))
+);
+
+/**
+ * 런을 열지 않는 슬롯. 여집합으로 계산한다 — restriction과 validation 둘이며, 앞은 실행
+ * 자체가 없고 뒤는 판정 함수가 항목만 보고 답한다.
+ */
+const JUDGMENT_ONLY_SLOTS = Object.freeze(TRANSITION_SLOTS.filter((slot) => !RUN_OPENING_SLOTS.includes(slot)));
+
+/**
  * 대상의 종류. 워크플로가 무엇에 붙는가와 런이 무엇을 움직이는가가 같은 값이다 —
  * 항목 유형은 태스크로 붙고 문서 유형은 문서로 붙으며, 그 워크플로를 타는 런의
  * 대상도 같은 종류다.
@@ -613,6 +679,10 @@ module.exports = Object.freeze({
   EXECUTION_UNIT_KINDS,
   JUDGMENT_ONLY_UNIT_KINDS,
   RUN_OPENING_UNIT_KINDS,
+  TRANSITION_SLOTS,
+  TRANSITION_SLOT_UNIT_KINDS,
+  RUN_OPENING_SLOTS,
+  JUDGMENT_ONLY_SLOTS,
   TARGET_KINDS,
   RUN_STATES,
   CHECKPOINT_TYPES,
