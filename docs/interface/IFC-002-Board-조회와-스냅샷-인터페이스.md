@@ -89,6 +89,7 @@ sync는 `{project,head,remoteRef,ahead,behind,dirty,changedFiles,conflicts,state
 | `people` | object | charter의 role/member/stakeholder |
 | `clients`, `leases` | array | schemaVersion 6 협업 상태 |
 | `sync`, `contract`, `presentation` | object | 운영·계약·표시 상태 |
+| `workflow` | object | 그 항목 유형에 배정된 워크플로 카탈로그. 내용은 REQ-069#FN-001이 정한다 |
 | `runs`, `proposals` | array | 현재 구현에서는 빈 배열 |
 
 ## 오류 계약
