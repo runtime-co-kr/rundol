@@ -4558,6 +4558,44 @@
       "statusChangedAt": "2026-08-24T03:10:02.461Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-2BJHF6N7": {
+      "title": "[갈래F] rdl check를 흐름에 잇고 런돌이 자기 워크플로를 채택한다",
+      "summary": "검사가 유형별 흐름으로 판정하게 배선하고, 런돌 프로젝트가 workflows.json을 채택한다. 채택으로 기존 태스크가 갈 곳을 잃지 않는 것이 조건이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl check가 유형별 흐름으로 판정하고 설정이 없으면 내장으로 떨어진다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "런돌 프로젝트의 workflows.json이 지금 저장된 모든 상태에 노드를 준다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "채택 후 rdl check 오류가 0을 유지한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "npm test가 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-24T18:23:50.451Z",
+      "updatedAt": "2026-08-24T18:23:50.451Z",
+      "statusChangedAt": "2026-08-24T18:23:50.451Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
