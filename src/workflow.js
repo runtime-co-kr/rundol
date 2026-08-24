@@ -30,13 +30,20 @@
 // 발화 레코드를 만들지 않는다. 만들면 판정이 시각과 클라이언트를 알아야 하고,
 // 그 순간 위 두 줄이 깨진다. 부른 표면이 판정의 답을 받아 적는다.
 //
-// require는 vocabulary 하나뿐이다. check-rules.js가 check.js와 갈라선 것과 같은
+// require는 정본과 판정기뿐이다. check-rules.js가 check.js와 갈라선 것과 같은
 // 규율이고, worker-contract-purity.test.js가 전이 의존까지 따라가며 지킨다.
+// validation-catalog.js도 vocabulary 하나만 물고 있으므로 전이 폐포가 늘지 않는다 —
+// 검증 슬롯의 판정기를 여기서 다시 짓지 않는 것이 그 파일을 무는 유일한 이유다.
 
 const {
   WORKFLOW_STEPS, TERMINAL_WORKFLOW_STEPS, OPEN_WORKFLOW_STEPS, ACTIVE_WORKFLOW_STEPS,
-  COMPLETION_VALIDITIES, RULE_ORIGINS, TASK_STATES, EXEMPTABLE_GATES, TARGET_KINDS
+  COMPLETION_VALIDITIES, RULE_ORIGINS, TASK_STATES, EXEMPTABLE_GATES, TARGET_KINDS,
+  TRANSITION_SLOTS, TRANSITION_SLOT_UNIT_KINDS, RUN_OPENING_SLOTS,
+  EXECUTION_UNIT_KINDS, BASIS_KINDS, VERDICTS
 } = require('./vocabulary');
+const {
+  VALIDATION_DIAGNOSTICS, normalizeValidations, evaluateValidations
+} = require('./validation-catalog');
 
 // ── 내장 태스크 워크플로 ────────────────────────────────────────────────
 //
@@ -111,13 +118,53 @@ for (const state of TASK_STATES) {
 // 깔끔하지만, 그러면 노드에 이름만 붙이려던 프로젝트가 자기 태스크를 하나도 못 옮기게
 // 된다. 닫는 것은 선언으로 하고, 선언하지 않은 것은 지금 동작을 유지한다.
 const TRANSITION_WILDCARD = '(ALL)';
-const WORKFLOW_ENTRY_KEYS = Object.freeze(['targetKind', 'nodes', 'transitions', 'label', 'description', 'disabled']);
+const WORKFLOW_ENTRY_KEYS = Object.freeze(['targetKind', 'nodes', 'executionUnits', 'transitions', 'label', 'description', 'disabled']);
 const NODE_ENTRY_KEYS = Object.freeze(['step', 'validity', 'requiresOwner', 'label', 'description', 'order', 'disabled']);
-const TRANSITION_KEYS = Object.freeze(['from', 'to', 'title', 'description', 'approval']);
+
+// ── 전환의 슬롯 ─────────────────────────────────────────────────────────
+//
+// 칸 목록을 손으로 적지 않고 어휘의 표에서 계산한다. 손으로 적으면 어휘가 슬롯을
+// 늘렸는데 설정이 그 칸을 못 받는 날이 오고, 그 사실은 아무 신호도 내지 않는다 —
+// 새 슬롯은 아무 전환에도 걸리지 않은 채 선언만 되어 산다.
+//
+// restriction만 칸이 없다. 그 슬롯이 컴파일되는 것은 실행 단위가 아니라 "전환 목록에서
+// 제외"이고, 목록에 있는가 없는가가 곧 그 슬롯의 데이터다. 그래서 빈 종류 목록을 가진
+// 슬롯을 걸러 내면 칸 넷이 남으며, 넷이라는 사실이 결정인지 빠뜨린 것인지는 시험이 가른다.
+const SLOT_KEYS = Object.freeze(TRANSITION_SLOTS.filter((slot) => TRANSITION_SLOT_UNIT_KINDS[slot].length > 0));
+// 이름 목록으로 실행 단위를 가리키는 슬롯. 승인만 빠진다 — 그 칸은 설정을 이미 쓰는
+// 저장소에 `{ human: true }`로 서 있고, 이름 목록으로 수렴시키는 것은 그 저장소를
+// 건드리는 일이라 계약이 "빠진 것이 아니라 뒤처져 있다"고 적어 두고 멈췄다.
+const NAMED_SLOT_KEYS = Object.freeze(SLOT_KEYS.filter((slot) => slot !== 'approval'));
+const TRANSITION_KEYS = Object.freeze(['from', 'to', 'title', 'description'].concat(SLOT_KEYS));
 const APPROVAL_KEYS = Object.freeze(['human', 'reason']);
+// 어느 슬롯이 이 종류를 무는가. 어휘의 표를 뒤집은 것이고, 뒤집어 두면 종류가 슬롯에
+// 안 맞을 때 "이 종류는 어느 칸에 적어야 하는가"를 거부 메시지가 말할 수 있다.
+const SLOT_BY_UNIT_KIND = Object.freeze(
+  EXECUTION_UNIT_KINDS.reduce((table, kind) => {
+    const slot = TRANSITION_SLOTS.find((name) => TRANSITION_SLOT_UNIT_KINDS[name].includes(kind));
+    return Object.assign(table, { [kind]: slot || null });
+  }, {})
+);
 
 function rejectAt(context, at, reason) {
   return new Error(`${(context && context.file) || 'workflows.json'}: ${at}: ${reason}`);
+}
+
+/**
+ * 이 전환을 밟으면 런이 열리는가. 슬롯마다 손으로 적지 않고 어휘가 계산해 둔 경계를 읽는다.
+ *
+ * 경계는 "규칙이 있는가"가 아니라 "판정 함수가 혼자 답할 수 없는 것이 있는가"이고, 그
+ * 물음의 답은 이미 실행 단위 종류가 갖고 있다. 여기 다시 적으면 슬롯이 무는 종류를
+ * 바꾸는 날 이 값만 옛 답을 들고 남는다.
+ *
+ * 판정은 이 값을 보지 않는다. 런을 여는 것은 밟는 일이지 막는 일이 아니므로 여는
+ * 슬롯이 걸렸다는 사실만으로 Blocker를 내면, 실행 계층이 서기 전까지 그 전환은 다시
+ * 벽이 된다. 그래서 이 값은 밟는 표면에 실어 보내고 판정은 승인만 묻는다.
+ */
+function transitionOpensRun(transition) {
+  return RUN_OPENING_SLOTS.some((slot) => (slot === 'approval'
+    ? Boolean(transition.approval && transition.approval.human)
+    : Boolean(transition[slot] && transition[slot].length)));
 }
 
 function plainObject(value) {
@@ -169,7 +216,96 @@ function normalizeNode(raw, context, at) {
   };
 }
 
-function normalizeTransition(raw, nodeIds, context, at) {
+/**
+ * 이름 붙인 실행 단위. 전환이 슬롯에서 이 이름을 가리키고, 한 단위가 전환 여럿에 걸린다.
+ *
+ * 전환마다 검사를 처음부터 다시 적게 하면 워크플로가 비대해진다 — 지라가 전환 N:M을
+ * 두지 않아 validator를 전환마다 다시 적는 자리가 그것이다. 이름을 붙여 두면 같은 검사가
+ * 한 줄이고, 그 줄을 고치면 그것을 가리키는 전환이 전부 따라간다.
+ *
+ * gate 단위의 몸통은 소스 × 방법 선언이다. 그 판정기는 validation-catalog.js에 이미 있고
+ * 순수 함수이므로 여기서 다시 짓지 않는다 — 두 벌이 되면 같은 규칙이 어디서 보느냐에 따라
+ * 다른 판정을 받는다. 성질에 안 맞는 조합(unique × acceptance-criteria)이 판정이 아니라
+ * 여기서 거부되는 것도 그 파일이 이미 하는 일이다.
+ */
+function normalizeUnits(raw, context, at) {
+  if (raw === undefined || raw === null) return {};
+  if (!plainObject(raw)) throw rejectAt(context, at, '실행 단위 목록은 객체여야 합니다.');
+  // 실행 단위가 공통으로 갖는 칸. 나머지 칸은 종류가 정한다 — gate의 몸통은 소스 × 방법
+  // 선언이고 그 키 목록은 validation-catalog.js가 든다.
+  const commonKeys = ['kind', 'label', 'description', 'disabled'];
+  const extraKeys = { human: ['reason'] };
+  const units = {};
+  const gates = {};
+  for (const [name, entry] of Object.entries(raw)) {
+    const where = `${at}.${name}`;
+    if (!plainObject(entry)) throw rejectAt(context, where, '실행 단위는 객체여야 합니다.');
+    checkDisabled(entry, context, where);
+    if (entry.disabled === true) { units[name] = { disabled: true }; continue; }
+    if (!EXECUTION_UNIT_KINDS.includes(entry.kind)) {
+      throw rejectAt(context, `${where}.kind`, `실행 단위 종류는 다음 중 하나여야 합니다: ${EXECUTION_UNIT_KINDS.join(' · ')}`);
+    }
+    // 승인은 아직 이름 목록을 받지 않는다. 받는 척하면 human 단위를 선언한 사람은
+    // 자기가 건 게이트가 도는 줄 알지만 어느 전환도 그 이름을 가리키지 못한다.
+    if (entry.kind === 'human') {
+      throw rejectAt(context, `${where}.kind`, 'human 단위는 아직 이름으로 가리킬 수 없습니다. 사람 게이트는 전환의 approval 칸에 직접 적으세요.');
+    }
+    const unit = { kind: entry.kind, label: entry.label === undefined ? null : String(entry.label) };
+    if (entry.kind !== 'gate') {
+      unknownKeys(entry, commonKeys.concat(extraKeys[entry.kind] || []), context, where);
+      units[name] = unit;
+      continue;
+    }
+    // 선언은 카탈로그가 읽는다. 공통 칸만 떼어 내고 나머지는 손대지 않은 채로 넘긴다 —
+    // 여기서 키를 골라 담으면 카탈로그가 늘린 파라미터를 이 파일이 조용히 버린다.
+    const declaration = {};
+    for (const [key, value] of Object.entries(entry)) {
+      if (!commonKeys.includes(key)) declaration[key] = value;
+    }
+    gates[name] = declaration;
+    units[name] = unit;
+  }
+  // 카탈로그를 한 번에 부른다. 이름 순서로 도는 것이 그 함수의 규율이라 하나씩 부르면
+  // 거부가 나는 자리가 실행마다 달라진다. gate 단위의 이름은 그 자리에서 규칙 이름으로
+  // 읽히므로 카탈로그의 표기를 따른다 — 이름이 규칙 식별자의 뒷자리가 되기 때문이고,
+  // 그래서 다른 종류의 단위보다 이름 규칙이 좁다.
+  const rules = normalizeValidations(gates, { file: (context && context.file) || 'workflows.json', path: at });
+  for (const [name, rule] of Object.entries(rules)) {
+    // 유일성은 프로젝트 전체를 보아야 답한다. 판정 계약이 항목 하나와 행위자만 나르므로
+    // 전환에 걸면 영원히 "보지 못했다"로 남고, 보지 못한 규칙은 아무도 안 지키는 채로 산다.
+    // 걸 자리가 없는 것이 아니라 자리가 다르다 — 유일성은 항상 참이어야 하므로 항목 유형이 든다.
+    if (rule.source === 'composite') {
+      throw rejectAt(context, `${at}.${name}.source`, 'composite 소스는 전환이 아니라 항목 유형에 겁니다. 유일성은 항목 하나만 보고 답할 수 없습니다.');
+    }
+    units[name].rule = rule;
+  }
+  return units;
+}
+
+/** 슬롯 하나가 가리키는 이름 목록. 값은 이름의 배열이고 순서는 목록의 순서다. */
+function normalizeSlot(raw, slot, units, context, at) {
+  if (raw === undefined) return null;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw rejectAt(context, `${at}.${slot}`, `${slot} 슬롯은 비어 있지 않은 이름 배열이어야 합니다. 걸지 않으려면 그 줄을 지우세요.`);
+  }
+  const allowed = TRANSITION_SLOT_UNIT_KINDS[slot];
+  const names = [];
+  raw.forEach((value, index) => {
+    const name = String(value);
+    const where = `${at}.${slot}[${index}]`;
+    if (names.includes(name)) throw rejectAt(context, where, `한 슬롯에 같은 실행 단위를 두 번 걸 수 없습니다: ${name}`);
+    const unit = units[name];
+    if (!unit) throw rejectAt(context, where, `이 워크플로에 없는 실행 단위입니다: ${name}`);
+    if (!allowed.includes(unit.kind)) {
+      const home = SLOT_BY_UNIT_KIND[unit.kind];
+      throw rejectAt(context, where, `${slot} 슬롯은 ${allowed.join(' · ')} 단위만 받습니다. ${name}은 ${unit.kind}이므로 ${home} 칸에 겁니다.`);
+    }
+    names.push(name);
+  });
+  return Object.freeze(names);
+}
+
+function normalizeTransition(raw, nodeIds, units, context, at) {
   if (!plainObject(raw)) throw rejectAt(context, at, '전환은 객체여야 합니다.');
   unknownKeys(raw, TRANSITION_KEYS, context, at);
   const from = raw.from === undefined ? TRANSITION_WILDCARD : String(raw.from);
@@ -190,7 +326,9 @@ function normalizeTransition(raw, nodeIds, context, at) {
     }
     approval = { human: true, reason: raw.approval.reason === undefined ? null : String(raw.approval.reason) };
   }
-  return { from, to, title: raw.title === undefined ? null : String(raw.title), approval };
+  const transition = { from, to, title: raw.title === undefined ? null : String(raw.title), approval };
+  for (const slot of NAMED_SLOT_KEYS) transition[slot] = normalizeSlot(raw[slot], slot, units, context, at);
+  return transition;
 }
 
 /**
@@ -219,6 +357,10 @@ function normalizeWorkflows(raw, options) {
       targetKind: entry.targetKind === undefined ? 'task' : entry.targetKind,
       label: entry.label === undefined ? null : String(entry.label),
       nodes,
+      // 실행 단위는 층마다 푼다. 노드와 같이 항목 단위로 겹치는 값이고, 몸통의 거부는
+      // 그것을 적은 파일을 물어야 한다 — 합친 뒤에 풀면 상위 층의 오타가 하위 층의
+      // 파일 이름을 달고 나온다.
+      units: normalizeUnits(entry.executionUnits, context, `${at}.executionUnits`),
       // 전환은 층을 합친 뒤에 푼다. 상위가 선언한 노드를 하위 전환이 가리킬 수
       // 있어야 하는데, 층마다 풀면 그 참조가 자기 층 안에서만 성립한다.
       rawTransitions: entry.transitions === undefined ? null : entry.transitions
@@ -243,7 +385,8 @@ function mergeWorkflows(layers) {
       if (entry.disabled === true) { merged[id] = { disabled: true }; continue; }
       const inherited = before && before.disabled !== true ? before : null;
       const nodes = Object.assign({}, inherited && inherited.nodes, entry.nodes);
-      merged[id] = Object.assign({}, inherited, entry, { nodes });
+      const units = Object.assign({}, inherited && inherited.units, entry.units);
+      merged[id] = Object.assign({}, inherited, entry, { nodes, units });
       if ((entry.rawTransitions === null || entry.rawTransitions === undefined) && inherited && inherited.rawTransitions) {
         merged[id].rawTransitions = inherited.rawTransitions;
       }
@@ -263,6 +406,16 @@ function mergeWorkflows(layers) {
       if (node.disabled === true) { removed.push(nodeId); continue; }
       nodes[nodeId] = node;
     }
+    // 없앤 실행 단위는 노드와 다르게 다룬다. 갈 곳을 잃은 전환은 함께 사라지는 것이
+    // 맞지만, 검사 하나를 잃은 전환은 여전히 갈 곳이 있으므로 사라지면 안 된다 — 그
+    // 전환은 남고 검사만 조용히 빠지며, 빠졌다는 사실은 아무 신호도 내지 않는다.
+    // 그래서 아직 가리키는 전환이 있으면 거부한다. 함께 지우는 것이 하위 층의 일이다.
+    const units = {};
+    const removedUnits = [];
+    for (const [name, unit] of Object.entries(entry.units || {})) {
+      if (unit.disabled === true) { removedUnits.push(name); continue; }
+      units[name] = unit;
+    }
     const nodeIds = Object.keys(nodes);
     let transitions = null;
     if (entry.rawTransitions !== null && entry.rawTransitions !== undefined) {
@@ -273,9 +426,17 @@ function mergeWorkflows(layers) {
           const ends = [item.from, item.to].filter((value) => value !== undefined && value !== null).map(String);
           return !ends.some((value) => removed.includes(value));
         })
-        .map((item, index) => normalizeTransition(item, nodeIds, {}, `workflows.${id}.transitions[${index}]`));
+        .map((item, index) => {
+          const at = `workflows.${id}.transitions[${index}]`;
+          for (const slot of NAMED_SLOT_KEYS) {
+            const names = Array.isArray(item && item[slot]) ? item[slot].map(String) : [];
+            const gone = names.filter((name) => removedUnits.includes(name));
+            if (gone.length) throw rejectAt({}, `${at}.${slot}`, `없앤 실행 단위를 아직 가리킵니다: ${gone.join(' · ')}. 그 전환도 함께 고치세요.`);
+          }
+          return normalizeTransition(item, nodeIds, units, {}, at);
+        });
     }
-    out[id] = { targetKind: entry.targetKind || 'task', label: entry.label || null, nodes, transitions };
+    out[id] = { targetKind: entry.targetKind || 'task', label: entry.label || null, nodes, units, transitions };
   }
   return out;
 }
@@ -680,6 +841,84 @@ function blockerReport(blockers) {
   return `막는 규칙 ${list.length}건: ${list.map((blocker) => `${blocker.code} ${blocker.message}`).join(' / ')}`;
 }
 
+// ── 승인 근거 ───────────────────────────────────────────────────────────
+//
+// 승인 슬롯은 "다른 행위자가 동의했는가"를 묻는다. 그 물음은 항목이 무엇을 갖췄는지로
+// 답할 수 없으므로 규칙 카탈로그가 아니라 전환이 들고, 답은 근거가 값으로 실려 와야 선다.
+//
+// 판정은 여전히 파일도 시각도 읽지 않는다. 승인 기록의 정본은 런 스텝 원장이고, 그것을
+// 읽어 이 모양으로 실어 주는 것은 부른 표면의 몫이다 — validation-catalog.js가 링크된
+// 항목의 값을 related로 받는 것과 같은 갈라섬이며, 판정기와 배선을 가르는 것이 이
+// 저장소가 이미 쓰는 수법이다.
+//
+// 실려 오지 않으면 막힌 채로 둔다. 없는 동의를 있는 것으로 세면 게이트가 아니라 통과
+// 도장이 되기 때문이다. 그래서 "근거가 없다"와 "근거가 있는데 모자라다"는 같은 코드로
+// 막되 다른 말을 한다 — 막힌 사람이 무엇을 해야 하는지가 그 둘 사이에서 갈린다.
+//
+// 어휘를 새로 짓지 않는다. 근거의 종류는 BASIS_KINDS이고 판정은 VERDICTS이며 둘 다
+// approval-mode.js가 이미 쓰고 있다. 전환이 자기 어휘를 세우면 같은 물음에 두 벌의 답이
+// 생기고, 두 벌은 갈린다. 정족수와 검증자 수도 여기서 정하지 않는다 — 그것은 승인 모드가
+// 이미 든 손잡이이고, 전환이 다시 들면 같은 이름이 프로젝트마다 다른 뜻을 갖는다.
+
+/** 항목에 실려 온 승인 근거. 값이 없으면 빈 목록이고, 없는 것과 모자란 것은 아래에서 갈린다. */
+function approvalBases(item) {
+  const list = item && item.approvals;
+  return (Array.isArray(list) ? list : []).filter(plainObject);
+}
+
+/**
+ * 근거 한 줄이 읽을 수 있는 모양인가. 모양이 아닌 줄은 세지 않는다 — 세면 아무 필드나
+ * 담은 빈 객체 하나가 사람 게이트를 여는 길이 된다.
+ *
+ * 위임된 근거는 누구에게서 왔는지가 근거의 일부다. delegated인데 그 자리가 비면 책임이
+ * 어디로 갔는지 아무도 답할 수 없고, 답할 수 없는 승인은 승인이 아니다.
+ */
+function usableBasis(basis) {
+  if (!BASIS_KINDS.includes(basis.kind) || !VERDICTS.includes(basis.verdict)) return false;
+  if (!filled(basis.actor)) return false;
+  return basis.kind !== 'delegated' || filled(basis.delegatedFrom);
+}
+
+/**
+ * 판정이 보는 행위자의 신원. 클라이언트 · 멤버 · 역할이 이미 해석되어 값으로 들어오므로
+ * 여기서는 그중 책임을 지는 이름을 고른다 — 승인의 책임은 멤버가 진다.
+ *
+ * 모르면 null이다. 모르는 것을 같다고 세면 행위자를 안 싣는 표면에서 게이트가 다시
+ * 벽이 되고, 다르다고 세면 자기 승인이 그 표면에서만 통과한다. 그래서 같다는 것이
+ * 드러났을 때만 막는다 — 근거에 적힌 이름은 원장이 이미 검증한 값이다.
+ */
+function actorIdentity(actor) {
+  if (typeof actor === 'string') return filled(actor) ? actor : null;
+  if (!plainObject(actor)) return null;
+  for (const field of ['memberId', 'id', 'clientId']) {
+    if (filled(actor[field])) return String(actor[field]);
+  }
+  return null;
+}
+
+/**
+ * 승인 슬롯이 채워졌는가. 채워졌으면 null이고 아니면 무엇이 모자란지다.
+ *
+ * 통과를 null로 두고 모자람을 문자열로 두는 것은 빈 문자열도 답이기 때문이다 — 근거가
+ * 한 줄도 안 실려 온 것은 덧붙일 말이 없는 모자람이고, 그때 슬롯의 사유가 그대로 선다.
+ * 부르는 쪽은 null과 견준다.
+ *
+ * 반려는 근거가 있어도 막는다. 기권과 가른 이유가 그것이다 — "보지 못했다"는 아직
+ * 답이 아니지만 "보고 아니라 했다"는 답이며, 그 답을 다른 동의로 덮으면 가른 뜻이 없다.
+ */
+function approvalShortfall(item, actor) {
+  const bases = approvalBases(item).filter(usableBasis);
+  const refuted = bases.find((basis) => basis.verdict === 'refuted');
+  if (refuted) return `${refuted.actor}이(가) 반려했습니다. 반려는 다른 동의로 덮이지 않습니다.`;
+  const asker = actorIdentity(actor);
+  const passed = bases.filter((basis) => basis.verdict === 'pass');
+  if (passed.some((basis) => asker === null || String(basis.actor) !== asker)) return null;
+  if (passed.length) return '자기 자신의 동의는 승인이 아닙니다. 다른 행위자의 동의가 필요합니다.';
+  const abstained = bases.filter((basis) => basis.verdict === 'abstain').length;
+  if (abstained) return `기권 ${abstained}건뿐입니다. 보지 못했다는 것은 동의가 아닙니다.`;
+  return '';
+}
+
 // ── 워크플로 인스턴스 ───────────────────────────────────────────────────
 //
 // 노드 표를 인자로 받아 같은 판정을 돌린다. 내장도 이 팩토리를 거치므로 설정이
@@ -690,6 +929,7 @@ function blockerReport(blockers) {
 // 무엇이 필요한가"는 제품이 정하므로, 카탈로그 하나가 모든 인스턴스에 걸린다.
 function createWorkflow(definition) {
   const nodes = (definition && definition.nodes) || {};
+  const units = (definition && definition.units) || {};
   const transitions = (definition && definition.transitions) || null;
   const targetKind = (definition && definition.targetKind) || 'task';
 
@@ -728,6 +968,48 @@ function createWorkflow(definition) {
       if (item.from === TRANSITION_WILDCARD) return source === null || source !== target;
       return item.from === source;
     }) || null;
+  }
+
+  /**
+   * 검증 슬롯의 답. 판정기는 validation-catalog.js가 갖고 여기는 그것을 부르는 자리다.
+   *
+   * 못 본 규칙을 통과로 세지 않는다. 남의 항목을 가리키는 소스는 그 값이 실려 와야
+   * 답할 수 있고, 실려 오지 않았는데 통과시키면 아무도 안 지키는 규칙이 지켜지는
+   * 규칙으로 보인다. 그래서 판정하지 못한 것도 막는 목록에 오되, 무엇이 안 실렸는지를
+   * 말한다 — 받는 사람이 고칠 곳은 항목이 아니라 부른 표면이다.
+   *
+   * 면제는 여기 걸리지 않는다. 면제할 수 있는 게이트는 어휘가 든 닫힌 목록이고 데이터로
+   * 정의된 규칙은 그 목록에 들 수 없으므로, 면제를 여기서도 보면 저장이 받지 않는 면제를
+   * 판정만 받아 주는 자리가 생긴다.
+   */
+  function validationBlockers(transition, subject, target) {
+    if (!transition || !transition.validation) return [];
+    const rules = {};
+    for (const name of transition.validation) {
+      const unit = units[name];
+      if (unit && unit.rule) rules[name] = unit.rule;
+    }
+    if (!Object.keys(rules).length) return [];
+    const answer = evaluateValidations(rules, subject, {
+      origin: 'transition',
+      // 규칙이 걸린 자리는 이 전환이다. item-type.js가 `유형.제약종류`로 쓰는 표기를
+      // 그대로 따르며, 자리가 이름공간이라 같은 단위를 두 전환에 걸어도 발화 이력이
+      // 두 규칙으로 세지 않고 어느 전환에서 걸렸는지를 답한다.
+      owner: `${transition.from}→${transition.to}`,
+      target,
+      // 남의 항목의 값은 부른 표면이 이미 읽어서 실어 준다. 판정이 파일을 읽지 않으므로
+      // 그 값은 항목을 타고 들어올 수밖에 없다 — 맵이 아니면 안 실린 것으로 본다.
+      related: plainObject(subject.related) ? subject.related : {}
+    });
+    return answer.blocked.concat(answer.unresolved.map((entry) => ({
+      ruleId: entry.ruleId,
+      code: VALIDATION_DIAGNOSTICS[entry.method],
+      origin: 'transition',
+      source: entry.source,
+      method: entry.method,
+      target,
+      message: `${entry.reason} 판정하지 못한 규칙은 통과로 세지 않습니다.`
+    })));
   }
 
   function transitionAllowed(from, to) {
@@ -775,23 +1057,35 @@ function createWorkflow(definition) {
         message: rule.message(subject)
       });
     }
+    // 움직이지 않으면 전환을 묻지 않는다. transitionAllowed가 이미 그렇게 하고 있고,
+    // 여기서만 묻으면 (ALL) 전환에 걸린 슬롯이 그 노드에 앉아 있는 항목에도 걸린다 —
+    // 같은 규칙이 출발을 적은 전환에서는 안 걸리므로, 답이 규칙의 성질이 아니라 그
+    // 전환이 (ALL)로 적혔는가에 달리게 된다.
+    const transition = from === undefined || from === null ? null : transitionFor(from, node);
+    // 검증 슬롯은 판정 함수가 항목만 보고 답한다. 그래서 런을 열지 않고 여기서 끝난다 —
+    // "규칙이 없으면 즉시"로 경계를 그으면 검증만 걸린 전환이 런을 열고, 그 런은 판정
+    // 함수가 이미 답한 것을 다시 묻는다.
+    blockers.push(...validationBlockers(transition, subject, target));
     // 승인 슬롯은 규칙 카탈로그가 아니라 전환이 든다. 카탈로그는 "항목이 무엇을
     // 갖췄는가"를 묻고 승인은 "다른 행위자가 동의했는가"를 묻는데, 뒤엣것은 항목만
-    // 보고 답할 수 없다. 그래서 판정은 승인이 필요하다는 사실만 내보내고 판정을
-    // 누가 했는지는 승인 원장이 답한다.
-    const transition = transitionFor(from, node);
+    // 보고 답할 수 없다. 그 답은 근거가 값으로 실려 와야 서고, 실려 오면 슬롯이 열린다 —
+    // 열리지 않으면 게이트가 아니라 벽이다.
     if (transition && transition.approval && transition.approval.human) {
-      blockers.push({
-        ruleId: 'transition-requires-approval',
-        code: 'RDL-FLOW-002',
-        origin: 'transition',
-        source: 'field',
-        method: 'present',
-        target: `${target}.status`,
-        human: true,
-        message: transition.approval.reason
-          || `${transition.title || `${from} → ${node}`} 전환은 다른 행위자의 승인이 필요합니다.`
-      });
+      const shortfall = approvalShortfall(subject, actor);
+      if (shortfall !== null) {
+        const head = transition.approval.reason
+          || `${transition.title || `${from} → ${node}`} 전환은 다른 행위자의 승인이 필요합니다.`;
+        blockers.push({
+          ruleId: 'transition-requires-approval',
+          code: 'RDL-FLOW-002',
+          origin: 'transition',
+          source: 'field',
+          method: 'present',
+          target: `${target}.status`,
+          human: true,
+          message: shortfall ? `${head} ${shortfall}` : head
+        });
+      }
     }
     return blockers;
   }
@@ -807,11 +1101,24 @@ function createWorkflow(definition) {
         requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
       };
     }
+    const namedUnits = {};
+    for (const [name, unit] of Object.entries(units)) namedUnits[name] = { kind: unit.kind, label: unit.label || null };
     return {
       targetKind,
       nodes: out,
+      // 실행 단위도 실린다. 전환이 이름으로 가리키므로 이름만 실어 보내면 화면이 그
+      // 이름이 무엇인지 물을 자리가 없다.
+      executionUnits: namedUnits,
       transitions: transitions
-        ? transitions.map((item) => ({ from: item.from, to: item.to, title: item.title, approval: Boolean(item.approval && item.approval.human) }))
+        ? transitions.map((item) => Object.assign(
+          { from: item.from, to: item.to, title: item.title, approval: Boolean(item.approval && item.approval.human) },
+          // 슬롯은 이름 목록 그대로 싣는다. 화면이 목록을 다시 만들면 저장값이 늘어도
+          // 모르고, 그 사실은 아무 신호도 내지 않는다.
+          NAMED_SLOT_KEYS.reduce((slots, slot) => Object.assign(slots, { [slot]: item[slot] ? item[slot].slice() : null }), {}),
+          // 이 전환을 밟으면 런이 열리는가. 목록으로 적지 않고 어휘의 경계에서 계산한다 —
+          // 다시 적으면 슬롯이 무는 종류를 바꾸는 날 이 값만 옛 답을 들고 남는다.
+          { opensRun: transitionOpensRun(item) }
+        ))
         : null,
       steps: WORKFLOW_STEPS.slice(),
       terminalSteps: TERMINAL_WORKFLOW_STEPS.slice(),
@@ -822,6 +1129,7 @@ function createWorkflow(definition) {
 
   return {
     nodes,
+    units,
     transitions,
     targetKind,
     stepOf: stepOfNode,
@@ -855,9 +1163,13 @@ const BUILTIN = createWorkflow({ nodes: TASK_NODES, transitions: null, targetKin
 module.exports = Object.assign({}, BUILTIN, {
   TASK_NODES,
   TRANSITION_WILDCARD,
+  SLOT_KEYS,
+  NAMED_SLOT_KEYS,
   createWorkflow,
   normalizeWorkflows,
   mergeWorkflows,
+  transitionOpensRun,
+  approvalShortfall,
   isGateRule,
   exemptionGates,
   exempted,
