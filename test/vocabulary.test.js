@@ -355,10 +355,24 @@ assert(
   appSource.includes('state.snapshot && state.snapshot.workflow'),
   '보드 화면이 스냅숏의 workflow를 읽지 않습니다.'
 );
+//
+// 싣는다는 것만으로는 모자라다는 것이 뒤에 드러났다. 이 자리는 오래
+// workflow.taskWorkflowView()였는데 그것은 모듈 최상위 export, 즉 transitions가 늘
+// null인 내장 인스턴스의 뷰였다. 자리는 채워져 있었으므로 이 단언은 통과했고, 그동안
+// workflows.json을 고쳐도 화면은 그대로였다 — 설정 층은 섰는데 그 층을 보여 주는
+// 화면이 없었다는 뜻이다. 채워져 있는지만 세면 무엇으로 채웠는지는 못 본다.
+//
+// 그래서 둘을 본다. 프로젝트 설정에서 온 것을 싣는가, 그리고 내장 뷰로 다시 돌아가지
+// 않았는가. 뒤엣것을 따로 세우는 이유는 앞엣것만 두면 두 줄이 나란히 서 있어도
+// 통과하기 때문이다.
 const boardSource = fs.readFileSync(path.join(sourceRoot, 'board.js'), 'utf8');
 assert(
-  boardSource.includes('workflow: workflow.taskWorkflowView()'),
-  '보드 스냅숏이 워크플로를 싣지 않습니다.'
+  boardSource.includes('workflow: boardWorkflow(root, project.key)'),
+  '보드 스냅숏이 프로젝트 워크플로를 싣지 않습니다.'
+);
+assert(
+  !boardSource.includes('workflow: workflow.taskWorkflowView()'),
+  '보드 스냅숏이 내장 뷰를 싣습니다. 그 인스턴스는 transitions가 늘 null이라 설정을 고쳐도 화면이 그대로입니다.'
 );
 
 // ── 타입 선언이 정본과 같은가 ──────────────────────────────────────────
