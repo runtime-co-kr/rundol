@@ -4629,12 +4629,12 @@
         },
         "AC-005": {
           "text": "ADR-020·021의 상태 판단이 문서에 남는다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-08-24T19:01:31.557Z",
-      "updatedAt": "2026-08-24T19:17:43.657Z",
+      "updatedAt": "2026-08-24T19:17:46.876Z",
       "statusChangedAt": "2026-08-24T19:01:39.251Z",
       "externalRefs": [],
       "project": "rundol"
