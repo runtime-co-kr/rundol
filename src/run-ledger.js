@@ -480,6 +480,23 @@ function validateProcedure(procedure) {
   // 값을 거부하지 자기가 못 본 값을 요구하지 않는다. 시작할 수 있는 절차가 종류를
   // 밝혀야 한다는 요구는 절차를 여는 자리가 갖는다.
   if (procedure.targetKind !== undefined && !TARGET_KINDS.has(procedure.targetKind)) throw new Error(`정본에 없는 대상 종류입니다: ${procedure.targetKind}`);
+  // 전환에서 만든 절차는 어느 전환에서 왔는지를 갖는다. 절차 이름이 그 셋에서 파생되지만
+  // 원장은 이름을 갈라 되짚지 않는다 — 되짚은 값은 표기가 바뀌는 날 한꺼번에 틀리고, 이름은
+  // 여전히 조각으로 갈라지므로 틀렸다는 신호가 없다.
+  //
+  // 반쪽만 채워진 출처를 받지 않는 이유는 그것이 없는 것보다 나쁘기 때문이다. 없으면 물을 수
+  // 없다는 것을 알지만, 반쪽만 있으면 원장이 답할 수 있는 것처럼 보이고 그 답은 틀리다.
+  if (procedure.transition !== undefined) {
+    const origin = procedure.transition;
+    if (!origin || typeof origin !== 'object' || Array.isArray(origin)) throw new Error('절차의 전환 출처는 객체여야 합니다.');
+    const keys = Object.keys(origin).sort();
+    if (canonicalJson(keys) !== canonicalJson(['from', 'to', 'workflow'])) {
+      throw new Error(`절차의 전환 출처는 workflow · from · to 셋을 갖추어야 합니다: ${keys.join(' · ') || '(비었음)'}`);
+    }
+    for (const key of keys) {
+      if (typeof origin[key] !== 'string' || !origin[key].trim()) throw new Error(`절차의 전환 출처 ${key}가 비어 있습니다.`);
+    }
+  }
   if (!Array.isArray(procedure.steps) || procedure.steps.length === 0) throw new Error('procedure must have at least one step');
   const seen = new Set();
   for (const step of procedure.steps) {

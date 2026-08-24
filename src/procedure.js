@@ -8,7 +8,13 @@ const { canonicalJson, validateProcedure } = require('./run-ledger');
 const { getLens, pinInstruction, resolveInstructionPin } = require('./instruction-registry');
 const { loadBoardPresentation } = require('./board-presentation');
 const { floorPolicy } = require('./approval-mode');
-const { EXECUTION_UNIT_KINDS, RUN_OPENING_UNIT_KINDS, TARGET_KINDS } = require('./vocabulary');
+const {
+  EXECUTION_UNIT_KINDS, RUN_OPENING_UNIT_KINDS, TARGET_KINDS,
+  TRANSITION_SLOTS, TRANSITION_SLOT_UNIT_KINDS, RUN_OPENING_SLOTS
+} = require('./vocabulary');
+// 전환의 어휘는 workflow.js가 갖는다. 와일드카드를 여기 다시 적으면 같은 값이 두 벌이
+// 되고, 두 벌이 갈리는 날 (ALL) 전환은 아무 절차도 갖지 못한 채 조용히 지나간다.
+const { TRANSITION_WILDCARD } = require('./workflow');
 
 function pinnedLensInstructions(lenses) {
   return Object.fromEntries(lenses.map((lensId) => {
@@ -631,6 +637,12 @@ function loadProcedures(start, projectKey) {
   for (const layer of layers) {
     for (const [name, definition] of Object.entries(layer.procedures)) {
       if (!NAME.test(name)) throw new Error(`${layer.source}: 잘못된 절차 이름입니다: ${name}`);
+      // 전환이 만드는 절차의 이름 공간은 워크플로가 갖는다. 손으로 적은 절차가 그 자리에
+      // 서면 워크플로가 세운 절차를 조용히 대신하게 되고, 대신했다는 사실은 아무 신호도
+      // 내지 않는다 — 그 절차에 걸린 사람 게이트가 사라지는 길이 그것이다.
+      if (name.startsWith(`${TRANSITION_PROCEDURE_PREFIX}.`)) {
+        throw new Error(`${layer.source}: ${TRANSITION_PROCEDURE_PREFIX}. 이름 공간은 워크플로 전환이 갖습니다: ${name}`);
+      }
       const parent = resolved.get(name);
       // 대상 종류를 적지 않은 계층은 부모의 것을 그대로 받는다. 계층마다 다시 적게
       // 하면 한 번 빠뜨린 계층이 조용히 대상 없는 절차가 되고, 그 절차로 시작한 런은
@@ -652,6 +664,13 @@ function loadProcedures(start, projectKey) {
       resolved.set(name, { definition: raised, source: layer.source });
     }
   }
+  return procedureRegistry(resolved);
+}
+
+// 해석이 끝난 절차 표를 소비자가 보는 모양으로 감싼다. 손으로 적은 절차와 전환이
+// 만든 절차가 같은 모양으로 나와야, 런을 여는 자리가 둘을 가르지 않는다 — 가르면
+// 그 자리에 분기가 생기고, 분기는 한쪽만 고쳐지는 날이 온다.
+function procedureRegistry(resolved) {
   return {
     names: Array.from(resolved.keys()).sort(),
     resolve(name) {
@@ -668,6 +687,230 @@ function loadProcedures(start, projectKey) {
   };
 }
 
+// ── 전환에서 절차로 ────────────────────────────────────────────────────
+//
+// ADR-023의 결정 본문은 "전환 하나가 절차 하나"다. 그 문장에 해당하는 자리가 여기다 —
+// 전환에 걸린 슬롯을 실행 단위로 읽어 절차의 스텝으로 세운다.
+//
+// 경계를 여기서 다시 긋지 않는다. 어느 슬롯이 런을 여는지는 정본이 이미 계산해 두었고,
+// 그 계산은 슬롯이 컴파일되는 실행 단위 종류에서 나온다 — "판정 함수가 혼자 답할 수
+// 없는 것이 있는가"가 경계이기 때문이다. "규칙이 있으면 런"으로 그으면 검증만 걸린
+// 전환이 런을 열고, 그 런은 판정 함수가 이미 답한 것을 다시 묻는다.
+//
+// 그래서 이 자리가 더하는 판정은 하나도 없다. 슬롯 표와 스텝 모양 표가 이미 답을 갖고
+// 있으므로, 하는 일은 그 둘을 맞물리게 하는 것뿐이다.
+
+// 전환이 만드는 절차의 이름 공간. 손으로 적은 절차와 한 표에 살되 접두로 가른다.
+const TRANSITION_PROCEDURE_PREFIX = 'transition';
+
+// 이름 조각이 될 수 있는 글자. 절차 이름 문법(NAME)에서 점을 뺀 것이며, 점은 조각을
+// 가르는 자리라 조각 안에 들 수 없다. 들 수 있게 두면 a-b → c와 a → b-c가 같은 이름이
+// 되고, 두 전환이 한 절차를 나눠 갖는다.
+const NAME_PART = /^[a-z0-9-]+$/u;
+
+// (ALL)이 이름에서 서는 자리. 출발 노드가 이 이름을 쓰면 와일드카드 전환과 이름이
+// 겹치므로 거부한다 — 겹친 이름은 두 전환을 한 절차로 만들고, 그 사실은 아무 신호도
+// 내지 않는다. 도착 노드에는 (ALL)이 설 수 없으므로 그쪽은 예약하지 않는다.
+const TRANSITION_ANY_NODE = 'any';
+
+function transitionNamePart(label, value, wildcard) {
+  const raw = String(value === undefined || value === null ? '' : value);
+  if (wildcard && raw === TRANSITION_ANY_NODE) {
+    throw new Error(`노드 이름 ${TRANSITION_ANY_NODE}은 전환 절차 이름에서 ${TRANSITION_WILDCARD}의 자리라 출발 노드로 쓸 수 없습니다.`);
+  }
+  const part = wildcard && raw === TRANSITION_WILDCARD ? TRANSITION_ANY_NODE : raw;
+  if (!NAME_PART.test(part)) throw new Error(`전환에서 절차 이름을 지을 수 없습니다: ${label} ${raw || '(비었음)'}. 이름 조각은 소문자·숫자·붙임표여야 합니다.`);
+  return part;
+}
+
+/**
+ * 전환 하나의 절차 이름. 출처에서 파생하며, 파생하는 자리는 여기 하나다.
+ *
+ * 반대 방향으로는 읽지 않는다. 이름을 갈라 워크플로와 노드를 되짚으면 표기가 바뀌는 날
+ * 되짚은 값이 한꺼번에 틀리고, 이름은 여전히 조각으로 갈라지므로 틀렸다는 신호가 없다.
+ * 그래서 절차는 출처를 값으로 함께 갖는다.
+ */
+function transitionProcedureName(provenance) {
+  const origin = provenance || {};
+  return [
+    TRANSITION_PROCEDURE_PREFIX,
+    transitionNamePart('워크플로', origin.workflow, false),
+    transitionNamePart('출발 노드', origin.from, true),
+    transitionNamePart('도착 노드', origin.to, false)
+  ].join('.');
+}
+
+/**
+ * 이 전환에 실제로 걸린 슬롯. 정본의 순서 그대로 돌려주므로 판정이 실행보다 앞선다.
+ *
+ * 빈 목록은 걸린 것도 안 걸린 것도 아니다. 지운 것과 비워 둔 것을 같은 뜻으로 읽으면
+ * 런을 여는지가 아무도 안 보는 빈 배열 하나로 뒤집힌다.
+ */
+function transitionSlotValues(transition, source) {
+  const origin = source || 'workflows.json';
+  if (!transition || typeof transition !== 'object' || Array.isArray(transition)) throw new Error(`${origin}: 전환은 객체여야 합니다.`);
+  const filled = new Map();
+  for (const slot of TRANSITION_SLOTS) {
+    const value = transition[slot];
+    // 칸을 갖지 않는 슬롯. 컴파일되는 것이 실행 단위가 아니라 전환 목록에서의 제외이고,
+    // 목록에 있는가 없는가가 곧 그 슬롯의 데이터다. 칸이 생기면 그것은 아무것으로도
+    // 컴파일되지 않는 죽은 칸이라 여기서 막는다. 어느 슬롯이 그런지는 정본의 표가
+    // 답한다 — 이름으로 물으면 표를 고쳐도 이 분기는 옛 답을 낸다.
+    if (!TRANSITION_SLOT_UNIT_KINDS[slot].length) {
+      if (value !== undefined) throw new Error(`${origin}: ${slot} 슬롯은 칸을 갖지 않습니다. 이 전환을 막으려면 전환 목록에서 빼세요.`);
+      continue;
+    }
+    if (value === undefined || value === null) continue;
+    // 승인 칸의 모양은 ADR-023보다 앞서 있고 이름 목록이 아니다. 나머지 셋과 같은
+    // 모양으로 수렴시키는 것은 설정을 이미 쓰는 저장소를 건드리는 일이라 계약이 미뤄
+    // 두었으므로, 여기서도 지금 모양 그대로 읽는다.
+    if (slot === 'approval') { filled.set(slot, value); continue; }
+    if (!Array.isArray(value)) throw new Error(`${origin}: ${slot} 슬롯은 실행 단위 이름의 목록이어야 합니다.`);
+    if (!value.length) throw new Error(`${origin}: ${slot} 슬롯이 비어 있습니다. 걸지 않으려면 칸을 지우세요.`);
+    filled.set(slot, value);
+  }
+  return filled;
+}
+
+/**
+ * 이 전환이 런을 여는가. 입력·수행·승인이 걸리면 열고, 검증만 걸리면 열지 않는다.
+ *
+ * 그 목록을 여기 적지 않고 정본에서 끌어온다. 다시 적으면 같은 사실이 두 벌이 되고,
+ * 슬롯이 무는 실행 단위 종류를 바꾸는 날 한쪽만 따라간다.
+ */
+function transitionOpensRun(transition, source) {
+  for (const slot of transitionSlotValues(transition, source).keys()) {
+    if (RUN_OPENING_SLOTS.includes(slot)) return true;
+  }
+  return false;
+}
+
+/**
+ * 실행 단위 정의 하나를 스텝으로 세운다.
+ *
+ * 정의의 모양을 여기서 짓지 않는다. 정의는 이 파일이 이미 읽는 스텝 몸통이고, 그것이
+ * 어느 종류인지는 stepClass()가 답하며, 슬롯이 어느 종류를 무는지는 정본의 표가 갖는다.
+ * 세 번째 표를 지으면 설정에 적은 종류와 절차가 아는 종류가 갈릴 자리가 하나 더 생긴다.
+ *
+ * 스텝 ID는 실행 단위의 이름이다. 따로 지으면 워크플로가 부르는 이름과 원장이 남기는
+ * 이름이 갈리고, 갈리면 "이 스텝이 무엇이었나"를 사람이 외운 대응표로 답하게 된다.
+ */
+function stepFromUnit(slot, unitName, units, source) {
+  const origin = source || 'workflows.json';
+  const name = String(unitName === undefined || unitName === null ? '' : unitName);
+  const table = units || {};
+  if (!Object.prototype.hasOwnProperty.call(table, name)) throw new Error(`${origin}: ${slot} 슬롯이 가리키는 실행 단위 정의가 없습니다: ${name || '(비었음)'}`);
+  const definition = table[name];
+  if (!definition || typeof definition !== 'object' || Array.isArray(definition)) throw new Error(`${origin}: 실행 단위 정의는 객체여야 합니다: ${name}`);
+  // 이름이 곧 ID다. 정의가 자기 ID를 들면 워크플로가 부르는 이름과 원장에 남는 이름이
+  // 갈리고, 갈린 뒤에는 이름으로 단위를 되짚는 일이 성립하지 않는다.
+  if (definition.id !== undefined) throw new Error(`${origin}: 실행 단위는 자기 스텝 ID를 갖지 않습니다. 이름이 곧 ID입니다: ${name}`);
+  const step = Object.assign({ id: name }, definition);
+  const kind = stepClass(step);
+  const allowed = TRANSITION_SLOT_UNIT_KINDS[slot];
+  if (!allowed.includes(kind)) throw new Error(`${origin}: ${slot} 슬롯에는 ${allowed.join(' 또는 ')} 실행 단위만 들 수 있습니다: ${name}는 ${kind}입니다.`);
+  return step;
+}
+
+function approvalStep(slot, value, source) {
+  const origin = source || 'workflows.json';
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${origin}: 승인 슬롯은 객체여야 합니다.`);
+  if (value.human !== true) throw new Error(`${origin}: 승인 슬롯은 human: true만 쓸 수 있습니다. 걸지 않으려면 칸을 지우세요.`);
+  const step = { id: slot, human: true };
+  // 왜 사람을 세웠는지가 사람 앞까지 간다. 이유를 절차에 싣지 않으면 게이트에 선 사람은
+  // 자기가 무엇을 판단해야 하는지를 설정 파일에서 찾아야 한다.
+  if (value.reason !== undefined && value.reason !== null) step.reason = String(value.reason);
+  return step;
+}
+
+/**
+ * 전환 하나에서 절차 하나를 만든다. 런을 열지 않는 전환에는 절차가 없으므로 null이다.
+ *
+ * 워크플로를 읽지 않고 값만 받는다. 파일을 아는 자리는 workflow-config.js 하나이고,
+ * 실행 계층이 그 파일을 다시 읽으면 표면이 판정한 전환과 런이 여는 전환이 갈릴 수 있다.
+ *
+ * 만들어진 절차는 손으로 적은 절차와 같은 판정을 탄다 — 지시 pin, 원장의 절차 검증,
+ * drive 안전성, 승인 바닥. 전환에서 왔다는 이유로 어느 하나를 건너뛰면 그 자리가 규율
+ * 밖에 남고, 남았다는 사실은 아무 신호도 내지 않는다.
+ */
+function procedureFromTransition(transition, options) {
+  const context = options || {};
+  const source = context.source || 'workflows.json';
+  const slots = transitionSlotValues(transition, source);
+  // 런을 여는 슬롯이 하나도 없으면 절차가 없다. 검증만 걸린 전환은 즉시 적용된다 —
+  // 판정 함수가 이미 답했고, 답한 것을 다시 묻는 런은 원장에 남길 것이 없다.
+  if (!Array.from(slots.keys()).some((slot) => RUN_OPENING_SLOTS.includes(slot))) return null;
+  const provenance = {
+    workflow: String(context.workflow === undefined || context.workflow === null ? '' : context.workflow),
+    from: String(transition.from === undefined || transition.from === null ? '' : transition.from),
+    to: String(transition.to === undefined || transition.to === null ? '' : transition.to)
+  };
+  const name = transitionProcedureName(provenance);
+  // 무엇을 움직이는가는 워크플로가 이미 선언했다. 절차가 그것을 물려받아 자기 대상의
+  // 종류로 삼으므로, 태스크 워크플로의 전환은 태스크를 움직이는 절차가 된다.
+  const targetKind = context.targetKind;
+  if (!TARGET_KINDS.includes(targetKind)) {
+    throw new Error(`${source}: ${name}의 대상 종류가 없거나 정본에 없는 값입니다: ${targetKind || '(없음)'} (${TARGET_KINDS.join(' 또는 ')})`);
+  }
+  const steps = [];
+  for (const [slot, value] of slots) {
+    if (slot === 'approval') { steps.push(approvalStep(slot, value, source)); continue; }
+    for (const unitName of value) steps.push(stepFromUnit(slot, unitName, context.units, source));
+  }
+  const definition = {
+    name,
+    // 워크플로 파일에는 리비전 축이 없다. 여기서 지어내면 설정과 따로 늙는 두 번째 값이
+    // 되고, 무엇이 바뀌었는가는 이미 contentHash가 답한다.
+    revision: 1,
+    targetKind,
+    // 어느 전환에서 왔나. 이름이 이 셋에서 파생되지만 이름을 되짚어 읽지 않는다 —
+    // 되짚은 값은 표기가 바뀌는 날 한꺼번에 틀린다.
+    transition: provenance,
+    steps
+  };
+  const candidate = validateDriveSafety(validateProcedure(pinProcedureInstructions(definition, source)), source);
+  for (const step of candidate.steps) assertAllowWithinFloor(name, step, context.floor, source);
+  return liftToFloor(candidate, context.floor);
+}
+
+/**
+ * 층을 겹쳐 전환 절차를 해석한다.
+ *
+ * 워크플로는 전환 목록을 층 단위로 갈아탄다. 그래서 하위 층이 같은 전환을 승인 칸 없이
+ * 다시 적으면 그 전환에 걸렸던 사람 게이트가 사라진다. 손으로 적은 절차에는 그것을 막는
+ * 규율이 이미 있으므로(validateOverride), 전환에서 만든 절차도 같은 규율을 탄다 —
+ * 두 벌로 지으면 한쪽만 고쳐지는 날이 오고, 그날 어느 쪽이 정본인지 말할 근거가 없다.
+ *
+ * 병합된 목록이 아니라 층 전체를 받는 이유는, 겹치기가 끝난 뒤에는 상위가 무엇을 걸었는지가
+ * 남아 있지 않아 지워졌다는 사실 자체를 물을 수 없기 때문이다.
+ */
+function resolveTransitionProcedures(layers, options) {
+  const context = options || {};
+  const resolved = new Map();
+  for (const layer of layers || []) {
+    const source = layer.source || 'workflows.json';
+    const seen = new Set();
+    for (const transition of layer.transitions || []) {
+      const definition = procedureFromTransition(transition, {
+        source,
+        workflow: layer.workflow,
+        targetKind: layer.targetKind,
+        units: layer.units,
+        floor: context.floor
+      });
+      if (!definition) continue;
+      // 한 층에 같은 전환이 둘이면 어느 것이 절차인지 갈린다. 판정은 먼저 맞는 것을 쓰므로
+      // 조용히 첫 번째가 이기는데, 이긴 쪽이 승인 칸을 안 든 쪽일 수 있다.
+      if (seen.has(definition.name)) throw new Error(`${source}: 같은 전환이 이 층에 둘 있습니다: ${definition.name}`);
+      seen.add(definition.name);
+      const parent = resolved.get(definition.name);
+      if (parent) validateOverride(definition.name, parent.definition, definition, source);
+      resolved.set(definition.name, { definition, source });
+    }
+  }
+  return procedureRegistry(resolved);
+}
+
 // placeholder 치환은 args 원소 값 안에서만 일어나고 셸을 경유하지 않는다.
 function substituteArgs(args, context) {
   return (args || []).map((value) => String(value).replace(/\{(project|runId|artifact|task)\}/gu, (whole, key) => {
@@ -676,4 +919,4 @@ function substituteArgs(args, context) {
   }));
 }
 
-module.exports = { BUILTIN, ALLOW_DIRECTION, stepClass, opensRun, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS };
+module.exports = { BUILTIN, ALLOW_DIRECTION, stepClass, opensRun, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS, TRANSITION_PROCEDURE_PREFIX, transitionProcedureName, transitionSlotValues, transitionOpensRun, procedureFromTransition, resolveTransitionProcedures };

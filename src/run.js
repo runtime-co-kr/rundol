@@ -6,7 +6,7 @@ const { spawnSync } = require('child_process');
 const { workspaceLayout, selectProject } = require('./workspace');
 const { runGit } = require('./git');
 const ledger = require('./run-ledger');
-const { loadProcedures, substituteArgs, pinProcedureVerificationRevision, validateClosedDriveGate, stepClass, COMMIT_PRODUCING_COMMANDS } = require('./procedure');
+const { loadProcedures, substituteArgs, pinProcedureVerificationRevision, validateClosedDriveGate, stepClass, COMMIT_PRODUCING_COMMANDS, procedureFromTransition, resolveApprovalFloor } = require('./procedure');
 const { getClient } = require('./collaboration-store');
 const { loadHarnessSettings } = require('./harness-settings');
 const { runtimeWorkspace } = require('./runtime');
@@ -99,7 +99,40 @@ function substitutionContext(context) {
 function startRun(start, options) {
   if (options.positional.length !== 1) throw new Error('rdl run start에는 절차 이름 하나가 필요합니다.');
   const procedures = loadProcedures(start, options.project);
-  const resolved = procedures.resolve(options.positional[0]);
+  return openRun(start, options, procedures.resolve(options.positional[0]).resolved);
+}
+
+/**
+ * 전환 하나가 절차 하나다. 그 절차로 런을 연다.
+ *
+ * 워크플로를 여기서 읽지 않고 전환을 받는다. 판정을 내린 표면이 자기가 판정한 그 전환을
+ * 넘기므로 표면이 허용한 전환과 런이 여는 전환이 갈릴 자리가 없다. 실행 계층이 설정을
+ * 다시 읽으면 그 사이에 파일이 바뀐 만큼 둘이 갈리고, 갈렸다는 사실은 아무 신호도 내지
+ * 않는다 — 파일을 아는 자리를 하나로 두는 규율이 여기까지 이어진다.
+ */
+function startTransitionRun(start, options) {
+  const definition = procedureFromTransition(options.transition, {
+    source: options.source,
+    workflow: options.workflow,
+    targetKind: options.targetKind,
+    units: options.units,
+    // 손으로 적은 절차가 타는 승인 바닥을 전환에서 만든 절차도 탄다. 건너뛰면 조직이
+    // 깔아 둔 바닥 밖에서 도는 절차가 설정 한 줄로 생긴다.
+    floor: resolveApprovalFloor(start, options.project)
+  });
+  // 런을 열지 않는 전환으로 런을 여는 것은 부르는 쪽의 결함이다. 검증만 걸린 전환은
+  // 판정이 곧 답이므로, 여기서 런을 열면 그 런은 판정 함수가 이미 답한 것을 다시 묻는다.
+  if (!definition) {
+    const transition = options.transition || {};
+    throw new Error(`이 전환은 런을 열지 않습니다. 검증만 걸려 있으므로 판정이 곧 답입니다: ${options.workflow} ${transition.from} → ${transition.to}`);
+  }
+  return openRun(start, options, definition);
+}
+
+// 절차 하나로 런을 연다. 절차가 어디서 왔는지는 여기서 묻지 않는다 — 손으로 적었든
+// 전환에서 만들었든 대상 판정과 리비전 pin과 설정 pin은 같아야 하고, 갈라 두면 한쪽만
+// 고쳐지는 날이 온다.
+function openRun(start, options, definition) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, options.project, true);
   authorizeClient(start, project, options.clientId);
@@ -109,18 +142,18 @@ function startRun(start, options) {
   //
   // 대상이 태스크인 절차는 태스크를 만들지 않으므로 언제나 대상이 있어야 한다. 문서를
   // 대신 받는 것은 인수를 더 준 것이 아니라 대상을 잘못 준 것이라 조용히 무시하지 않는다.
-  if (resolved.resolved.targetKind === 'task') {
-    if (!options.task) throw new Error(`${resolved.resolved.name}은 태스크를 움직이는 절차입니다. --task <TASK-ID>로 대상을 지정하세요.`);
-    if (options.artifactId) throw new Error(`${resolved.resolved.name}의 대상은 태스크입니다. --artifact-id는 이 절차에 쓸 수 없습니다.`);
+  if (definition.targetKind === 'task') {
+    if (!options.task) throw new Error(`${definition.name}은 태스크를 움직이는 절차입니다. --task <TASK-ID>로 대상을 지정하세요.`);
+    if (options.artifactId) throw new Error(`${definition.name}의 대상은 태스크입니다. --artifact-id는 이 절차에 쓸 수 없습니다.`);
   }
   // 문서는 만드는 절차가 따로 있다. 그래서 대상을 시작 시점에 요구하는지는 목록이
   // 아니라 절차가 말한다.
-  if (resolved.resolved.targetKind === 'document' && resolved.resolved.requiresArtifact === true && !options.artifactId) {
-    throw new Error(`${resolved.resolved.name}은 대상 문서를 요구하는 절차입니다. --artifact-id <ARTIFACT-ID>를 지정하세요.`);
+  if (definition.targetKind === 'document' && definition.requiresArtifact === true && !options.artifactId) {
+    throw new Error(`${definition.name}은 대상 문서를 요구하는 절차입니다. --artifact-id <ARTIFACT-ID>를 지정하세요.`);
   }
   if (options.artifactId && !/^[A-Z]{3}-\d{3,}$/u.test(String(options.artifactId))) throw new Error(`--artifact-id는 정본 문서 ID여야 합니다: ${options.artifactId}`);
   const projectHead = runGit(['rev-parse', 'HEAD'], { cwd: project.root }).stdout.trim().toLowerCase();
-  const pinnedProcedure = pinProcedureVerificationRevision(resolved.resolved, projectHead);
+  const pinnedProcedure = pinProcedureVerificationRevision(definition, projectHead);
   const harness = loadHarnessSettings(start, { project: options.project });
   const settings = {
     schemaVersion: harness.schemaVersion,
@@ -172,6 +205,9 @@ function nextStep(start, options) {
     // 사람 게이트는 client가 아니라 human으로 나온다 — 그것이 실제로 무엇인지다.
     executor: stepClass(step),
     human: step.human === true,
+    // 왜 사람이 섰는지. 전환의 승인 칸이 든 이유가 여기까지 온다 — 오지 않으면 게이트에
+    // 선 사람은 자기가 무엇을 판단해야 하는지를 설정 파일에서 찾아야 한다.
+    reason: step.reason === undefined || step.reason === null ? null : String(step.reason),
     command: step.command || null,
     args: step.args ? trySubstitute(step.args, substitution) : null,
     gate: step.gate ? { command: step.gate.command, args: trySubstitute(step.gate.args, substitution) } : null,
@@ -1234,7 +1270,7 @@ async function resolveOperation(start, options) {
 }
 
 module.exports = {
-  startRun, nextStep, reportStep, runGate, approveRun, resumeRun, haltRun, completeRun,
+  startRun, startTransitionRun, nextStep, reportStep, runGate, approveRun, resumeRun, haltRun, completeRun,
   takeoverRunCommand, resolveOwnershipCommand, listRunRequests, resumeRunRequest,
   recordVerificationResult,
   listRunsCommand, runLog, listProceduresCommand,
