@@ -283,6 +283,8 @@ projects/workspace/           # rundol/workspace linked worktree
 └─ events/
 projects/memo/                # rundol/memo linked worktree
 ├─ project.md
+├─ board.json               # 표시 규칙
+├─ workflows.json           # 노드·전환·승인 슬롯
 ├─ tasks/<client-id>/000001.json
 ├─ docs/
 └─ .obsidian/*.json           # 로컬 개인 설정, Git 비추적
@@ -291,6 +293,60 @@ projects/memo/                # rundol/memo linked worktree
 프로젝트 브랜치는 main에서 분기하지 않는 orphan commit으로 시작한다. `origin`에 `rundol/memo`가 이미 있으면 새 브랜치를 만들지 않고 원격 커밋을 사용한다. 인증·DNS·TLS·연결 오류는 “원격 브랜치 없음”으로 취급하지 않고 초기화를 중단한다.
 
 제품 저장소의 `.rundol`, `.gitignore`, 제품 파일은 만들거나 수정하지 않는다. `projects/*/` 숨김 규칙은 로컬 `.git/info/exclude`에만 기록한다.
+
+### 워크플로 설정 — `workflows.json`
+
+노드와 전환과 승인 슬롯을 프로젝트가 정의한다. 파일이 없으면 내장 워크플로로 돌고, 그때 판정은 이 판올림 전과 같다.
+
+```json
+{
+  "schemaVersion": 1,
+  "workflows": {
+    "task-default": {
+      "targetKind": "task",
+      "nodes": {
+        "todo":   { "step": "unclaimed" },
+        "doing":  { "step": "in-progress", "requiresOwner": true },
+        "review": { "step": "in-approval", "requiresOwner": true },
+        "done":   { "step": "completed", "validity": "valid", "requiresOwner": true },
+        "cancelled": { "step": "dropped", "requiresOwner": true }
+      },
+      "transitions": [
+        { "from": "todo",   "to": "doing",  "title": "착수" },
+        { "from": "doing",  "to": "review", "title": "검토 요청" },
+        { "from": "review", "to": "done",   "title": "승인",
+          "approval": { "human": true, "reason": "완료는 검토자의 동의를 받는다." } },
+        { "to": "cancelled", "title": "취소" }
+      ]
+    }
+  },
+  "bindings": { "task": { "*": "task-default" } }
+}
+```
+
+`projects/workspace/workflows.json`과 `projects/<key>/workflows.json`이 이 순서로 겹친다. 적지 않으면 상속받고, 상속받은 것을 없애려면 `disabled: true`를 적는다 — `true`만 쓸 수 있고 되살리려면 그 줄을 지운다.
+
+| 칸 | 뜻 |
+|---|---|
+| `nodes.<이름>.step` | 그 노드가 서는 워크플로 스텝. `unclaimed` · `in-progress` · `in-approval` · `completed` · `dropped` |
+| `nodes.<이름>.validity` | 완료의 유효성. `valid` 또는 `retired`이며 `completed`에서만 뜻이 있다 |
+| `nodes.<이름>.requiresOwner` | 그 노드에 서려면 담당자가 있어야 하는가 |
+| `transitions[].from` | 출발 노드. 적지 않으면 이 워크플로의 모든 노드에서 온다 |
+| `transitions[].approval` | `{ "human": true }`이면 그 전환은 다른 행위자의 승인을 기다린다 |
+| `bindings.<대상종류>.<유형>` | 그 유형이 탈 워크플로 이름. `*`가 기본이다 |
+
+**전환을 적지 않으면 막지 않는다.** 노드에 이름만 붙이려는 프로젝트가 자기 태스크를 못 옮기게 되면 안 되므로, 닫는 것은 선언으로 한다. `transitions`를 적는 순간 그 목록에 없는 전환은 `RDL-FLOW-001`로 막힌다.
+
+출발을 적지 않은 전환은 **자기 자신을 제외한** 모든 노드에서 온다. 그 범위는 이 워크플로의 노드 목록 안이라, 노드를 하나 더하는 것만으로 기존 전환이 조용히 바뀌지 않는다.
+
+노드를 `disabled`로 없애면 그 노드를 가리키던 상속 전환도 함께 사라진다. 없던 노드를 가리키는 전환은 여전히 거부한다 — 없앤 것과 오타는 다르다.
+
+| 진단 | 언제 |
+|---|---|
+| `RDL-FLOW-001` | 선언되지 않은 전환을 밟으려 할 때 |
+| `RDL-FLOW-002` | 승인 슬롯이 걸린 전환을 밟으려 할 때 |
+
+`rdl doctor`가 설정을 점검한다. 파일이 깨졌으면 파일 경로와 키 경로와 이유를 함께 내고, **저장된 상태 어휘에 설 노드가 없는 흐름**은 경고로 낸다 — 노드를 없애면 그 자리에 서 있던 태스크가 갈 곳을 잃는데 저장 게이트는 이미 있는 태스크를 보지 않으므로, 그 어긋남은 여기서만 드러난다.
 
 ### `rdl project add`
 
