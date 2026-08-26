@@ -4714,6 +4714,44 @@
       "statusChangedAt": "2026-08-24T19:57:49.582Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-5QB63VGE": {
+      "title": "[보드] 워크플로를 흐름도로 보인다",
+      "summary": "설정 패널이 노드와 전환을 목록으로만 보였다. 목록은 전환 하나하나에 답하지만 흐름이 어떻게 생겼는지에는 답하지 못하고, 막다른 노드와 돌아올 수 없는 자리는 그려 봐야 보인다. 스텝마다 색을 주어 지라가 상태를 범주로 가르는 것과 같은 자리를 만든다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "mid",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "노드와 전환이 mermaid 흐름도로 그려지고 라이트·다크 양쪽에서 읽힌다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "스텝마다 색이 붙고 그 색은 theme.css 토큰에서 오며 스텝이 늘면 시험이 막는다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "mermaid classDef를 쓰지 않는다 — Board의 CSP가 그 style을 막아 색이 조용히 빠진다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "패널이 열린 뒤에 그린다 — 숨은 자리에서 재면 상자가 0이라 그림이 접힌다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-26T16:06:59.435Z",
+      "updatedAt": "2026-08-26T16:06:59.435Z",
+      "statusChangedAt": "2026-08-26T16:06:59.435Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
