@@ -4655,7 +4655,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "전환이 validation·input·execution 슬롯을 이름 목록으로 받고, 성질에 안 맞는 조합은 설정 파싱에서 거부된다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "검증 슬롯이 validation-catalog의 판정기를 그대로 쓴다",
@@ -4672,7 +4672,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-24T19:33:01.075Z",
-      "updatedAt": "2026-08-24T19:34:29.435Z",
+      "updatedAt": "2026-08-26T07:46:44.412Z",
       "statusChangedAt": "2026-08-24T19:34:29.435Z",
       "externalRefs": [],
       "project": "rundol"
