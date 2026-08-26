@@ -4232,7 +4232,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "vocabulary.js가 워크플로 스텝 5종·검증 소스 종류·검증 방법·실행 단위 종류를 내보낸다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "판정 함수 시그니처 (from, to, item, actor)와 Blocker 목록 반환이 타입으로 선언된다",
@@ -4253,7 +4253,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T12:46:41.959Z",
-      "updatedAt": "2026-08-23T12:47:47.891Z",
+      "updatedAt": "2026-08-26T07:46:17.939Z",
       "statusChangedAt": "2026-08-23T12:47:47.891Z",
       "externalRefs": [],
       "project": "rundol"
