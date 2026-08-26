@@ -365,6 +365,43 @@ assert(
 // 그래서 둘을 본다. 프로젝트 설정에서 온 것을 싣는가, 그리고 내장 뷰로 다시 돌아가지
 // 않았는가. 뒤엣것을 따로 세우는 이유는 앞엣것만 두면 두 줄이 나란히 서 있어도
 // 통과하기 때문이다.
+// 흐름도는 스텝마다 색을 갖는다. 색이 붙는 자리가 이름이 아니라 스텝인 이유는 이름은
+// 프로젝트가 늘리지만 스텝은 닫힌 다섯이기 때문이고, 그래서 스텝이 늘면 색도 함께 늘어야
+// 한다. 안 늘리면 새 스텝의 노드만 색 없이 서는데 그림은 그려지므로 아무 신호도 없다.
+//
+// mermaid의 classDef를 쓰지 않는다는 사실도 함께 못박는다. 그것은 svg 안에 <style>로
+// 심기고 Board는 style-src 'self'로 서빙되어 통째로 막히는데, 막혀도 오류 없이 색만
+// 빠진다. 되돌아가면 화면을 열어 보기 전에는 드러나지 않는다.
+const styleSource = fs.readFileSync(path.join(sourceRoot, 'board-ui', 'style.css'), 'utf8');
+const themeSource = fs.readFileSync(path.join(sourceRoot, 'board-ui', 'theme.css'), 'utf8');
+for (const step of vocabulary.WORKFLOW_STEPS) {
+  assert(
+    styleSource.includes(`.mermaid svg .node.${step} rect`),
+    `흐름도에 ${step} 스텝의 색 규칙이 없습니다. style.css에 그 스텝의 규칙을 더하세요.`
+  );
+  for (const axis of ['BackgroundColor', 'BorderColor']) {
+    assert(
+      styleSource.includes(`--step-${step}-${axis}`),
+      `흐름도의 ${step} 스텝이 --step-${step}-${axis}를 쓰지 않습니다.`
+    );
+    // 쓰는 것과 있는 것은 다르다. 규칙이 없는 토큰을 var()로 부르면 CSS는 조용히 그
+    // 선언을 버리고 도형은 mermaid 기본색으로 선다 — 규칙도 있고 이름도 맞는데 색만
+    // 빠지므로, 참조만 세면 이 어긋남이 통과한다. 실제로 이 시험을 쓰는 동안 토큰이
+    // 통째로 사라졌는데 여기가 그대로 통과했다.
+    assert(
+      themeSource.includes(`--step-${step}-${axis}:`),
+      `theme.css에 --step-${step}-${axis} 선언이 없습니다. 쓰는 곳은 있는데 정의가 없으면 색이 조용히 빠집니다.`
+    );
+  }
+}
+// 주석을 걷어내고 본다. 왜 안 쓰는지를 적은 줄에도 그 글자가 있어서, 그대로 세면 설명이
+// 위반으로 읽힌다 — 위의 타입 확인이 설명 안의 중괄호를 걷어내는 것과 같은 이유다.
+const appCode = appSource.replace(/\/\*[\s\S]*?\*\//gu, '').split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+assert(
+  !appCode.includes('classDef'),
+  '흐름도가 mermaid classDef를 씁니다. Board의 CSP가 그 style을 막으므로 색이 조용히 빠집니다 — style.css에서 주세요.'
+);
+
 const boardSource = fs.readFileSync(path.join(sourceRoot, 'board.js'), 'utf8');
 assert(
   boardSource.includes('workflow: boardWorkflow(root, project.key)'),

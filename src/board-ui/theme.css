@@ -101,6 +101,18 @@
   --surface-03-BackgroundColor: var(--raw-gray-800);
   --surface-raised-BackgroundColor: #0f1113ee;
   --surface-code-BackgroundColor: var(--raw-gray-1000);
+  /* 흐름도의 스텝 색. 지라가 상태를 범주 색으로 가르듯 스텝으로 가른다 — 이름은
+     프로젝트의 것이고 스텝은 코드의 것이므로, 색이 붙는 자리는 스텝이어야 한다. */
+  --step-unclaimed-BackgroundColor: var(--raw-gray-800);
+  --step-unclaimed-BorderColor: var(--raw-gray-600);
+  --step-in-progress-BackgroundColor: #1b3050;
+  --step-in-progress-BorderColor: var(--raw-blue-dark);
+  --step-in-approval-BackgroundColor: #3a2f14;
+  --step-in-approval-BorderColor: var(--raw-amber-dark);
+  --step-completed-BackgroundColor: #16352a;
+  --step-completed-BorderColor: var(--raw-green-dark);
+  --step-dropped-BackgroundColor: var(--raw-gray-850);
+  --step-dropped-BorderColor: var(--raw-gray-700);
 
   /* 어떤 표면 위에든 얹는 상호작용 틴트. 표면별 hover 색을 없앤다. */
   --ui-hover-OverlayColor: #ffffff0d;
@@ -154,6 +166,18 @@ body.theme-light {
   --surface-03-BackgroundColor: var(--raw-gray-100);
   --surface-raised-BackgroundColor: #ffffffee;
   --surface-code-BackgroundColor: var(--raw-gray-100);
+  /* 흐름도의 스텝 색. 지라가 상태를 범주 색으로 가르듯 스텝으로 가른다 — 이름은
+     프로젝트의 것이고 스텝은 코드의 것이므로, 색이 붙는 자리는 스텝이어야 한다. */
+  --step-unclaimed-BackgroundColor: var(--raw-gray-100);
+  --step-unclaimed-BorderColor: var(--raw-gray-300);
+  --step-in-progress-BackgroundColor: #e4eefc;
+  --step-in-progress-BorderColor: var(--raw-blue-light);
+  --step-in-approval-BackgroundColor: #fdf2dc;
+  --step-in-approval-BorderColor: var(--raw-amber-light);
+  --step-completed-BackgroundColor: #dcf3e8;
+  --step-completed-BorderColor: var(--raw-green-light);
+  --step-dropped-BackgroundColor: var(--raw-gray-50);
+  --step-dropped-BorderColor: var(--raw-gray-200);
 
   --ui-hover-OverlayColor: #0b0c0e0a;
   --ui-active-OverlayColor: #0b0c0e14;
@@ -202,6 +226,18 @@ body.theme-light {
     --surface-03-BackgroundColor: var(--raw-gray-100);
     --surface-raised-BackgroundColor: #ffffffee;
     --surface-code-BackgroundColor: var(--raw-gray-100);
+    /* 흐름도의 스텝 색. 지라가 상태를 범주 색으로 가르듯 스텝으로 가른다 — 이름은
+       프로젝트의 것이고 스텝은 코드의 것이므로, 색이 붙는 자리는 스텝이어야 한다. */
+    --step-unclaimed-BackgroundColor: var(--raw-gray-100);
+    --step-unclaimed-BorderColor: var(--raw-gray-300);
+    --step-in-progress-BackgroundColor: #e4eefc;
+    --step-in-progress-BorderColor: var(--raw-blue-light);
+    --step-in-approval-BackgroundColor: #fdf2dc;
+    --step-in-approval-BorderColor: var(--raw-amber-light);
+    --step-completed-BackgroundColor: #dcf3e8;
+    --step-completed-BorderColor: var(--raw-green-light);
+    --step-dropped-BackgroundColor: var(--raw-gray-50);
+    --step-dropped-BorderColor: var(--raw-gray-200);
 
     --ui-hover-OverlayColor: #0b0c0e0a;
     --ui-active-OverlayColor: #0b0c0e14;
