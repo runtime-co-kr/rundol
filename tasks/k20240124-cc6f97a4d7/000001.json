@@ -4236,7 +4236,7 @@
         },
         "AC-002": {
           "text": "판정 함수 시그니처 (from, to, item, actor)와 Blocker 목록 반환이 타입으로 선언된다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "발화 이력의 저장 자리와 레코드 모양이 계약에 적혀 B 갈래가 vocabulary.js를 안 건드리고 뻗는다",
@@ -4253,7 +4253,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-23T12:46:41.959Z",
-      "updatedAt": "2026-08-26T07:46:17.939Z",
+      "updatedAt": "2026-08-26T07:46:21.158Z",
       "statusChangedAt": "2026-08-23T12:47:47.891Z",
       "externalRefs": [],
       "project": "rundol"
