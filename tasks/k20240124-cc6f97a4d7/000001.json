@@ -4693,7 +4693,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "전환 하나가 절차 하나가 된다 — 슬롯이 정본의 순서대로 스텝이 되고 절차 이름이 출처(워크플로·from·to)에서 파생된다.",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "경계가 정본에서 나온다 — 입력·수행·승인이 걸린 전환만 런을 열고, 검증만 걸린 전환은 절차를 갖지 않는다.",
@@ -4710,7 +4710,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-24T19:55:47.926Z",
-      "updatedAt": "2026-08-24T19:57:49.582Z",
+      "updatedAt": "2026-08-26T07:47:07.573Z",
       "statusChangedAt": "2026-08-24T19:57:49.582Z",
       "externalRefs": [],
       "project": "rundol"
