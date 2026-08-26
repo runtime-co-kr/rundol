@@ -4663,7 +4663,7 @@
         },
         "AC-003": {
           "text": "승인 슬롯이 근거를 값으로 받아 열린다. 판정은 파일도 시각도 읽지 않는다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "설정이 없는 저장소의 판정이 판올림 전과 같다",
@@ -4672,7 +4672,7 @@
       },
       "blocker": null,
       "createdAt": "2026-08-24T19:33:01.075Z",
-      "updatedAt": "2026-08-26T07:46:47.505Z",
+      "updatedAt": "2026-08-26T07:46:50.621Z",
       "statusChangedAt": "2026-08-24T19:34:29.435Z",
       "externalRefs": [],
       "project": "rundol"
