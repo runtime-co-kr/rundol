@@ -2905,6 +2905,20 @@ dialog label textarea {
   stroke: var(--secondary-TextColor);
 }
 
+/* 흐름도의 스텝 색. 위 규칙과 같은 이유로 여기 있다 — mermaid의 classDef는 svg 안에
+   <style>로 심기는데 Board는 style-src 'self'로 서빙되므로 그 style이 통째로 막힌다.
+   막혀도 오류는 나지 않고 색만 조용히 빠지므로 화면을 봐야만 드러난다.
+
+   CSP를 푸는 대신 여기서 준다. Board는 사람이 쓴 문서를 그리는 화면이라 style-src를
+   열면 그 문서가 스타일을 심을 수 있게 된다. 색이 붙는 자리가 이름이 아니라 스텝인
+   이유는 이름은 프로젝트가 늘리지만 스텝은 닫힌 다섯이기 때문이다 — 이름에 붙이면
+   새 이름이 색 없이 서고 그 사실은 아무 신호도 내지 않는다. */
+.mermaid svg .node.unclaimed rect { fill: var(--step-unclaimed-BackgroundColor); stroke: var(--step-unclaimed-BorderColor); }
+.mermaid svg .node.in-progress rect { fill: var(--step-in-progress-BackgroundColor); stroke: var(--step-in-progress-BorderColor); }
+.mermaid svg .node.in-approval rect { fill: var(--step-in-approval-BackgroundColor); stroke: var(--step-in-approval-BorderColor); }
+.mermaid svg .node.completed rect { fill: var(--step-completed-BackgroundColor); stroke: var(--step-completed-BorderColor); }
+.mermaid svg .node.dropped rect { fill: var(--step-dropped-BackgroundColor); stroke: var(--step-dropped-BorderColor); }
+
 /* 묶음 상자는 배경 구조물이라 내용보다 뒤로 물러나야 한다. */
 .mermaid svg .cluster rect {
   fill: var(--surface-01-BackgroundColor);
