@@ -4752,6 +4752,44 @@
       "statusChangedAt": "2026-08-26T16:06:59.435Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-555ZEAFT": {
+      "title": "[갈래F2] 검사와 doctor를 프로젝트 흐름에 잇는다",
+      "summary": "check.js와 check-rules.js가 유형별 흐름으로 판정하게 배선하고, doctor가 프로젝트 층의 workflows.json을 보게 고친다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "rdl check가 유형별 흐름으로 판정하고 설정이 없으면 내장으로 떨어진다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "게이트 표(gateFor)도 그 태스크의 흐름을 탄다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "rdl doctor가 프로젝트 층의 workflows.json을 찾아 보고한다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "rdl check 오류 0과 npm test가 유지된다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-08-27T14:27:10.396Z",
+      "updatedAt": "2026-08-27T14:27:10.396Z",
+      "statusChangedAt": "2026-08-27T14:27:10.396Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
