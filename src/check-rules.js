@@ -34,15 +34,22 @@ const exempted = workflow.exempted;
 // 같은 규칙이 저장 계층과 여기에 두 벌로 있던 것이 이 설계가 고치려던 것이다.
 // 두 벌은 갈릴 것이 아니라 이미 갈려 있었다 — 저장은 blocker가 있기만 하면
 // 받았고 여기서는 세 부분을 요구했다.
-function gateFor(ruleId) {
-  return (task) => workflow.judgeTransition(null, task && task.status, task, null)
+// 게이트도 그 태스크의 흐름을 탄다. 흐름을 넘기지 않으면 내장이다 — 유형 해석기가
+// 이 표를 규칙 목록으로도 읽으므로 흐름 없이 부르는 자리가 남는다.
+function gateFor(ruleId, flow) {
+  return (task) => (flow || workflow).judgeTransition(null, task && task.status, task, null)
     .filter((blocker) => blocker.ruleId === ruleId)
     .map((blocker) => ({ code: blocker.code, message: blocker.message }));
 }
 
-const DEFAULT_TASK_GATES = Object.freeze({
-  'done-requires-test-link': gateFor('done-requires-test-link')
-});
+// 흐름별 게이트 표. 흐름을 안 주면 내장 표가 나오고 그것이 예전 동작이다.
+function taskGatesFor(flow) {
+  return Object.freeze({
+    'done-requires-test-link': gateFor('done-requires-test-link', flow)
+  });
+}
+
+const DEFAULT_TASK_GATES = taskGatesFor(null);
 
 // 검사의 판정부. 파일을 읽지 않고 이미 읽어 둔 값만 보고 진단을 만든다.
 //
@@ -416,7 +423,7 @@ const REQUIRED_TASK_FIELDS = ['title', 'summary', 'owner', 'reviewers', 'stakeho
  * 같은 판정을 부를 수 없어 자기 경로로 다시 구현하게 된다.
  */
 function checkTaskEntries(list, tasks, context) {
-  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, itemTypes, gates, testedDocuments, readiness, firings } = context;
+  const { taskIds, taskFile, registry, memberIds, stakeholderIds, kinds, results, itemTypes, gates, testedDocuments, readiness, firings, flowFor } = context;
   const dependencies = new Map();
 
   for (const taskId of taskIds) {
@@ -433,7 +440,10 @@ function checkTaskEntries(list, tasks, context) {
     //
     // 이름이 붙은 게이트는 여기서 내지 않는다. 유형 해석기가 게이트 표로 같은
     // 규칙을 부르므로, 두 자리가 모두 내면 한 위반이 진단 둘로 보인다.
-    for (const blocker of workflow.judgeItem(task, null)) {
+    // 이 태스크가 탈 흐름. 넘어오지 않으면 내장이다 — 넘기지 않는 호출자를 던져서
+    // 막으면 검사를 부르던 모든 자리가 함께 멈춘다.
+    const flow = (flowFor && flowFor(task.kind)) || workflow;
+    for (const blocker of flow.judgeItem(task, null)) {
       if (workflow.isGateRule(blocker.ruleId)) continue;
       diagnostic(list, { code: blocker.code, category: 'task', file: taskFile, artifactId: taskId, message: blocker.message });
     }
@@ -470,7 +480,7 @@ function checkTaskEntries(list, tasks, context) {
     // 원본을 직접 보면 그 어긋남이 생길 자리가 없다. 계약을 쓰지 않는 프로젝트는
     // 예전처럼 이 게이트의 대상이 아니다 — 쓰지 않기로 한 것을 위반으로 세지 않는다.
     const implementationReady = kind !== 'test' && (task.links || []).some((link) => /^(?:REQ|TST)-/u.test(String(link)));
-    const completedNode = workflow.stepOf(task.status) === 'completed';
+    const completedNode = ((flowFor && flowFor(task.kind)) || workflow).stepOf(task.status) === 'completed';
     // 이 게이트는 유형 해석기 밖에 있다. 발화를 여기서 적지 않으면 이력에는 한 번도
     // 불리지 않은 것으로 남고, 그 침묵은 죽은 규칙과 구분되지 않는다 — 실제로 이력을
     // 처음 켰을 때 이 게이트가 죽은 규칙으로 나왔다.
@@ -518,7 +528,12 @@ function checkTaskEntries(list, tasks, context) {
   // 검사기의 순수성이 유지되며, 유형이 늘어도 이 호출 하나는 그대로다.
   const itemTasks = {};
   for (const id of taskIds) itemTasks[id] = tasks[id];
-  for (const issue of evaluateItemTypes(itemTasks, itemTypes || NORMALIZED_BUILTIN, { gates: gates || DEFAULT_TASK_GATES, firings })) {
+  // 게이트 표도 흐름을 탄다. 유형별로 흐름이 갈릴 수 있으므로 유형마다 표를 만든다 —
+  // 한 번 만들어 두면 첫 태스크의 흐름이 나머지 유형에까지 걸린다.
+  const gateTable = gates || (flowFor
+    ? taskGatesFor(flowFor(itemTasks[0] && itemTasks[0].kind))
+    : DEFAULT_TASK_GATES);
+  for (const issue of evaluateItemTypes(itemTasks, itemTypes || NORMALIZED_BUILTIN, { gates: gateTable, firings })) {
     diagnostic(list, Object.assign({ category: 'task', file: taskFile }, issue));
   }
   // 태스크가 든 면제는 게이트 함수 안에서 걸러진다. 해석기가 보기에는 게이트가 돌고

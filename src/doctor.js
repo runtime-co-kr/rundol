@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { findWorkspaceRoot } = require('./workspace');
+const { findWorkspaceRoot, workspaceLayout } = require('./workspace');
 const { skillSource, skillTargets, SKILL_NAME } = require('./skill');
 const { loadHarnessSettings } = require('./harness-settings');
 const { probeAdapter } = require('./adapter');
@@ -166,7 +166,19 @@ function doctor(start, options) {
     // 여기서 잡는다 — 노드를 없애면 그 자리에 서 있던 태스크가 갈 곳을 잃는데,
     // 저장 게이트는 앞으로 들어올 것만 막고 이미 있는 것은 보지 않는다.
     try {
-      const config = loadWorkflows(workspace, settings.project || null);
+      // 프로젝트를 지정하지 않았으면 전부 본다. 워크스페이스 층만 읽으면 프로젝트가
+      // 든 흐름이 없는 것으로 보이고, "설정이 없습니다"라고 답한 뒤에는 아무도 그것을
+      // 다시 묻지 않는다 — 틀린 답은 답이 없는 것보다 나쁘다.
+      const scopes = settings.project
+        ? [settings.project]
+        : (workspaceLayout(workspace).projects || []).map((item) => item.key);
+      const config = scopes.length
+        ? scopes.map((key) => loadWorkflows(workspace, key)).reduce((left, right) => ({
+          workflows: Object.assign({}, left.workflows, right.workflows),
+          bindings: right.bindings,
+          sources: (left.sources || []).concat(right.sources || [])
+        }))
+        : loadWorkflows(workspace, null);
       const ids = Object.keys(config.workflows || {});
       if (!ids.length) {
         checks.push({ id: 'workflows', status: 'info', message: '흐름 설정이 없어 내장 워크플로로 돕니다.', remediation: 'projects/<key>/workflows.json에 노드와 전환을 적으면 그때부터 이 프로젝트의 흐름이 됩니다.' });
