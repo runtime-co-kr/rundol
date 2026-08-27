@@ -502,4 +502,51 @@ assert.throws(
 // 전환 규칙에 걸리고, 그러면 흐름을 켠 프로젝트는 아무것도 못 고친다.
 assertNodeConsistency({ status: 'done', owner: 'M-1' }, { summary: '고침' }, flow);
 
+// ── 검사가 흐름을 탄다 ──────────────────────────────────────────────────────
+//
+// 저장은 앞으로 들어올 것을 막고 검사는 이미 있는 것을 본다. 검사가 흐름을 모르면
+// "지금 이 저장소가 자기 규칙을 지키고 있나"에 답하지 못한다.
+
+const { checkTaskEntries } = require('../src/check-rules');
+
+// 담당자를 요구하는 노드를 프로젝트가 정한다. 내장은 doing에만 걸지만 이 흐름은
+// todo에도 건다 — 흐름이 판정을 바꾼다는 것을 그 차이가 보인다.
+const ownerFlow = createWorkflow(build({ f: {
+  targetKind: 'task',
+  nodes: {
+    todo: { step: 'unclaimed', requiresOwner: true },
+    done: { step: 'completed', validity: 'valid', requiresOwner: true }
+  }
+} }).f);
+
+function judgeWith(flowFor) {
+  const found = [];
+  checkTaskEntries(found, {
+    'TASK-AAAA': { title: '담당자 없는 할 일', status: 'todo', owner: null, links: [], deps: [], acceptanceCriteria: {} }
+  }, {
+    taskIds: ['TASK-AAAA'],
+    taskFile: 'tasks.json',
+    registry: new Map(),
+    memberIds: new Set(),
+    stakeholderIds: new Set(),
+    kinds: [],
+    results: [],
+    testedDocuments: () => [],
+    flowFor
+  });
+  return found.map((item) => item.code);
+}
+
+// 흐름을 안 넘기면 내장이다 — todo에 담당자를 요구하지 않으므로 조용하다.
+assert.ok(
+  !judgeWith(null).includes('RDL-TASK-007'),
+  '흐름을 안 넘기면 내장 판정이라 todo에 담당자를 요구하지 않는다.'
+);
+
+// 흐름을 넘기면 그 흐름이 정한 대로 판정한다.
+assert.ok(
+  judgeWith(() => ownerFlow).includes('RDL-TASK-007'),
+  '프로젝트가 정한 흐름이 검사의 판정을 바꾼다.'
+);
+
 process.stdout.write('workflow config tests passed (전환 선언 · 슬롯 넷 · 검증 판정 · 승인 근거 · 3단 상속 · 바인딩)\n');

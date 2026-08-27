@@ -32,6 +32,22 @@ const NORMALIZED_BUILTIN_ITEM_TYPES = normalizeItemTypes(BUILTIN_ITEM_TYPES);
 // 정규화를 여기서 한 번 더 도는 이유는 병합 결과가 파일에서 온 값을 담기 때문이다.
 // 읽는 시점에 이미 한 번 걸렀지만, 병합이 계층을 겹치면서 만든 조합은 그때 보지 못한
 // 것이다 — 각 계층이 옳아도 합친 것이 옳다는 보장은 없다.
+// 유형이 탈 흐름을 고르는 함수. 설정이 없거나 깨졌으면 내장으로 떨어진다.
+//
+// 검사는 저장소 전체를 훑는 자리라 설정 파일 하나에 인질이 되면 안 된다. 깨진 설정을
+// 여기서 던지면 그 저장소는 아무것도 검사받지 못하고, 무엇이 틀렸는지도 진단이 아니라
+// 스택 트레이스로 나온다. 설정이 틀렸다는 사실은 rdl doctor가 파일과 키 경로와 함께
+// 말한다 — board-data.js가 직접 물은 물음에는 그대로 던지는 것과 갈리는 자리다.
+function resolveFlow(root, projectKey) {
+  let config = null;
+  try {
+    config = loadWorkflows(root, projectKey);
+  } catch (error) {
+    config = null;
+  }
+  return (kind) => (config ? workflowFor(config, 'task', kind) : workflow);
+}
+
 function resolveItemTypes(root, projectKey) {
   if (!projectKey) return NORMALIZED_BUILTIN_ITEM_TYPES;
   try {
@@ -42,6 +58,8 @@ function resolveItemTypes(root, projectKey) {
     return NORMALIZED_BUILTIN_ITEM_TYPES;
   }
 }
+const workflow = require('./workflow');
+const { loadWorkflows, workflowFor } = require('./workflow-config');
 const { COMPOSITE_DIRECTORY, prepareCompositeDocuments, compositeIssues, compositeDrift } = require('./document-composite');
 const { isIndexArtifact, validateImplementationDocument, validateImplementationTrace, validateTaskImplementationReadiness, implementationTrace } = require('./implementation-contract');
 const { runGit } = require('./git');
@@ -228,6 +246,9 @@ function checkTasks(list, root, taskPath, registry, memberIds, stakeholderIds, p
     // 유형 정의는 정책 층에서 온다. 이제 board.json에 유형을 적으면 코드를 고치지
     // 않고도 새 유형이 판정을 받는다.
     itemTypes: resolveItemTypes(root, projectKey),
+    // 흐름도 정책 층에서 온다. 표가 아니라 함수를 싣는 이유는 유형마다 다른 흐름을
+    // 탈 수 있어서다 — 표를 한 번 만들어 두면 첫 태스크의 흐름이 나머지 유형에까지 걸린다.
+    flowFor: resolveFlow(root, projectKey),
     // 면제는 게이트 이름으로 판정한다. 게이트는 함수이며 해석기가 면제 목록에 없는
     // 것만 부른다 — 판정하고 결과를 감추는 것이 아니라 판정 자체를 돌지 않는다.
     //
