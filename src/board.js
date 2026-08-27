@@ -793,6 +793,7 @@ function createBoardServer(start, options) {
       if (request.method === 'GET' && url.pathname === '/theme.css') return asset(response, 'theme.css', 'text/css', token);
       if (request.method === 'GET' && url.pathname === '/editor.js') return generatedAsset(response, 'entry.js', 'application/javascript');
       if (request.method === 'GET' && url.pathname === '/editor.css') return generatedAsset(response, 'entry.css', 'text/css');
+      if (request.method === 'GET' && url.pathname === '/workflow-graph.js') return generatedAsset(response, 'workflow-entry.js', 'application/javascript');
       if (request.method === 'GET' && url.pathname === '/mermaid.js') return dependencyAsset(response, 'mermaid/dist/mermaid.min.js');
       if (request.method === 'GET' && url.pathname === '/marked.js') return packageAsset(response, 'marked', 'lib/marked.umd.js');
       if (request.method === 'GET' && url.pathname === '/dompurify.js') return dependencyAsset(response, 'dompurify/dist/purify.min.js');

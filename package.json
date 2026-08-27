@@ -33,6 +33,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@joint/core": "^4.3.2",
     "jpeg-js": "^0.4.4",
     "mermaid": "^11.12.2"
   },

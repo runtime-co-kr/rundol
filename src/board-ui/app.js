@@ -1892,75 +1892,15 @@ function workflowStepNote(view, step) {
   return '스냅숏이 이 스텝을 어느 갈래로도 세지 않았습니다';
 }
 
-// 흐름을 그림으로 본다. 목록은 전환 하나하나를 답하지만 "이 흐름이 어떻게 생겼나"에는
-// 답하지 못한다 — 노드 여섯에 전환 여덟이면 사람이 머릿속에서 그려야 하고, 그렇게 그린
-// 그림은 사람마다 다르다. 막다른 노드와 돌아올 수 없는 자리는 그려 봐야 보인다.
-//
-// 노드 이름은 프로젝트가 정하는 값이라 mermaid 식별자로 쓸 수 없다. 공백도 한글도
-// 따옴표도 들어오므로 자리마다 번호를 붙이고 이름은 라벨로만 싣는다.
-const WILDCARD_NODE = '(ALL)';
-
-function workflowDiagramSource(view) {
-  const ids = new Map();
-  Object.keys(view.nodes).forEach((name, index) => ids.set(name, `wf${index}`));
-  const lines = ['flowchart LR'];
-  for (const [name, node] of Object.entries(view.nodes)) {
-    const label = node.label || taskStatusLabel(name);
-    // 스텝을 라벨에 함께 적는다. 코드가 보는 것은 이름이 아니라 스텝이므로, 그림에서
-    // 그 둘이 떨어져 있으면 이름만 보고 흐름을 읽게 된다.
-    const step = STEP_LABELS[node.step] || node.step || '스텝 없음';
-    lines.push(`  ${ids.get(name)}["${nodeLabel(label)}<br><small>${nodeLabel(step)}</small>"]`);
-  }
-  // 출발을 적지 않은 전환은 모든 노드에서 온다. 노드마다 화살표를 그리면 그림이 덮이므로
-  // 지라가 global transition을 한 자리로 모으듯 하나로 모은다.
-  let usedWildcard = false;
-  const edges = [];
-  for (const item of view.transitions || []) {
-    const to = ids.get(item.to);
-    if (!to) continue;
-    let from = ids.get(item.from);
-    if (!from && item.from === WILDCARD_NODE) { from = 'wfAll'; usedWildcard = true; }
-    if (!from) continue;
-    const marks = [];
-    if (item.approval) marks.push('사람 승인');
-    if (item.opensRun) marks.push('런');
-    const title = item.title || '이름 없음';
-    const label = marks.length ? `${title} (${marks.join(' · ')})` : title;
-    edges.push(`  ${from} -->|"${nodeLabel(label)}"| ${to}`);
-  }
-  if (usedWildcard) lines.push('  wfAll(["모든 노드"])');
-  // 스텝마다 색을 준다. 지라가 상태를 범주 색으로 가르는 자리이고, 여기서 색이 붙는 것은
-  // 이름이 아니라 스텝이다 — 이름은 프로젝트가 늘리지만 스텝은 닫힌 다섯이라, 이름에
-  // 붙이면 새 이름이 색 없이 서고 그 사실은 아무 신호도 내지 않는다.
-  //
-  // 값은 테마 토큰에서 읽는다. 여기 색을 적으면 라이트 테마에서 글자가 안 보이게 되고,
-  // 그 어긋남은 테마를 바꾼 사람에게만 보인다.
-  const classed = new Map();
-  for (const [name, node] of Object.entries(view.nodes)) {
-    if (!node.step) continue;
-    if (!classed.has(node.step)) classed.set(node.step, []);
-    classed.get(node.step).push(ids.get(name));
-  }
-  // classDef를 적지 않는다. mermaid는 그것을 svg 안에 <style>로 심는데, Board는
-  // style-src 'self'로 서빙되므로 그 style이 통째로 막힌다. 막혀도 오류는 나지 않고
-  // 색만 조용히 안 붙는다 — class는 그대로 달리므로 화면을 봐야만 드러난다.
-  //
-  // CSP를 풀지 않는다. Board는 사람이 쓴 문서를 그리는 화면이라 style-src를 열면
-  // 그 문서가 스타일을 심을 수 있게 된다. 색은 아래에서 속성으로 칠한다 — 속성은
-  // CSP가 보지 않는다.
-  // class만 단다. 색은 style.css가 그 클래스에 준다 — mermaid의 classDef는 svg 안에
-  // <style>로 심기는데 Board는 style-src 'self'로 서빙되어 그 style이 통째로 막히고,
-  // 막혀도 오류 없이 색만 조용히 빠진다. 이 저장소는 그 사실을 이미 알고 mermaid 도형
-  // 색을 전부 style.css에서 주고 있으므로, 스텝 색도 같은 자리에 둔다.
-  for (const [step, members] of classed) lines.push(`  class ${members.join(',')} ${step}`);
-  return lines.concat(edges).join('\n');
-}
+// 앞서 세운 종이를 걷는 함수. 다시 그릴 때 안 걷으면 같은 자리에 한 장씩 쌓인다.
+let workflowGraphTeardown = null;
 
 function renderWorkflowDiagram(view) {
   const host = el('workflow-diagram');
   if (!host) return;
   const note = '<h3 class="approval-heading">흐름도</h3>'
-    + '<p class="approval-note">노드와 전환을 그대로 그린 것입니다. 화살표에 붙은 말은 전환의 이름이고, 사람 승인이 걸린 전환과 런을 여는 전환은 그 사실을 함께 답니다. 이 그림은 목록과 같은 값에서 나오므로 둘이 갈리지 않습니다.</p>';
+    + '<p class="approval-note">노드를 끌어 옮기고 화살표 끝을 다른 노드에 다시 붙일 수 있습니다. 화살표에 붙은 말은 전환의 이름이고, 사람 승인이 걸린 전환과 런을 여는 전환은 그 사실을 함께 답니다. 이 그림은 목록과 같은 값에서 나오므로 둘이 갈리지 않습니다.</p>'
+    + '<p class="approval-note" id="workflow-graph-dirty" hidden><b>고친 것은 아직 저장되지 않습니다.</b> 정책 층 변경은 계약 변경 결정을 함께 남겨야 저장되고, Board에는 아직 그 결정을 올릴 자리가 없습니다 — 지금은 <code>workflows.json</code>을 고치고 <code>rdl save</code>로 남깁니다.</p>';
   if (!view.transitions) {
     host.innerHTML = note + '<p class="empty-state">이 흐름은 전환을 선언하지 않았습니다. 그릴 화살표가 없으므로 그림 대신 노드 목록이 답합니다 — 선언하지 않은 흐름은 어느 노드에서 어느 노드로든 갑니다.</p>';
     return;
@@ -1969,12 +1909,24 @@ function renderWorkflowDiagram(view) {
     host.innerHTML = note + '<p class="empty-state">전환 목록이 비어 있습니다. 빈 목록도 선언이라 같은 노드에 머무는 것 말고는 전부 막히며, 막힌 흐름은 그릴 화살표가 없습니다.</p>';
     return;
   }
-  host.innerHTML = note + `<pre class="mermaid">${escapeHtml(workflowDiagramSource(view))}</pre>`;
-  // 화면에 올라온 뒤에 그린다. mermaid는 글자를 DOM에 얹어 상자를 재는데, 숨은 자리에서는
-  // 그 잰 값이 전부 0이라 viewBox가 16×16으로 접힌다. 접힌 그림은 태그가 다 있고 g도
-  // text도 제자리에 있어서, 안 그려진 것이 아니라 크기만 잃은 채로 통과한다 — 그래서
-  // 아무 오류도 나지 않는다. 설정 패널은 처음에 닫혀 있으므로 여기서 한 번 걸러야 한다.
-  if (host.getBoundingClientRect().width > 0) renderMermaid();
+  host.innerHTML = note + '<div id="workflow-graph" class="workflow-graph"></div>';
+  // 앞의 종이를 걷는다. 안 걷으면 다시 그릴 때마다 같은 자리에 한 장씩 쌓인다.
+  if (workflowGraphTeardown) { workflowGraphTeardown(); workflowGraphTeardown = null; }
+  if (!window.RundolWorkflowGraph) {
+    el('workflow-graph').innerHTML = '<p class="empty-state">흐름도 번들이 없습니다. <code>npm install</code> 뒤 다시 시작하세요.</p>';
+    return;
+  }
+  // 화면에 올라온 뒤에 그린다. 숨은 자리에서는 종이의 폭이 0이라 그림이 접히고, 접힌
+  // 그림은 도형이 다 있는 채로 크기만 잃어 아무 오류도 내지 않는다 — mermaid로 그리던
+  // 때 이 자리가 16×16으로 접혀 있었고 열어 보기 전에는 드러나지 않았다.
+  if (host.getBoundingClientRect().width === 0) return;
+  try {
+    workflowGraphTeardown = window.RundolWorkflowGraph.mount(el('workflow-graph'), view, {
+      onDirty: () => { const mark = el('workflow-graph-dirty'); if (mark) mark.hidden = false; }
+    });
+  } catch (error) {
+    el('workflow-graph').innerHTML = `<p class="empty-state">흐름도를 그리지 못했습니다: ${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function renderWorkflowSettings() {

@@ -17,6 +17,9 @@ const path = require('path');
 
 const repository = path.resolve(__dirname, '..');
 const entry = path.join(repository, 'src', 'board-ui', 'editor', 'entry.mjs');
+// 흐름도는 번들을 따로 갖는다. 설정 화면 한 칸에서만 쓰이는데 문서 편집기와 묶으면
+// 문서를 열 때마다 그래프 라이브러리가 함께 내려온다.
+const workflowEntry = path.join(repository, 'src', 'board-ui', 'editor', 'workflow-entry.mjs');
 const outdir = path.join(repository, 'src', 'board-ui', 'generated');
 
 function build({ quiet } = {}) {
@@ -35,7 +38,7 @@ function build({ quiet } = {}) {
   fs.mkdirSync(outdir, { recursive: true });
   try {
     esbuild.buildSync({
-      entryPoints: [entry],
+      entryPoints: [entry, workflowEntry],
       bundle: true,
       minify: true,
       format: 'iife',
