@@ -43,7 +43,7 @@ Usage:
   rdl member set <MEMBER-ID|STAKEHOLDER-ID> [--name <이름>] [--role <ROLE-ID>] [--organization <소속>] [--account <계정>] [--responsibility <책임>] [--status <상태>] [--project <key>] [--json]
   rdl member list [--project <key>] [--json]
   rdl watch --project <key> [--remote] [--once] [--json]
-  rdl task add <제목> --acceptance <완료조건> [--summary <설명>] [--owner <MEMBER-ID>]
+  rdl task add <제목> --acceptance <완료조건> [--project <key>] [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
                    [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
@@ -1786,6 +1786,24 @@ async function main() {
   throw new Error(`지원하지 않는 명령: ${command}`);
 }
 
+// 오류도 --json을 따른다. 성공만 JSON이면 부르는 쪽은 파서를 두 벌 들어야 하고, 두 벌
+// 중 하나는 사람이 읽으라고 쓴 문장을 기계가 뜯는 쪽이 된다 — 그 파서는 문구를 고칠
+// 때마다 조용히 깨진다.
+//
+// 자리는 stderr 그대로다. 결과는 stdout, 진단은 stderr라는 갈라섬은 --json이 바꿀 축이
+// 아니고, 옮기면 성공 출력을 읽던 파이프가 실패 때 오류를 결과로 받는다.
+//
+// 코드는 지어내지 않는다. 문장 안에 이미 선 RDL 코드가 있으면 그것을 꺼내 싣고, 없으면
+// null이다. 없는 코드를 만들어 실으면 부르는 쪽은 그 값으로 분기하다 코드가 실제로
+// 생기는 날 갈린다.
+const ERROR_CODE_PATTERN = /\bRDL-[A-Z]+-\d+\b/u;
+function errorLine(argv, error) {
+  const message = error && error.message ? error.message : String(error);
+  if (!argv.includes('--json')) return `rdl: ${message}\n`;
+  const matched = ERROR_CODE_PATTERN.exec(message);
+  return `${JSON.stringify({ error: { code: matched ? matched[0] : null, message } }, null, 2)}\n`;
+}
+
 main().then((code) => {
   if (DEBUG_CONTEXT) {
     try { require('../src/debug').appendDebug(DEBUG_CONTEXT.root, { type: 'command', project: DEBUG_CONTEXT.project, command: DEBUG_CONTEXT.command, status: code === 0 ? 'success' : 'failed', exitCode: code, durationMs: Date.now() - CLI_STARTED_AT }); } catch (_) {}
@@ -1795,6 +1813,6 @@ main().then((code) => {
   if (DEBUG_CONTEXT) {
     try { require('../src/debug').appendDebug(DEBUG_CONTEXT.root, { type: 'command', project: DEBUG_CONTEXT.project, command: DEBUG_CONTEXT.command, status: 'error', error: error.message, durationMs: Date.now() - CLI_STARTED_AT }); } catch (_) {}
   }
-  process.stderr.write(`rdl: ${error.message}\n`);
+  process.stderr.write(errorLine(process.argv.slice(2), error));
   process.exitCode = 2;
 });

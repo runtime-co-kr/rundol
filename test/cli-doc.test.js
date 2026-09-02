@@ -103,4 +103,26 @@ for (const stale of ['Workspace v2', 'projects/tasks.json', 'refs/heads/rundol/w
   assert(!document.includes(stale), `docs/CLI.md에 이전 구조 표현이 남았습니다: ${stale}`);
 }
 assert(document.includes('projects/<project-key>/.rundol/state/pending/merge-conflicts.json'));
+
+// ── --json은 실패에도 적용된다 ──────────────────────────────────────────────
+//
+// 성공만 JSON이면 부르는 쪽은 파서를 두 벌 든다. 그중 하나는 사람이 읽으라고 쓴 문장을
+// 기계가 뜯는 쪽이고, 그 파서는 문구를 다듬을 때마다 조용히 깨진다.
+{
+  const plain = spawnSync(process.execPath, [cli, 'task', 'bogus-subcommand'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(plain.status, 2);
+  assert(plain.stderr.startsWith('rdl: '), '--json이 없으면 사람이 읽는 한 줄 그대로다.');
+
+  const structured = spawnSync(process.execPath, [cli, 'task', 'bogus-subcommand', '--json'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(structured.status, 2);
+  // 자리는 stderr 그대로다. 결과는 stdout, 진단은 stderr라는 갈라섬은 --json이 바꿀
+  // 축이 아니고, 옮기면 성공 출력을 읽던 파이프가 실패 때 오류를 결과로 받는다.
+  assert.strictEqual(structured.stdout, '', '오류는 결과 자리로 나오지 않는다.');
+  const parsed = JSON.parse(structured.stderr);
+  assert.strictEqual(typeof parsed.error.message, 'string');
+  assert.strictEqual(parsed.error.message, plain.stderr.replace(/^rdl: /u, '').trim(), '두 표면이 같은 문장을 말한다.');
+  // 코드는 지어내지 않는다. 문장 안에 선 RDL 코드가 있으면 그것이고, 없으면 null이다 —
+  // 없는 코드를 만들어 실으면 부르는 쪽은 그 값으로 분기하다 코드가 생기는 날 갈린다.
+  assert.strictEqual(parsed.error.code, null, '코드가 없는 오류는 null로 답한다.');
+}
 process.stdout.write('CLI document tests passed\n');

@@ -93,6 +93,27 @@ async function testBoard() {
     assert.strictEqual(typeof snapshotValue.revision.tasks, 'string');
     assert(snapshotValue.documents.some((document) => typeof document.body === 'string'));
 
+    // ── 검토 인박스 ────────────────────────────────────────────────────────
+    //
+    // 승인 상태는 원장의 사실이고 frontmatter의 state는 쓴 사람의 주장이다. 화면에 앞엣것이
+    // 안 가면 문서를 열어도 승인 여부를 알 수 없고, "지금 뭐가 승인된 상태냐"를 매번
+    // 명령으로 물어야 한다 — 그 물음이 검토를 미루게 만드는 자리다.
+    assert(snapshotValue.documents.every((document) => Object.prototype.hasOwnProperty.call(document, 'approval')),
+      '스냅숏의 문서마다 승인 상태 자리가 있다.');
+    // 이 픽스처는 schemaVersion 3이라 승인 원장이 없다. 없는 것을 오류로 만들면 판올림 전
+    // 저장소에서 보드가 통째로 서지 않으므로, 그때는 상태를 비워 보내고 화면이 "모른다"를
+    // 그린다 — 모르는 것과 미승인은 다르고, 뒤엣것으로 답하면 화면이 없는 사실을 말한다.
+    assert.strictEqual(snapshotValue.reviewQueue.total, 0, '승인 원장이 없는 저장소에서는 인박스가 비어 온다.');
+    assert(snapshotValue.documents.every((document) => document.approval === null), '그 저장소의 문서는 승인 상태를 모른다고 답한다.');
+    // 못 읽은 이유는 들고 나온다. 삼키면 원장이 깨진 저장소와 원장을 안 쓰는 저장소가
+    // 화면에서 같아 보이고, 앞엣것은 고쳐야 할 사고인데 아무도 그것을 모른다.
+    assert.strictEqual(typeof snapshotValue.reviewQueue.unknown, 'string', '모르는 이유가 값으로 실린다.');
+    assert.strictEqual(snapshotValue.reviewQueue.used, false);
+    // 미승인은 문제가 아니라 줄이다. attention에 섞으면 승인 축을 안 쓰는 프로젝트에서
+    // 문서 전건이 문제 목록으로 쏟아져 진짜 문제를 덮는다.
+    assert.strictEqual(snapshotValue.attention.filter((item) => item.reason === '검토 대기').length, 0,
+      '검토 대기는 attention이 아니라 인박스가 든다.');
+
     // ── 스냅숏이 싣는 워크플로 ──────────────────────────────────────────────
     //
     // 이 픽스처에는 workflows.json이 없다. 설정을 안 쓴 저장소에서 답이 판올림 전과
