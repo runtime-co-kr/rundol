@@ -4815,7 +4815,7 @@
         },
         "AC-003": {
           "text": "--json을 준 실패가 JSON으로 답하고 자리는 stderr 그대로다",
-          "done": false
+          "done": true
         },
         "AC-004": {
           "text": "면제할 수 있는 게이트는 막는 말이 그 이름을 함께 말한다",
@@ -4836,7 +4836,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-02T16:44:48.676Z",
-      "updatedAt": "2026-09-02T19:33:16.114Z",
+      "updatedAt": "2026-09-02T19:33:21.739Z",
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
