@@ -46,6 +46,14 @@ hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 user_hook="$hook_dir/pre-commit.rundol-user"
 if [ -x "$user_hook" ]; then "$user_hook" "$@"; fi
 
+# 손으로 마치는 병합은 막지 않는다. git merge는 이 훅을 부르지 않으므로 정상 병합은
+# 애초에 여기 오지 않고, 여기 오는 것은 병합이 중간에 멈춰 사람이 git commit으로
+# 마치는 경우뿐이다 — commit-msg가 결박을 물어 되돌려보낸 자리가 그것이다. 그때 막으면
+# 그 병합은 마칠 수도 되돌릴 수도 없는 상태가 되고, 아래 안내("세션을 여세요")는 그
+# 상태에서 할 수 있는 일이 아니다. 결박은 commit-msg가 이미 묻고 있으므로 여기서
+# 비켜도 물음이 사라지지 않는다.
+if git rev-parse --verify --quiet MERGE_HEAD >/dev/null 2>&1; then exit 0; fi
+
 branch=$(git symbolic-ref --quiet --short HEAD || echo '')
 [ -n "$branch" ] || exit 0
 default_ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD || echo '')

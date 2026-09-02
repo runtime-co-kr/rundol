@@ -172,6 +172,27 @@ try {
   attempt(['checkout', '-q', 'main']);
   assert.strictEqual(attempt(['merge', '--no-ff', 'session/landing2', '-m', 'Merge session/landing2']).status, 0, '병합 커밋으로도 안착한다');
 
+  // ── 멈춘 병합은 손으로 마칠 수 있다 ──────────────────────────────────
+  //
+  // 제 말로 적은 병합 메시지는 commit-msg의 문구 면제를 타지 못해 결박을 요구받고, 그
+  // 요구는 병합을 중간에 세운다. 거기서 pre-commit까지 막으면 그 병합은 마칠 수도 없고,
+  // 그 상태에서 "세션을 여세요"는 할 수 있는 일이 아니다 — 되돌리는 것 말고 길이 없다.
+  //
+  // 위의 병합 단언은 이 자리를 지나가지 않는다. git merge가 스스로 마치면 pre-commit은
+  // 애초에 불리지 않기 때문이다.
+  attempt(['checkout', '-q', '-B', 'session/landing3', before]);
+  put('src/landing3.js', 'landing3\n');
+  git(['add', '-A']);
+  attempt(['commit', '-m', 'feat: 세 번째 안착\n\nRundol-Task: TASK-5']);
+  attempt(['checkout', '-q', 'main']);
+  const halted = attempt(['merge', '--no-ff', 'session/landing3', '-m', '병합: 제 말로 적은 메시지']);
+  assert.notStrictEqual(halted.status, 0, '결박 없는 병합 메시지는 commit-msg가 세운다');
+  assert.ok(fs.existsSync(path.join(temporary, '.git', 'MERGE_HEAD')), '멈춘 병합이 상태로 남는다');
+  assert.strictEqual(
+    attempt(['commit', '-m', '병합: 제 말로 적은 메시지\n\nRundol-Task: TASK-5']).status, 0,
+    `멈춘 병합을 손으로 마칠 수 있어야 한다 — ${hookEvidence()}`
+  );
+
   // ── 남의 훅은 잃지 않는다 ────────────────────────────────────────────
 
   const hooksDir = path.join(temporary, '.git', 'hooks');
