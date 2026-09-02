@@ -4811,7 +4811,7 @@
         },
         "AC-002": {
           "text": "task add의 --project가 도움말 synopsis와 docs/CLI.md에 함께 선다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "--json을 준 실패가 JSON으로 답하고 자리는 stderr 그대로다",
@@ -4836,7 +4836,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-02T16:44:48.676Z",
-      "updatedAt": "2026-09-02T19:33:10.510Z",
+      "updatedAt": "2026-09-02T19:33:16.114Z",
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
