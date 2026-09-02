@@ -4819,7 +4819,7 @@
         },
         "AC-004": {
           "text": "면제할 수 있는 게이트는 막는 말이 그 이름을 함께 말한다",
-          "done": false
+          "done": true
         },
         "AC-005": {
           "text": "하위 층이 상위의 사람 게이트를 지우고 같은 전환을 다시 적으면 거부된다",
@@ -4836,7 +4836,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-02T16:44:48.676Z",
-      "updatedAt": "2026-09-02T19:33:21.739Z",
+      "updatedAt": "2026-09-02T19:33:27.118Z",
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
