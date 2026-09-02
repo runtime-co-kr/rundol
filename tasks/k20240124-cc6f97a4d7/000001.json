@@ -4831,12 +4831,12 @@
         },
         "AC-007": {
           "text": "승인 원장이 없는 저장소에서도 보드가 서고 상태를 모른다고 답한다",
-          "done": false
+          "done": true
         }
       },
       "blocker": null,
       "createdAt": "2026-09-02T16:44:48.676Z",
-      "updatedAt": "2026-09-02T19:33:38.413Z",
+      "updatedAt": "2026-09-02T19:33:44.930Z",
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
