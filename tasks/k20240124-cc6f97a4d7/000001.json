@@ -4807,7 +4807,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "TST 스캐폴드가 내는 통과 기준이 검사 규칙과 충돌하지 않는다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "task add의 --project가 도움말 synopsis와 docs/CLI.md에 함께 선다",
@@ -4836,7 +4836,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-02T16:44:48.676Z",
-      "updatedAt": "2026-09-02T16:45:08.875Z",
+      "updatedAt": "2026-09-02T19:33:10.510Z",
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
