@@ -4823,7 +4823,7 @@
         },
         "AC-005": {
           "text": "하위 층이 상위의 사람 게이트를 지우고 같은 전환을 다시 적으면 거부된다",
-          "done": false
+          "done": true
         },
         "AC-006": {
           "text": "보드 스냅숏이 문서마다 승인 상태를 싣고 검토 인박스를 별도로 낸다",
@@ -4836,7 +4836,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-02T16:44:48.676Z",
-      "updatedAt": "2026-09-02T19:33:27.118Z",
+      "updatedAt": "2026-09-02T19:33:32.553Z",
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
