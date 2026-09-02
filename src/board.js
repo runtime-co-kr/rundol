@@ -286,7 +286,75 @@ function boardRevision(config) {
   return digest.digest('hex');
 }
 
-function attentionItems(tasks, documents, sync) {
+// 문서의 승인 상태를 스냅숏에 싣는다.
+//
+// 지금까지 화면이 받은 것은 frontmatter의 state(draft·proposed)뿐이었다. 그것은 쓴 사람의
+// 주장이고 승인은 원장의 사실이라 서로 다른 축인데, 화면에는 앞엣것만 갔다 — 그래서
+// 문서를 열어도 승인 여부를 알 수 없었고, "지금 뭐가 승인된 상태냐"는 매번 명령으로
+// 물어야 했다. 사람의 병목은 작성이 아니라 검토인데 검토 대상이 보이는 자리가 없었다.
+//
+// 계산은 여기서 새로 하지 않는다. foldApprovals와 trustState가 이미 답을 갖고 있고,
+// 화면이 자기 판정을 지으면 CLI의 doc status와 보드가 같은 문서에 다른 답을 낸다.
+//
+// 못 읽어도 화면은 선다. 승인 원장은 schemaVersion 6부터라 옛 저장소에는 없고, 없는 것을
+// 오류로 만들면 판올림 전 저장소에서 보드가 통째로 서지 않는다 — 그때는 상태를 비워
+// 보내고 화면이 "모른다"를 그린다. 모르는 것과 미승인은 다르다.
+//
+// 다만 못 읽은 이유는 들고 나온다. 삼키면 원장이 깨진 저장소와 원장을 안 쓰는 저장소가
+// 화면에서 같아 보이고, 앞엣것은 고쳐야 할 사고인데 아무도 그것을 모른다 —
+// projectDiagnostics가 검사 실패를 error로 실어 보내는 것과 같은 자리다.
+function documentApprovals(root, projectKey, documents) {
+  try {
+    const approval = require('./approval');
+    const layout = workspaceLayout(root);
+    if (layout.schemaVersion < 6) return { states: null, reason: '이 작업공간은 승인 원장을 갖기 전 판입니다.' };
+    const folded = approval.foldApprovals(
+      approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), projectKey),
+      { authority: require('./authority').authorityContext(root, projectKey, { now: Date.now() }) }
+    );
+    const states = {};
+    for (const document of documents) states[document.id] = approval.trustState(document, folded.approvals.get(document.id));
+    return { states, reason: null, diagnostics: folded.diagnostics };
+  } catch (error) {
+    return { states: null, reason: error.message };
+  }
+}
+
+// 검토를 기다리는 문서의 줄. attention과 가르는 이유는 성격이 달라서다 — attention은
+// "봐야 할 문제"이고 이것은 "사람이 처리해야 할 줄"이다. 섞으면 승인을 안 쓰는 프로젝트의
+// 문서 전건이 문제 목록으로 들어가 진짜 문제를 덮고, 반대로 승인을 쓰는 프로젝트에서는
+// 줄의 길이가 문제의 수처럼 읽힌다.
+//
+// 승인이 밀리는 실질 원인은 "무엇이 내 검토를 기다리는지" 볼 자리가 없는 것이다. 그 사이에
+// 승인 안 된 문서 위로 작업이 계속 쌓이고, 상류가 흔들릴 때마다 하류 전체를 다시 탄다.
+//
+// 셈은 전건으로 하고 목록만 자른다. 화면이 "133건 중 12건"을 말할 수 있어야 줄의 길이가
+// 보이고, 길이가 보여야 사람이 승인을 관문으로 쓸지 판단한다.
+const REVIEW_QUEUE_LIMIT = 50;
+function reviewQueue(documents, approvals) {
+  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, items: [] };
+  const counts = { approved: 0, stale: 0, unapproved: 0 };
+  const items = [];
+  for (const document of documents) {
+    const state = approvals.states[document.id];
+    if (!state) continue;
+    counts[state.status] = (counts[state.status] || 0) + 1;
+    if (state.status === 'approved') continue;
+    items.push({
+      status: state.status, id: document.id, type: document.type, title: document.title,
+      file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals
+    });
+  }
+  // 낡음이 먼저다. 승인된 것이 흔들린 상태라 하류가 이미 그것을 근거로 삼았고,
+  // 미승인은 아직 아무도 근거로 삼지 않았다.
+  items.sort((left, right) => (left.status === right.status ? left.id.localeCompare(right.id) : left.status === 'stale' ? -1 : 1));
+  // 이 프로젝트가 승인 축을 쓰는가. 한 번도 승인하지 않은 프로젝트에서 전 문서가 미승인인
+  // 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 검토 대기로 읽으면 인박스가 첫날부터
+  // 문서 전건으로 찬다. 판단은 화면이 하되 근거는 여기서 준다.
+  return { used: counts.approved + counts.stale > 0, unknown: null, counts, total: items.length, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
+}
+
+function attentionItems(tasks, documents, sync, approvals) {
   const items = [];
   const taskIds = new Set(tasks.map((task) => task.id));
   const documentIds = new Set(documents.map((document) => document.id));
@@ -298,6 +366,21 @@ function attentionItems(tasks, documents, sync) {
     // 후행 태스크가 영영 막힌 것으로 표시되고 풀 방법이 없다.
     for (const dependency of task.deps || []) if (taskIds.has(dependency) && !workflow.isTerminal(tasks.find((item) => item.id === dependency).status)) items.push({ severity: 'info', kind: 'task', id: task.id, title: task.title, reason: `선행 태스크 미완료: ${dependency}` });
     for (const link of task.links || []) if (!documentIds.has(link)) items.push({ severity: 'error', kind: 'task', id: task.id, title: task.title, reason: `깨진 문서 연결: ${link}` });
+  }
+  // 검토를 기다리는 문서도 봐야 할 것이다. 승인이 밀리는 실질 원인은 사람이 게을러서가
+  // 아니라 "무엇이 내 검토를 기다리는지" 볼 자리가 없어서이고, 그 사이에 승인 안 된
+  // 문서 위로 작업이 계속 쌓인다.
+  //
+  // 심각도는 둘을 가른다. 낡음은 승인된 것이 흔들린 상태라 이미 그 문서를 근거로 삼은
+  // 하류가 있고, 미승인은 아직 아무도 그것을 근거로 삼지 않았다 — 앞엣것이 먼저다.
+  // 낡음만 여기 든다. 승인된 것이 흔들렸다는 뜻이라 그 자체가 사건이고, 이미 그 문서를
+  // 근거로 삼은 하류가 있다. 아직 승인되지 않은 문서는 문제가 아니라 줄이므로 이 목록에
+  // 넣지 않는다 — 넣으면 승인 축을 안 쓰는 프로젝트에서 문서 전건이 여기로 쏟아져
+  // 진짜 문제를 덮는다. 그 줄은 reviewQueue가 따로 든다.
+  for (const document of approvals.states ? documents : []) {
+    const state = approvals.states[document.id];
+    if (!state || state.status !== 'stale') continue;
+    items.push({ severity: 'warning', kind: 'document', id: document.id, title: document.title, reason: '승인 후 개정 — 재승인 필요' });
   }
   // 동기화는 여기 들어오지 않는다. 이 목록은 "봐야 할 문제"이고 동기화는 "누르면
   // 커밋하고 원격으로 올리는 실행"이라 성격이 다르다. 게다가 이 항목은 늘 맨 뒤에
@@ -384,6 +467,10 @@ function workspaceSnapshot(root, projectKey, search) {
   const config = boardConfig(root, project.key);
   const tasksResult = queryTasks(config, search || new URLSearchParams(), { all: true });
   const documents = listDocuments(project);
+  // 승인 상태는 문서 옆에 붙어야 한다. 따로 부르는 값으로 두면 화면이 목록을 그린 뒤
+  // 상태를 다시 물어야 하고, 그 사이에 목록과 상태가 서로 다른 시점을 가리킨다.
+  const approvals = documentApprovals(root, project.key, documents);
+  for (const document of documents) document.approval = approvals.states ? approvals.states[document.id] : null;
   const collaboration = readCollaboration(root, project.key);
   const sync = syncStatus(project);
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
@@ -411,7 +498,10 @@ function workspaceSnapshot(root, projectKey, search) {
     // 있었고, 그래서 workflows.json을 고쳐도 화면은 그대로였다 — 설정 층은 있는데
     // 그 층을 보여 주는 화면이 없었다는 뜻이다. 이제 프로젝트 설정을 태운다.
     workflow: boardWorkflow(root, project.key),
-    attention: attentionItems(tasksResult.tasks, documents, sync),
+    attention: attentionItems(tasksResult.tasks, documents, sync, approvals),
+    // 사람-에이전트 협업에서 사람의 병목은 작성이 아니라 검토다. 그 줄이 값으로 실려야
+    // 화면이 그것을 첫 자리에 그릴 수 있다.
+    reviewQueue: reviewQueue(documents, approvals),
     people: collaboration,
     clients,
     sync,

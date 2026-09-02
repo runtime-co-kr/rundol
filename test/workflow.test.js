@@ -155,6 +155,18 @@ for (const code of ['RDL-TASK-007', 'RDL-TASK-018', 'RDL-TASK-019']) {
   assert(report.includes(code), `보고에 ${code}가 없습니다.`);
 }
 
+// 면제할 수 있는 게이트는 이름을 함께 말한다. 막는 말은 진단 코드로 하고 면제는 게이트
+// 이름으로 받는데, 둘이 다른 어휘라 막힌 사람에게 이름을 알 길이 없었다 — RDL-TASK-019를
+// 보고 done-requires-test-link를 떠올릴 근거가 아무 데도 없다.
+assert(report.includes('--exempt done-requires-test-link'), '면제할 수 있는 게이트가 이름을 말하지 않습니다.');
+// 면제할 수 없는 규칙은 그 말을 하지 않는다. 없는 문을 가리키면 사람은 그 문을 두드린다.
+assert(!workflow.blockerReport(blocked.filter((blocker) => blocker.code === 'RDL-TASK-018')).includes('--exempt'),
+  '면제 목록 밖 규칙이 면제를 권합니다.');
+// 목록은 어휘가 든다. 여기서 다시 세면 코드가 목록을 좁힐 때 안내만 남아 없는 문을 가리킨다.
+for (const gate of blocked.map((blocker) => blocker.ruleId).filter((ruleId) => report.includes(`--exempt ${ruleId}`))) {
+  assert(vocabulary.EXEMPTABLE_GATES.includes(gate), `어휘 밖 게이트를 권합니다: ${gate}`);
+}
+
 // 막는 규칙 하나하나가 사람에게 무엇을 고쳐야 하는지 말할 수 있어야 한다.
 // 말하지 못하면 표면마다 항목을 다시 뒤지게 되고, 다시 뒤진 것들은 달라진다.
 for (const blocker of blocked) {

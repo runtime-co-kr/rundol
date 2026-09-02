@@ -382,6 +382,57 @@ const replaced = mergeWorkflows([
 ]);
 assert.strictEqual(replaced.f.transitions.length, 1, '전환을 적으면 층 단위로 갈아탄다.');
 
+// ── 사람 게이트는 상속으로 지워지지 않는다 ──────────────────────────────────
+//
+// 목록이 층 단위로 갈아타므로 "전환 하나를 고치려고 다시 적었다"와 "승인 칸을 빼고 다시
+// 적었다"가 파일에서 같은 모양이다. 뒤엣것만 막는다.
+
+assert.throws(
+  () => mergeWorkflows([
+    normalizeWorkflows({ f: definition() }, { file: 'workspace' }),
+    normalizeWorkflows({ f: { transitions: [{ from: 'review', to: 'done', title: '승인' }] } }, { file: 'project' })
+  ]),
+  /사람 게이트는 하위 층이 지울 수 없습니다/u,
+  '같은 전환을 승인 칸 없이 다시 적으면 막는다.'
+);
+
+const keptGate = mergeWorkflows([
+  normalizeWorkflows({ f: definition() }, { file: 'workspace' }),
+  normalizeWorkflows({ f: { transitions: [{ from: 'review', to: 'done', title: '승인함', approval: { human: true } }] } }, { file: 'project' })
+]);
+assert.strictEqual(keptGate.f.transitions[0].title, '승인함', '승인 칸을 그대로 적으면 나머지는 고칠 수 있다.');
+
+// 좁히는 것은 막지 않는다. 전환을 아예 빼면 그 이동이 불가능해지고, 불가능은 게이트보다 좁다.
+assert.strictEqual(
+  mergeWorkflows([
+    normalizeWorkflows({ f: definition() }, { file: 'workspace' }),
+    normalizeWorkflows({ f: { transitions: [{ from: 'todo', to: 'doing' }] } }, { file: 'project' })
+  ]).f.transitions.length,
+  1,
+  '게이트가 걸린 전환을 통째로 빼는 것은 좁히는 일이라 허용한다.'
+);
+
+// 노드를 없애 갈 곳을 잃은 전환도 밖이다. 게이트를 지운 것이 아니라 전환이 사라진 것이다.
+assert.strictEqual(
+  mergeWorkflows([
+    normalizeWorkflows({ f: definition() }, { file: 'workspace' }),
+    normalizeWorkflows({ f: { nodes: { review: { disabled: true } }, transitions: [{ from: 'todo', to: 'doing' }] } }, { file: 'project' })
+  ]).f.transitions.length,
+  1,
+  '없앤 노드를 가리키던 게이트 전환은 함께 사라진다.'
+);
+
+// 세 층에서도 같다. 가운데 층이 건 게이트를 맨 아래 층이 지우지 못한다.
+assert.throws(
+  () => mergeWorkflows([
+    normalizeWorkflows({ f: { targetKind: 'task', nodes: definition().nodes } }, { file: 'builtin' }),
+    normalizeWorkflows({ f: { transitions: [{ from: 'review', to: 'done', approval: { human: true } }] } }, { file: 'workspace' }),
+    normalizeWorkflows({ f: { transitions: [{ from: 'review', to: 'done' }] } }, { file: 'project' })
+  ]),
+  /사람 게이트는 하위 층이 지울 수 없습니다/u,
+  '가운데 층이 건 게이트도 맨 아래 층이 지우지 못한다.'
+);
+
 // 없앤 것은 없앴다고 적혀야 한다. 맵 병합에는 삭제가 없으므로 disabled가 그 자리다.
 const dropped = mergeWorkflows([
   normalizeWorkflows({ f: definition() }, { file: 'workspace' }),

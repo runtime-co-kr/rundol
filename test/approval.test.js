@@ -142,6 +142,29 @@ try {
   const checked = rdl(['check']);
   assert.strictEqual(checked.summary.errors, 0, JSON.stringify(checked.diagnostics));
 
+  // ── 보드가 같은 답을 낸다 ──────────────────────────────────────────────────
+  //
+  // 승인 상태는 지금까지 명령으로만 물을 수 있었다. 화면이 그것을 못 받으면 문서를 열어도
+  // 승인 여부를 알 수 없고, 사람은 "지금 뭐가 승인된 상태냐"를 매번 다시 묻는다.
+  //
+  // 판정을 화면 쪽에서 새로 짓지 않았다는 것을 여기서 못박는다. doc status와 보드가 같은
+  // 문서에 다른 답을 내면 사용자는 화면을 믿고, 화면이 틀린 쪽일 때 그 사실이 드러나지 않는다.
+  const snapshot = require('../src/board').workspaceSnapshot(temporary, 'crm', null);
+  const inbox = snapshot.reviewQueue;
+  assert.ok(inbox, '승인 원장이 있는 저장소에서는 검토 인박스가 실린다.');
+  assert.strictEqual(inbox.used, true, '승인을 한 번이라도 한 프로젝트는 승인 축을 쓰는 것으로 답한다.');
+  assert.strictEqual(inbox.counts.stale, statusCli.counts.stale, '인박스의 낡음 수가 doc status와 같다.');
+  assert.strictEqual(inbox.counts.unapproved, statusCli.counts.unapproved || 0, '인박스의 미승인 수가 doc status와 같다.');
+  // 낡음이 먼저다. 승인된 것이 흔들린 상태라 하류가 이미 그것을 근거로 삼았다.
+  assert.strictEqual(inbox.items[0].status, 'stale', '낡은 문서가 줄의 앞에 선다.');
+  assert.strictEqual(inbox.items[0].id, created.id);
+  assert.strictEqual(inbox.items[0].approvedBy, 'MEMBER-001', '누가 승인했던 것인지가 줄에 실린다.');
+  // 문서 옆에도 붙는다. 목록과 상태를 따로 부르면 둘이 다른 시점을 가리킨다.
+  assert.strictEqual(snapshot.documents.find((document) => document.id === created.id).approval.status, 'stale');
+  // 낡음은 문제이기도 하다 — 승인된 것이 흔들렸고 하류가 그것을 근거로 삼았다.
+  assert.ok(snapshot.attention.some((item) => item.kind === 'document' && item.id === created.id),
+    '낡은 문서는 attention에도 선다.');
+
   process.stdout.write('approval tests passed\n');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

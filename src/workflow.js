@@ -377,6 +377,26 @@ function normalizeWorkflows(raw, options) {
  * 목록은 상위가 바뀔 때 따라가지 못한다. 흐름은 통째로 읽히는 것이 낫다 —
  * JSON 한 덩어리를 읽으면 그 흐름이 전부 보여야 하기 때문이다.
  */
+// 전환의 자리. 출발이나 도착을 적지 않은 (ALL) 전환도 자리 하나이므로 `*`로 세운다 —
+// 빼고 세면 (ALL)에 걸린 게이트가 어느 전환과도 짝이 지어지지 않는다.
+function transitionKey(item) {
+  const end = (value) => (value === undefined || value === null ? '*' : String(value));
+  return `${end(item && item.from)} → ${end(item && item.to)}`;
+}
+
+// 사람 게이트가 걸린 전환인가. normalizeTransition이 approval을 { human: true } 하나로
+// 좁혀 두었으므로 여기서 다른 모양을 볼 필요가 없다.
+function humanGated(item) {
+  return Boolean(item && item.approval && item.approval.human === true);
+}
+
+function gatedEndpoints(rawTransitions) {
+  if (!Array.isArray(rawTransitions)) return [];
+  return rawTransitions
+    .filter((item) => plainObject(item) && humanGated(item))
+    .map((item) => ({ key: transitionKey(item), from: item.from, to: item.to }));
+}
+
 function mergeWorkflows(layers) {
   const merged = {};
   for (const layer of layers || []) {
@@ -386,8 +406,13 @@ function mergeWorkflows(layers) {
       const inherited = before && before.disabled !== true ? before : null;
       const nodes = Object.assign({}, inherited && inherited.nodes, entry.nodes);
       const units = Object.assign({}, inherited && inherited.units, entry.units);
+      const replacing = entry.rawTransitions !== null && entry.rawTransitions !== undefined;
       merged[id] = Object.assign({}, inherited, entry, { nodes, units });
-      if ((entry.rawTransitions === null || entry.rawTransitions === undefined) && inherited && inherited.rawTransitions) {
+      // 목록을 갈아탄 층만 게이트를 검사받는다. 상속만 한 층은 상위의 목록을 그대로
+      // 쓰므로 검사할 차이가 없고, gatedBefore를 물려받으면 같은 게이트를 층마다 다시
+      // 본다 — 답이 같은 검사를 반복하는 것이라 비용만 늘고 판정은 그대로다.
+      merged[id].gatedBefore = replacing && inherited ? gatedEndpoints(inherited.rawTransitions) : [];
+      if (!replacing && inherited && inherited.rawTransitions) {
         merged[id].rawTransitions = inherited.rawTransitions;
       }
     }
@@ -417,6 +442,24 @@ function mergeWorkflows(layers) {
       units[name] = unit;
     }
     const nodeIds = Object.keys(nodes);
+    // 사람 게이트는 상속으로 사라지지 않는다.
+    //
+    // 전환 목록은 항목이 아니라 층 단위로 갈아탄다. 그래서 "전환 하나를 고치려고 목록을
+    // 다시 적었다"와 "상위가 건 승인 칸을 빼고 다시 적었다"가 파일에서 같은 모양으로
+    // 들어온다. 둘을 가르지 않으면 승인을 건 사람은 자기 게이트가 도는 줄 알고, 실제로는
+    // 하위 층을 쓴 사람이 그것을 지운 상태가 된다 — 지워졌다는 사실은 아무 신호도 내지 않는다.
+    //
+    // 좁히는 것은 막지 않는다. 그 전환을 아예 빼면 그 이동은 불가능해지고, 불가능은
+    // 게이트보다 좁다. 노드를 없애서 갈 곳을 잃은 전환도 같은 이유로 밖이다. 막는 것은
+    // 하나뿐이다 — 같은 자리를 다시 적으면서 승인 칸만 뺀 경우.
+    for (const gate of entry.gatedBefore || []) {
+      const ends = [gate.from, gate.to].filter((value) => value !== undefined && value !== null).map(String);
+      if (ends.some((value) => removed.includes(value))) continue;
+      const redeclared = (Array.isArray(entry.rawTransitions) ? entry.rawTransitions : [])
+        .filter((item) => plainObject(item) && transitionKey(item) === gate.key);
+      if (!redeclared.length || redeclared.some(humanGated)) continue;
+      throw rejectAt({}, `workflows.${id}.transitions`, `상위 층이 ${gate.key} 전환에 건 사람 게이트는 하위 층이 지울 수 없습니다. 승인 칸을 그대로 적거나, 그 전환을 빼세요.`);
+    }
     let transitions = null;
     if (entry.rawTransitions !== null && entry.rawTransitions !== undefined) {
       if (!Array.isArray(entry.rawTransitions)) throw rejectAt({}, `workflows.${id}.transitions`, '전환 목록은 배열이어야 합니다.');
@@ -834,11 +877,24 @@ function judgeItem(item, actor) {
  * 막는 규칙 목록을 사람이 읽는 한 덩어리로 만든다. 표면마다 자기 방식으로
  * 이어 붙이면 어떤 표면은 첫 줄만 보여 주게 되고, 그 순간 왕복이 돌아온다.
  */
+// 면제할 수 있는 게이트는 막을 때 그 이름을 함께 말한다. 막는 말은 진단 코드로 하고
+// 면제는 게이트 이름으로 받는데, 둘이 다른 어휘라 막힌 사람에게는 이름을 알 길이 없었다 —
+// RDL-TASK-019를 보고 done-requires-test-link를 떠올릴 근거가 아무 데도 없다.
+//
+// 목록은 EXEMPTABLE_GATES가 이미 든다. 여기서 다시 세면 면제 가능 목록이 두 벌이 되고,
+// 그중 하나는 코드가 목록을 좁힐 때 따라오지 않아 없는 문을 가리킨다.
+function exemptHint(blocker) {
+  return EXEMPTABLE_GATES.includes(blocker.ruleId)
+    ? ` (사유를 대고 넘어가려면 --exempt ${blocker.ruleId} --reason <사유>)`
+    : '';
+}
+
 function blockerReport(blockers) {
   const list = blockers || [];
   if (!list.length) return '';
-  if (list.length === 1) return `${list[0].code} ${list[0].message}`;
-  return `막는 규칙 ${list.length}건: ${list.map((blocker) => `${blocker.code} ${blocker.message}`).join(' / ')}`;
+  const line = (blocker) => `${blocker.code} ${blocker.message}${exemptHint(blocker)}`;
+  if (list.length === 1) return line(list[0]);
+  return `막는 규칙 ${list.length}건: ${list.map(line).join(' / ')}`;
 }
 
 // ── 승인 근거 ───────────────────────────────────────────────────────────
