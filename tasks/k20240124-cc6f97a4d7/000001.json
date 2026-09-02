@@ -4790,6 +4790,56 @@
       "statusChangedAt": "2026-08-27T14:27:10.396Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-VCZ1M2V3": {
+      "title": "[사용기] 리포트 마찰 넷을 걷고 검토 인박스를 연다",
+      "summary": "런옵스 사용기 리포트가 실측한 마찰 가운데 소액 넷(스캐폴드-규칙 충돌, synopsis 누락, --json 오류 형식, 면제 게이트 이름)을 걷고, 보드가 문서의 승인 상태를 실어 검토 인박스를 연다. 상속으로 사람 게이트가 지워지던 결함도 함께 막는다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "TST 스캐폴드가 내는 통과 기준이 검사 규칙과 충돌하지 않는다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "task add의 --project가 도움말 synopsis와 docs/CLI.md에 함께 선다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "--json을 준 실패가 JSON으로 답하고 자리는 stderr 그대로다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "면제할 수 있는 게이트는 막는 말이 그 이름을 함께 말한다",
+          "done": false
+        },
+        "AC-005": {
+          "text": "하위 층이 상위의 사람 게이트를 지우고 같은 전환을 다시 적으면 거부된다",
+          "done": false
+        },
+        "AC-006": {
+          "text": "보드 스냅숏이 문서마다 승인 상태를 싣고 검토 인박스를 별도로 낸다",
+          "done": false
+        },
+        "AC-007": {
+          "text": "승인 원장이 없는 저장소에서도 보드가 서고 상태를 모른다고 답한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-09-02T16:44:48.676Z",
+      "updatedAt": "2026-09-02T16:44:48.676Z",
+      "statusChangedAt": "2026-09-02T16:44:48.676Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
