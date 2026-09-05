@@ -4893,6 +4893,47 @@
       "statusChangedAt": "2026-09-05T11:09:46.237Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-CA7R46SK": {
+      "title": "[결함] 검토 줄의 도달 불가·대기 시간·홈 카드 목적지와 작업공간 탐색 비용",
+      "summary": "0.44.0 판에서 남긴 결함 넷. 앞의 셋은 보드 표면이고 넷째는 모든 명령에 걸리는 탐색 비용이다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "SCR-005",
+        "REQ-070"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "검토 줄이 잘려도 뒤쪽 유형의 문서에 도달할 수 있다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "줄마다 얼마나 기다렸는지가 보이고 그 축으로 정렬된다 (SCR-002가 요구하는 값)",
+          "done": false
+        },
+        "AC-003": {
+          "text": "홈의 검토 요청 카드가 누르면 나오는 목록과 같은 것을 센다",
+          "done": false
+        },
+        "AC-004": {
+          "text": "하위 디렉터리에서 부른 명령이 워크스페이스 루트에서 부른 것과 비슷한 시간에 답한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-09-05T18:41:20.872Z",
+      "updatedAt": "2026-09-05T18:41:20.872Z",
+      "statusChangedAt": "2026-09-05T18:41:20.872Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
