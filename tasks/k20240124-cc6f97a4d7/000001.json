@@ -4880,7 +4880,7 @@
         },
         "AC-002": {
           "text": "각 REQ·SCR에 대응하는 TST가 시나리오 표와 통과 기준을 갖췄다",
-          "done": false
+          "done": true
         },
         "AC-003": {
           "text": "rdl check --strict가 오류 0으로 통과한다",
@@ -4889,7 +4889,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-05T10:38:28.623Z",
-      "updatedAt": "2026-09-05T11:09:51.353Z",
+      "updatedAt": "2026-09-05T11:09:55.849Z",
       "statusChangedAt": "2026-09-05T11:09:46.237Z",
       "externalRefs": [],
       "project": "rundol"
