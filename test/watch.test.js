@@ -217,11 +217,11 @@ const running = (async () => {
   const staleSignals = staleFirst.records.filter((record) => record.type === 'watch.diagnostic');
   assert.strictEqual(staleSignals.length, 1, '승인 후 개정된 문서만 신호가 된다');
   assert.strictEqual(staleSignals[0].targetId, 'REQ-001');
-  assert.strictEqual(staleSignals[0].code, 'RDL-APPROVE-030', '판정이 approval.js의 것이므로 코드도 승인의 이름 공간에 선다');
+  assert.strictEqual(staleSignals[0].code, 'RDL-APPROVE-032', '판정이 approval.js의 것이므로 코드도 승인의 이름 공간에 선다');
   assert.strictEqual(staleSignals[0].category, 'approval');
   assert.strictEqual(staleSignals[0].severity, 'warning');
   assert.strictEqual(staleSignals[0].targetRevision, editedRevision, '신호가 결박하는 리비전은 지금 스냅샷의 리비전이다');
-  assert.strictEqual(staleSignals[0].dedupKey, dedupKey('REQ-001', 'RDL-APPROVE-030', editedRevision));
+  assert.strictEqual(staleSignals[0].dedupKey, dedupKey('REQ-001', 'RDL-APPROVE-032', editedRevision));
   assert.ok(staleSignals[0].message.includes('MEMBER-001'), '무엇으로 되돌아갈지 — 누가 승인했었는지를 싣는다');
   staleFirst.records.forEach(validateWatchRecord);
   // 미승인은 신호가 아니다. 아직 아무도 근거로 삼지 않은 줄이고, 승인 축을 쓰지 않는
@@ -267,7 +267,7 @@ const running = (async () => {
   });
   const noLedger = await noLedgerSession.scanOnce();
   assert.strictEqual(noLedger.exitCode, 0, '승인 원장이 없어도 스캔은 완료된다');
-  assert.strictEqual(noLedger.records.filter((record) => record.code === 'RDL-APPROVE-030').length, 0, '원장이 없으면 낡음 신호 없이 그냥 돈다');
+  assert.strictEqual(noLedger.records.filter((record) => record.code === 'RDL-APPROVE-032').length, 0, '원장이 없으면 낡음 신호 없이 그냥 돈다');
   assert.strictEqual(noLedger.records.filter((record) => record.type === 'watch.diagnostic').length, 1, '나머지 진단은 원장과 무관하게 그대로 나간다');
 
   const flushRoot = fixture('flush-order');

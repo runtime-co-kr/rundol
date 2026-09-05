@@ -12,7 +12,6 @@
 // 차분은 diffSinceApproval이, 승인 항목은 foldApprovals가 낸 값을 그대로 싣는다.
 // 이 파일이 하는 일은 모으고, 세고, 사람이 읽게 쓰는 것뿐이다.
 
-const path = require('path');
 const approval = require('./approval');
 const { DOCUMENT_TRUST_STATES } = require('./vocabulary');
 
@@ -39,18 +38,15 @@ function normalizeLimit(value) {
   return limit;
 }
 
-// approval.js는 자기 workspaceContext를 내보내지 않는다. 승인 사유·근거·기록 시각을
-// 가진 것은 접기(foldApprovals)뿐이고, 문서마다 documentHistory를 부르면 문서 수만큼
-// git log와 태스크 조회가 함께 돈다. 그래서 원장 자리만 여기서 다시 만들어 접기를
-// 한 번만 부른다 — 접는 일도 판정도 여전히 approval.js의 것이다.
+// 승인 사유·근거·기록 시각을 가진 것은 접힌 원장뿐이다. 문서마다 documentHistory를
+// 부르면 문서 수만큼 git log와 태스크 조회가 함께 돌아 못 쓴다.
 //
-// 이 경로가 approval.js의 workspaceContext와 어긋나면 접기가 빈 결과를 내고 승인
-// 사유가 조용히 사라진다. 둘 중 하나를 옮기면 다른 하나도 옮겨야 한다.
+// 원장 자리(projects/workspace/events)와 인가 컨텍스트 조립을 여기서 다시 만들지
+// 않는다. 한때 그랬는데, 그 사본이 approval.js와 어긋나는 날 접기가 빈 결과를 내고
+// 승인 사유가 아무 신호 없이 사라진다 — 리포트는 조용히 반쪽이 되고 그 반쪽은
+// 정상처럼 보인다.
 function approvalHistories(start, projectKey) {
-  const { workspaceLayout } = require('./workspace');
-  const eventsRoot = path.join(workspaceLayout(start).root, 'projects', 'workspace', 'events');
-  const authority = require('./authority').authorityContext(start, projectKey, { now: Date.now() });
-  return approval.foldApprovals(approval.readApprovalEvents(eventsRoot, projectKey), { authority }).approvals;
+  return approval.documentApprovals(start, { project: projectKey }).approvals;
 }
 
 // 바뀐 줄 수와 hunk 수만 센다. 본문은 플래그를 줬을 때만 싣는다 — 29건의 전체
