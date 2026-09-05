@@ -103,6 +103,24 @@ const APPROVAL_MODES = Object.freeze(['human-only', 'ai-assisted', 'ai-first', '
 /** 승인 근거의 종류. */
 const BASIS_KINDS = Object.freeze(['read', 'verdict', 'check', 'delegated']);
 
+/**
+ * 제출 축의 값. 신뢰 상태(approved·stale·unapproved)와 직교하는 두 번째 축이며
+ * 판정은 approval.js의 submissionState가 한다.
+ *
+ *   none     아직 아무에게도 올린 적 없다 — 초안이다.
+ *   pending  올린 리비전이 지금 파일과 같다 — 승인자 몫이다. 신뢰 상태가 stale이면
+ *            "재검토 대기"이고 unapproved면 "첫 검토 대기"다. 그 구분은 두 축의 짝이
+ *            이미 답하므로 값을 늘리지 않는다.
+ *   drifted  올린 뒤 또 고쳤다 — 승인자가 볼 것과 지금 파일이 다르다.
+ *   settled  지금 리비전이 승인됐다 — 줄에 서 있던 것이 판정을 받았다.
+ *
+ * 신뢰 상태 셋에 값을 더하지 않고 축을 하나 얹은 이유는 그 셋을 이미 보드·
+ * documentStatus·다른 갈래가 읽고 있기 때문이다. 값을 더하면 그 소비자들이 모르는
+ * 상태를 만나 어느 갈래로도 떨어지지 않는다 — 축을 더하면 모르는 쪽은 그대로
+ * 동작하고 아는 쪽만 새 물음에 답한다.
+ */
+const SUBMISSION_STATES = Object.freeze(['none', 'pending', 'drifted', 'settled']);
+
 /** 검증 판정. 기권을 실패와 가르는 이유는 "보지 못했다"와 "보고 아니라 했다"가 다르기 때문이다. */
 const VERDICTS = Object.freeze(['pass', 'refuted', 'abstain']);
 
@@ -662,6 +680,7 @@ module.exports = Object.freeze({
   TRAITS,
   APPROVAL_MODES,
   BASIS_KINDS,
+  SUBMISSION_STATES,
   VERDICTS,
   EXECUTORS,
   WORKFLOW_STEPS,
