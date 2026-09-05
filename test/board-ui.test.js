@@ -653,7 +653,11 @@ assert(style.includes('.review-inbox-row'), '검토 인박스 행 스타일이 �
   // 판정을 새로 짓지 않는다. 리비전을 비교하는 순간 rdl doc status와 보드가 같은 문서에
   // 다른 답을 내고, 그때 사람이 믿는 쪽은 화면이다.
   assert(!render.includes('revision'), '화면이 승인 판정을 다시 지으면 안 됩니다');
-  assert(render.includes('data-document='), '행은 이미 있는 문서 경로를 그대로 써야 합니다');
+  assert(render.includes('data-document='), '펼친 자리에서 문서 화면으로 가는 길은 이미 있는 경로를 그대로 써야 합니다');
+  // 펼치는 것과 승인하는 것은 같은 자리에 있어야 한다. 펼쳐 놓고 승인은 다른 화면에서
+  // 하게 하면 인박스는 다시 목록이 된다.
+  assert(render.includes('data-approve-open='), '행은 그 자리에서 펼쳐져야 합니다');
+  assert(render.includes('approvalPanelHtml(item.id'), '펼친 자리에 승인 판이 서야 합니다');
 }
 assert(app.includes("if (button.dataset.document) return setView('document', button.dataset.document);"), '문서로 가는 길은 하나여야 합니다');
 
@@ -718,7 +722,11 @@ assert(app.includes("if (button.dataset.document) return setView('document', but
     // 서버가 낡음을 앞에 두고 보냈다. 그 순서가 그대로 살아 있어야 한다.
     assert.deepStrictEqual(rows.slice(0, 10).map((row) => row.querySelector('.tag').textContent), new Array(10).fill('낡음'), '낡음이 먼저여야 합니다');
     assert.strictEqual(rows[10].querySelector('.tag').textContent, '미승인', '미승인은 낡음 뒤에 서야 합니다');
-    assert.strictEqual(rows[0].dataset.document, 'ADR-000', '행은 그 문서로 가는 길을 들고 있어야 합니다');
+    // 행의 첫 동작은 문서 화면으로 가는 것이 아니라 그 자리에서 펼치는 것이다. 인박스의
+    // 값은 줄을 훑으면서 처리하는 데 있고, 한 건마다 화면을 오가면 훑던 자리를 매번
+    // 잃는다 — 그러면 남는 것은 목록이지 인박스가 아니다. 문서로 가는 길은 펼친 안에 있다.
+    assert.strictEqual(rows[0].dataset.approveOpen, 'ADR-000', '행은 그 문서의 승인 자리를 여는 손잡이여야 합니다');
+    assert.strictEqual(rows[0].dataset.document, undefined, '행을 누르면 화면이 갈아치워지면 안 됩니다');
     assert(rows[0].textContent.includes('강윤정') && rows[0].textContent.includes('승인 2회'), '승인자와 승인 횟수가 행에 있어야 합니다');
     assert(rows[10].textContent.includes('승인 이력 없음'), '미승인 행은 빈 칸이 아니라 없다고 적어야 합니다');
     // 거르개의 수는 전건이다. 목록의 길이를 적으면 잘린 줄에서 두 수가 어긋난다.
@@ -988,3 +996,220 @@ assert(app.includes('Object.keys(DOCUMENT_APPROVAL_TONES)'), '거르개 목록�
 }
 
 console.log('document ledger tests passed');
+
+// ── 화면에서 비교하고 승인한다 ──────────────────────────────────────────────
+//
+// 오너가 계속 요구한 자리다: "상세 페이지에서 승인을 어떻게 하고 비교를 어떻게 하고".
+// 검토 인박스는 목록일 뿐이었고 행 안에 단추가 0개였다. 여기서 못박는 것은 셋이다 —
+// 행을 펼치면 화면을 갈아치우지 않고 그 자리에서 차분이 보일 것, 비교 기준이 없을 때
+// 빈 차분을 지어내지 않을 것, 거절당하면 왜 거절당했는지가 그대로 보일 것.
+//
+// 이 갈래들은 문자열이 파일에 있다는 것만으로는 지켜지지 않는다. 어느 갈래로 갔는가가
+// 답이고, 그것은 실제로 그려 봐야 안다.
+module.exports = (async () => {
+  const { JSDOM } = require('jsdom');
+  const APPROVERS = [{ id: 'desk-h', name: '강윤정 데스크', owner: 'MEMBER-001' }];
+
+  function documentValue(id, approval, extra) {
+    return Object.assign({
+      id, kind: 'adr', type: 'document', title: `문서 ${id}`, description: '설명', file: `docs/${id}.md`,
+      state: 'draft', owner: 'MEMBER-001', modifiedAt: '2026-08-20T00:00:00Z', revision: 'a'.repeat(64), body: '본문',
+      approval
+    }, extra || {});
+  }
+  function trust(status, submissionState) {
+    return {
+      status,
+      approvedRevision: status === 'unapproved' ? null : 'b'.repeat(64),
+      approvedBy: status === 'unapproved' ? null : 'MEMBER-001',
+      approvals: status === 'unapproved' ? 0 : 2,
+      versionLabel: '2.0',
+      submission: { state: submissionState || 'none', revision: null, submittedBy: null, reason: null, submissions: 0 }
+    };
+  }
+  function snapshotOf(documents, queue, approvers) {
+    return {
+      project: 'demo', documents, tasks: { tasks: [] }, attention: [],
+      people: { members: [{ id: 'MEMBER-001', name: '강윤정' }], stakeholders: [], roles: [] },
+      presentation: { documentTypes: {}, documentStates: {} },
+      approvers: approvers === undefined ? APPROVERS : approvers,
+      approvalCatalog: { basisKinds: ['read', 'verdict', 'check', 'delegated'] },
+      reviewQueue: queue || { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 0 }, total: 1, items: [] }
+    };
+  }
+  // 서버의 답을 손으로 준다. 실제 서버를 띄우는 쪽은 approval.test.js가 맡고, 여기서는
+  // 그 답을 받은 화면이 어느 갈래로 가는지를 본다.
+  function mount(answer) {
+    const dom = new JSDOM(html, { url: 'http://127.0.0.1/', runScripts: 'outside-only' });
+    dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+    const calls = [];
+    dom.window.fetch = (path, options) => {
+      calls.push({ path: String(path), options: options || {} });
+      const given = answer(String(path), options || {});
+      // 답을 안 주면 그 요청은 영영 안 온 것으로 둔다 — 부팅의 첫 await를 세우는 데도 쓴다.
+      if (!given) return new Promise(() => {});
+      return Promise.resolve({ ok: given.ok !== false, status: given.status || 200, json: () => Promise.resolve(given.body) });
+    };
+    dom.window.eval(`${app}\n;window.__probe = { snapshot(value) { state.snapshot = value; }, view(name, selected) { setView(name, selected); }, panel() { return state.docApproval; } };`);
+    return { dom, calls };
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  function open(answer, documents, queue, view, selected, approvers) {
+    const mounted = mount(answer);
+    mounted.dom.window.__probe.snapshot(snapshotOf(documents, queue, approvers));
+    mounted.dom.window.__probe.view(view, selected);
+    return mounted;
+  }
+  const text = (dom, id) => dom.window.document.getElementById(id).textContent;
+
+  // 1) 행을 펼치면 그 자리에서 차분이 보인다. 화면을 갈아치우지 않는 것이 핵심이다 —
+  //    인박스의 값은 줄을 훑으면서 처리하는 데 있고, 한 건마다 화면을 오가면 그 값이 사라진다.
+  {
+    const stale = { status: 'stale', diff: 'diff --git a/docs/ADR-001.md b/docs/ADR-001.md\n@@ -1,3 +1,4 @@\n 그대로인 줄\n+더한 줄\n-지운 줄\n' };
+    const { dom, calls } = open((path) => (/\/diff\?/u.test(path) ? { body: Object.assign({ axis: 'since-approval' }, stale) } : null),
+      [documentValue('ADR-001', trust('stale'))],
+      { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 0 }, total: 1,
+        items: [{ status: 'stale', id: 'ADR-001', kind: 'adr', title: '문서 ADR-001', file: 'docs/ADR-001.md', approvedBy: 'MEMBER-001', approvals: 2 }] },
+      'review-inbox');
+    dom.window.document.querySelector('[data-approve-open="ADR-001"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(dom.window.document.getElementById('review-inbox-view').hidden, false, '펼쳐도 인박스 화면에 머물러야 합니다');
+    assert(calls.some((call) => call.path.includes('/documents/ADR-001/diff')), `차분을 물어야 합니다: ${calls.map((call) => call.path).join(', ')}`);
+    const panel = dom.window.document.querySelector('#review-inbox-list .approval-panel');
+    assert(panel, '펼친 행 안에 승인 판이 서야 합니다');
+    assert(panel.querySelector('.approval-diff').textContent.includes('더한 줄'), '차분이 그 자리에 보여야 합니다');
+    assert.strictEqual(panel.querySelectorAll('.diff-add').length, 1, '늘어난 줄은 색으로 갈려야 합니다');
+    assert.strictEqual(panel.querySelectorAll('.diff-del').length, 1, '줄어든 줄도 색으로 갈려야 합니다');
+    // 폼 셋. 근거를 안 받으면 나중에 "AI 검토가 놓쳤나 사람이 건너뛰었나"를 가를 수 없다.
+    assert(panel.querySelector('[data-approve-field="clientId"]'), '승인자를 골라야 합니다');
+    assert(panel.querySelector('[data-approve-field="basis"]'), '근거를 골라야 합니다');
+    assert(panel.querySelector('[data-approve-field="reason"]'), '사유를 적어야 합니다');
+    // 자격 없는 Client는 애초에 목록에 없다. 고를 수 없는 것을 화면에 두면 사람은
+    // 거절당한 뒤에야 그것을 안다.
+    assert.deepStrictEqual(Array.from(panel.querySelectorAll('[data-approve-field="clientId"] option')).map((option) => option.value), ['desk-h']);
+    // 위임 근거는 위임 식별자가 필요해 화면이 실어 나를 수 없다. 안 되는 것을 고를 수
+    // 있게 두면 눌러 본 사람만 그 사실을 알게 된다.
+    assert(panel.querySelector('[data-approve-field="basis"] option[value="delegated"]').disabled, '화면이 못 하는 것은 고를 수 없어야 합니다');
+    // 문서 화면으로 가는 길은 남는다 — 펼치기가 그 길을 대신하는 것이 아니라 더한 것이다.
+    assert(panel.querySelector('[data-document="ADR-001"]'), '문서 화면으로 가는 길이 있어야 합니다');
+    // 한 번 더 누르면 접힌다.
+    dom.window.document.querySelector('[data-approve-open="ADR-001"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(dom.window.document.querySelector('#review-inbox-list .approval-panel'), null, '다시 누르면 접혀야 합니다');
+    dom.window.close();
+  }
+
+  // 2) 미승인은 비교 기준이 없다. 빈 차분을 그리면 사람은 아무것도 안 바뀐 줄 알고
+  //    승인한다 — "비교 기준 없음"과 "바뀐 것 없음"은 다른 값이고, 서버가 그 사실을
+  //    이유와 함께 내므로 화면은 그것을 옮기기만 하면 된다.
+  {
+    const reason = '승인 기록이 없어 비교 기준이 없습니다.';
+    const { dom } = open((path) => (/\/diff\?/u.test(path) ? { body: { axis: 'since-approval', status: 'unapproved', diff: null, reason } } : null),
+      [documentValue('ADR-002', trust('unapproved'))],
+      { used: true, unknown: null, counts: { approved: 1, stale: 0, unapproved: 1 }, total: 1,
+        items: [{ status: 'unapproved', id: 'ADR-002', kind: 'adr', title: '문서 ADR-002', file: 'docs/ADR-002.md', approvedBy: null, approvals: 0 }] },
+      'review-inbox');
+    dom.window.document.querySelector('[data-approve-open="ADR-002"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const panel = dom.window.document.querySelector('#review-inbox-list .approval-panel');
+    assert.strictEqual(panel.querySelector('.approval-diff'), null, '비교 기준이 없으면 빈 차분을 그리면 안 됩니다');
+    assert(panel.textContent.includes('비교 기준이 없습니다'), '기준이 없다는 사실을 말해야 합니다');
+    assert(panel.textContent.includes(reason), `서버의 이유를 그대로 옮겨야 합니다: ${panel.textContent}`);
+    // 기준이 없어도 승인은 할 수 있어야 한다. 첫 승인이 바로 그 자리다.
+    assert(panel.querySelector('button[type="submit"]'), '미승인 문서도 승인할 수 있어야 합니다');
+    dom.window.close();
+  }
+
+  // 3) 승인이 실제로 나가고, 거절당하면 그 문장이 그대로 보인다. 사람 게이트에 걸렸으면
+  //    왜 걸렸는지가 보여야 한다 — "승인 실패"로 뭉개면 무엇을 고쳐야 하는지 사라진다.
+  {
+    const refusal = '활성 human Client만 승인할 수 있습니다: agent-a은(는) 유형이 agent입니다.';
+    let approved = null;
+    const { dom } = open((path, options) => {
+      if (/\/diff\?/u.test(path)) return { body: { axis: 'since-approval', status: 'stale', diff: '@@ -1 +1 @@\n+한 줄\n' } };
+      if (/\/approve$/u.test(path)) {
+        approved = JSON.parse(options.body);
+        return approved.reason === '거절 볼 차례'
+          ? { ok: false, status: 400, body: { error: refusal, code: 'approval-refused' } }
+          : { body: { created: true, document: { id: 'ADR-003', status: 'approved', approvedBy: 'MEMBER-001' } } };
+      }
+      return null;
+    },
+    [documentValue('ADR-003', trust('stale'))],
+    { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 0 }, total: 1,
+      items: [{ status: 'stale', id: 'ADR-003', kind: 'adr', title: '문서 ADR-003', file: 'docs/ADR-003.md', approvedBy: 'MEMBER-001', approvals: 1 }] },
+    'review-inbox');
+    const click = (selector) => dom.window.document.querySelector(selector).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    click('[data-approve-open="ADR-003"]');
+    await settle();
+    const fill = (field, value) => {
+      const input = dom.window.document.querySelector(`[data-approve-field="${field}"]`);
+      input.value = value;
+      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    };
+    // 사유 없이 누르면 나가지 않는다. 사유를 받는 이유는 형식이 아니라, 훑기와 판단이
+    // 같은 동작이 되지 않게 하는 유일한 자리이기 때문이다.
+    dom.window.document.querySelector('[data-approve-form]').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    assert.strictEqual(approved, null, '사유 없이 승인이 나가면 안 됩니다');
+    fill('reason', '거절 볼 차례');
+    dom.window.document.querySelector('[data-approve-form]').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    assert.deepStrictEqual(approved.basis, [{ kind: 'read', detail: '' }], '근거가 함께 나가야 합니다');
+    assert.strictEqual(approved.clientId, 'desk-h');
+    const failed = dom.window.document.querySelector('#review-inbox-list .approval-failure');
+    assert(failed, '거절이 화면에 남아야 합니다');
+    assert.strictEqual(failed.textContent, refusal, '서버의 말을 삼키면 안 됩니다');
+    // 쓴 것은 그대로 남는다. 거절당한 사람이 처음부터 다시 쓰게 하면 안 된다.
+    assert.strictEqual(dom.window.document.querySelector('[data-approve-field="reason"]').value, '거절 볼 차례');
+    dom.window.close();
+  }
+
+  // 4) 문서 상세에도 같은 자리가 있다. 인박스를 안 거치고 문서를 열어도 승인할 수
+  //    있어야 하고, 그러지 않으면 화면을 보던 사람이 승인할 때마다 터미널로 갈아탄다.
+  {
+    const { dom } = open((path) => (/\/diff\?/u.test(path) ? { body: { axis: 'since-approval', status: 'stale', diff: '@@\n+상세에서 본 줄\n' } } : null),
+      [documentValue('ADR-020', trust('stale'))], null, 'document', 'ADR-020');
+    assert(dom.window.document.querySelector('#document-approval [data-approve-open="ADR-020"]'), '상세에도 승인으로 가는 손잡이가 있어야 합니다');
+    dom.window.document.querySelector('#document-approval [data-approve-open="ADR-020"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(panel, '상세에서도 그 자리에서 펼쳐져야 합니다');
+    assert(panel.querySelector('.approval-diff').textContent.includes('상세에서 본 줄'), '상세도 차분을 실어야 합니다');
+    // 이미 여기가 그 문서의 화면이므로 "문서 화면에서 열기"는 자기 자신으로 가는 단추다.
+    assert.strictEqual(panel.querySelector('[data-document="ADR-020"]'), null, '지금 보고 있는 화면으로 가는 단추를 두면 안 됩니다');
+    // 두 축을 여기서 갈아탈 수 있어야 한다. 승인자가 판정해야 하는 것은 작업본이 아니라
+    // 승인 후보이고, 그 둘이 다를 수 있다는 사실이 관문의 핵심이다.
+    assert.strictEqual(panel.querySelectorAll('[data-approve-axis]').length, 2, '비교 축 둘을 고를 수 있어야 합니다');
+    assert.strictEqual(text(dom, 'document-body').includes('상세에서 본 줄'), false, '차분이 본문을 덮으면 안 됩니다');
+    dom.window.close();
+  }
+
+  // 5) 승인된 판에는 승인할 것이 없다. 아무 일도 하지 않는 단추를 두면 다음에 진짜로
+  //    필요할 때도 안 눌린다.
+  {
+    const { dom } = open((path) => (/\/diff\?/u.test(path) ? { body: { axis: 'since-approval', status: 'approved', diff: '', reason: '현재 리비전이 승인되어 있습니다.' } } : null),
+      [documentValue('ADR-030', trust('approved'))], null, 'document', 'ADR-030');
+    dom.window.document.querySelector('#document-approval [data-approve-open="ADR-030"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert.strictEqual(panel.querySelector('[data-approve-form]'), null, '이미 승인된 판에 폼을 두면 안 됩니다');
+    assert(panel.textContent.includes('이미 승인되어 있습니다'), '왜 폼이 없는지 말해야 합니다');
+    assert(panel.textContent.includes('바뀐 것이 없습니다'), '빈 차분은 "바뀐 것이 없다"로 읽혀야 합니다');
+    dom.window.close();
+  }
+
+  // 6) 자격자가 하나도 없으면 폼 대신 자격이 무엇인지를 적는다. 빈 선택 상자를 두면
+  //    사람은 눌러 보고 나서야 승인할 수 없다는 것을 안다.
+  {
+    const { dom } = open((path) => (/\/diff\?/u.test(path) ? { body: { axis: 'since-approval', status: 'stale', diff: '@@\n+줄\n' } } : null),
+      [documentValue('ADR-040', trust('stale'))], null, 'document', 'ADR-040', []);
+    dom.window.document.querySelector('#document-approval [data-approve-open="ADR-040"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert.strictEqual(panel.querySelector('[data-approve-form]'), null, '고를 자격자가 없으면 폼을 세우면 안 됩니다');
+    assert(panel.textContent.includes('활성 human Client'), '자격이 무엇인지 말해야 합니다');
+    dom.window.close();
+  }
+
+  console.log('document approval tests passed');
+})();

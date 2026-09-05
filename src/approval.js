@@ -486,11 +486,19 @@ function submitDocument(start, input) {
 function approveDocument(start, input) {
   const settings = input || {};
   const context = workspaceContext(start, settings.project);
-  const { getClient } = require('./collaboration-store');
+  const { getClient, assertProjectHumanApprover } = require('./collaboration-store');
   const { readCollaboration } = require('./collaboration');
   const clientId = String(settings.clientId || '').trim().toLowerCase();
   const client = getClient(start, clientId);
-  if (client.status !== 'active') throw new Error(`비활성 Client는 승인할 수 없습니다: ${clientId}`);
+  // 사람 게이트. 이 파일 맨 위가 선언한 "AI가 쓴 초안과 사람이 책임지는 정본의 경계"가
+  // 여기다 — 그런데 오래 status만 보고 type을 보지 않아, 에이전트 Client가 자기 초안을
+  // 스스로 정본으로 만들 수 있었다. 판정은 collaboration-store가 소유하고 런 승인·
+  // 공유 게이트·보드의 승인자 목록이 같은 것을 쓴다. 표면마다 판정을 따로 두면 그중
+  // 느슨한 쪽이 게이트의 실제 높이가 되고, 이 결함이 정확히 그 모양이었다.
+  //
+  // 제출(submitDocument)에는 걸지 않는다. 에이전트가 초안을 올리고 사람이 책임지는 것이
+  // 이 도구의 협업 모형이라, 제출까지 막으면 관문이 아니라 병목이 된다.
+  assertProjectHumanApprover(context.layout.root, context.project.key, client, '승인');
   const members = readCollaboration(context.layout.root, context.project.key).members.map((member) => member.id);
   // delegated 근거는 실제 위임과 결박한다. 결박하지 않으면 "위임받아 승인했다"는
   // 주장만으로 책임이 옮겨가고, 위임의 만료·취소가 승인에 아무 영향을 주지 못한다.
