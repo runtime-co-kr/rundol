@@ -113,6 +113,14 @@ async function testBoard() {
     // 문서 전건이 문제 목록으로 쏟아져 진짜 문제를 덮는다.
     assert.strictEqual(snapshotValue.attention.filter((item) => item.reason === '검토 대기').length, 0,
       '검토 대기는 attention이 아니라 인박스가 든다.');
+    // 인박스 행의 유형 칩은 kind를 본다(화면의 documentTypeLabel이 kind || type을 쓴다).
+    // type은 'document'라는 저장 종류라 문서 130건이 모두 같은 값이고, kind를 안 실으면
+    // 인박스의 유형 칩이 전부 'document'로 떨어져 무엇이 밀렸는지가 유형별로 읽히지 않는다 —
+    // 문서 목록은 문서를 통째로 받아 kind를 갖고 있으므로 두 화면이 같은 문서에 다른 유형을
+    // 적게 된다. 이 픽스처에는 승인 원장이 없어 줄이 비어 오므로, 싣는 자리를 원본에서 못박는다.
+    const boardSource = fs.readFileSync(path.join(root, 'src', 'board.js'), 'utf8');
+    const queueSource = boardSource.slice(boardSource.indexOf('function reviewQueue'), boardSource.indexOf('function attentionItems'));
+    assert(/items\.push\(\{[^}]*kind: document\.kind/u.test(queueSource), '인박스 줄은 문서의 kind를 함께 실어야 한다.');
 
     // ── 스냅숏이 싣는 워크플로 ──────────────────────────────────────────────
     //

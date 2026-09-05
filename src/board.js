@@ -340,8 +340,12 @@ function reviewQueue(documents, approvals) {
     if (!state) continue;
     counts[state.status] = (counts[state.status] || 0) + 1;
     if (state.status === 'approved') continue;
+    // kind를 함께 싣는다. type은 'document'라는 저장 종류라 문서 130건이 모두 같은 값이고,
+    // 화면의 유형 칩은 kind를 먼저 본다(documentTypeLabel). 빼면 인박스의 유형 칩이 전부
+    // 'document'로 떨어져 무엇이 밀렸는지가 유형별로 읽히지 않는다 — 문서 목록은 문서를
+    // 통째로 받아 kind를 갖고 있으므로, 두 화면이 같은 문서에 다른 유형을 적게 된다.
     items.push({
-      status: state.status, id: document.id, type: document.type, title: document.title,
+      status: state.status, id: document.id, kind: document.kind || null, type: document.type, title: document.title,
       file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals
     });
   }

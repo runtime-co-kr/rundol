@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, clientIntent: null, commentComposer: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', documentSearchScope: 'name', documentSort: 'id', presentationScope: 'project', presentationSettling: false, runs: null, runsError: '', approvingRun: null, review: null };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, clientIntent: null, commentComposer: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', reviewFilter: 'all', documentSearchScope: 'name', documentSort: 'id', documentApproval: 'all', presentationScope: 'project', presentationSettling: false, runs: null, runsError: '', approvingRun: null, review: null };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
 // 워크플로는 서버가 스냅숏에 실어 준다. 화면은 브라우저에서 그대로 돌아 require를
@@ -33,7 +33,14 @@ const typeLabels = {
 };
 const documentStateLabels = {
   draft: '초안', proposed: '제안', active: '활성', review: '검토 중', approved: '승인됨',
-  deprecated: '폐기 예정', archived: '보관됨', unread: '미확인'
+  deprecated: '폐기 예정', archived: '보관됨', unread: '미확인',
+  // accepted는 vocabulary.js의 여덟 값에 없는데 정본 15건이 쓰고 있다. 라벨이 없으면 칩에
+  // 영문이 그대로 뜨고, 사람은 그것을 "아직 번역 안 된 값"이 아니라 다른 종류의 상태로 읽는다.
+  // 어휘를 고치는 것은 이 화면의 일이 아니므로 저장값은 그대로 두고 보이는 말만 준다.
+  //
+  // '승인됨'으로 적지 않는다. 그것은 승인 원장이 쓰는 말이고 frontmatter의 accepted는
+  // 작성자의 주장이다. 두 축이 화면에서 같은 말을 쓰면, 이 화면이 갈라 놓은 것이 도로 붙는다.
+  accepted: '채택'
 };
 
 function el(id) { return document.getElementById(id); }
@@ -312,6 +319,7 @@ function setView(view, selected) {
   else if (state.view === 'tasks') { for (const button of document.querySelectorAll('[data-task-scope]')) button.classList.toggle('active', button.dataset.taskScope === state.taskScope); renderTasks(); }
   else if (state.view === 'runs') { renderRuns(); loadRuns(true); }
   else if (state.view === 'home') renderHome();
+  else if (state.view === 'review-inbox') renderReviewInbox();
   else if (state.view === 'people') renderPeople();
   else if (state.view === 'settings') renderSettings();
 }
@@ -327,7 +335,10 @@ const SEVERITY_RANK = { error: 0, warning: 1, info: 2 };
 function attentionGroups(attention) {
   const groups = new Map();
   for (const item of attention) {
-    const group = groups.get(item.id) || { id: item.id, title: item.title, tags: new Map(), severity: 'info' };
+    // kind를 들고 간다. 조치 필요는 태스크와 문서 둘을 함께 담는데(board.js의 attentionItems),
+    // 여기서 버리면 목록이 전부 태스크로 그려지고 문서 항목을 누른 사람은 아무 안내도 없이
+    // 태스크 화면으로 떨어진다 — 지금 낡음 문서 2건이 그 자리에 서 있다.
+    const group = groups.get(item.id) || { id: item.id, kind: item.kind, title: item.title, tags: new Map(), severity: 'info' };
     const head = String(item.reason || '').split(':')[0].trim();
     const label = ATTENTION_LABELS[head] || head;
     const tag = group.tags.get(label) || { label, severity: item.severity, count: 0 };
@@ -355,17 +366,155 @@ function renderAttention(attention) {
     `<button type="button" data-attention-severity="${key}"${key === filter ? ' class="active"' : ''}>${key === 'all' ? '' : '<span class="severity-dot" aria-hidden="true"></span>'}${label} ${counts[key]}</button>`).join('');
   const visible = filter === 'all' ? groups : groups.filter((group) => group.tags.some((tag) => tag.severity === filter));
   el('attention-list').innerHTML = visible.length ? visible.map((group) =>
-    `<button class="attention-item" data-task="${escapeHtml(group.id)}"><span><strong>${escapeHtml(group.title)}</strong>    <span class="tagline">${group.tags.map((tag) => `<span class="tag ${tag.severity}">${escapeHtml(tag.label)}${tag.count > 1 ? ` ${tag.count}` : ''}</span>`).join('')}</span>    </span><span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`).join('') : '<p class="empty-state">이 등급에는 조치할 항목이 없습니다.</p>';
+    `<button class="attention-item" data-${group.kind === 'document' ? 'document' : 'task'}="${escapeHtml(group.id)}"><span><strong>${escapeHtml(group.title)}</strong>    <span class="tagline">${group.tags.map((tag) => `<span class="tag ${tag.severity}">${escapeHtml(tag.label)}${tag.count > 1 ? ` ${tag.count}` : ''}</span>`).join('')}</span>    </span><span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`).join('') : '<p class="empty-state">이 등급에는 조치할 항목이 없습니다.</p>';
+}
+
+// ── 검토 인박스 ─────────────────────────────────────────────────────────────
+//
+// 스냅숏의 reviewQueue를 옮겨 그린다. 판정도 정렬도 서버가 이미 했다 — 화면이 자기
+// 판정을 지으면 rdl doc status와 보드가 같은 문서에 다른 답을 내고, 그때 사람이 믿는
+// 쪽은 화면이다. 여기서 새로 하는 일은 갈래를 가르고 줄의 길이를 말하는 것뿐이다.
+//
+// 홈의 "검토 요청 태스크"와 같은 수가 아니다. 저것은 태스크가 승인 스텝에 선 것이고
+// 이것은 문서가 승인 원장과 어긋난 것이다. 한 수로 합치면 어느 쪽을 처리해야 줄이
+// 줄어드는지가 화면에서 사라진다.
+const REVIEW_STATUS_LABELS = { approved: '승인됨', stale: '낡음', unapproved: '미승인' };
+// 낡음이 경고색인 이유는 승인된 것이 흔들렸다는 뜻이라서다 — 이미 그 문서를 근거로 삼은
+// 하류가 있다. 미승인은 아직 아무도 근거로 삼지 않았으므로 문제가 아니라 줄이다. 색은
+// 조치 필요 목록의 등급과 같은 토큰을 쓴다. 같은 뜻에 다른 색을 주면 화면을 오갈 때마다
+// 색의 뜻을 다시 배워야 한다.
+//
+// 승인된 것은 줄에 서지 않으므로 이 표에 없다. 거를 수 있는 것도 이 둘이고 서버가 보내는
+// 순서도 이 순서라, 이 표가 곧 거르개의 목록이다 — 따로 적으면 상태가 늘 때 한쪽만 는다.
+const REVIEW_STATUS_TONES = { stale: 'warning', unapproved: 'info' };
+
+// 문서 화면(목록·상세·컨텍스트)이 쓰는 원장 색. 인박스의 표를 그대로 물려받고 승인됨만
+// 얹는다 — 인박스는 승인된 문서를 줄에 세우지 않아 그 색을 가질 일이 없었고, 저 표는 곧
+// 인박스 거르개의 목록이라 거기에 승인됨을 더하면 누를 것 없는 단추가 하나 생긴다.
+// 물려받는 쪽으로 적어야 상태가 늘 때 두 화면이 한 번에 는다.
+//
+// 거르개의 목록도 이 표의 키다. 목록을 따로 적으면 그것은 vocabulary.js의
+// DOCUMENT_TRUST_STATES 사본이 되는데, 화면은 브라우저에서 돌아 require로 정본을 가져올 수
+// 없다. 가져올 수 없는 목록은 적지 않는 것이 낫다 — 적어 두면 상태가 느는 날 정본과 갈리고,
+// 그때 화면은 없는 상태를 모르는 채로 돈다. 표는 어차피 하나 있어야 하므로 그 키를 쓴다.
+//
+// 키 순서가 곧 거르개 순서다. 승인됨 → 낡음 → 미승인은 "믿을 수 있는 것 → 흔들린 것 →
+// 아직 아닌 것"이라 신뢰도 순이고, 승인됨을 앞에 얹는 Object.assign이 그 순서를 만든다.
+const DOCUMENT_APPROVAL_TONES = Object.assign({ approved: 'pass' }, REVIEW_STATUS_TONES);
+// 승인 상태는 문서마다의 값이지만, 읽었는가는 스냅숏 전체의 성질이다 — board.js의
+// documentApprovals가 상태 표를 통째로 읽거나 통째로 못 읽거나 둘 중 하나이기 때문이다.
+// null은 미승인이 아니라 "모른다"이므로, 그때는 축 자체를 그리지 않는다.
+function approvalStatusOf(item) { return item && item.approval ? item.approval.status : null; }
+function approvalTagHtml(status) { return `<span class="tag ${DOCUMENT_APPROVAL_TONES[status] || 'info'}">${escapeHtml(REVIEW_STATUS_LABELS[status] || status)}</span>`; }
+// frontmatter의 어떤 값이 어떤 원장 상태를 주장하는가. 값 어휘가 아니라 두 축을 잇는 읽기
+// 규칙이라 vocabulary.js가 가질 수 없다 — 오른쪽은 승인 원장의 상태이고 왼쪽은 문서 상태라,
+// 어느 한쪽 어휘에도 속하지 않는다. accepted가 왼쪽에 있는 것이 그 증거다: 어휘의 여덟 값에
+// 없는데도 정본 15건이 쓰고 있고, 어휘에 있는 값만 보면 지금 어긋난 15건이 통째로 안 세어진다.
+//
+// 어긋남 자체가 봐야 할 신호다. 주장과 사실이 갈렸다는 뜻이고, 화면이 그것을 말하지 않으면
+// 칩만 보고 승인된 문서로 알고 그 위에 작업을 쌓게 된다.
+const STATE_APPROVAL_CLAIM = { approved: 'approved', accepted: 'approved' };
+function claimsUnbacked(item) { const status = approvalStatusOf(item); const claim = STATE_APPROVAL_CLAIM[item.state]; return Boolean(status && claim) && status !== claim; }
+
+// 이 화면이 갈라야 하는 갈래 넷. 서로 다른 사실이라 뭉갤 수 없다 — 특히 unknown과
+// unused를 같이 그리면 원장이 깨진 저장소와 원장을 안 쓰는 저장소가 화면에서 같아
+// 보이고, 앞엣것은 고쳐야 할 사고인데 아무도 그것을 모르게 된다.
+function reviewMode(queue) {
+  if (!queue) return 'absent';
+  if (queue.unknown) return 'unknown';
+  if (!queue.used) return 'unused';
+  return 'ready';
+}
+// 헤더 요약이 낼 수. 모르는 상태와 승인 축을 안 쓰는 상태에서는 수를 내지 않는다 —
+// 0은 "볼 것이 없다"는 거짓이고, 그때의 문서 전건은 "전부 내 검토를 기다린다"는 거짓이다.
+function reviewWaiting(queue) { return reviewMode(queue) === 'ready' ? queue.total : null; }
+
+function reviewRowHtml(item) {
+  // 승인자와 승인 횟수는 낡음에만 값이 있다. 미승인은 승인 이력 자체가 없으므로 빈
+  // 자리를 남기지 않고 없다고 적는다 — 빈 칸은 "못 읽었다"로도 읽힌다.
+  const trail = item.approvals
+    ? `${escapeHtml(personName(item.approvedBy))} · 승인 ${escapeHtml(item.approvals)}회`
+    : '승인 이력 없음';
+  return `<button class="document-row review-inbox-row" data-document="${escapeHtml(item.id)}">`
+    + `<span class="tag ${REVIEW_STATUS_TONES[item.status] || 'info'}">${escapeHtml(REVIEW_STATUS_LABELS[item.status] || item.status)}</span>`
+    + `<span class="eyebrow">${escapeHtml(item.id)}</span>`
+    + `<strong>${escapeHtml(item.title)}</strong>`
+    + `<span class="chip">${escapeHtml(documentTypeLabel(item))}</span>`
+    + `<small>${trail}</small>`
+    + `<span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`;
+}
+
+function renderReviewInbox() {
+  const queue = state.snapshot.reviewQueue;
+  const mode = reviewMode(queue);
+  const filters = el('review-inbox-filter');
+  const summary = el('review-inbox-summary');
+  const list = el('review-inbox-list');
+  // 줄이 서지 않는 갈래에서는 거르개도 목록도 없앤다. 빈 목록 위의 거르개는 누를 것이
+  // 있다는 약속인데, 여기서는 지킬 것이 없다.
+  filters.hidden = mode !== 'ready';
+  list.hidden = mode !== 'ready';
+  if (mode !== 'ready') { filters.innerHTML = ''; list.innerHTML = ''; }
+  if (mode === 'absent') {
+    // 스냅숏에 줄 자체가 없는 판이다. 빈 목록으로 그리면 "검토할 것이 없다"로 읽히고,
+    // 그것은 이 서버가 답하지 못한 물음에 화면이 대신 답하는 셈이 된다.
+    summary.innerHTML = '<p class="empty-state">이 Board 서버는 검토 줄을 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
+    return;
+  }
+  if (mode === 'unknown') {
+    // 못 읽은 이유를 그대로 옮긴다. 삼키면 원장이 깨진 저장소와 원장을 안 쓰는 저장소가
+    // 화면에서 같아 보이고, 모르는 것이 미승인으로 읽힌다.
+    summary.innerHTML = '<p class="review-inbox-note"><b>승인 상태를 읽지 못했습니다.</b> '
+      + escapeHtml(queue.unknown) + '</p>'
+      + '<p class="review-inbox-note">모르는 것과 미승인은 다른 값이라, 읽지 못한 문서를 검토 대기로 세지 않습니다. 이 자리가 비어 있다고 해서 검토할 것이 없다는 뜻은 아닙니다.</p>';
+    return;
+  }
+  if (mode === 'unused') {
+    // 승인 기록이 한 건도 없으면 문서 전건이 미승인으로 선다. 그것은 문서마다의 상태가
+    // 아니라 이 프로젝트가 승인 축을 안 쓴다는 뜻이고, 줄로 늘어놓으면 인박스가 첫날부터
+    // 문서 전건으로 차 정작 검토할 것을 가린다. 근거는 스냅숏이 주고 판단은 여기서 한다.
+    summary.innerHTML = '<p class="review-inbox-note"><b>이 프로젝트는 아직 승인을 관문으로 쓰지 않습니다.</b> '
+      + `승인 기록이 한 건도 없어 문서 ${escapeHtml(state.snapshot.documents.length)}건이 모두 미승인으로 서 있지만, 그것은 문서마다의 상태가 아니라 이 프로젝트가 승인 축을 쓰지 않는다는 뜻입니다. 그래서 검토 대기 줄로 늘어놓지 않습니다.</p>`
+      + '<p class="review-inbox-note">한 건이라도 승인하면 그때부터 이 줄이 뜻을 갖습니다. 승인은 <code>rdl doc approve</code>가 담당합니다.</p>'
+      + '<div class="review-inbox-actions"><button type="button" data-view="documents">문서 목록 열기</button></div>';
+    return;
+  }
+  const counts = queue.counts;
+  const filter = state.reviewFilter === 'all' || REVIEW_STATUS_TONES[state.reviewFilter] ? state.reviewFilter : 'all';
+  state.reviewFilter = filter;
+  // 거르개의 수는 전건이다. 목록의 길이를 적으면 잘린 줄에서 두 수가 어긋나고, 그때
+  // 사람은 잘렸다는 사실이 아니라 화면이 틀렸다는 인상을 받는다.
+  filters.innerHTML = [['all', '전체', queue.total]].concat(Object.keys(REVIEW_STATUS_TONES).map((key) => [key, REVIEW_STATUS_LABELS[key], counts[key]]))
+    .map(([key, label, count]) => `<button type="button" data-review-filter="${key}"${key === filter ? ' class="active"' : ''}>${key === 'all' ? '' : '<span class="severity-dot" aria-hidden="true"></span>'}${escapeHtml(label)} ${count}</button>`).join('');
+  // 서버는 낡음을 앞에 두고 정렬해 보냈다. 여기서 다시 정렬하면 두 순서가 갈리고, 그때
+  // 화면이 말하는 "먼저 볼 것"은 근거 없는 순서가 된다. 거르기만 한다.
+  const visible = filter === 'all' ? queue.items : queue.items.filter((item) => item.status === filter);
+  // 셈은 전건이고 목록만 잘린다. 두 수가 다르다는 사실을 화면이 말해야 줄의 길이가
+  // 보이고, 길이가 보여야 사람이 승인을 관문으로 쓸지 판단한다.
+  const full = filter === 'all' ? queue.total : counts[filter];
+  summary.innerHTML = `<div class="review-inbox-counts">${[['검토 대기', queue.total], [REVIEW_STATUS_LABELS.stale, counts.stale], [REVIEW_STATUS_LABELS.unapproved, counts.unapproved], [REVIEW_STATUS_LABELS.approved, counts.approved]]
+    .map(([label, count]) => `<span class="review-inbox-stat"><b>${count}</b> ${escapeHtml(label)}</span>`).join('')}</div>`
+    + (visible.length < full
+      ? `<p class="review-inbox-note"><b>${full}건 중 ${visible.length}건</b>만 실려 있습니다. 스냅숏은 줄이 길어져도 앞 ${queue.items.length}건까지만 싣습니다 — 나머지는 <code>rdl doc status</code>로 봅니다.</p>`
+      : '');
+  list.innerHTML = visible.length
+    ? visible.map(reviewRowHtml).join('')
+    : `<p class="empty-state">${filter === 'all' ? '검토를 기다리는 문서가 없습니다. 문서 전건이 지금 리비전으로 승인되어 있습니다.' : '이 상태인 문서가 없습니다.'}</p>`;
 }
 
 function renderHome() {
   const data = state.snapshot; const tasks = data.tasks.tasks; const documents = data.documents; const attention = data.attention;
   // 숫자를 보고 그 목록으로 갈 수 없으면 요약이 막다른 길이 된다. 지금까지 div였고
   // 눌러도 아무 일이 없었다. 각 지표를 그 수를 만든 화면으로 보낸다.
+  // 문서 축의 검토 대기. 아래 검토 요청과 이름이 갈려 있어야 두 수가 같은 것을 세는 줄로
+  // 읽히지 않는다 — 하나는 태스크가 승인 스텝에 선 것이고, 하나는 문서가 승인 원장과
+  // 어긋난 것이다. 모를 때와 승인 축을 안 쓸 때는 수를 내지 않는다.
+  const waiting = reviewWaiting(data.reviewQueue);
   const metrics = [
     [tasks.length, '전체 태스크', 'data-view="tasks"'],
     [documents.length, '프로젝트 문서', 'data-view="documents"'],
-    [tasks.filter((task) => inStep(task.status, 'in-approval')).length, '검토 요청', 'data-view="review"'],
+    [tasks.filter((task) => inStep(task.status, 'in-approval')).length, '검토 요청 태스크', 'data-view="review"'],
+    [waiting === null ? '—' : waiting, '검토 대기 문서', 'data-view="review-inbox"'],
     [attention.length, '조치 필요', 'data-focus-attention="1"']
   ];
   el('metrics').innerHTML = metrics.map(([value, label, action]) => `<button type="button" class="metric" ${action}><strong>${value}</strong><span>${label}</span></button>`).join('');
@@ -461,14 +610,62 @@ function bodyExcerpt(item, query) {
   return `${start > 0 ? '… ' : ''}${raw}${at + query.length + 60 < body.length ? ' …' : ''}`;
 }
 
+// 목록의 안내문. 갈래마다 말할 것이 다르고, 말하지 않으면 화면이 대신 거짓을 말한다 —
+// 원장을 못 읽었을 때의 빈 축은 "미승인"으로 읽히고, 승인 축을 안 쓰는 프로젝트의 전건
+// 미승인은 "전부 밀렸다"로 읽힌다. 검토 인박스가 같은 갈래를 같은 말로 가른다.
+function documentLedgerNotes(visible, ledger, used) {
+  const notes = [];
+  if (!ledger) {
+    const reason = state.snapshot.reviewQueue && state.snapshot.reviewQueue.unknown;
+    return [`<p class="ledger-note"><b>승인 상태를 읽지 못했습니다.</b>${reason ? ` ${escapeHtml(reason)}` : ''} 모르는 것과 미승인은 다른 값이라, 이 목록은 승인 축을 그리지도 거르지도 않습니다.</p>`];
+  }
+  if (!used) {
+    notes.push('<p class="ledger-note"><b>이 프로젝트는 아직 승인을 관문으로 쓰지 않습니다.</b> 승인 기록이 한 건도 없어 문서가 모두 미승인으로 섭니다 — 문서마다의 상태가 아니라 이 축을 쓰지 않는다는 뜻입니다. 승인은 <code>rdl doc approve</code>가 담당합니다.</p>');
+  }
+  // 세는 대상은 지금 목록에 실제로 서 있는 줄이다. 거르기 전의 수를 적으면 낡음 2줄만 걸러
+  // 놓고 "15건"을 읽게 되고, "그 문서의 상태 칩에 표시해 두었다"는 말이 가리킬 칩이 화면에
+  // 없다. 안내는 화면에 있는 것을 가리켜야 한다.
+  const unbacked = visible.filter(claimsUnbacked).length;
+  if (unbacked) {
+    notes.push(`<p class="ledger-note"><b>${unbacked}건</b>은 frontmatter가 승인을 주장하지만 원장은 그 리비전을 승인한 적이 없습니다. 그 문서의 상태 칩에 표시해 두었습니다 — 주장과 사실이 갈린 자리입니다.</p>`);
+  }
+  return notes;
+}
+
 function renderDocuments() {
   const query = state.query.toLowerCase();
   const scope = state.documentSearchScope || 'name';
-  const documents = state.snapshot.documents
-    .filter((item) => (!state.documentFilter || (item.kind || item.type) === state.documentFilter) && documentMatches(item, query, scope))
+  // 유형·검색으로 먼저 좁히고 승인 갈래는 그 위에서 센다. 순서가 반대면 거르개에 적힌 수와
+  // 눌렀을 때 남는 줄의 수가 어긋난다. "요구사항 중 낡은 것"을 물을 수 있으려면 두 축이
+  // 직교해야 하고, 직교한다는 것은 한 축의 셈이 다른 축을 이미 통과한 것들의 셈이라는 뜻이다.
+  const scoped = state.snapshot.documents
+    .filter((item) => (!state.documentFilter || (item.kind || item.type) === state.documentFilter) && documentMatches(item, query, scope));
+  const ledger = state.snapshot.documents.some((item) => item.approval);
+  // "이 프로젝트가 승인 축을 쓰는가"는 프로젝트 전체의 성질이라 거르개를 통과한 것들로 세면
+  // 안 된다. 유형을 요구사항으로 좁히면 그 안에는 승인된 것도 낡은 것도 없어, 승인을 쓰는
+  // 프로젝트가 갑자기 안 쓰는 것으로 화면에 뜬다. 판정 규칙은 board.js의 reviewQueue.used와
+  // 같고(승인됨이나 낡음이 한 건이라도 있는가), 문서에서 직접 세어 스냅숏이 그 줄을 안 실어도 선다.
+  const used = state.snapshot.documents.some((item) => item.approval && item.approval.status !== 'unapproved');
+  const counts = { all: scoped.length, approved: 0, stale: 0, unapproved: 0 };
+  for (const item of scoped) { const status = approvalStatusOf(item); if (status) counts[status] += 1; }
+  // 원장을 못 읽으면 거르개가 서지 않는다. 모르는 것을 "미승인 133건"으로 세어 단추에 적으면
+  // 화면이 서버가 답하지 못한 물음에 대신 답하는 셈이 된다.
+  const branches = Object.keys(DOCUMENT_APPROVAL_TONES);
+  const approvalFilter = ledger && branches.includes(state.documentApproval) ? state.documentApproval : 'all';
+  state.documentApproval = approvalFilter;
+  const filters = el('document-approval-filter');
+  filters.hidden = !ledger;
+  filters.innerHTML = ledger
+    ? [['all', '전체', counts.all]].concat(branches.map((key) => [key, REVIEW_STATUS_LABELS[key], counts[key]]))
+      .map(([key, label, count]) => `<button type="button" data-document-approval="${key}"${key === approvalFilter ? ' class="active"' : ''}>${key === 'all' ? '' : '<span class="severity-dot" aria-hidden="true"></span>'}${escapeHtml(label)} ${count}</button>`).join('')
+    : '';
+  const documents = (approvalFilter === 'all' ? scoped : scoped.filter((item) => approvalStatusOf(item) === approvalFilter))
     .sort((left, right) => (state.documentSort === 'modified'
       ? String(right.modifiedAt || '').localeCompare(String(left.modifiedAt || ''))
       : String(left.id).localeCompare(String(right.id))));
+  const notes = documentLedgerNotes(documents, ledger, used);
+  el('documents-note').innerHTML = notes.join('');
+  el('documents-note').hidden = !notes.length;
   // 고른 것이 어느 쪽인지 화면이 말해야 한다. 동작만 바뀌고 표시가 그대로면 사용자는
   // 자기가 무엇을 보고 있는지 모른다 — index.html의 active가 정적으로 박혀 있어서
   // 첫 항목이 늘 선택된 것처럼 보였다.
@@ -478,9 +675,28 @@ function renderDocuments() {
   for (const button of document.querySelectorAll('#document-sort [data-document-sort]')) {
     button.classList.toggle('active', button.dataset.documentSort === (state.documentSort || 'id'));
   }
+  // 원장을 못 읽는 저장소에서는 태그가 한 줄도 서지 않는다. 그때 머리 열을 비워 두면 133줄이
+  // 통째로 56px씩 밀린 채 아무것도 안 담는다 — 열 자체를 접는다.
+  el('documents-list').classList.toggle('with-ledger', ledger);
   el('documents-list').innerHTML = documents.length ? documents.map((item) => {
+    // 내용 요약 칸은 「본문 전체」로 검색할 때만 선다. 그때의 발췌는 "왜 이 문서가 걸렸나"를
+    // 말하는 값이라 폭을 벌 자격이 있고, 평소의 description은 잘려서 읽히지도 않으면서 행
+    // 가운데를 통째로 먹어 오른쪽 메타를 화면 밖으로 밀어냈다.
     const excerpt = scope === 'body' ? bodyExcerpt(item, query) : '';
-    return `<button class="document-row" data-document="${escapeHtml(item.id)}"><span class="eyebrow">${escapeHtml(item.id)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(excerpt || item.description || item.file)}</small><span class="document-row-meta"><time datetime="${escapeHtml(item.modifiedAt || '')}">${escapeHtml(shortDate(item.modifiedAt))}</time><span class="chip">${escapeHtml(documentTypeLabel(item))}</span><span class="chip">${escapeHtml(documentStateLabel(item.state))}</span></span></button>`;
+    const status = approvalStatusOf(item);
+    // 두 축을 나란히 세운다. 원장은 행의 머리에 태그로 서고(검토 인박스와 같은 자리·같은
+    // 말·같은 색), frontmatter의 주장은 뒤쪽 칩으로 남는다. 하나로 합치면 지금과 같은
+    // 거짓말이 다른 모양으로 다시 생긴다 — 화면이 주장을 사실처럼 말하게 된다.
+    const unbacked = claimsUnbacked(item);
+    return `<button class="document-row${excerpt ? ' with-excerpt' : ''}" data-document="${escapeHtml(item.id)}">`
+      + (status ? approvalTagHtml(status) : '')
+      + `<span class="eyebrow">${escapeHtml(item.id)}</span>`
+      + `<strong>${escapeHtml(item.title)}</strong>`
+      + (excerpt ? `<small>${escapeHtml(excerpt)}</small>` : '')
+      + `<span class="document-row-meta"><time datetime="${escapeHtml(item.modifiedAt || '')}">${escapeHtml(shortDate(item.modifiedAt))}</time>`
+      + `<span class="chip">${escapeHtml(documentTypeLabel(item))}</span>`
+      + `<span class="chip${unbacked ? ' claim-unbacked' : ''}"${unbacked ? ` title="frontmatter는 승인을 주장하지만 승인 원장은 ${escapeHtml(REVIEW_STATUS_LABELS[status])}입니다"` : ''}>${escapeHtml(documentStateLabel(item.state))}</span>`
+      + '</span></button>';
   }).join('') : '<p class="empty-state">조건에 맞는 문서가 없습니다.</p>';
 }
 
@@ -680,16 +896,59 @@ function markPeekedRow() {
   for (const row of document.querySelectorAll('.task-row')) row.classList.toggle('peeked', row.dataset.task === state.selected);
 }
 
+// 상세와 컨텍스트가 함께 쓰는 원장의 사실. 목록이 태그 하나로 말한 것을 여기서는 근거까지
+// 편다 — 누가, 몇 번, 어느 리비전을 승인했는가. 값은 스냅숏의 document.approval 그대로이며
+// 화면이 리비전을 비교해 판정을 다시 짓지 않는다. 지으면 rdl doc status와 보드가 같은 문서에
+// 다른 답을 내고, 그때 사람이 믿는 쪽은 화면이다.
+function approvalFacts(approval) {
+  const facts = approval.approvals
+    ? [`승인자 ${escapeHtml(personName(approval.approvedBy))}`, `승인 ${escapeHtml(approval.approvals)}회`]
+    : ['승인 이력 없음'];
+  // 승인된 리비전은 낡음일 때 "무엇으로 되돌아갈 수 있는가"를 가리키고, 승인됨일 때 지금
+  // 리비전과 같다는 사실을 가리킨다. 미승인은 그런 리비전 자체가 없어 자리를 만들지 않는다.
+  if (approval.approvedRevision) facts.push(`승인된 리비전 <code>${escapeHtml(String(approval.approvedRevision).slice(0, 12))}</code>`);
+  return facts;
+}
+function documentApprovalHtml(item) {
+  const approval = item.approval;
+  if (!approval) {
+    // 못 읽은 것을 미승인으로 적지 않는다. 모르는 것과 아직 아닌 것은 다른 값이고, 앞엣것은
+    // 고쳐야 할 사고인데 미승인으로 적으면 아무도 그것을 모른다.
+    const reason = state.snapshot.reviewQueue && state.snapshot.reviewQueue.unknown;
+    return `<h2>승인 원장</h2><p class="ledger-note"><b>승인 상태를 읽지 못했습니다.</b>${reason ? ` ${escapeHtml(reason)}` : ''} 그래서 이 문서를 미승인으로 적지 않습니다.</p>`;
+  }
+  const lines = [`<h2>승인 원장</h2><p class="document-approval-line">${approvalTagHtml(approval.status)}<span>${approvalFacts(approval).join(' · ')}</span></p>`];
+  if (claimsUnbacked(item)) {
+    lines.push(`<p class="ledger-note">frontmatter는 <code>${escapeHtml(item.state)}</code>(${escapeHtml(documentStateLabel(item.state))})라고 적었지만 원장은 이 리비전을 승인한 적이 없습니다. 앞엣것은 작성자의 주장이고 뒤엣것이 원장의 사실이라, 어긋난 채로 둘 수 있습니다.</p>`);
+  }
+  if (approval.status === 'stale') {
+    // 승인 이후의 diff 본문은 스냅숏에 없다. 없는 것을 화면이 지어내면 그 화면을 믿고
+    // 재승인한 사람이 자기가 무엇을 승인했는지 모르게 되므로, 명령을 안내하는 데서 멈춘다.
+    lines.push(`<p class="ledger-note">승인 이후 본문이 바뀌었습니다. 무엇이 바뀌었는지는 <code>rdl doc diff ${escapeHtml(item.id)} --since-approval</code>로 봅니다 — 이 화면은 diff 본문을 싣지 않습니다.</p>`);
+  }
+  return lines.join('');
+}
+
 function renderContext(item, kind) {
   el('context-empty').hidden = true; el('context-content').hidden = false;
   if (kind === 'task') return void (el('context-content').innerHTML = taskDetailHtml(item, 'peek'));
   if (kind === 'document') {
     const linkedTasks = state.snapshot.tasks.tasks.filter((task) => (task.links || []).includes(item.id));
-    el('context-content').innerHTML = `<section class="context-group"><h2>속성</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>유형</dt><dd>${escapeHtml(documentTypeLabel(item))}</dd></div><div class="property"><dt>상태</dt><dd>${escapeHtml(documentStateLabel(item.state))}</dd></div><div class="property"><dt>소유자</dt><dd>${escapeHtml(ownerName(item.owner))}</dd></div><div class="property"><dt>파일</dt><dd>${escapeHtml(item.file)}</dd></div></dl></section><section class="context-group"><h2>연결 태스크</h2>${linkedTasks.length ? linkedTasks.map((task) => `<button data-task="${task.id}">${escapeHtml(task.title)}</button>`).join('') : '<p class="empty-state">연결된 태스크 없음</p>'}</section><section class="context-group"><h2>검증</h2><p class="chip">strict snapshot 포함</p><small>${escapeHtml(item.revision.slice(0, 12))}</small></section>`;
+    // 속성표에도 두 축을 갈라 적는다. "상태" 한 줄만 있으면 그것이 승인 상태로 읽히는데,
+    // 그 값은 frontmatter의 주장이라 원장과 어긋날 수 있다 — 그래서 dt를 "문서 상태"로
+    // 이름 붙이고 원장의 사실을 그 아래에 따로 세운다. 검토 인박스에서 "낡음"이라 부른
+    // 문서를 눌러 도착한 자리가 여기라, 여기서 말이 갈리면 인박스가 거짓말한 것이 된다.
+    const approval = item.approval;
+    const ledgerRows = approval
+      ? `<div class="property"><dt>승인 원장</dt><dd>${approvalTagHtml(approval.status)}</dd></div>`
+        + (approval.approvals ? `<div class="property"><dt>승인자</dt><dd>${escapeHtml(personName(approval.approvedBy))} · ${escapeHtml(approval.approvals)}회</dd></div>` : '')
+        + (approval.approvedRevision ? `<div class="property"><dt>승인 리비전</dt><dd>${escapeHtml(String(approval.approvedRevision).slice(0, 12))}</dd></div>` : '')
+      : '<div class="property"><dt>승인 원장</dt><dd>읽지 못함</dd></div>';
+    el('context-content').innerHTML = `<section class="context-group"><h2>속성</h2><dl><div class="property"><dt>ID</dt><dd>${escapeHtml(item.id)}</dd></div><div class="property"><dt>유형</dt><dd>${escapeHtml(documentTypeLabel(item))}</dd></div><div class="property"><dt>문서 상태</dt><dd>${escapeHtml(documentStateLabel(item.state))}</dd></div>${ledgerRows}<div class="property"><dt>소유자</dt><dd>${escapeHtml(ownerName(item.owner))}</dd></div><div class="property"><dt>파일</dt><dd>${escapeHtml(item.file)}</dd></div></dl></section><section class="context-group"><h2>연결 태스크</h2>${linkedTasks.length ? linkedTasks.map((task) => `<button data-task="${task.id}">${escapeHtml(task.title)}</button>`).join('') : '<p class="empty-state">연결된 태스크 없음</p>'}</section><section class="context-group"><h2>검증</h2><p class="chip">strict snapshot 포함</p><small>${escapeHtml(item.revision.slice(0, 12))}</small></section>`;
   }
 }
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
-  closeBlockEditor(); renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('document-editor-surface').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+  closeBlockEditor(); renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-approval').innerHTML = documentApprovalHtml(item); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('document-editor-surface').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 // 무엇이 막혀 있는지가 목록에서 가장 먼저 읽혀야 한다. 사람 대기(blocker)는 값으로 있었지만
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
@@ -976,7 +1235,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', markVisit);
 
-document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } if (button.dataset.documentScope) { state.documentSearchScope = button.dataset.documentScope; return setView('documents'); } if (button.dataset.documentSort) { state.documentSort = button.dataset.documentSort; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
+document.addEventListener('click', (event) => { const button = event.target.closest('button'); if (!button) return; if (button.dataset.view) { if (button.dataset.view === 'tasks') state.taskScope = 'all'; return setView(button.dataset.view); } if (button.dataset.document) return setView('document', button.dataset.document); if (button.dataset.documentFilter !== undefined) { state.documentFilter = button.dataset.documentFilter; return setView('documents'); } if (button.dataset.documentScope) { state.documentSearchScope = button.dataset.documentScope; return setView('documents'); } if (button.dataset.documentSort) { state.documentSort = button.dataset.documentSort; return setView('documents'); } if (button.dataset.documentApproval) { state.documentApproval = button.dataset.documentApproval; return setView('documents'); } // Plane의 side peek. 목록에서 고른 태스크는 화면을 갈아치우지 않고 Context 패널에 연다.
   // 목록 맥락을 잃지 않고 항목 사이를 옮겨 다닐 수 있다.
   if (button.dataset.person) {
     const [group, id] = button.dataset.person.split(':');
@@ -1556,6 +1815,14 @@ document.addEventListener('click', (event) => {
   if (!button) return;
   state.attentionFilter = button.dataset.attentionSeverity;
   renderAttention(state.snapshot.attention);
+});
+// 검토 인박스의 거르개. 셈은 전건에서 오고 목록은 잘린 것에서 오므로 거르고 나면 두 수가
+// 달라진다 — 그 차이를 말하는 자리도 같이 다시 그려야 하므로 화면 전체를 다시 그린다.
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-review-filter]');
+  if (!button) return;
+  state.reviewFilter = button.dataset.reviewFilter;
+  renderReviewInbox();
 });
 // 조치 필요는 옮겨 갈 화면이 따로 없다. 같은 화면 아래 목록이 그 내역이므로 그리로 데려간다.
 document.addEventListener('click', (event) => {
