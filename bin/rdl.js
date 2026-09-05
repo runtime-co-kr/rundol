@@ -66,12 +66,17 @@ Usage:
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl doc identity [--project <key>] [--apply] [--json]
-  rdl doc status [--project <key>] [--status <approved|stale|unapproved>] [--json]
+  rdl doc status [--project <key>] [--status <approved|stale|unapproved>]
+                 [--submission <none|pending|drifted|settled|rejected>] [--json]
+  rdl doc submit <ARTIFACT-ID> --client-id <id> [--member <MEMBER-ID>] [--reason <사유>] [--project <key>] [--json]
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
-                  --client-id <id> [--reason <사유>] [--project <key>] [--json]
+                  --client-id <human-client-id> [--reason <사유>] [--project <key>] [--json]
+  rdl doc reject <ARTIFACT-ID> --client-id <human-client-id> --reason <사유> [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
-  rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
+  rdl doc pipeline [--project <key>] [--json]
+  rdl doc diff <ARTIFACT-ID> (--since-approval | --proposed) [--project <key>] [--json]
+  rdl doc review [--project <key>] [--status <stale|unapproved>] [--diff] [--max-items <n>] [--write] [--json]
   rdl sync --client-id <id> [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
   rdl sync watch --client-id <id> [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
   rdl conflict list [--project <key>] [--json]
@@ -246,7 +251,7 @@ Options:
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], rule: null, sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], rule: null, sinceApproval: false, diff: false, proposed: false, submission: undefined, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -269,11 +274,15 @@ function parseOperationArgs(argv) {
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
     else if (value === '--since-approval') options.sinceApproval = true;
+    else if (value === '--diff') options.diff = true;
+    // 승인본 ↔ 제출본. --since-approval(승인본 ↔ 작업본)을 대체하지 않고 축을 하나
+    // 더한다 — 둘은 다른 물음이고, 기존 축의 뜻을 바꾸면 그것을 읽던 쪽이 조용히 답을 갈아탄다.
+    else if (value === '--proposed') options.proposed = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
-      '--session-id', '--path', '--from', '--reply-to', '--rule'].includes(value)) {
+      '--session-id', '--path', '--from', '--reply-to', '--rule', '--submission'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -310,6 +319,7 @@ function parseOperationArgs(argv) {
       else if (value === '--member') options.member = argv[i];
       else if (value === '--reply-to') options.replyTo = argv[i];
       else if (value === '--rule') options.rule = argv[i];
+      else if (value === '--submission') options.submission = argv[i];
       else if (value === '--organization') options.organization = argv[i];
       else if (value === '--account') options.account = argv[i];
       else if (value === '--responsibility') options.responsibility = argv[i];
@@ -1664,12 +1674,52 @@ async function main() {
       }), analyzeOptions.json);
       return 0;
     }
-    if (['status', 'approve', 'history', 'diff'].includes(subcommand)) {
+
+    // 검토 리포트는 status·history·diff를 한 산출물로 접는다. 세 명령을 문서마다
+    // 세 번씩 치는 것이 지금까지의 유일한 방법이었고, 그래서 29건이 쌓인 뒤에는
+    // 아무도 다 보지 않았다.
+    //
+    // 기본 출력이 마크다운인 것은 이 산출물이 읽히라고 만든 것이기 때문이다.
+    // printOperation은 중첩 객체를 건너뛰므로 문서마다의 승인자·사유·차분이 통째로
+    // 사라진다 — 그 값이 없으면 이 명령은 doc status와 다를 것이 없다.
+    if (subcommand === 'review') {
+      const reviewOptions = parseOperationArgs(argv);
+      if (reviewOptions.positional.length) throw new Error('rdl doc review에는 위치 인수를 사용할 수 없습니다.');
+      const { reviewReport, renderReviewMarkdown } = require('../src/review-report');
+      const report = reviewReport(reviewOptions.root, {
+        project: reviewOptions.project, status: reviewOptions.status,
+        diff: reviewOptions.diff, maxItems: reviewOptions.maxItems
+      });
+      const markdown = renderReviewMarkdown(report);
+      const view = reviewOptions.write ? require('../src/obsidian').writeReviewView(reviewOptions.root, report, markdown) : null;
+      if (reviewOptions.json) {
+        printOperation(Object.assign({}, report, view ? { view } : {}), true);
+        return 0;
+      }
+      // --write는 파일로 내보내라는 뜻이다. 그때 같은 내용을 화면에도 쏟으면 어디에
+      // 놓였는지가 그 안에 묻힌다.
+      if (view) printOperation({ project: report.project, pending: report.pending, file: view.relativeFile, changed: view.changed, ignored: view.ignored }, false);
+      else process.stdout.write(`${markdown}\n`);
+      return 0;
+    }
+
+    // 파이프라인 점검은 층을 답하고 analyze는 행을 답한다. 물음이 다르므로 명령이
+    // 다르고, 계산은 같은 모듈에 있다.
+    if (subcommand === 'pipeline') {
+      const pipelineOptions = parseOperationArgs(argv);
+      if (pipelineOptions.positional.length) throw new Error('rdl doc pipeline에는 위치 인수를 사용할 수 없습니다.');
+      printOperation(require('../src/document-analysis').documentPipeline(pipelineOptions.root, { project: pipelineOptions.project }), pipelineOptions.json);
+      return 0;
+    }
+    if (['status', 'approve', 'reject', 'history', 'diff', 'submit'].includes(subcommand)) {
       const options = parseOperationArgs(argv);
       const approval = require('../src/approval');
       if (subcommand === 'status') {
         if (options.positional.length) throw new Error('rdl doc status에는 위치 인수를 사용할 수 없습니다.');
-        printOperation(approval.documentStatus(options.root, { project: options.project, status: options.status }), options.json);
+        if (options.submission !== undefined && !approval.SUBMISSION_STATES.includes(options.submission)) {
+          throw new Error(`지원하지 않는 제출 상태입니다: ${options.submission} (가능: ${approval.SUBMISSION_STATES.join(', ')})`);
+        }
+        printOperation(approval.documentStatus(options.root, { project: options.project, status: options.status, submission: options.submission }), options.json);
         return 0;
       }
       if (options.positional.length !== 1) throw new Error(`rdl doc ${subcommand}에는 ARTIFACT-ID 하나가 필요합니다.`);
@@ -1677,8 +1727,35 @@ async function main() {
         printOperation(approval.documentHistory(options.root, { project: options.project, targetId: options.positional[0] }), options.json);
         return 0;
       }
+      // 제출은 승인 후보를 원장에 세우는 일이다. 승인과 달리 사람 Client를 요구하지
+      // 않는다 — 에이전트가 쓰고 사람이 책임지는 분업에서 제출은 앞쪽이고, 여기까지
+      // 사람 전용이면 관문이 아니라 병목이 된다. 명의는 Client 소유자이므로
+      // --member는 선택이다.
+      if (subcommand === 'submit') {
+        printOperation(approval.submitDocument(options.root, {
+          project: options.project, clientId: options.clientId, targetId: options.positional[0],
+          submittedBy: options.member, reason: options.reason, rootRequestId: options.requestId
+        }), options.json);
+        return 0;
+      }
+      // 반려는 검토자가 "아니오"를 말하는 자리다. 승인과 같은 사람 게이트를 지나지만
+      // 근거(--basis)는 받지 않고 사유가 필수다 — 승인에서 사유가 선택인 것은 근거가
+      // 따로 있어서이고, 반려는 사유가 내용 전부다. 명의는 Client 소유자이므로
+      // --member는 선택이다(승인과 달리 위임이 설 자리가 없어 고를 여지도 없다).
+      if (subcommand === 'reject') {
+        printOperation(approval.rejectDocument(options.root, {
+          project: options.project, clientId: options.clientId, targetId: options.positional[0],
+          rejectedBy: options.member, reason: options.reason, rootRequestId: options.requestId
+        }), options.json);
+        return 0;
+      }
       if (subcommand === 'diff') {
-        if (!options.sinceApproval) throw new Error('rdl doc diff에는 --since-approval이 필요합니다.');
+        if (options.sinceApproval && options.proposed) throw new Error('rdl doc diff의 --since-approval과 --proposed는 함께 쓸 수 없습니다. 비교 축을 하나 고르십시오.');
+        if (options.proposed) {
+          printOperation(approval.diffSubmission(options.root, { project: options.project, targetId: options.positional[0] }), options.json);
+          return 0;
+        }
+        if (!options.sinceApproval) throw new Error('rdl doc diff에는 --since-approval 또는 --proposed가 필요합니다.');
         printOperation(approval.diffSinceApproval(options.root, { project: options.project, targetId: options.positional[0] }), options.json);
         return 0;
       }

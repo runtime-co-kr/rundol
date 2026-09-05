@@ -77,6 +77,26 @@ const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST']);
 const RELATED_REQUIRED_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST', 'RUN']);
 
 /**
+ * 문서 작성 순서. 유형마다 그보다 먼저 서야 하는 유형을 적는다 — contract next가
+ * "지금 무엇을 쓸 수 있나"를 답할 때 보는 표이고, 하류가 상류 확정보다 앞섰는지를
+ * 판정할 때 무엇이 상류인지도 이 표가 정한다. related는 방향이 없으므로 방향은
+ * 유형이 갖는다.
+ *
+ * 어휘로 옮긴 이유. 이 표는 document-profile.js에 있었는데 그 모듈은 파일을 읽고,
+ * 판정 계층은 파일을 몰라야 한다. 표가 저 안에 있는 한 판정부는 이 표를 볼 수 없고,
+ * 못 보면 같은 순서를 두 번째로 적게 된다 — 두 벌은 한쪽만 고쳐지는 날 갈리고,
+ * 그때 같은 문서가 "쓸 수 있다"와 "상류가 아직 없다"를 동시에 듣는다.
+ * VALIDATION_METHODS_BY_NATURE와 TRANSITION_SLOT_UNIT_KINDS가 여기 있는 것과 같은
+ * 모양이다 — 어휘 사이의 관계도 값이다.
+ */
+const DEFAULT_DOCUMENT_ORDER = Object.freeze({
+  PRD: Object.freeze([]), REQ: Object.freeze(['PRD']), ARC: Object.freeze(['REQ']),
+  SCR: Object.freeze(['REQ']), MOD: Object.freeze(['REQ']), IFC: Object.freeze(['REQ']),
+  ADR: Object.freeze(['ARC']), TST: Object.freeze(['REQ']), RUN: Object.freeze(['REQ']),
+  STD: Object.freeze([]), GLS: Object.freeze([])
+});
+
+/**
  * 보드가 쓰는 문서 분류 키. REGULAR_TYPES와 짝이 아니다 — charter와 clipping은
  * 정규 유형이 아니고, 이쪽은 긴 이름을 쓴다. 둘을 합치면 저장값과 분류가 한 이름
  * 아래 섞인다.
@@ -102,6 +122,46 @@ const APPROVAL_MODES = Object.freeze(['human-only', 'ai-assisted', 'ai-first', '
 
 /** 승인 근거의 종류. */
 const BASIS_KINDS = Object.freeze(['read', 'verdict', 'check', 'delegated']);
+
+/**
+ * 문서의 신뢰 상태. approval.js의 trustState()가 원장과 문서 리비전에서 파생하며,
+ * 저장되지 않는다 — 승인 결과를 문서에 쓰면 그 쓰기가 리비전을 바꿔 방금 한 승인을
+ * 스스로 무효화하기 때문이다.
+ *
+ * 목록으로 두는 이유는 이 세 값을 읽는 자리가 여럿이기 때문이다. doc status가 거르개로
+ * 받고, Board 스냅숏이 셈으로 싣고, 검토 리포트가 대기 줄을 고른다. 각자 문자열을 들면
+ * 상태가 하나 늘어나는 날 한쪽만 늘고, 그러면 같은 문서에 화면과 게이트가 다른 답을 낸다.
+ *
+ * 순서에 뜻이 있다. 낡음이 미승인보다 앞이다 — 승인된 것이 흔들린 상태라 이미 그것을
+ * 근거로 삼은 하류가 있고, 미승인은 아직 아무도 근거로 삼지 않았다.
+ */
+const DOCUMENT_TRUST_STATES = Object.freeze(['approved', 'stale', 'unapproved']);
+
+/**
+ * 제출 축의 값. 신뢰 상태(approved·stale·unapproved)와 직교하는 두 번째 축이며
+ * 판정은 approval.js의 submissionState가 한다.
+ *
+ *   none     아직 아무에게도 올린 적 없다 — 초안이다.
+ *   pending  올린 리비전이 지금 파일과 같다 — 승인자 몫이다. 신뢰 상태가 stale이면
+ *            "재검토 대기"이고 unapproved면 "첫 검토 대기"다. 그 구분은 두 축의 짝이
+ *            이미 답하므로 값을 늘리지 않는다.
+ *   drifted  올린 뒤 또 고쳤다 — 승인자가 볼 것과 지금 파일이 다르다.
+ *   settled  지금 리비전이 승인됐다 — 줄에 서 있던 것이 판정을 받았다.
+ *   rejected 검토자가 아니라고 답했다 — 작성자 차례다. 다시 올리면 pending으로 돌아온다.
+ *
+ * 신뢰 상태 셋에 값을 더하지 않고 축을 하나 얹은 이유는 그 셋을 이미 보드·
+ * documentStatus·다른 갈래가 읽고 있기 때문이다. 값을 더하면 그 소비자들이 모르는
+ * 상태를 만나 어느 갈래로도 떨어지지 않는다 — 축을 더하면 모르는 쪽은 그대로
+ * 동작하고 아는 쪽만 새 물음에 답한다.
+ *
+ * rejected는 이 축의 값을 넷에서 다섯으로 늘린 자리다. "낡음인데 재제출됨"을 두 축의
+ * 짝으로 답하고 값을 안 늘렸던 것과 달리, 반려는 짝으로 답할 수 없다 — 신뢰 상태는
+ * 반려를 담지 않고(담으면 반려가 승인을 되돌리는 것이 되어 셋의 뜻이 바뀐다), 기존 넷
+ * 중 어느 것도 "검토를 거쳐 작성자에게 돌아왔다"를 뜻하지 않는다. none은 아무에게도
+ * 올린 적 없다는 뜻이라 검토를 거친 사실을 지우고, drifted는 승인자 쪽 경고이며,
+ * settled는 판정이 났다는 뜻이지만 읽는 쪽이 그것을 승인으로 다룬다.
+ */
+const SUBMISSION_STATES = Object.freeze(['none', 'pending', 'drifted', 'settled', 'rejected']);
 
 /** 검증 판정. 기권을 실패와 가르는 이유는 "보지 못했다"와 "보고 아니라 했다"가 다르기 때문이다. */
 const VERDICTS = Object.freeze(['pass', 'refuted', 'abstain']);
@@ -642,6 +702,16 @@ const HOOK_EVENTS = Object.freeze(['session-start', 'pre-tool-use', 'post-tool-u
 /** 훅을 부르는 클라이언트. 페이로드 모양의 차이를 흡수할 때만 쓴다. */
 const HOOK_CLIENTS = Object.freeze(['claude', 'codex']);
 
+/**
+ * 파일 하나를 file_path로 지목해 쓰는 도구. 훅이 "무엇이 방금 바뀌었나"를 이 이름으로
+ * 판정한다.
+ *
+ * 여기 두는 이유는 이름이 하네스의 것이지 Rundol의 것이 아니기 때문이다. 클라이언트가
+ * 도구 이름을 바꾸거나 늘리면 훅은 조용히 판정을 멈추고, 판정을 멈춘 훅은 통과시킨다 —
+ * 즉 아무 신호 없이 꺼진다. 이름이 한자리에 모여 있어야 그 날 고칠 곳이 하나다.
+ */
+const DOCUMENT_WRITE_TOOLS = Object.freeze(['Write', 'Edit', 'MultiEdit']);
+
 module.exports = Object.freeze({
   TASK_STATES,
   TASK_STATUS_ORDER,
@@ -654,6 +724,7 @@ module.exports = Object.freeze({
   REGULAR_TYPES,
   IMPLEMENTATION_TYPES,
   RELATED_REQUIRED_TYPES,
+  DEFAULT_DOCUMENT_ORDER,
   DOCUMENT_TYPE_KEYS,
   DOCUMENT_STATE_KEYS,
   PROFILE_NAMES,
@@ -662,6 +733,8 @@ module.exports = Object.freeze({
   TRAITS,
   APPROVAL_MODES,
   BASIS_KINDS,
+  DOCUMENT_TRUST_STATES,
+  SUBMISSION_STATES,
   VERDICTS,
   EXECUTORS,
   WORKFLOW_STEPS,
@@ -708,6 +781,7 @@ module.exports = Object.freeze({
   COMMIT_BOUNDARY_HOOKS,
   HOOK_EVENTS,
   HOOK_CLIENTS,
+  DOCUMENT_WRITE_TOOLS,
   CONVENTIONAL_PRIMARY,
   ASSET_EXTENSIONS,
   SUB_KINDS,

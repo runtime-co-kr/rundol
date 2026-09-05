@@ -42,6 +42,7 @@
       <nav class="primary-nav" aria-label="주요 화면">
         <button data-view="home" class="nav-item active" title="홈"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="nav-label">홈</span></button>
         <button data-view="documents" class="nav-item" title="문서"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></span><span class="nav-label">문서</span></button>
+        <button data-view="review-inbox" class="nav-item" title="검토 인박스"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span><span class="nav-label">검토 인박스</span></button>
         <button data-view="tasks" class="nav-item" title="태스크"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 4h7"/><path d="M14 9h7"/><path d="M14 15h7"/><path d="M14 20h7"/></svg></span><span class="nav-label">태스크</span></button>
         <button data-view="runs" class="nav-item" title="런"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg></span><span class="nav-label">런</span></button>
       </nav>
@@ -64,15 +65,41 @@
 
       <section id="documents-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">DOCUMENTS</p><h1>프로젝트 문서</h1><p>Markdown 정본을 유형과 관계를 따라 탐색합니다.</p></div><div class="document-controls"><div class="segmented" id="document-scope"><button data-document-scope="name" class="active">문서명</button><button data-document-scope="body">본문 전체</button></div><div class="segmented" id="document-sort"><button data-document-sort="id" class="active">ID순</button><button data-document-sort="modified">최근 수정순</button></div></div></header>
+        <!-- 승인 축은 유형·검색과 직교한다. 목록 바로 위에 두는 이유는 이것이 "어떻게 볼지"가
+             아니라 "무엇이 남을지"를 바꾸는 조작이라서다 — 머리글의 범위·정렬과 한 줄에 세우면
+             셋이 같은 무게로 읽혀, 어느 것이 목록을 줄이는 건지 눌러 보기 전에 알 수 없다.
+             갈래를 HTML에 미리 박지 않는다. 원장을 못 읽는 저장소에서는 거르개 자체가 서면
+             안 되고, 그 판단은 스냅숏을 본 renderDocuments가 한다. -->
+        <div class="segmented" id="document-approval-filter" aria-label="승인 상태" hidden></div>
+        <div id="documents-note" hidden></div>
         <div id="documents-list" class="document-list"></div>
       </section>
 
       <section id="document-view" class="view" hidden>
-        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
+        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><!-- 배지 줄의 상태 칩은 frontmatter가 주장하는 값이고, 이 블록은 승인 원장이 아는 사실이다.
+             둘을 붙여 세워야 어느 것이 무엇인지 한 번에 읽힌다 — 검토 인박스에서 "낡음"이라 부른
+             문서를 눌러 도착하는 자리가 여기라, 여기가 원장을 말하지 않으면 인박스가 거짓말한 것이 된다. -->
+        <div id="document-approval" class="document-approval"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
+        <!-- 승인 판은 머리글 밖에 선다. 머리글은 sticky라 그 안에 두면 차분과 폼이
+             스크롤 내내 화면 위에 붙어 정작 읽어야 할 본문을 덮는다. 상태 줄과 여는
+             손잡이만 머리글에 남고, 펼친 내용은 본문 앞의 이 자리로 온다. -->
+        <div id="document-approval-panel"></div>
         <article id="document-body" class="markdown-body"></article>
         <div id="document-check" class="editor-check" hidden></div>
         <div id="document-editor-surface" class="document-editor-surface" hidden></div>
         <textarea id="document-editor" class="document-editor" hidden aria-label="Markdown 문서 편집"></textarea>
+      </section>
+
+      <!-- 검토 인박스는 문서 축이다. 태스크의 "내 검토"는 태스크가 승인 스텝에 선 것이고
+           이것은 문서가 승인 원장과 어긋난 것이라, 세는 대상 자체가 다르다. 두 수를 한 자리에
+           합치면 어느 쪽을 처리해야 줄이 줄어드는지가 화면에서 사라진다.
+           빈 자리는 셋뿐이다 — 요약, 거르개, 목록. 무엇을 그릴지는 renderReviewInbox가
+           갈래마다 정하며, 갈래를 HTML에 미리 박아 두면 서버가 못 읽은 경우와 승인을 안
+           쓰는 경우가 같은 자리표시자를 쓰게 된다. -->
+      <section id="review-inbox-view" class="view" hidden>
+        <header class="page-heading"><div><p class="eyebrow">REVIEW INBOX</p><h1>검토 인박스</h1><p>승인 원장과 어긋난 문서를 모아 봅니다. 판정과 순서는 <code>rdl doc status</code>와 같은 값이며, 이 화면은 그 값을 옮겨 그립니다.</p></div><div class="segmented" id="review-inbox-filter" aria-label="검토 상태"></div></header>
+        <div id="review-inbox-summary"></div>
+        <div id="review-inbox-list" class="document-list"></div>
       </section>
 
       <section id="tasks-view" class="view" hidden>

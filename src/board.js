@@ -13,7 +13,7 @@ const { workspaceLayout, selectProject } = require('./workspace');
 const { readTaskStore, shardFiles, clientId, assertNodeConsistency } = require('./tasks');
 const workflow = require('./workflow');
 const { entityRevision, listDocuments, syncStatus, boardWorkflow, taskWorkflow } = require('./board-data');
-const { listClients, registerClient, setClientStatus } = require('./collaboration-store');
+const { listClients, registerClient, setClientStatus, humanApproversFrom, projectHumanApprovers } = require('./collaboration-store');
 const { addComment, listComments } = require('./comment');
 const { addAsset } = require('./asset');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
@@ -33,7 +33,7 @@ function stripSources(presentation) {
   return copy;
 }
 
-const { TASK_STATES: STATUSES } = require('./vocabulary');
+const { TASK_STATES: STATUSES, BASIS_KINDS } = require('./vocabulary');
 const UI_ROOT = path.join(__dirname, 'board-ui');
 
 // 문서에 넣은 그림을 보드가 서빙한다. 지금까지 정적 경로는 UI 자산과 라이브러리뿐
@@ -306,15 +306,16 @@ function boardRevision(config) {
 function documentApprovals(root, projectKey, documents) {
   try {
     const approval = require('./approval');
-    const layout = workspaceLayout(root);
-    if (layout.schemaVersion < 6) return { states: null, reason: '이 작업공간은 승인 원장을 갖기 전 판입니다.' };
-    const folded = approval.foldApprovals(
-      approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), projectKey),
-      { authority: require('./authority').authorityContext(root, projectKey, { now: Date.now() }) }
-    );
+    if (workspaceLayout(root).schemaVersion < 6) return { states: null, reason: '이 작업공간은 승인 원장을 갖기 전 판입니다.' };
+    // 원장 경로와 인가 조립은 approval.js가 소유한다. 여기 있던 사본은 승인만 접고
+    // 제출은 접지 않아서, 원장에 제출이 서 있어도 화면은 "제출 기록 없음"이라 답했다 —
+    // 사본이 정본과 갈리면 화면만 낡은 규칙으로 돌고, 사람이 믿는 쪽은 화면이다.
+    const ledger = approval.documentApprovals(root, { project: projectKey });
     const states = {};
-    for (const document of documents) states[document.id] = approval.trustState(document, folded.approvals.get(document.id));
-    return { states, reason: null, diagnostics: folded.diagnostics };
+    for (const document of documents) {
+      states[document.id] = approval.trustState(document, ledger.approvals.get(document.id), ledger.submissions.get(document.id), ledger.rejections.get(document.id));
+    }
+    return { states, reason: null, diagnostics: ledger.diagnostics };
   } catch (error) {
     return { states: null, reason: error.message };
   }
@@ -332,16 +333,29 @@ function documentApprovals(root, projectKey, documents) {
 // 보이고, 길이가 보여야 사람이 승인을 관문으로 쓸지 판단한다.
 const REVIEW_QUEUE_LIMIT = 50;
 function reviewQueue(documents, approvals) {
-  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, items: [] };
+  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, rejected: 0, items: [] };
   const counts = { approved: 0, stale: 0, unapproved: 0 };
   const items = [];
+  // 반려한 문서는 이 줄에서 뺀다. 반려는 「내 차례」를 「작성자 차례」로 옮기는
+  // 행위인데, 뺀 뒤에도 줄에 남아 있으면 검토자는 자기가 이미 답한 것을 매번 다시
+  // 지나쳐야 하고 그러면 인박스의 길이가 남은 일의 양을 말하지 못한다.
+  //
+  // 다만 몇 건을 뺐는지는 값으로 낸다. 조용히 사라지면 반려한 문서는 어느 화면에도
+  // 서지 않게 되고, 그것은 승인 옆에 반려가 없던 때와 같은 자리다 — 판단이 어디에도
+  // 안 보이는 자리. 셈은 신뢰 상태 셋과 별개 축이라 counts에 섞지 않는다.
+  let rejected = 0;
   for (const document of documents) {
     const state = approvals.states[document.id];
     if (!state) continue;
     counts[state.status] = (counts[state.status] || 0) + 1;
     if (state.status === 'approved') continue;
+    if (state.submission && state.submission.state === 'rejected') { rejected += 1; continue; }
+    // kind를 함께 싣는다. type은 'document'라는 저장 종류라 문서 130건이 모두 같은 값이고,
+    // 화면의 유형 칩은 kind를 먼저 본다(documentTypeLabel). 빼면 인박스의 유형 칩이 전부
+    // 'document'로 떨어져 무엇이 밀렸는지가 유형별로 읽히지 않는다 — 문서 목록은 문서를
+    // 통째로 받아 kind를 갖고 있으므로, 두 화면이 같은 문서에 다른 유형을 적게 된다.
     items.push({
-      status: state.status, id: document.id, type: document.type, title: document.title,
+      status: state.status, id: document.id, kind: document.kind || null, type: document.type, title: document.title,
       file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals
     });
   }
@@ -351,7 +365,11 @@ function reviewQueue(documents, approvals) {
   // 이 프로젝트가 승인 축을 쓰는가. 한 번도 승인하지 않은 프로젝트에서 전 문서가 미승인인
   // 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 검토 대기로 읽으면 인박스가 첫날부터
   // 문서 전건으로 찬다. 판단은 화면이 하되 근거는 여기서 준다.
-  return { used: counts.approved + counts.stale > 0, unknown: null, counts, total: items.length, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
+  //
+  // 반려도 그 축을 쓴다는 증거다. 승인 한 번 없이 반려만 한 프로젝트는 관문을 안 쓰는
+  // 것이 아니라 아직 아무것도 통과시키지 않은 것이고, 그때 화면이 "쓰지 않습니다"라고
+  // 말하면 방금 내린 판단이 화면에서 사라진다.
+  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
 }
 
 function attentionItems(tasks, documents, sync, approvals) {
@@ -509,7 +527,11 @@ function workspaceSnapshot(root, projectKey, search) {
     presentation,
     // 모드 표는 코드가 갖고 화면은 그것을 그린다. 화면이 표를 다시 적으면 코드가
     // 바뀌는 날 둘이 갈라지고, 사용자는 화면을 믿는다.
-    approvalCatalog: { modes: APPROVAL_MODES, defaultMode: DEFAULT_PROJECT_MODE, defaultFloor: DEFAULT_WORKSPACE_FLOOR },
+    approvalCatalog: { modes: APPROVAL_MODES, defaultMode: DEFAULT_PROJECT_MODE, defaultFloor: DEFAULT_WORKSPACE_FLOOR, basisKinds: BASIS_KINDS },
+    // 승인 자격자. 화면이 clients와 people로 이 목록을 직접 만들면 그것이 자격 판정의
+    // 네 번째 표면이 되고, 화면의 판정은 아무도 시험하지 않는다. 값은 이미 읽어 둔
+    // 둘에서 고르므로 스냅숏이 파일을 더 읽지 않는다.
+    approvers: humanApproversFrom(clients, collaboration.members),
     // 제약 카탈로그도 화면이 다시 적지 않는다. 다섯 종류가 무엇인지는 코드가 알고,
     // 화면은 그것을 그린다 — 화면이 목록을 따로 들면 종류가 늘어날 때 한쪽만 는다.
     itemTypeCatalog: { kinds: CONSTRAINT_KINDS, exemptable: EXEMPTABLE_GATES },
@@ -762,13 +784,13 @@ function requireRevision(config, taskId, supplied) {
 // 이 기기의 작성자 신원(boardClient)은 여기에 들어올 수 없다. 그 값은 태스크 샤딩이
 // 쓰는 기기 ID이고 유형이 human이 아니며, human으로 바꾸는 순간 같은 기기의 실행
 // 명령이 전부 거부된다(src/run.js:57).
-function runApprovers(root, project) {
-  let members = [];
-  try { members = readCollaboration(root, project.key).members; } catch (error) { members = []; }
-  const active = new Set(members.filter((member) => member.fields && member.fields['상태'] === 'active').map((member) => member.id));
-  return listClients(root).clients
-    .filter((client) => client.type === 'human' && client.status === 'active' && active.has(client.owner))
-    .map((client) => ({ id: client.id, name: client.name, owner: client.owner }));
+//
+// 이름이 runApprovers가 아닌 이유는 부르는 쪽이 둘이 되었기 때문이다. 문서 승인도
+// 같은 자격을 쓰므로 이름이 런을 가리키면 그 이름은 절반만 맞고, 절반만 맞는 이름은
+// 다음 사람에게 "문서용 목록을 따로 만들라"고 시킨다. 목록을 고르는 조건 자체는
+// collaboration-store가 소유한다.
+function projectApprovers(root, project) {
+  return projectHumanApprovers(root, project.key);
 }
 
 // 런 갈래 판정은 run-pending이 정본이다. 보드는 인자를 옮기고 결과를 그린다 — 판정이
@@ -786,7 +808,7 @@ function boardRuns(root, projectKey) {
     drivable: pending.drivable,
     driving: pending.driving,
     unreadable: pending.unreadable,
-    approvers: runApprovers(root, project)
+    approvers: projectApprovers(root, project)
   };
 }
 
@@ -839,7 +861,7 @@ function boardRunDetail(root, projectKey, runId) {
       reason: event.reason || null,
       occurredAt: event.occurredAt || null
     })),
-    approvers: runApprovers(root, project)
+    approvers: projectApprovers(root, project)
   };
 }
 // 사람 게이트를 웹에서 지나는 자리. 자격 판정은 rdl run approve와 같은 함수가 한다 —
@@ -848,12 +870,7 @@ function approveBoardRun(root, projectKey, runId, body) {
   // human 자격을 하네스가 들 수 없다는 것이 사람 게이트의 전부다. 하네스가 띄운
   // Board는 그 자격을 HTTP로 빌려주는 창구가 되므로 승인만 거절한다. 조회는 그대로
   // 둔다 — 무엇이 막혀 있는지는 하네스도 알아야 사람에게 가져갈 수 있다.
-  if (process.env.RUNDOL_HARNESS_CHILD === '1') {
-    const error = new Error('하네스가 실행한 Board에서는 승인할 수 없습니다. 사람이 직접 연 Board나 명령줄에서 승인하세요.');
-    error.statusCode = 403;
-    error.code = 'harness-board';
-    throw error;
-  }
+  refuseHarnessApproval();
   const approver = String((body && body.clientId) || '').trim().toLowerCase();
   if (!approver) inputError('승인자 Client를 고르세요. 활성 human Client만 사람 게이트를 지날 수 있습니다.', 'missing-approver');
   const reason = String((body && body.reason) || '').trim();
@@ -864,6 +881,134 @@ function approveBoardRun(root, projectKey, runId, body) {
     // 승인 거절은 서버 결함이 아니라 "이 요청은 지금 받아들여질 수 없다"는 답이다.
     // 500으로 내보내면 사람은 무엇을 고쳐야 하는지 모른 채 같은 버튼을 다시 누른다.
     if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'approval-refused'; }
+    throw error;
+  }
+}
+
+// 하네스가 띄운 Board는 human 자격을 HTTP로 빌려주는 창구가 된다. 런 승인이 그것을
+// 거절하는 이유가 문서 승인에도 그대로 있다 — 오히려 여기가 더 곧다: 정본 문서를
+// AI가 스스로 정본으로 만드는 경로가 열리는 자리이기 때문이다. 조회는 막지 않는다.
+function refuseHarnessApproval() {
+  if (process.env.RUNDOL_HARNESS_CHILD !== '1') return;
+  // 승인도 반려도 같은 문장으로 거절한다. 둘 다 사람 게이트를 지나는 판단이고,
+  // 하네스가 들 수 없는 자격은 어느 쪽이든 같다.
+  const error = new Error('하네스가 실행한 Board에서는 사람 게이트를 지날 수 없습니다(승인·반려). 사람이 직접 연 Board나 명령줄에서 판단하세요.');
+  error.statusCode = 403;
+  error.code = 'harness-board';
+  throw error;
+}
+
+/**
+ * 화면에서 정본 문서를 승인하는 자리.
+ *
+ * 근거(basis)는 화면에서도 필수다. 나중에 "AI 검토가 놓쳤나 사람이 건너뛰었나"를
+ * 가르려면 그 값이 있어야 하고, 그 구분이 없으면 승인 이력은 "누가 눌렀다"의 목록에
+ * 그친다. 사유(reason)는 명령줄에서는 선택이지만 화면에서는 받는다 — 목록을 훑다가
+ * 누르는 자리라 사유를 안 받으면 훑기와 판단이 같은 동작이 되고, 승인은 "읽었다"가
+ * 아니라 "내가 책임진다"의 선언이라야 한다(approval.js 머리말).
+ *
+ * 자격 판정은 approveDocument가 한다. 여기서 다시 하면 표면이 하나 더 생기고, 그중
+ * 느슨한 쪽이 게이트의 실제 높이가 된다.
+ */
+function approveBoardDocument(root, projectKey, documentId, body) {
+  refuseHarnessApproval();
+  const approver = String((body && body.clientId) || '').trim().toLowerCase();
+  if (!approver) inputError('승인자 Client를 고르세요. 활성 human Client만 사람 게이트를 지날 수 있습니다.', 'missing-approver');
+  const approvedBy = String((body && body.approvedBy) || '').trim().toUpperCase();
+  const reason = String((body && body.reason) || '').trim();
+  if (!reason) inputError('무엇을 보고 승인했는지 사유가 필요합니다.', 'missing-reason');
+  // 근거는 문자열 하나로도, {kind, detail} 객체로도 온다. 화면이 상세를 안 받는 판이
+  // 있어서인데, 두 모양을 받는 곳을 여기 하나로 두면 approval.js의 검증은 한 모양만 안다.
+  const basis = (Array.isArray(body && body.basis) ? body.basis : [])
+    .map((item) => (typeof item === 'string' ? { kind: item } : item))
+    .filter((item) => item && typeof item === 'object' && item.kind)
+    .map((item) => (String(item.detail || '').trim() ? { kind: item.kind, detail: String(item.detail).trim() } : { kind: item.kind }));
+  if (!basis.length) inputError('무엇에 기대어 승인하는지 근거가 하나 이상 필요합니다.', 'missing-basis');
+  try {
+    return require('./approval').approveDocument(root, {
+      project: projectKey, targetId: documentId, clientId: approver,
+      // 명의를 안 보내면 그 Client의 소유자다. 화면이 남의 이름을 고를 수 있게 하면
+      // 위임 없는 대리 승인이 열리므로, 고르는 칸을 두지 않고 서버도 기본값을 지어내지 않는다.
+      approvedBy: approvedBy || approverOwner(root, approver),
+      basis, reason,
+      delegationId: (body && body.delegationId) || undefined
+    });
+  } catch (error) {
+    // 승인 거절은 서버 결함이 아니라 "이 요청은 지금 받아들여질 수 없다"는 답이다.
+    // 500으로 내보내면 화면은 "서버가 죽었다"로 읽고, 사람 게이트에 걸린 것인지
+    // 근거가 모자란 것인지 구분하지 못한 채 같은 단추를 다시 누른다.
+    if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'approval-refused'; }
+    throw error;
+  }
+}
+
+/**
+ * 화면에서 정본 문서를 반려하는 자리.
+ *
+ * 승인 옆에 이것이 없어서 검토자가 "아니오"를 말할 자리가 화면에 없었고, 그래서 그
+ * 판단은 댓글이나 태스크로 샜다 — 새는 순간 원장 밖의 말이 되어 상태를 만들지 못한다.
+ *
+ * 근거(basis)는 받지 않는다. 근거는 "무엇에 기대어 책임을 졌나"를 나중에 가르려는
+ * 값인데 반려는 책임을 지는 행위가 아니고, 칸을 열어 두면 approval.js의 반려 이벤트가
+ * 모르는 필드를 화면만 보내게 된다. 대신 사유가 필수다 — 반려는 사유가 내용 전부다.
+ *
+ * 자격 판정은 rejectDocument가 한다. 여기서 다시 하면 표면이 하나 더 생기고, 그중
+ * 느슨한 쪽이 게이트의 실제 높이가 된다.
+ */
+function rejectBoardDocument(root, projectKey, documentId, body) {
+  refuseHarnessApproval();
+  const reviewer = String((body && body.clientId) || '').trim().toLowerCase();
+  if (!reviewer) inputError('반려자 Client를 고르세요. 활성 human Client만 사람 게이트를 지날 수 있습니다.', 'missing-approver');
+  const reason = String((body && body.reason) || '').trim();
+  if (!reason) inputError('왜 아닌지 사유가 필요합니다. 사유 없는 반려는 작성자에게 침묵과 같습니다.', 'missing-reason');
+  try {
+    return require('./approval').rejectDocument(root, {
+      project: projectKey, targetId: documentId, clientId: reviewer,
+      // 명의는 그 Client의 소유자다. 반려에는 위임이 설 자리가 없으므로 화면이 남의
+      // 이름을 고를 길도 두지 않는다.
+      rejectedBy: String((body && body.rejectedBy) || '').trim().toUpperCase() || approverOwner(root, reviewer),
+      reason
+    });
+  } catch (error) {
+    // 반려 거절도 서버 결함이 아니다. 500으로 내면 화면은 "서버가 죽었다"로 읽고,
+    // 사람 게이트에 걸린 것인지 이미 승인된 판이라 반려할 수 없는 것인지 구분하지 못한다.
+    if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'rejection-refused'; }
+    throw error;
+  }
+}
+
+// 승인 명의는 고를 여지가 없다 — 위임이 아니면 언제나 그 Client의 소유자다. 화면이
+// 이 값을 보내지 않아도 되도록 서버가 registry에서 읽는다. 없는 Client는 여기서
+// 지어내지 않고 그대로 넘겨 approveDocument가 자기 말로 거절하게 둔다.
+function approverOwner(root, clientId) {
+  try { return listClients(root).clients.find((client) => client.id === clientId).owner; } catch (_) { return undefined; }
+}
+
+/**
+ * 문서 차분. 축은 둘이고 묻는 것이 다르다.
+ *
+ *   since-approval  승인본 ↔ 작업본. "승인 이후 무엇이 바뀌었나"
+ *   submission      승인본 ↔ 제출본. "승인 후보가 승인본과 무엇이 다른가"
+ *
+ * 스냅숏에 싣지 않는다. 문서마다 git log --follow와 커밋별 git show를 돌므로 폴링마다
+ * 계산하면 문서 수에 비례해 보드가 선다 — 요청할 때만 계산하는 자리다.
+ *
+ * 비교 기준이 없을 때 빈 diff를 지어내지 않는 것은 approval.js가 이미 지키는 선이다.
+ * "비교 기준 없음"과 "바뀐 것 없음"은 다른 값이고, 앞엣것을 뒤엣것으로 그리면 사람은
+ * 아무것도 안 바뀐 줄 알고 승인한다. 여기서는 그 답을 그대로 옮기기만 한다.
+ */
+function boardDocumentDiff(root, projectKey, documentId, search) {
+  const approval = require('./approval');
+  const axis = String((search && search.get('axis')) || 'since-approval');
+  const input = { project: projectKey, targetId: documentId };
+  try {
+    if (axis === 'submission') return Object.assign({ axis }, approval.diffSubmission(root, input));
+    if (axis === 'since-approval') return Object.assign({ axis }, approval.diffSinceApproval(root, input));
+    return inputError(`알 수 없는 비교 축입니다: ${axis} (가능: since-approval, submission)`, 'unknown-axis');
+  } catch (error) {
+    // 없는 문서와 원장을 못 읽는 저장소는 서버 결함이 아니다. 500으로 내보내면 화면은
+    // 그 둘을 "보드가 죽었다"로 뭉뚱그리고, 사람은 무엇을 고쳐야 하는지 알 수 없다.
+    if (!error.statusCode) error.statusCode = /찾지 못했습니다/u.test(error.message || '') ? 404 : 400;
     throw error;
   }
 }
@@ -905,6 +1050,12 @@ function createBoardServer(start, options) {
       const projectDocumentMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)$/u);
       // 저장하지 않고 검사만 하는 자리. 문서 저장 경로와 나란히 두어 같은 판정을 쓴다.
       const projectDocumentCheckMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/check$/u);
+      // 문서의 사람 게이트와 그 판단에 필요한 차분. 런의 두 자리(/runs/:id/approve와
+      // /runs/:id)와 나란한 짝이고, 승인 앞에 무엇을 보고 판단하는지가 없으면 화면은
+      // 문서 ID만 보고 누르는 자리가 된다.
+      const projectDocumentApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/approve$/u);
+      const projectDocumentRejectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/reject$/u);
+      const projectDocumentDiffMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/diff$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
@@ -934,6 +1085,11 @@ function createBoardServer(start, options) {
       if (request.method === 'GET' && projectDocumentMatch) {
         const document = listDocuments(selectProject(workspaceLayout(config.root), projectDocumentMatch[1], true)).find((item) => item.id === decodeURIComponent(projectDocumentMatch[2]));
         return document ? json(response, 200, document) : json(response, 404, { error: '문서를 찾지 못했습니다.' });
+      }
+      // 차분은 스냅숏에 실리지 않는다. 문서마다 git log --follow와 커밋별 git show를
+      // 돌므로 폴링마다 계산하면 보드가 선다 — 물을 때만 계산한다.
+      if (request.method === 'GET' && projectDocumentDiffMatch) {
+        return json(response, 200, boardDocumentDiff(config.root, projectDocumentDiffMatch[1], decodeURIComponent(projectDocumentDiffMatch[2]), url.searchParams));
       }
       if (request.method === 'GET' && projectSyncMatch) return json(response, 200, syncStatus(selectProject(workspaceLayout(config.root), projectSyncMatch[1], true)));
       if (request.method === 'GET' && projectRunsMatch) return json(response, 200, boardRuns(config.root, projectRunsMatch[1]));
@@ -986,6 +1142,14 @@ function createBoardServer(start, options) {
       if (request.method === 'POST' && projectDocumentCheckMatch) {
         const body = await requestBody(request);
         return json(response, 200, checkDocumentBody(config.root, projectDocumentCheckMatch[1], decodeURIComponent(projectDocumentCheckMatch[2]), body));
+      }
+      if (request.method === 'POST' && projectDocumentApproveMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, approveBoardDocument(config.root, projectDocumentApproveMatch[1], decodeURIComponent(projectDocumentApproveMatch[2]), body));
+      }
+      if (request.method === 'POST' && projectDocumentRejectMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, rejectBoardDocument(config.root, projectDocumentRejectMatch[1], decodeURIComponent(projectDocumentRejectMatch[2]), body));
       }
       if (request.method === 'POST' && projectDocumentMatch) {
         const body = await requestBody(request);
@@ -1138,4 +1302,4 @@ function startBoard(start, options) {
   });
 }
 
-module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, composeDocumentFile, createBoardServer, startBoard };
+module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, composeDocumentFile, approveBoardDocument, boardDocumentDiff, createBoardServer, startBoard };

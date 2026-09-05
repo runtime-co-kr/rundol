@@ -21,10 +21,11 @@ const DEFAULT_POLICIES = {
   platform: { required: ['PRD', 'REQ', 'ARC', 'IFC', 'MOD'], recommended: ['ADR', 'TST', 'RUN'], onDemand: ['SCR', 'GLS'], disabled: [] },
   assured: { required: REGULAR_TYPES.slice(), recommended: [], onDemand: [], disabled: [] }
 };
-const DEFAULT_RULES = {
-  PRD: [], REQ: ['PRD'], ARC: ['REQ'], SCR: ['REQ'], MOD: ['REQ'], IFC: ['REQ'],
-  ADR: ['ARC'], TST: ['REQ'], RUN: ['REQ'], STD: [], GLS: []
-};
+// 작성 순서의 정본은 어휘가 갖는다. 이 표를 판정 계층(check-rules)도 봐야 하는데
+// 그쪽은 파일을 몰라야 하고 이 모듈은 파일을 읽으므로, 표가 여기 있으면 판정부는
+// 같은 순서를 두 번째로 적게 된다. 이름은 여기서 쓰던 것을 유지한다 — 계약 층의
+// 소비자와 시험이 이 이름으로 값을 읽는다.
+const DEFAULT_RULES = require('./vocabulary').DEFAULT_DOCUMENT_ORDER;
 const DOCUMENT_SECTION_CATALOG = {
   PRD: ['문제와 배경', '사용자', '목표와 성공 지표', '범위', '제약과 가정', '마일스톤'],
   REQ: ['배경', '요구사항', '사전조건', '동작 규칙', '상태와 예외', '수용 기준', '비기능 요구', '제외 범위'],

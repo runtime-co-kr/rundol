@@ -13,7 +13,7 @@ const { readTaskStore, createTaskInStore, updateTaskInStore, restoreStoreWrite, 
 const workflow = require('./workflow');
 const { initSettings, saveSettings, prepareSettings, finalizeSettings } = require('./settings');
 const { loadHarnessSettings, retryPolicy } = require('./harness-settings');
-const { getClient } = require('./collaboration-store');
+const { getClient, isProjectHumanApprover } = require('./collaboration-store');
 const { readCollaboration } = require('./collaboration');
 const { newDocumentUid } = require('./document-identity');
 const { taskEnforcementFrom } = require('./document-profile');
@@ -1049,7 +1049,7 @@ function unclearedRunCommits(config) {
     // human-approval이라고 적었다"뿐이고, 그 clientId가 실제로 human 유형 활성
     // Client인지는 registry가 답한다. 이 대조가 없으면 에이전트가 이벤트를 직접
     // 써 넣는 것만으로 사람 승인이 된다 — git 병합으로 들어온 이벤트도 마찬가지다.
-    const approvals = (fold.humanApprovals || []).filter((item) => approverIsProjectHuman(config, item.clientId));
+    const approvals = (fold.humanApprovals || []).filter((item) => isProjectHumanApprover(config.root, config.project, item.clientId));
     const gates = fold.humanGateSteps || [];
     const cleared = ['completed_local', 'synced'].includes(fold.status)
       && !(fold.unapprovedHumanSteps || []).length
@@ -1078,24 +1078,10 @@ function unclearedRunCommits(config) {
   return blocked;
 }
 
-// 승인 자격의 정의는 한 곳에만 둔다. 원장의 승인을 세는 곳과 --approved-by를 받는
-// 곳이 각자 판정하면 둘이 어긋나고, 실제로 어긋났다 — 앞 판에서 전자만 멤버십을
-// 보고 후자는 유형과 상태만 봐서, CHANGELOG가 약속한 계약과 코드가 달랐다.
-//
-// 자격의 조건은 셋이다: 등록된 human 유형일 것, 활성일 것, 그리고 그 자격을 가진
-// 멤버가 이 프로젝트의 활성 멤버일 것. human 자격은 어느 프로젝트에나 등록될 수
-// 있으므로 마지막 조건이 없으면 옆 프로젝트의 검토자가 이 프로젝트를 승인한다.
-function approverIsProjectHuman(config, clientId) {
-  if (!clientId) return false;
-  try {
-    const client = getClient(config.root, clientId);
-    if (!client || client.type !== 'human' || client.status !== 'active') return false;
-    return readCollaboration(config.root, config.project).members
-      .some((member) => member.id === client.owner && member.fields['상태'] === 'active');
-  } catch (_) {
-    return false;
-  }
-}
+// 승인 자격의 판정은 여기 살지 않는다. collaboration-store.js가 소유하고 원장의
+// 승인을 세는 곳 · --approved-by를 받는 곳 · 문서 승인 · 보드의 승인자 목록이 모두
+// 그것을 부른다. 이 파일이 사본을 들고 있던 동안 문서 승인은 유형을 아예 보지 않았고,
+// 그래서 게이트의 실제 높이는 가장 느슨한 그 표면이 정하고 있었다.
 
 function syncProjectStateWithRuns(config, settings) {
   const uncleared = settings.push === false ? [] : unclearedRunCommits(config);
@@ -1107,7 +1093,7 @@ function syncProjectStateWithRuns(config, settings) {
     if (reason) {
       const approver = String(settings.approvedBy || '').trim().toLowerCase();
       if (!approver) throw new Error('RDL-SYNC-031: --share-unverified에는 --approved-by <human-client-id>가 필요합니다. 검증되지 않은 내용의 공유는 사람의 판단이어야 합니다.');
-      if (!approverIsProjectHuman(config, approver)) {
+      if (!isProjectHumanApprover(config.root, config.project, approver)) {
         const client = (() => { try { return getClient(config.root, approver); } catch (_) { return null; } })();
         throw new Error(`RDL-SYNC-031: --approved-by는 이 프로젝트의 활성 human Client여야 합니다: ${approver}(${client ? `${client.type}, owner ${client.owner}` : '미등록'}).`);
       }

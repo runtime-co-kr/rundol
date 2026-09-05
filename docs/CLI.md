@@ -60,12 +60,17 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl doc identity [--project <key>] [--apply] [--json]
-  rdl doc status [--project <key>] [--status <approved|stale|unapproved>] [--json]
+  rdl doc status [--project <key>] [--status <approved|stale|unapproved>]
+                 [--submission <none|pending|drifted|settled|rejected>] [--json]
+  rdl doc submit <ARTIFACT-ID> --client-id <id> [--member <MEMBER-ID>] [--reason <사유>] [--project <key>] [--json]
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
-                  --client-id <id> [--reason <사유>] [--project <key>] [--json]
+                  --client-id <human-client-id> [--reason <사유>] [--project <key>] [--json]
+  rdl doc reject <ARTIFACT-ID> --client-id <human-client-id> --reason <사유> [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
-  rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
+  rdl doc pipeline [--project <key>] [--json]
+  rdl doc diff <ARTIFACT-ID> (--since-approval | --proposed) [--project <key>] [--json]
+  rdl doc review [--project <key>] [--status <stale|unapproved>] [--diff] [--max-items <n>] [--write] [--json]
   rdl sync --client-id <id> [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
   rdl sync watch --client-id <id> [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
   rdl conflict list [--project <key>] [--json]
@@ -882,6 +887,16 @@ rdl board --project memo --no-open
 - 승인 대화상자는 런의 목표, 지나온 스텝, 대상 문서 본문을 문서 화면과 같은 방식으로 보여 준다. 대상 문서는 런이 시작할 때 지목한 것과 스텝이 만들어 낸 것을 모두 포함하며, 그 조회 역시 원장을 바꾸지 않는다.
 - 사람 게이트는 런 화면에서 승인한다. 승인자는 화면에서 고른 활성 human Client여야 하고 그 owner가 프로젝트의 활성 멤버여야 하며, 사유가 없으면 거부한다 — 판정은 `rdl run approve`와 같은 함수가 내린다.
 - 보드가 하네스 자식 프로세스로 실행 중이면 런 조회는 제공하고 승인만 거부한다. 구동·재개·정지·소유권 이전은 보드가 제공하지 않는다.
+- 검토 인박스의 행은 그 자리에서 펼쳐진다. 펼치면 승인본과의 차분(`승인 이후 변경` / `제출본 비교`)이 그 행 안에 서고, 그 아래에서 판정자·근거·사유를 받아 승인하거나 반려한다. 문서 화면을 오가지 않는다.
+- 반려한 문서는 검토 줄에서 빠지고, 몇 건이 빠졌는지는 인박스가 문장으로 말한다. 조용히 빼면 그 판단이 어느 화면에도 남지 않는다.
+- 문서 화면에도 같은 자리가 있다. 인박스를 거치지 않고 문서를 열어도 같은 차분을 보고 승인할 수 있다.
+- 문서 승인은 활성 human Client만 지난다. 그 owner가 프로젝트의 활성 멤버여야 하며, 판정은 `rdl doc approve`·`rdl doc reject`·`rdl run approve`·`rdl sync --share-unverified`가 모두 같은 함수를 쓴다. 제출(`rdl doc submit`)은 에이전트 Client도 할 수 있다 — 에이전트가 쓰고 사람이 책임지는 것이 이 도구의 협업 모형이라, 제출까지 막으면 관문이 아니라 병목이 된다.
+- 반려(`rdl doc reject`)는 승인과 같은 사람 게이트를 지나고 사유가 필수다. 승인에서 사유가 선택인 것은 근거(`--basis`)가 따로 있어서이지만, 반려는 사유가 내용 전부다 — 왜 아닌지를 남기지 않으면 작성자는 무엇을 고쳐야 할지 알 수 없다. 반려는 신뢰 상태를 바꾸지 않는다: 반려된 문서는 여전히 미승인이고, 승인 뒤 바뀐 문서는 여전히 낡음이다. 바뀌는 것은 제출 축이며 그 값이 `rejected`가 되어 검토 줄에서 빠진다 — 「내 차례」가 아니라 「작성자 차례」다. 다시 제출하면 `pending`으로 돌아온다.
+- 화면에서도 「승인」 옆에 「반려」가 선다. 사유가 비면 보내기 전에 화면이 막고, 서버의 거절 문장은 그대로 보여 준다.
+- 화면에서의 승인은 근거와 사유를 모두 요구한다. 명령줄에서 사유가 선택인 것과 다른 이유는, 목록을 훑다가 누르는 자리라 사유를 안 받으면 훑기와 판단이 같은 동작이 되기 때문이다.
+- 차분은 Snapshot에 싣지 않는다. 문서마다 `git log --follow`와 커밋별 `git show`를 도는 계산이라 폴링에 실으면 문서 수에 비례해 보드가 선다 — 펼친 그 건에 대해서만 계산한다.
+- 비교 기준이 없을 때 빈 차분을 그리지 않는다. "비교 기준 없음"과 "바뀐 것 없음"은 다른 값이고, 앞엣것은 이유와 함께 나온다.
+- 보드가 하네스 자식 프로세스로 실행 중이면 문서 차분 조회는 제공하고 문서 승인만 거부한다. human 자격을 하네스가 들 수 없다는 것이 사람 게이트의 전부이므로, 하네스가 띄운 보드는 그 자격을 HTTP로 빌려주는 창구가 된다.
 
 ## 출력과 종료 코드
 

@@ -18,7 +18,7 @@ const { runGit } = require('./git');
 const { readCommitBindings } = require('./task-commits');
 const { runtimeWorkspace } = require('./runtime');
 
-const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES, CODE_PATH_PREFIXES } = require('./vocabulary');
+const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES, CODE_PATH_PREFIXES, DOCUMENT_WRITE_TOOLS } = require('./vocabulary');
 // 한 턴이 만드는 커밋 수의 상한이 아니라, 커서를 잃었을 때 거슬러 볼 창이다.
 const NEW_COMMIT_WINDOW = 50;
 
@@ -216,14 +216,92 @@ function sessionStart(start, payload) {
   return { block: false, context };
 }
 
+// 경로를 실제 경로로 편다. git이 돌려주는 경로는 이미 펴져 있고 클라이언트 페이로드의
+// 경로는 그렇지 않다 — Windows의 8.3 단축명(ADMINI~1)이나 심볼릭 링크(/tmp → /private/tmp)가
+// 그대로 들어온다. 펴지 않고 비교하면 같은 파일이 프로젝트 밖으로 판정돼 훅이 조용히 입을
+// 다물고, 그 침묵은 "낡지 않았다"와 구분되지 않는다.
+function realPath(value) {
+  try { return fs.realpathSync.native(value); }
+  catch (_) { return path.resolve(value); }
+}
+
+// 이 경로가 저장소 안에 있는가. path.relative가 ..로 시작하면 밖이다.
+function contains(root, file) {
+  const relative = path.relative(realPath(root), realPath(file));
+  return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+// 방금 쓴 파일이 승인 대비 바뀌었는가. 낡음이 아니면 null이다.
+//
+// 낡음만 본다. 미승인은 아직 아무도 근거로 삼지 않은 줄이지 사건이 아니고, 승인 축을
+// 쓰지 않는 프로젝트에서는 문서가 전건 미승인이라 저장할 때마다 같은 말이 나온다 —
+// 매번 우는 신호는 꺼진 신호와 같다. board.js와 watch.js가 그은 선과 같은 선이다.
+//
+// 판정은 approval.js가 한다. 여기서 리비전을 비교하면 rdl doc status와 훅이 같은 문서에
+// 다른 답을 낼 수 있고, 그 둘이 갈리는 순간 사람은 어느 쪽도 믿지 않는다.
+//
+// listDocuments를 부르지 않고 쓴 파일 하나만 파싱하는 것은 비용 때문이다. 실측에서
+// 문서 200건 기준 listDocuments가 120ms대인 반면 파일 하나 파싱은 1.5ms대였다. 훅은
+// 저장마다 도는 자리라 문서 수에 비례해 자라는 비용을 여기 둘 수 없다.
+//
+// 어느 단계에서 못 읽어도 통과다. 훅이 판정을 지어내면 막지 말아야 할 것을 막고,
+// 그렇게 한 번 겪은 훅은 꺼진다.
+function staleDocumentOf(root, worktree, filePath) {
+  try {
+    const resolved = path.resolve(worktree, filePath);
+    if (!/\.md$/iu.test(resolved) || !fs.existsSync(resolved)) return null;
+    // Workspace 탐색은 쓴 파일이 아니라 저장소 루트에서 시작한다. 찾기는 위로 거슬러
+    // 올라가며 층마다 manifestPath를 부르고, 못 찾은 층마다 runtimeWorkspace가 딸려
+    // 나온다 — 그 한 번이 git 프로세스 셋이다. 문서 파일에서 시작하면 그 왕복이 층수만큼
+    // 쌓여 실측 400ms대였고, 저장소 루트가 Workspace 루트인 흔한 경우에는 5ms대다.
+    // 훅은 저장마다 도는 자리라 그 차이가 곧 사람이 겪는 지연이 된다.
+    const { workspaceLayout } = require('./workspace');
+    const layout = workspaceLayout(root);
+    // 승인 원장을 갖기 전 판에서는 낡음이라는 사실 자체가 없다.
+    if (layout.schemaVersion < 6) return null;
+    const project = (layout.projects || []).find((item) => item.root && contains(item.root, resolved));
+    if (!project) return null;
+    const { parseFrontmatter } = require('./frontmatter');
+    const { documentRevision } = require('./board-data');
+    const parsed = parseFrontmatter(fs.readFileSync(resolved, 'utf8'));
+    if (!parsed || !parsed.data || !parsed.data.id) return null;
+    const approval = require('./approval');
+    const { authorityContext } = require('./authority');
+    const folded = approval.foldApprovals(
+      approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), project.key),
+      { authority: authorityContext(layout.root, project.key, { now: Date.now() }) }
+    );
+    const state = approval.trustState({ id: parsed.data.id, revision: documentRevision(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
+    if (state.status !== 'stale') return null;
+    return { project: project.key, id: parsed.data.id, approvedBy: state.approvedBy };
+  } catch (_) { return null; }
+}
+
 // 커밋이 실제로 만들어진 뒤 결박 여부를 그 자리에서 센다. 막지 않는다 — 계측이
 // 목적이고, rdl check의 50건 창은 사후에만 답하기 때문이다.
+//
+// 문서를 쓴 직후도 같은 자리에서 받는다. 저장 시점이 "승인 대비 바뀌었다"를 말할 수 있는
+// 가장 이른 자리이기 때문이다 — 감시는 다음 스캔까지 기다리고, rdl doc status는 일부러
+// 쳐야 보인다. 사람이 문서를 고치고 나서 그 사실을 아는 데 걸리는 시간이 여기서 0이 된다.
 function postToolUse(start, payload) {
   const root = repositoryOf(payload.cwd || start);
   if (!root) return { block: false, context: [], record: null };
+  const worktree = payload.cwd || root;
+  if (DOCUMENT_WRITE_TOOLS.includes(payload.toolName) && payload.filePath) {
+    const stale = staleDocumentOf(root, worktree, payload.filePath);
+    if (!stale) return { block: false, context: [], record: null };
+    return {
+      block: false,
+      record: null,
+      context: [
+        `${stale.id}이(가) 승인 대비 바뀌었습니다 — 검토 필요 (승인: ${stale.approvedBy || '(미상)'}).`,
+        `  차이: rdl doc diff ${stale.id} --since-approval --project ${stale.project}`,
+        `  재승인: rdl doc approve ${stale.id} --member <MEMBER-ID> --basis read --client-id <id> --project ${stale.project}`
+      ]
+    };
+  }
   const isCommit = payload.toolName === 'Bash' && typeof payload.command === 'string' && /\bgit\b[\s\S]*\bcommit\b/u.test(payload.command);
   if (!isCommit) return { block: false, context: [], record: null };
-  const worktree = payload.cwd || root;
   const head = headOf(worktree);
   if (!head) return { block: false, context: [], record: null };
   let binding = null;

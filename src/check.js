@@ -82,7 +82,7 @@ const {
   checkDocumentMetadata, checkCharterMetadata, checkContractViolations, checkTaskEntries,
   governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask,
   isAssetPath, maskCode, checkAssetReference, checkAssetInventory,
-  DEFAULT_TASK_GATES,
+  DEFAULT_TASK_GATES, upstreamTrustIssues,
 } = require('./check-rules');
 const { imageSize } = require('./image-header');
 
@@ -562,10 +562,15 @@ function checkLedgerIntegrity(diagnostics, layout) {
   }
 }
 
+// 접은 결과를 돌려주는 이유. 이 자리는 이미 승인 원장을 접는데, 지금까지는 원장
+// 자체의 손상만 보고하고 문서의 신뢰 상태는 아무 데도 넘기지 않았다. 그래서 "이
+// 문서가 승인되었나"를 묻는 규칙은 같은 원장을 한 번 더 접어야 했다. 접기는 프로젝트의
+// 승인 이벤트 전부를 읽고 인가를 검증하는 일이라 두 번 도는 값이 아니다.
 function checkLedgerFolds(diagnostics, layout, projectKey) {
-  if (layout.schemaVersion < 6) return;
+  const approvalsByProject = new Map();
+  if (layout.schemaVersion < 6) return approvalsByProject;
   const eventsRoot = path.join(layout.root, 'projects', 'workspace', 'events');
-  if (!fs.existsSync(eventsRoot)) return;
+  if (!fs.existsSync(eventsRoot)) return approvalsByProject;
   const projects = (layout.projects || []).filter((project) => !projectKey || project.key === projectKey);
   const now = Date.now();
   // 검사가 인가를 끈 채 접으면 위조된 승인·위임을 정상으로 보고한다. 검사는
@@ -577,16 +582,19 @@ function checkLedgerFolds(diagnostics, layout, projectKey) {
   };
   for (const project of projects) {
     const folds = [
-      () => require('./decision').foldDecisions(require('./decision').readDecisionEvents(eventsRoot, project.key), authorityFor(project.key)),
-      () => require('./delegation').foldDelegations(require('./delegation').readDelegationEvents(eventsRoot, project.key), { now, authority: authorityFor(project.key) }),
-      () => require('./approval').foldApprovals(require('./approval').readApprovalEvents(eventsRoot, project.key), { authority: authorityFor(project.key) })
+      { ledger: 'decision', run: () => require('./decision').foldDecisions(require('./decision').readDecisionEvents(eventsRoot, project.key), authorityFor(project.key)) },
+      { ledger: 'delegation', run: () => require('./delegation').foldDelegations(require('./delegation').readDelegationEvents(eventsRoot, project.key), { now, authority: authorityFor(project.key) }) },
+      { ledger: 'approval', run: () => require('./approval').foldApprovals(require('./approval').readApprovalEvents(eventsRoot, project.key), { authority: authorityFor(project.key) }) }
     ];
     for (const fold of folds) {
       let result;
-      try { result = fold(); } catch (error) {
+      try { result = fold.run(); } catch (error) {
         diagnostic(diagnostics, { code: 'RDL-LEDGER-001', category: 'workspace', project: project.key, message: `원장을 접을 수 없습니다: ${error.message}` });
         continue;
       }
+      // 접지 못한 원장은 지도에 남기지 않는다. 빈 접기를 넘기면 문서 규칙이 "승인이
+      // 하나도 없다"로 읽고, 그것은 원장이 깨진 것과 승인을 안 쓰는 것을 같게 만든다.
+      if (fold.ledger === 'approval') approvalsByProject.set(project.key, result.approvals);
       for (const item of result.diagnostics || []) {
         // 파일 단위 검사가 이미 스키마·봉투 손상을 같은 코드로 보고한다. fold에서
         // 다시 세면 이벤트 하나가 두 건으로 집계되어 "몇 건이 잘못됐는가"를
@@ -596,6 +604,39 @@ function checkLedgerFolds(diagnostics, layout, projectKey) {
       }
     }
   }
+  return approvalsByProject;
+}
+
+// 하류가 상류 확정보다 앞서 있는가. 형식 게이트인 rdl check의 녹색이 "통과"로 읽히면서
+// 내용이 확정되기 전의 문서가 계속 앞으로 전진했고, 상류 결정이 바뀔 때마다 하류 전체를
+// 다시 탔다 — 이 진단은 그 상태를 도구가 보이게 만든다.
+//
+// 명령이 아니라 진단인 이유. 진단이면 rdl check와 보드의 attention과 rdl watch가 전부
+// 공짜로 이것을 본다. 명령이면 따로 불러야 하는 통제가 되고, 따로 불러야 하는 통제는
+// 실측에서 전부 버스트 후 침묵했다.
+//
+// 심각도는 언제나 경고다. --strict에서 오류로 올리면 상류 승인이 하류 저작을 물리적으로
+// 막게 되는데, 그것은 승인의 관문화를 유도하는 것이 아니라 강제하는 것이고 승인 축을
+// 쓰지 않기로 한 프로젝트에서 도구를 못 쓰게 만든다. 규율은 보여서 서는 것이지
+// 막아서 서는 것이 아니다.
+function checkUpstreamApproval(diagnostics, layout, project, approvals) {
+  // 원장을 못 읽었거나 판올림 전 저장소다. 그 사실은 checkLedgerFolds가 이미 말했으므로
+  // 여기서 또 말하지 않는다 — 모르는 것을 미승인으로 읽는 것이 이 규칙의 유일한 오답이다.
+  if (!approvals) return;
+  const { listDocuments } = require('./board-data');
+  const { trustState } = require('./approval');
+  let documents;
+  try { documents = listDocuments(project); } catch (error) { return; }
+  const trust = new Map(documents.map((document) => [document.id, trustState(document, approvals.get(document.id)).status]));
+  const evaluated = upstreamTrustIssues({ documents, trust });
+  // 여기서 다시 거르지 않는다. "승인 축을 안 쓰는 프로젝트에서는 미승인 상류를 말하지
+  // 않는다"는 판정은 규칙 안에 있고, 그 판정을 표면이 한 번 더 하면 낡은 상류까지 함께
+  // 죽는다 — 그것은 축을 굴리든 놓았든 누군가 승인한 것이 흔들린 사건이다.
+  for (const issue of evaluated.issues) diagnostic(diagnostics, {
+    code: issue.code, category: 'approval', severity: issue.severity, project: project.key,
+    file: issue.file ? relative(layout.root, path.join(project.root, issue.file)) : null,
+    artifactId: issue.artifactId, target: issue.target, message: issue.message
+  });
 }
 
 function checkWorkspaceStore(diagnostics, layout) {
@@ -1099,7 +1140,9 @@ function checkWorkspace(start, options) {
   const projects = settings.project ? allProjects.filter((project) => project.key === settings.project) : allProjects;
   const diagnostics = [];
   checkWorkspaceStore(diagnostics, layout);
-  checkLedgerFolds(diagnostics, layout, settings.project);
+  // 접은 승인은 여기서 한 번 만들어 문서 규칙으로 내려보낸다. 원장 접기는 프로젝트의
+  // 승인 이벤트 전부를 읽고 인가를 검증하는 일이라 규칙마다 다시 접을 값이 아니다.
+  const approvalsByProject = checkLedgerFolds(diagnostics, layout, settings.project);
   checkLedgerIntegrity(diagnostics, layout);
   if (settings.project && projects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-006', category: 'governance', target: settings.project, message: `프로젝트를 찾지 못했습니다: ${settings.project}` });
   if (!settings.project && allProjects.length === 0) diagnostic(diagnostics, { code: 'RDL-PROJECT-007', category: 'governance', file: layout.mountRelative, message: 'project.md가 있는 프로젝트를 찾지 못했습니다.' });
@@ -1115,6 +1158,7 @@ function checkWorkspace(start, options) {
     checkProjectCharter(diagnostics, layout.root, project);
     checkDocumentProfile(diagnostics, layout, project, settings);
     checkCompositeViews(diagnostics, layout, project);
+    checkUpstreamApproval(diagnostics, layout, project, approvalsByProject.get(project.key));
     checkTaskBinding(diagnostics, layout, project, taskBinding);
     const result = checkLegacyWorkspace(layout.root, Object.assign({}, settings, { firings }), project);
     for (const item of result.diagnostics) diagnostics.push(Object.assign({ project: project.key }, item));
