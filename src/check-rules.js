@@ -395,9 +395,19 @@ function trustStatusOf(trust, id) {
  *
  * used는 이 프로젝트가 승인 축을 쓰는지다. 한 번도 승인하지 않은 프로젝트에서 전
  * 문서가 미승인인 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 "하류가 앞섰다"로
- * 읽으면 첫날부터 문서 전건이 경고로 쏟아져 진짜 신호를 덮는다. 선은 board.js의
- * reviewQueue가 그은 것과 같다 — 승인되었거나 낡은 문서가 하나라도 있으면 쓰는 것이다.
+ * 읽으면 첫날부터 문서 전건이 경고로 쏟아져 진짜 신호를 덮는다.
  * 판정은 표면이 하되 근거는 여기서 준다.
+ *
+ * 기준은 "지금 승인이 살아 있는 문서가 하나라도 있는가"(approved > 0)다. 낡음을 세지
+ * 않는다 — 낡음은 "예전에 승인했지만 지금은 아니다"이고, 그것만 남은 프로젝트는 승인을
+ * 관문으로 굴리는 중이 아니라 전면 개정 중이거나 축을 놓은 것이다.
+ *
+ * 이 선을 실측으로 옮겼다. 처음에는 board.js의 reviewQueue와 같이 approved + stale > 0을
+ * 썼는데, 런돌 자신의 프로젝트(승인 0 · 낡음 2 · 미승인 131)가 그 문턱을 넘어 rdl check의
+ * 경고가 2건에서 121건이 됐고 그중 119건이 같은 문장이었다. 막으려던 그림이 그대로 나왔다.
+ *
+ * 낡은 상류는 이 문턱 밖이다. 그것은 누군가 실제로 승인한 것이 흔들린 사건이라, 프로젝트가
+ * 축을 굴리든 놓았든 일어난 일이다. 문턱은 미승인 상류에만 건다.
  *
  * 입력은 값뿐이다. documents는 { id, file, related }면 되고 trust는 id마다
  * approved·stale·unapproved를 답하는 Map 또는 객체다 — 승인 판정은 approval.js의
@@ -428,6 +438,10 @@ function upstreamTrustIssues(input) {
       seen.add(target);
       const status = trustStatusOf(trust, target);
       if (status !== 'stale' && status !== 'unapproved') continue;
+      // 미승인 상류는 승인이 살아 있는 프로젝트에서만 신호다. 아무것도 승인되지 않은
+      // 곳에서는 전 문서가 미승인이라 이 줄이 문서 수만큼 곱해져 나오고, 그 더미는
+      // 신호가 아니라 소음이다. 낡은 상류는 이 문턱을 지나지 않는다.
+      if (status === 'unapproved' && counts.approved === 0) continue;
       issues.push({
         code: UPSTREAM_TRUST_CODES[status],
         severity: 'warning',
@@ -444,8 +458,9 @@ function upstreamTrustIssues(input) {
     }
   }
   issues.sort((left, right) => left.artifactId.localeCompare(right.artifactId) || left.target.localeCompare(right.target) || left.code.localeCompare(right.code));
-  // 승인된 것과 낡은 것이 하나도 없으면 이 프로젝트는 승인 축을 쓰지 않는다.
-  return { used: counts.approved + counts.stale > 0, counts, issues };
+  // 승인이 살아 있는 문서가 하나도 없으면 이 프로젝트는 승인을 관문으로 굴리고 있지 않다.
+  // 낡음만 남은 상태는 축을 쓴다는 증거가 아니라 축을 놓았거나 전면 개정 중이라는 뜻이다.
+  return { used: counts.approved > 0, counts, issues };
 }
 
 function isDocumentUid(value) {

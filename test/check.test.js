@@ -225,11 +225,24 @@ function testUpstreamTrustJudgment() {
 
   // ① 승인 축을 한 번도 쓰지 않은 프로젝트에서는 울지 않는다. 전 문서가 미승인인 것은
   // 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 경고로 읽으면 첫날부터 전건이 쏟아진다.
+  //
+  // 거르는 자리가 규칙 안이다. 한때 표면이 used를 보고 걸렀는데, 그러면 낡은 상류까지
+  // 함께 죽는다 — 그것은 축을 굴리든 놓았든 누군가 승인한 것이 흔들린 사건이다.
   const none = upstreamTrustIssues({
     documents, trust: { 'PRD-001': 'unapproved', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
   });
-  assert.strictEqual(none.used, false, '승인도 낡음도 없으면 승인 축을 쓰지 않는 프로젝트입니다.');
-  assert.strictEqual(none.issues.length, 2, '판정 자체는 돌되 그것을 낼지는 표면이 정합니다.');
+  assert.strictEqual(none.used, false, '살아 있는 승인이 없으면 승인 축을 굴리는 프로젝트가 아닙니다.');
+  assert.strictEqual(none.issues.length, 0, '미승인 상류는 규칙이 스스로 거릅니다.');
+
+  // ①-2 낡음만 있고 승인이 하나도 없는 프로젝트. 문턱은 미승인 상류에만 걸리므로
+  // 낡은 상류는 그대로 운다. 런돌 자신의 프로젝트(승인 0·낡음 2·미승인 131)가 이 모양이고,
+  // 여기서 미승인까지 울렸을 때 rdl check의 경고가 2건에서 121건이 됐다.
+  const retired = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'stale', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
+  });
+  assert.strictEqual(retired.used, false, '낡음은 예전에 승인했다는 뜻이지 지금 굴린다는 뜻이 아닙니다.');
+  assert.deepStrictEqual(retired.issues.map((issue) => [issue.artifactId, issue.target, issue.code]),
+    [['REQ-001', 'PRD-001', 'RDL-APPROVE-030']], '낡은 상류는 문턱 밖이라 그대로 웁니다.');
 
   // ② 낡음과 미승인은 다른 코드로 운다. 앞엣것은 "근거로 삼은 것이 바뀌었다"이고
   // 뒤엣것은 "아직 확정되지 않은 것 위에 섰다"라 사람이 볼 순서가 다르다.

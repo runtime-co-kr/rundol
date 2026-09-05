@@ -629,9 +629,9 @@ function checkUpstreamApproval(diagnostics, layout, project, approvals) {
   try { documents = listDocuments(project); } catch (error) { return; }
   const trust = new Map(documents.map((document) => [document.id, trustState(document, approvals.get(document.id)).status]));
   const evaluated = upstreamTrustIssues({ documents, trust });
-  // 한 번도 승인하지 않은 프로젝트에서는 전 문서가 미승인이라 이 규칙이 전건으로 운다.
-  // 그 상태는 "하류가 앞섰다"가 아니라 "이 축을 안 쓴다"이다.
-  if (!evaluated.used) return;
+  // 여기서 다시 거르지 않는다. "승인 축을 안 쓰는 프로젝트에서는 미승인 상류를 말하지
+  // 않는다"는 판정은 규칙 안에 있고, 그 판정을 표면이 한 번 더 하면 낡은 상류까지 함께
+  // 죽는다 — 그것은 축을 굴리든 놓았든 누군가 승인한 것이 흔들린 사건이다.
   for (const issue of evaluated.issues) diagnostic(diagnostics, {
     code: issue.code, category: 'approval', severity: issue.severity, project: project.key,
     file: issue.file ? relative(layout.root, path.join(project.root, issue.file)) : null,

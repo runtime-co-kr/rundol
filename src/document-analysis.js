@@ -249,10 +249,13 @@ function documentPipeline(start, options) {
     outside: documents.filter((document) => documentLayer(documentTypeCode(document.id)) === null).length,
     counts: evaluated.counts,
     layers,
-    ahead: evaluated.used ? ahead : [],
+    // 여기서 다시 거르지 않는다. 미승인 상류를 언제 말하지 않을지는 규칙이 이미 정했고,
+    // 그 판정을 한 번 더 하면 낡은 상류까지 함께 사라진다 — 그것은 축을 굴리든 놓았든
+    // 누군가 승인한 것이 흔들린 사건이라 언제나 말해야 한다.
+    ahead,
     broken,
     traceability,
-    next: nextPipelineStep({ used: evaluated.used, issues: evaluated.used ? evaluated.issues : [], documents, trust, broken, traceability })
+    next: nextPipelineStep({ used: evaluated.used, issues: evaluated.issues, documents, trust, broken, traceability })
   };
 }
 
