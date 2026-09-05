@@ -332,9 +332,12 @@ const ALLOWED = new Map([
   // 옛 상태 이름을 읽는 것이 그 파일의 일이다. 아직 안 옮겨진 데이터를 세는 자리라
   // 여기서 스텝으로 물으면 옮길 것이 남았는지를 물을 수 없게 된다.
   ['src/migration-audit.js', 3],
-  // --outcome의 값 목록이다. done · blocked · rejected는 런이 어떻게 끝났는가이고
-  // 태스크의 진행이 아니다. 글자 하나가 겹칠 뿐 다른 축이다.
-  ['bin/rdl.js', 1]
+  // 둘 다 태스크의 진행이 아니다. 글자가 겹칠 뿐 다른 축이라 스텝으로 물을 수 없다.
+  //
+  // 하나는 --outcome의 값 목록(done · blocked · rejected)이고 런이 어떻게 끝났는가다.
+  // 다른 하나는 rdl doc review의 서브커맨드 이름이다 — 검토 리포트를 내는 명령이고,
+  // 그 자리에서 subcommand는 사용자가 친 낱말이지 어떤 대상의 상태가 아니다.
+  ['bin/rdl.js', 2]
 ]);
 
 const TASK_STATE_LITERALS = vocabulary.TASK_STATES.map((state) => `'${state}'`);
