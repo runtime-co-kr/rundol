@@ -4840,6 +4840,40 @@
       "statusChangedAt": "2026-09-02T16:45:08.875Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-929C7N6S": {
+      "title": "[문서] 사용기 리포트 반영 갈래의 정본 문서를 채운다",
+      "summary": "검토 리포트·계층 점검·상류 진단·제출 관문·감시 신호와 두 화면이 코드로만 있고 정본이 없다. 계약 없는 부분이 구현에서 빠지는 원인이라 문서를 먼저 세운다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "REQ 다섯과 SCR 둘이 bounded-v1·atomic-v1로 생성되고 기능 ID마다 계약이 채워졌다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "각 REQ·SCR에 대응하는 TST가 시나리오 표와 통과 기준을 갖췄다",
+          "done": false
+        },
+        "AC-003": {
+          "text": "rdl check --strict가 오류 0으로 통과한다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-09-05T10:38:28.623Z",
+      "updatedAt": "2026-09-05T10:38:28.623Z",
+      "statusChangedAt": "2026-09-05T10:38:28.623Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
