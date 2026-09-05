@@ -313,7 +313,7 @@ function documentApprovals(root, projectKey, documents) {
     const ledger = approval.documentApprovals(root, { project: projectKey });
     const states = {};
     for (const document of documents) {
-      states[document.id] = approval.trustState(document, ledger.approvals.get(document.id), ledger.submissions.get(document.id));
+      states[document.id] = approval.trustState(document, ledger.approvals.get(document.id), ledger.submissions.get(document.id), ledger.rejections.get(document.id));
     }
     return { states, reason: null, diagnostics: ledger.diagnostics };
   } catch (error) {
@@ -333,14 +333,23 @@ function documentApprovals(root, projectKey, documents) {
 // 보이고, 길이가 보여야 사람이 승인을 관문으로 쓸지 판단한다.
 const REVIEW_QUEUE_LIMIT = 50;
 function reviewQueue(documents, approvals) {
-  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, items: [] };
+  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, rejected: 0, items: [] };
   const counts = { approved: 0, stale: 0, unapproved: 0 };
   const items = [];
+  // 반려한 문서는 이 줄에서 뺀다. 반려는 「내 차례」를 「작성자 차례」로 옮기는
+  // 행위인데, 뺀 뒤에도 줄에 남아 있으면 검토자는 자기가 이미 답한 것을 매번 다시
+  // 지나쳐야 하고 그러면 인박스의 길이가 남은 일의 양을 말하지 못한다.
+  //
+  // 다만 몇 건을 뺐는지는 값으로 낸다. 조용히 사라지면 반려한 문서는 어느 화면에도
+  // 서지 않게 되고, 그것은 승인 옆에 반려가 없던 때와 같은 자리다 — 판단이 어디에도
+  // 안 보이는 자리. 셈은 신뢰 상태 셋과 별개 축이라 counts에 섞지 않는다.
+  let rejected = 0;
   for (const document of documents) {
     const state = approvals.states[document.id];
     if (!state) continue;
     counts[state.status] = (counts[state.status] || 0) + 1;
     if (state.status === 'approved') continue;
+    if (state.submission && state.submission.state === 'rejected') { rejected += 1; continue; }
     // kind를 함께 싣는다. type은 'document'라는 저장 종류라 문서 130건이 모두 같은 값이고,
     // 화면의 유형 칩은 kind를 먼저 본다(documentTypeLabel). 빼면 인박스의 유형 칩이 전부
     // 'document'로 떨어져 무엇이 밀렸는지가 유형별로 읽히지 않는다 — 문서 목록은 문서를
@@ -356,7 +365,11 @@ function reviewQueue(documents, approvals) {
   // 이 프로젝트가 승인 축을 쓰는가. 한 번도 승인하지 않은 프로젝트에서 전 문서가 미승인인
   // 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 검토 대기로 읽으면 인박스가 첫날부터
   // 문서 전건으로 찬다. 판단은 화면이 하되 근거는 여기서 준다.
-  return { used: counts.approved + counts.stale > 0, unknown: null, counts, total: items.length, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
+  //
+  // 반려도 그 축을 쓴다는 증거다. 승인 한 번 없이 반려만 한 프로젝트는 관문을 안 쓰는
+  // 것이 아니라 아직 아무것도 통과시키지 않은 것이고, 그때 화면이 "쓰지 않습니다"라고
+  // 말하면 방금 내린 판단이 화면에서 사라진다.
+  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
 }
 
 function attentionItems(tasks, documents, sync, approvals) {
@@ -877,7 +890,9 @@ function approveBoardRun(root, projectKey, runId, body) {
 // AI가 스스로 정본으로 만드는 경로가 열리는 자리이기 때문이다. 조회는 막지 않는다.
 function refuseHarnessApproval() {
   if (process.env.RUNDOL_HARNESS_CHILD !== '1') return;
-  const error = new Error('하네스가 실행한 Board에서는 승인할 수 없습니다. 사람이 직접 연 Board나 명령줄에서 승인하세요.');
+  // 승인도 반려도 같은 문장으로 거절한다. 둘 다 사람 게이트를 지나는 판단이고,
+  // 하네스가 들 수 없는 자격은 어느 쪽이든 같다.
+  const error = new Error('하네스가 실행한 Board에서는 사람 게이트를 지날 수 없습니다(승인·반려). 사람이 직접 연 Board나 명령줄에서 판단하세요.');
   error.statusCode = 403;
   error.code = 'harness-board';
   throw error;
@@ -923,6 +938,41 @@ function approveBoardDocument(root, projectKey, documentId, body) {
     // 500으로 내보내면 화면은 "서버가 죽었다"로 읽고, 사람 게이트에 걸린 것인지
     // 근거가 모자란 것인지 구분하지 못한 채 같은 단추를 다시 누른다.
     if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'approval-refused'; }
+    throw error;
+  }
+}
+
+/**
+ * 화면에서 정본 문서를 반려하는 자리.
+ *
+ * 승인 옆에 이것이 없어서 검토자가 "아니오"를 말할 자리가 화면에 없었고, 그래서 그
+ * 판단은 댓글이나 태스크로 샜다 — 새는 순간 원장 밖의 말이 되어 상태를 만들지 못한다.
+ *
+ * 근거(basis)는 받지 않는다. 근거는 "무엇에 기대어 책임을 졌나"를 나중에 가르려는
+ * 값인데 반려는 책임을 지는 행위가 아니고, 칸을 열어 두면 approval.js의 반려 이벤트가
+ * 모르는 필드를 화면만 보내게 된다. 대신 사유가 필수다 — 반려는 사유가 내용 전부다.
+ *
+ * 자격 판정은 rejectDocument가 한다. 여기서 다시 하면 표면이 하나 더 생기고, 그중
+ * 느슨한 쪽이 게이트의 실제 높이가 된다.
+ */
+function rejectBoardDocument(root, projectKey, documentId, body) {
+  refuseHarnessApproval();
+  const reviewer = String((body && body.clientId) || '').trim().toLowerCase();
+  if (!reviewer) inputError('반려자 Client를 고르세요. 활성 human Client만 사람 게이트를 지날 수 있습니다.', 'missing-approver');
+  const reason = String((body && body.reason) || '').trim();
+  if (!reason) inputError('왜 아닌지 사유가 필요합니다. 사유 없는 반려는 작성자에게 침묵과 같습니다.', 'missing-reason');
+  try {
+    return require('./approval').rejectDocument(root, {
+      project: projectKey, targetId: documentId, clientId: reviewer,
+      // 명의는 그 Client의 소유자다. 반려에는 위임이 설 자리가 없으므로 화면이 남의
+      // 이름을 고를 길도 두지 않는다.
+      rejectedBy: String((body && body.rejectedBy) || '').trim().toUpperCase() || approverOwner(root, reviewer),
+      reason
+    });
+  } catch (error) {
+    // 반려 거절도 서버 결함이 아니다. 500으로 내면 화면은 "서버가 죽었다"로 읽고,
+    // 사람 게이트에 걸린 것인지 이미 승인된 판이라 반려할 수 없는 것인지 구분하지 못한다.
+    if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'rejection-refused'; }
     throw error;
   }
 }
@@ -1004,6 +1054,7 @@ function createBoardServer(start, options) {
       // /runs/:id)와 나란한 짝이고, 승인 앞에 무엇을 보고 판단하는지가 없으면 화면은
       // 문서 ID만 보고 누르는 자리가 된다.
       const projectDocumentApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/approve$/u);
+      const projectDocumentRejectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/reject$/u);
       const projectDocumentDiffMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/diff$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
@@ -1095,6 +1146,10 @@ function createBoardServer(start, options) {
       if (request.method === 'POST' && projectDocumentApproveMatch) {
         const body = await requestBody(request);
         return json(response, 200, approveBoardDocument(config.root, projectDocumentApproveMatch[1], decodeURIComponent(projectDocumentApproveMatch[2]), body));
+      }
+      if (request.method === 'POST' && projectDocumentRejectMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, rejectBoardDocument(config.root, projectDocumentRejectMatch[1], decodeURIComponent(projectDocumentRejectMatch[2]), body));
       }
       if (request.method === 'POST' && projectDocumentMatch) {
         const body = await requestBody(request);

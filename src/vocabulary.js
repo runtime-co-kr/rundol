@@ -147,13 +147,21 @@ const DOCUMENT_TRUST_STATES = Object.freeze(['approved', 'stale', 'unapproved'])
  *            이미 답하므로 값을 늘리지 않는다.
  *   drifted  올린 뒤 또 고쳤다 — 승인자가 볼 것과 지금 파일이 다르다.
  *   settled  지금 리비전이 승인됐다 — 줄에 서 있던 것이 판정을 받았다.
+ *   rejected 검토자가 아니라고 답했다 — 작성자 차례다. 다시 올리면 pending으로 돌아온다.
  *
  * 신뢰 상태 셋에 값을 더하지 않고 축을 하나 얹은 이유는 그 셋을 이미 보드·
  * documentStatus·다른 갈래가 읽고 있기 때문이다. 값을 더하면 그 소비자들이 모르는
  * 상태를 만나 어느 갈래로도 떨어지지 않는다 — 축을 더하면 모르는 쪽은 그대로
  * 동작하고 아는 쪽만 새 물음에 답한다.
+ *
+ * rejected는 이 축의 값을 넷에서 다섯으로 늘린 자리다. "낡음인데 재제출됨"을 두 축의
+ * 짝으로 답하고 값을 안 늘렸던 것과 달리, 반려는 짝으로 답할 수 없다 — 신뢰 상태는
+ * 반려를 담지 않고(담으면 반려가 승인을 되돌리는 것이 되어 셋의 뜻이 바뀐다), 기존 넷
+ * 중 어느 것도 "검토를 거쳐 작성자에게 돌아왔다"를 뜻하지 않는다. none은 아무에게도
+ * 올린 적 없다는 뜻이라 검토를 거친 사실을 지우고, drifted는 승인자 쪽 경고이며,
+ * settled는 판정이 났다는 뜻이지만 읽는 쪽이 그것을 승인으로 다룬다.
  */
-const SUBMISSION_STATES = Object.freeze(['none', 'pending', 'drifted', 'settled']);
+const SUBMISSION_STATES = Object.freeze(['none', 'pending', 'drifted', 'settled', 'rejected']);
 
 /** 검증 판정. 기권을 실패와 가르는 이유는 "보지 못했다"와 "보고 아니라 했다"가 다르기 때문이다. */
 const VERDICTS = Object.freeze(['pass', 'refuted', 'abstain']);

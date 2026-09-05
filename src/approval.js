@@ -75,6 +75,12 @@ function normalizeBasis(value) {
 // 했고, 복제를 잊는 순간 위조된 제출이 아무 데서도 안 걸린다.
 const SUBMISSION_TYPE = 'approval.submitted';
 const APPROVAL_TYPE = 'approval.granted';
+// 반려는 같은 원장의 세 번째 종류다. 제출이 원장을 나누지 않은 이유가 그대로
+// 적용된다 — 제출·승인·반려는 한 리비전을 두고 벌어지는 한 사슬이고, "올렸는데
+// 반려됐고 그 뒤 다시 올렸다"는 셋 중 어느 하나로도 답할 수 없다. 순서를 맞춰야
+// 나오는데, 원장이 여럿이면 그 순서를 파일들의 시각으로 맞춰야 하고 이 저장소는
+// 시계로 상태를 정하지 않는다. 한 원장 안에서는 순서가 원장 자신의 성질이다.
+const REJECTION_TYPE = 'approval.rejected';
 
 // 제출자는 사람이 아니어도 된다. 이 도구의 협업 모형은 "에이전트가 쓰고 사람이
 // 책임진다"이고 제출은 그 앞쪽이다 — 제출까지 사람 전용으로 막으면 관문이 아니라
@@ -113,12 +119,54 @@ function normalizeSubmissionEvent(input) {
   return normalized;
 }
 
+// 반려는 검토자가 "아니오"를 말하는 자리다. 이 자리가 없는 동안 반려는 댓글이나
+// 태스크로 샜고, 그러면 그 판단은 원장에 없으므로 상태를 만들지 못한다.
+//
+// 사유가 필수인 것이 승인과 갈리는 자리다. 승인에서 사유가 선택인 것은 근거(basis)가
+// 따로 있어서인데, 반려는 사유가 내용 전부다 — 왜 아닌지를 안 남기면 작성자는 무엇을
+// 고쳐야 할지 모르고, 그러면 반려는 침묵과 같아진다. 그래서 형태에서 거부한다:
+// 쓰기 경로에서만 막으면 병합으로 들어온 사유 없는 반려가 그대로 채택된다.
+//
+// 명의 칸은 rejectedBy 하나다. 승인이 approvedBy와 actorMemberId를 가르는 이유는
+// 위임이 "누가 눌렀나"와 "누가 책임지나"를 갈라놓기 때문인데, 반려는 정본을 만들지
+// 않으므로 옮길 책임이 없다 — 제출과 같은 자리다. 칸을 하나 더 두면 둘이 어긋난
+// 기록의 뜻을 정해야 하는데 정할 뜻이 없다.
+//
+// 리비전 칸도 reviewedRevision을 그대로 쓴다. 이 원장의 모든 이벤트가 (targetId,
+// reviewedRevision)으로 문서의 한 리비전을 지목한다는 불변식이 유지되어야 리비전을
+// 보는 소비자가 종류별 분기를 갖지 않는다.
+function normalizeRejectionEvent(input) {
+  const allowed = BASE_FIELDS.concat(['rejectedBy', 'reason', 'recordedAt', 'canonicalDigest', 'occurredAt']);
+  const extra = Object.keys(input).filter((key) => !allowed.includes(key));
+  if (extra.length) throw new Error(`반려 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
+  for (const field of BASE_FIELDS.concat(['rejectedBy', 'reason'])) if (input[field] === undefined) throw new Error(`${REJECTION_TYPE}.${field}이(가) 필요합니다.`);
+  if (input.schemaVersion !== 1 || !EVENT_ID.test(input.eventId || '') || !REQUEST_ID.test(input.rootRequestId || '') || !REQUEST_ID.test(input.requestId || '')
+    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !ARTIFACT_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
+    throw new Error('반려 이벤트의 신원이 유효하지 않습니다.');
+  }
+  if (!MEMBER_ID.test(input.rejectedBy || '')) throw new Error('반려자는 MEMBER-ID여야 합니다.');
+  const normalized = {};
+  for (const field of BASE_FIELDS) normalized[field] = input[field];
+  normalized.rejectedBy = input.rejectedBy;
+  // 공백뿐인 사유는 사유가 아니다. normalizeText가 다듬은 뒤에 재므로 " " 하나로
+  // 관문을 지나는 길이 없다.
+  const reason = normalizeText(input.reason, '반려 사유', 1000);
+  if (!reason) throw new Error('반려에는 사유가 필요합니다. 왜 아닌지를 남기지 않으면 작성자는 무엇을 고쳐야 할지 알 수 없고, 그때 반려는 침묵과 같아집니다.');
+  normalized.reason = reason;
+  if (input.recordedAt !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.recordedAt || '')) throw new Error('기록 시각은 밀리초 단위 ISO-8601 UTC여야 합니다.');
+    normalized.recordedAt = input.recordedAt;
+  }
+  return normalized;
+}
+
 function normalizeApprovalEvent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('승인 이벤트는 객체여야 합니다.');
   // 종류 분기를 봉투 바깥이 아니라 여기 두는 이유는 approvalEnvelope·
   // appendApprovalEvent·check.js가 전부 이 함수 하나를 지나기 때문이다. 종류마다
   // 검증기를 따로 부르게 만들면 그중 하나가 새 종류를 모르는 채로 남는다.
   if (input.type === SUBMISSION_TYPE) return normalizeSubmissionEvent(input);
+  if (input.type === REJECTION_TYPE) return normalizeRejectionEvent(input);
   if (input.type !== APPROVAL_TYPE) throw new Error(`알 수 없는 승인 이벤트 종류입니다: ${input.type || '(없음)'}`);
   const allowed = BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis', 'reason', 'delegationId', 'recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
@@ -242,14 +290,17 @@ function foldApprovals(events, options) {
     // 위임은 누가 책임지는가를 옮길 뿐 누가 실제로 눌렀는가를 바꾸지 못한다.
     // 제출은 명의가 곧 행위자이므로 그 한 칸이 같은 검사를 받는다. 인가 기계를
     // 재사용하지 않으면 위조된 제출이 검토 인박스에 그대로 서고, 승인자는 아무도
-    // 올린 적 없는 것을 자기 몫으로 본다.
-    const actorMemberId = event.type === SUBMISSION_TYPE ? event.submittedBy : event.actorMemberId;
+    // 올린 적 없는 것을 자기 몫으로 본다. 반려도 같다 — 위조된 반려는 작성자를
+    // 아무도 내리지 않은 판단으로 되돌려 보낸다.
+    const actorMemberId = event.type === APPROVAL_TYPE ? event.actorMemberId
+      : event.type === SUBMISSION_TYPE ? event.submittedBy : event.rejectedBy;
     const actor = verify({ clientId: event.clientId, memberId: actorMemberId, recordedAt: event.recordedAt }, authority, codes);
     if (!actor.ok || actor.delegated) {
       diagnostics.push({ code: actor.code || 'RDL-APPROVE-021', severity: 'error', eventId: event.eventId, message: actor.message || '행위자를 위임으로 대신할 수 없습니다.' });
       return false;
     }
-    if (event.type === SUBMISSION_TYPE) return true;
+    // 위임 판정은 승인에만 있다. 제출과 반려는 책임을 옮기지 않아 명의가 곧 행위자다.
+    if (event.type !== APPROVAL_TYPE) return true;
     if (event.approvedBy === event.actorMemberId) return true;
     // 책임자가 행위자와 다르면 그 차이를 위임이 정당화해야 한다.
     const responsible = verify({ clientId: event.clientId, memberId: event.approvedBy, delegationId: event.delegationId, kind: APPROVAL_DELEGATION_KIND, recordedAt: event.recordedAt }, authority, codes);
@@ -274,7 +325,10 @@ function foldApprovals(events, options) {
     return byTarget;
   };
   const approvals = new Map();
-  for (const [targetId, events] of group((event) => event.type !== SUBMISSION_TYPE)) {
+  // 종류를 이름으로 고른다. 한때 "제출이 아닌 것"이었는데, 그 여집합은 종류가 셋이
+  // 되는 순간 반려를 승인 이력으로 끌어들인다 — 반려 한 건이 문서를 approved로
+  // 만드는 모양이고, 여집합으로 적힌 판정은 그 사실을 아무 신호 없이 바꾼다.
+  for (const [targetId, events] of group((event) => event.type === APPROVAL_TYPE)) {
     approvals.set(targetId, inOrder(events).map((event) => ({
       targetId,
       reviewedRevision: event.reviewedRevision,
@@ -301,7 +355,22 @@ function foldApprovals(events, options) {
       clientId: event.clientId
     })));
   }
-  return { approvals, submissions, diagnostics };
+  // 반려도 같은 접기에서 나온다. 따로 접으면 두 결과가 서로 다른 시점의 원장을 볼 수
+  // 있고, 그러면 "반려됐는데 그 뒤 다시 올렸다"가 순서 없이 보인다 — 제출 축의 값이
+  // 정확히 그 순서로 정해지므로 순서를 잃으면 값이 뒤집힌다.
+  const rejections = new Map();
+  for (const [targetId, events] of group((event) => event.type === REJECTION_TYPE)) {
+    rejections.set(targetId, inOrder(events).map((event) => ({
+      targetId,
+      rejectedRevision: event.reviewedRevision,
+      rejectedBy: event.rejectedBy,
+      reason: event.reason,
+      recordedAt: event.recordedAt || null,
+      eventId: event.eventId,
+      clientId: event.clientId
+    })));
+  }
+  return { approvals, submissions, rejections, diagnostics };
 }
 
 // 제출 축의 판정. 값의 정본과 뜻은 vocabulary의 SUBMISSION_STATES가 갖는다.
@@ -310,12 +379,50 @@ function foldApprovals(events, options) {
 // 감각의 정체가 그것인데, 여태 그 사실을 드러내는 값이 아무 데도 없었다 —
 // 승인자가 보던 것과 지금 파일이 다르다는 것을 도구가 말하지 않으면 사람은 매번
 // 문서 전체를 다시 읽어야 하고, 그러면 읽지 않고 승인하게 된다.
-function submissionState(document, approvals, submissions) {
+//
+// rejected가 이 축의 다섯 번째 값이다. 값을 늘리기 전에 짝으로 답할 수 있는지 먼저
+// 따졌다 — "낡음인데 재제출됨"은 신뢰 상태 × 제출 축의 짝이 이미 답하므로 값을 늘리지
+// 않았다. 반려는 그 짝으로 답하지 못한다: 신뢰 상태는 반려를 담지 않고(담으면 반려가
+// 승인을 되돌리는 것이 되어 셋의 뜻이 바뀐다), 제출 축의 기존 넷 중 어느 것도 "검토를
+// 거쳐 작성자에게 돌아왔다"를 뜻하지 않는다. none은 아무에게도 올린 적 없다는 뜻이라
+// 검토를 거친 사실을 지우고, drifted는 "승인자가 볼 것과 지금 파일이 다르다"는 승인자
+// 쪽 경고이며, settled는 판정이 났다는 뜻이지만 화면과 게이트가 그것을 승인으로 읽는다.
+//
+// 그래서 값 하나를 늘리고, 그 값이 답하는 네 물음은 이렇다.
+//
+//   반려 뒤 다시 제출하면    제출이 반려보다 뒤에 오므로 다시 pending이다. 사람이
+//                            다시 볼 수 있어야 반려가 막다른 길이 아니게 된다.
+//   반려 뒤 아무것도 안 하면 rejected로 남고 검토 줄에서는 빠진다. 「내 차례」가 아니라
+//                            「작성자 차례」로 넘어간 것이고, 그 줄에 계속 세우면
+//                            검토자는 자기가 이미 답한 것을 매번 다시 지나쳐야 한다.
+//   반려 뒤 고치기만 하면    여전히 rejected다. drifted로 떨어뜨리고 싶어지지만 그 값은
+//                            "승인자가 볼 것과 지금 파일이 다르다"는 경고이고, 반려된
+//                            뒤에는 볼 사람이 줄에 서 있지 않다 — 고쳤다는 사실은 차례를
+//                            옮기지 않는다. 차례를 옮기는 것은 다시 올리는 행위다.
+//   같은 리비전을 다시 반려  뜻이 없다. 원장이 아무 사실도 더하지 않는 줄로 불어날 뿐이고,
+//                            같은 리비전의 재승인·재제출을 기록하지 않는 것과 같은 이유다.
+//                            그 판정은 rejectDocument가 한다.
+//
+// 승인은 반려를 이긴다. approvedRevisions 검사가 먼저 서 있으므로 반려된 리비전이 나중에
+// 승인되면 settled가 되고, 그것이 옳다 — 신뢰 상태의 정본은 승인이고 반려는 그것을
+// 되돌리지 않는다.
+function submissionState(document, approvals, submissions, rejections) {
   const approvedRevisions = new Set(approvals.map((entry) => entry.reviewedRevision));
   const latest = submissions.length ? submissions[submissions.length - 1] : null;
-  const state = !latest ? 'none'
+  const denied = rejections.length ? rejections[rejections.length - 1] : null;
+  // 마지막 말이 무엇이었나. 둘이 한 원장에 있어 순서가 원장 자신의 성질이므로, 파일들의
+  // 시각을 견주지 않고도 "올린 뒤 반려됐다"와 "반려된 뒤 다시 올렸다"를 가른다.
+  //
+  // 기준은 접기가 쓴 것과 같아야 한다(기록 시각, 같으면 eventId). 여기서만 시각을 보면
+  // 시각이 없는 옛 기록이나 같은 밀리초에 든 두 기록에서 두 순서가 갈리고, 그때 축의
+  // 값은 목록의 순서와 다른 답을 낸다 — 같은 원장을 보고 두 가지를 말하게 된다.
+  const later = (left, right) => String(left.recordedAt || '').localeCompare(String(right.recordedAt || ''))
+    || String(left.eventId || '').localeCompare(String(right.eventId || ''));
+  const deniedLast = Boolean(denied) && (!latest || later(denied, latest) > 0);
+  const state = !latest && !denied ? 'none'
     : approvedRevisions.has(document.revision) ? 'settled'
-      : latest.submittedRevision === document.revision ? 'pending' : 'drifted';
+      : deniedLast ? 'rejected'
+        : latest.submittedRevision === document.revision ? 'pending' : 'drifted';
   return {
     state,
     revision: latest ? latest.submittedRevision : null,
@@ -323,7 +430,17 @@ function submissionState(document, approvals, submissions) {
     submittedByClient: latest ? latest.clientId : null,
     reason: latest ? latest.reason : null,
     recordedAt: latest ? latest.recordedAt : null,
-    submissions: submissions.length
+    submissions: submissions.length,
+    // 반려의 내용은 별도 칸으로 싣는다. 위의 reason 칸에 겹쳐 쓰면 "왜 올렸나"와
+    // "왜 아닌가"가 한 자리에서 섞이고, 그 둘은 읽는 사람도 쓰는 사람도 다르다.
+    rejection: denied ? {
+      revision: denied.rejectedRevision,
+      rejectedBy: denied.rejectedBy,
+      rejectedByClient: denied.clientId,
+      reason: denied.reason,
+      recordedAt: denied.recordedAt
+    } : null,
+    rejections: rejections.length
   };
 }
 
@@ -346,9 +463,14 @@ function versionLabel(approvals, submissions) {
 
 // 신뢰 상태는 셋 중 하나이고 전부 파생이다. 제출 정보는 그 셋을 건드리지 않고
 // 별도 칸으로 실린다 — 세 값의 이름과 뜻은 그대로다.
-function trustState(document, history, submissionHistory) {
+//
+// 반려도 마찬가지다. 반려된 문서는 여전히 미승인이며 낡음이 미승인으로 바뀌지도
+// 않는다 — 반려는 제출 축의 사건이다. 셋의 이름·뜻·계산을 건드리면 그것을 읽는
+// 곳(보드·documentStatus·검토 리포트·상류 진단·감시)이 전부 흔들린다.
+function trustState(document, history, submissionHistory, rejectionHistory) {
   const entries = history || [];
   const submissions = submissionHistory || [];
+  const rejections = rejectionHistory || [];
   const matched = entries.filter((entry) => entry.reviewedRevision === document.revision);
   // "마지막 승인"은 eventId 사전순의 끝이 아니다 — 그건 시간 순서가 아니라 해시
   // 순서다. 승인은 문서가 커밋된 순서를 따르므로, 낡음 상태에서 무엇으로
@@ -360,7 +482,10 @@ function trustState(document, history, submissionHistory) {
       ? { status: 'approved', approvedRevision: document.revision, approvedBy: matched[matched.length - 1].approvedBy, approvals: entries.length }
       : { status: 'stale', approvedRevision: last.reviewedRevision, approvedBy: last.approvedBy, approvals: entries.length };
   return Object.assign(trust, {
-    submission: submissionState(document, entries, submissions),
+    submission: submissionState(document, entries, submissions, rejections),
+    // 판 번호는 반려를 세지 않는다. 큰 자리는 승인 횟수, 작은 자리는 마지막 승인 이후
+    // 올린 횟수이고 반려는 올린 것이 아니다 — 반려를 세면 같은 판이 검토를 왕복할
+    // 때마다 번호가 올라 "몇 판째인가"가 "몇 번 거절당했나"로 바뀐다.
     versionLabel: versionLabel(entries, submissions)
   });
 }
@@ -399,7 +524,7 @@ function foldedApprovalLedger(start, projectKey) {
 function documentApprovals(start, options) {
   const settings = options || {};
   const { context, folded } = foldedApprovalLedger(start, settings.project);
-  return { project: context.project.key, approvals: folded.approvals, submissions: folded.submissions, diagnostics: folded.diagnostics };
+  return { project: context.project.key, approvals: folded.approvals, submissions: folded.submissions, rejections: folded.rejections, diagnostics: folded.diagnostics };
 }
 
 function documentStatus(start, options) {
@@ -411,7 +536,7 @@ function documentStatus(start, options) {
     title: document.title,
     file: document.file,
     revision: document.revision
-  }, trustState(document, folded.approvals.get(document.id), folded.submissions.get(document.id))));
+  }, trustState(document, folded.approvals.get(document.id), folded.submissions.get(document.id), folded.rejections.get(document.id))));
   const matches = (document) => (!settings.status || document.status === settings.status)
     && (!settings.submission || document.submission.state === settings.submission);
   const filtered = documents.filter(matches);
@@ -454,7 +579,7 @@ function submitDocument(start, input) {
   const document = findDocument(context.project, settings.targetId);
   const history = folded.approvals.get(document.id) || [];
   const submissions = folded.submissions.get(document.id) || [];
-  const state = trustState(document, history, submissions);
+  const state = trustState(document, history, submissions, folded.rejections.get(document.id));
   // 이미 승인된 리비전은 올릴 것이 없고, 같은 리비전을 두 번 올리는 것도 줄을 두 번
   // 세우는 일일 뿐이다. approveDocument가 같은 리비전의 재승인을 기록하지 않는 것과
   // 같은 이유 — 원장이 아무 사실도 더하지 않는 줄로 불어난다.
@@ -478,7 +603,7 @@ function submitDocument(start, input) {
   return {
     project: context.project.key,
     document: Object.assign({ id: document.id, revision: document.revision },
-      trustState(document, after.approvals.get(document.id), after.submissions.get(document.id))),
+      trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id))),
     created: true
   };
 }
@@ -517,7 +642,7 @@ function approveDocument(start, input) {
   const authority = require('./decision').assertAuthority(client, settings.approvedBy, members, '승인', delegation);
   const document = findDocument(context.project, settings.targetId);
   const folded = foldedApprovalLedger(start, context.project.key).folded;
-  const state = trustState(document, folded.approvals.get(document.id), folded.submissions.get(document.id));
+  const state = trustState(document, folded.approvals.get(document.id), folded.submissions.get(document.id), folded.rejections.get(document.id));
   if (state.status === 'approved') return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, state), created: false };
   const requestJournal = require('./request-journal');
   const rootRequestId = settings.rootRequestId || `REQ-${crypto.randomBytes(10).toString('hex').toUpperCase()}`;
@@ -531,7 +656,78 @@ function approveDocument(start, input) {
     ...(settings.delegationId ? { delegationId: settings.delegationId } : {})
   }, { lockDirectory: context.lockDirectory });
   const after = foldedApprovalLedger(start, context.project.key).folded;
-  return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, trustState(document, after.approvals.get(document.id), after.submissions.get(document.id))), created: true };
+  return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id))), created: true };
+}
+
+/**
+ * 반려는 검토자가 "아니오"를 말하는 자리다.
+ *
+ * 이 자리가 없는 동안 「승인」 옆에 짝이 없었고, 그래서 아니라는 판단은 댓글이나
+ * 태스크로 샜다. 새는 순간 그 판단은 원장 밖의 말이 되어 상태를 만들지 못하고,
+ * 작성자는 자기 문서가 검토를 통과했는지 아닌지를 사람에게 물어야 알게 된다.
+ *
+ * 사람 게이트는 승인과 같은 것을 쓴다. 반려도 내용에 대한 사람의 판단이라 자격이
+ * 같아야 하고, 무엇보다 표면마다 판정을 따로 두면 그중 느슨한 쪽이 게이트의 실제
+ * 높이가 된다 — 에이전트가 자기 초안을 스스로 정본으로 만들 수 있었던 결함이
+ * 정확히 그 모양이었다. 반려에서 그 반대편도 같다: 자격 없는 반려가 통하면
+ * 에이전트가 사람의 판단을 흉내 내어 남의 문서를 줄에서 내릴 수 있다.
+ *
+ * 신뢰 상태는 건드리지 않는다. 반려된 문서는 여전히 미승인이고, 승인된 리비전이
+ * 있었다면 여전히 낡음이다 — 반려는 제출 축의 사건이다.
+ */
+function rejectDocument(start, input) {
+  const settings = input || {};
+  // 사유부터 본다. 자격 판정보다 앞에 두는 이유는 이것이 형태이기 때문이다 —
+  // 저장소를 한 번도 읽지 않고 답할 수 있는 거절을 뒤로 미루면, 사유 없이 누른
+  // 사람이 "자격이 없다"는 엉뚱한 문장을 먼저 받는다.
+  const reason = normalizeText(settings.reason, '반려 사유', 1000);
+  if (!reason) throw new Error('반려에는 --reason이 필요합니다. 왜 아닌지를 남기지 않으면 작성자는 무엇을 고쳐야 할지 알 수 없고, 그때 반려는 침묵과 같아집니다.');
+  const context = workspaceContext(start, settings.project);
+  const { getClient, assertProjectHumanApprover } = require('./collaboration-store');
+  const { readCollaboration } = require('./collaboration');
+  const clientId = String(settings.clientId || '').trim().toLowerCase();
+  const client = getClient(start, clientId);
+  assertProjectHumanApprover(context.layout.root, context.project.key, client, '반려');
+  const members = readCollaboration(context.layout.root, context.project.key).members.map((member) => member.id);
+  // 명의는 고를 여지가 없다. 위임(doc-approve)은 승인 책임을 옮기는 것이고 반려는
+  // 옮길 책임이 없으므로, 반려에는 위임이 설 자리가 없다 — 제출과 같은 자리다.
+  const rejectedBy = settings.rejectedBy || require('./decision').actingMember(client, members);
+  require('./decision').assertAuthority(client, rejectedBy, members, '반려', null);
+  const document = findDocument(context.project, settings.targetId);
+  const folded = foldedApprovalLedger(start, context.project.key).folded;
+  const rejections = folded.rejections.get(document.id) || [];
+  const state = trustState(document, folded.approvals.get(document.id), folded.submissions.get(document.id), rejections);
+  // 승인된 리비전은 반려로 되돌리지 않는다. 되돌리려면 신뢰 상태를 반려가 바꿔야
+  // 하는데, 그 셋의 뜻을 바꾸면 그것을 읽는 곳이 전부 흔들린다. 승인을 물리는 일은
+  // 반려가 아니라 별건이며, 여기서 조용히 대신하면 그 별건은 영영 열리지 않는다.
+  if (state.status === 'approved') {
+    throw new Error(`이미 승인된 리비전입니다: ${document.id}. 반려는 승인을 되돌리지 않습니다 — 본문을 고치면 이 승인은 낡음이 되고, 그 뒤 올라온 판을 반려할 수 있습니다.`);
+  }
+  // 같은 판을 두 번 반려하는 것은 원장에 아무 사실도 더하지 않는다. 같은 리비전의
+  // 재승인·재제출을 기록하지 않는 것과 같은 이유다.
+  if (state.submission.state === 'rejected' && state.submission.rejection.revision === document.revision) {
+    return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, state), created: false };
+  }
+  const requestJournal = require('./request-journal');
+  const rootRequestId = settings.rootRequestId || `REQ-${crypto.randomBytes(10).toString('hex').toUpperCase()}`;
+  // 반려 횟수를 키에 넣는 이유는 제출과 같다. 리비전만으로 키를 만들면 "A 반려 →
+  // 고침 → A로 되돌림 → 다시 반려"가 첫 반려와 같은 eventId를 만들고, 기록 시각이
+  // 달라 봉투 다이제스트가 어긋나 append가 eventId 손상으로 거부된다.
+  const childKey = `rejection:${document.id}:${document.revision}:${rejections.length}`;
+  const requestId = requestJournal.childRequestId(rootRequestId, childKey);
+  appendApprovalEvent(context.eventsRoot, {
+    schemaVersion: 1, eventId: requestJournal.eventIdForRequest(requestId), type: REJECTION_TYPE,
+    rootRequestId, requestId, clientId, projectId: context.project.key,
+    targetId: document.id, reviewedRevision: document.revision,
+    rejectedBy, reason
+  }, { lockDirectory: context.lockDirectory });
+  const after = foldedApprovalLedger(start, context.project.key).folded;
+  return {
+    project: context.project.key,
+    document: Object.assign({ id: document.id, revision: document.revision },
+      trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id))),
+    created: true
+  };
 }
 
 // git은 "무엇이 언제", 원장은 "왜 그리고 누구 책임"을 안다. 이력의 값은 둘을
@@ -542,6 +738,7 @@ function documentHistory(start, input) {
   const document = findDocument(context.project, settings.targetId);
   const history = folded.approvals.get(document.id) || [];
   const submissions = folded.submissions.get(document.id) || [];
+  const rejections = folded.rejections.get(document.id) || [];
   const log = runGit(['log', '--follow', '--format=%H%an%aI%s', '--', document.file], { cwd: context.project.root, allowFailure: true });
   const commits = (log.status === 0 ? log.stdout : '').split(/\r?\n/u).filter(Boolean).map((line) => {
     const [commit, author, at, subject] = line.split('');
@@ -553,13 +750,16 @@ function documentHistory(start, input) {
   const linked = require('./query-index').queryTasks(start, { project: context.project.key }).tasks
     .filter((task) => (task.links || []).includes(document.id))
     .map((task) => ({ id: task.id, title: task.title, status: task.status }));
-  const state = trustState(document, history, submissions);
+  const state = trustState(document, history, submissions, rejections);
   const unexplained = state.status !== 'approved' && linked.length === 0 && commits.length > 0;
   return {
     project: context.project.key,
     document: Object.assign({ id: document.id, title: document.title, file: document.file, revision: document.revision }, state),
     approvals: history,
     submissions,
+    // 반려 이력도 함께 낸다. 이력이 "왜 그리고 누구 책임"을 답하는 자리인데 거절만
+    // 빠지면, 두 번 되돌아온 문서의 이력이 "그냥 세 번 올렸다"로 읽힌다.
+    rejections,
     tasks: linked,
     commits,
     ...(unexplained ? { warning: '이 문서의 현재 리비전은 승인도 연결된 태스크도 없습니다. 왜 바뀌었는지 답할 기록이 없습니다.' } : {})
@@ -602,7 +802,7 @@ function diffSinceApproval(start, input) {
   const { context, folded } = foldedApprovalLedger(start, settings.project);
   const document = findDocument(context.project, settings.targetId);
   const history = folded.approvals.get(document.id) || [];
-  const state = trustState(document, history, folded.submissions.get(document.id));
+  const state = trustState(document, history, folded.submissions.get(document.id), folded.rejections.get(document.id));
   if (state.status === 'unapproved') return { project: context.project.key, targetId: document.id, status: state.status, diff: null, reason: '승인 기록이 없어 비교 기준이 없습니다.' };
   if (state.status === 'approved') return { project: context.project.key, targetId: document.id, status: state.status, diff: '', reason: '현재 리비전이 승인되어 있습니다.' };
   const approvedRevision = state.approvedRevision;
@@ -624,7 +824,7 @@ function diffSubmission(start, input) {
   const { context, folded } = foldedApprovalLedger(start, settings.project);
   const document = findDocument(context.project, settings.targetId);
   const history = folded.approvals.get(document.id) || [];
-  const state = trustState(document, history, folded.submissions.get(document.id));
+  const state = trustState(document, history, folded.submissions.get(document.id), folded.rejections.get(document.id));
   const base = {
     project: context.project.key, targetId: document.id, status: state.status,
     submission: state.submission, versionLabel: state.versionLabel
@@ -656,9 +856,9 @@ function diffSubmission(start, input) {
 }
 
 module.exports = {
-  BASIS_KINDS, SUBMISSION_STATES, SUBMISSION_TYPE, APPROVAL_TYPE,
+  BASIS_KINDS, SUBMISSION_STATES, SUBMISSION_TYPE, APPROVAL_TYPE, REJECTION_TYPE,
   normalizeApprovalEvent, approvalEnvelope, appendApprovalEvent, readApprovalEvents,
   foldApprovals, trustState, commitForRevision,
-  documentApprovals, documentStatus, submitDocument, approveDocument, documentHistory,
+  documentApprovals, documentStatus, submitDocument, approveDocument, rejectDocument, documentHistory,
   diffSinceApproval, diffSubmission
 };

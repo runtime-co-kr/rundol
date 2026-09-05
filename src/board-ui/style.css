@@ -4291,8 +4291,12 @@ dialog label textarea {
   font-size: var(--small-FontSize);
 }
 
+/* 사유·단추줄과 함께 안내문·거절 문장도 폭을 다 쓴다. 세 칸 격자에 그대로 두면 문장이
+   1/3 폭에 갇혀 세로로 흐르고, 읽으라고 띄운 문장이 가장 안 읽히는 모양이 된다. */
 .approval-form > label:has(textarea),
-.approval-form-actions {
+.approval-form-actions,
+.approval-form > .ledger-note,
+.approval-form > .approval-failure {
   grid-column: 1 / -1;
 }
 

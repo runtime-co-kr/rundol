@@ -94,6 +94,10 @@ function reviewEntry(document, history, diff) {
     approvals: document.approvals,
     approvedBy: document.approvedBy,
     approvedRevision: document.approvedRevision,
+    // 제출 축을 함께 싣는다. 반려된 문서는 신뢰 상태로는 여전히 미승인이라 이 목록에
+    // 남는데, 그 사실을 안 적으면 이미 아니라고 답한 문서가 아직 답을 기다리는 것처럼
+    // 읽힌다 — 이 리포트가 없애려던 착각이 정확히 그 모양이다.
+    submission: document.submission || null,
     // 마지막 승인이 무엇에 기대어 무슨 사유로 났는지. 낡음 문서를 다시 승인할지
     // 되돌릴지는 "지난번에 무엇을 보고 승인했나"를 알아야 정할 수 있다.
     lastApproval: last ? {
@@ -179,6 +183,10 @@ function renderEntry(lines, entry) {
     if (entry.lastApproval.delegationId) lines.push(`- 승인 위임 ${entry.lastApproval.delegationId}`);
   }
   if (entry.approvedRevision) lines.push(`- 승인 리비전 \`${entry.approvedRevision.slice(0, 12)}\`${entry.diff.baseCommit ? ` · 기준 커밋 \`${entry.diff.baseCommit.slice(0, 12)}\`` : ''}`);
+  // 반려는 신뢰 상태를 바꾸지 않으므로 이 문서는 여전히 낡음이거나 미승인이다. 그래서
+  // 목록에는 남되, 지금 누구 차례인지는 적어야 한다 — 안 적으면 이미 답한 것을 다시 답한다.
+  const rejection = entry.submission && entry.submission.state === 'rejected' ? entry.submission.rejection : null;
+  if (rejection) lines.push(`- 반려 ${rejection.rejectedBy} · ${rejection.recordedAt || '(시각 없음)'} — ${rejection.reason} (작성자 차례입니다)`);
   // 세 갈래를 한 문장으로 접지 않는다. "계산하지 않았다"와 "비교할 기준이 없다"를
   // 같은 말로 적으면, 상한에 걸려 건너뛴 문서가 승인 기록이 없는 문서처럼 읽힌다.
   if (entry.diff.available === true) lines.push(`- 변경 +${entry.diff.added} -${entry.diff.removed} · hunk ${entry.diff.hunks}`);

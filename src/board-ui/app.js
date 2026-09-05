@@ -569,7 +569,10 @@ function approvalFormHtml(id, panel, surface) {
   }
   const form = panel.form;
   return `<form class="approval-form" data-approve-form="${escapeHtml(id)}">`
-    + `<label>승인자<select data-approve-field="clientId">${approvers.map((client) =>
+    // 칸 이름이 "승인자"가 아니라 "판정자"인 것은 이 자리에서 나가는 답이 둘이기
+    // 때문이다. 반려도 같은 사람 게이트를 지나므로 고르는 자격도 같고, 칸을 둘로
+    // 나누면 같은 목록이 두 벌이 되어 한쪽만 낡는다.
+    + `<label>판정자<select data-approve-field="clientId">${approvers.map((client) =>
       `<option value="${escapeHtml(client.id)}"${client.id === form.clientId ? ' selected' : ''}>${escapeHtml(client.name || client.id)} (${escapeHtml(client.id)})</option>`).join('')}</select></label>`
     // 근거는 화면에서도 필수다. 나중에 "AI 검토가 놓쳤나 사람이 건너뛰었나"를 가르려면
     // 그 값이 있어야 하고, 그 구분이 없으면 승인 이력은 누가 눌렀다는 목록에 그친다.
@@ -577,10 +580,20 @@ function approvalFormHtml(id, panel, surface) {
       `<option value="${escapeHtml(kind)}"${kind === form.basis ? ' selected' : ''}${kind === 'delegated' ? ' disabled' : ''}>`
       + `${escapeHtml(BASIS_LABELS[kind] || kind)}${kind === 'delegated' ? ' — 위임 식별자가 필요해 명령줄에서만' : ''}</option>`).join('')}</select></label>`
     + `<label>근거 상세<input data-approve-field="detail" maxlength="300" placeholder="예: 3장 전체 재독" value="${escapeHtml(form.detail || '')}"></label>`
-    + `<label>사유<textarea data-approve-field="reason" rows="2" maxlength="1000" placeholder="무엇을 보고 승인했는지">${escapeHtml(form.reason || '')}</textarea></label>`
+    // 사유 칸은 둘이 나눠 쓴다. 승인에서는 선택이지만 반려에서는 필수다 — 승인에는
+    // 근거라는 별도 칸이 있고 반려는 사유가 내용 전부이기 때문이다.
+    + `<label>사유<textarea data-approve-field="reason" rows="2" maxlength="1000" placeholder="승인이면 무엇을 보고 승인했는지, 반려면 왜 아닌지">${escapeHtml(form.reason || '')}</textarea></label>`
     + '<div class="approval-form-actions">'
     + (surface === 'inbox' ? `<button type="button" data-document="${escapeHtml(id)}">문서 화면에서 열기</button>` : '')
+    // 「반려」가 「승인」 옆에 선다. 이 단추가 없는 동안 검토자가 "아니오"를 말할 자리가
+    // 화면에 없었고, 그래서 그 판단은 댓글이나 태스크로 샜다 — 새면 원장 밖의 말이
+    // 되어 상태를 만들지 못한다. 기본 단추로 두지 않는 이유는 엔터가 반려로 떨어지면
+    // 안 되기 때문이다: 되돌릴 수 없는 판단은 눌러서만 나가야 한다.
+    + `<button type="button" data-approve-reject="${escapeHtml(id)}"${panel.busy ? ' disabled' : ''}>${panel.busy ? '보내는 중…' : '반려'}</button>`
     + `<button type="submit" class="primary"${panel.busy ? ' disabled' : ''}>${panel.busy ? '승인하는 중…' : '승인'}</button></div>`
+    // 근거가 승인에만 쓰인다는 것은 적어 둔다. 폼이 하나라 반려할 때도 근거 칸이 보이는데,
+    // 그것을 고르고 반려한 사람은 자기가 남긴 근거가 원장에 있다고 믿게 된다.
+    + '<p class="ledger-note">반려에는 사유만 남습니다. 근거는 승인이 무엇에 기댔는지를 가르는 값이라 반려에는 실리지 않고, 반려는 신뢰 상태를 바꾸지 않습니다 — 이 문서는 여전히 미승인이며 차례만 작성자에게 넘어갑니다.</p>'
     // 거절은 서버의 말 그대로 옮긴다. "승인 실패"로 바꾸면 사람 게이트에 걸린 것인지
     // 근거가 모자란 것인지 알 수 없어 같은 단추를 다시 누르게 된다.
     + (panel.failure ? `<p class="approval-failure">${escapeHtml(panel.failure)}</p>` : '')
@@ -624,6 +637,58 @@ async function approveOpenDocument(id) {
     panel.failure = error.message;
     redrawApproval();
   }
+}
+
+// 반려도 같은 자리에서 나간다. 폼을 따로 만들지 않는 이유는 승인과 같다 — 화면마다
+// 폼을 두면 한쪽만 사유를 받거나 한쪽만 거절 문장을 삼키고, 그 차이는 눌러 본 다음에야
+// 드러난다.
+//
+// 사유가 비면 보내지 않는다. 서버도 막지만 왕복이 아깝고, 무엇보다 왕복하는 동안
+// 사람은 자기가 무엇을 빠뜨렸는지 모른 채 기다린다.
+async function rejectOpenDocument(id) {
+  const panel = approvalPanel(id);
+  if (!panel || panel.busy) return;
+  const form = panel.form;
+  if (!form.clientId) return message('판정자를 고르세요. 활성 human Client만 반려할 수 있습니다.', true);
+  if (!String(form.reason || '').trim()) return message('왜 아닌지 사유가 필요합니다. 사유 없는 반려는 작성자에게 침묵과 같습니다.', true);
+  panel.busy = true;
+  panel.failure = '';
+  redrawApproval();
+  try {
+    // 근거는 보내지 않는다. 반려 이벤트에 그 칸이 없고, 화면만 보내면 서버가 모르는
+    // 필드로 거절한다 — 폼이 하나라고 해서 계약도 하나인 것은 아니다.
+    const result = await api(projectPath(`/documents/${encodeURIComponent(id)}/reject`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify({ clientId: form.clientId, reason: String(form.reason).trim() })
+    });
+    state.docApproval = null;
+    message(`${id}을(를) 반려했습니다. ${result.document.submission.rejection.rejectedBy}의 판단이며, 이 문서는 여전히 미승인입니다 — 차례가 작성자에게 넘어갔습니다.`);
+    // 승인과 같은 이유로 스냅숏을 다시 읽는다. 화면이 상태를 직접 고치면 그것이 두 번째
+    // 진실 원천이 되고, 서버가 아니라고 답해도 화면은 반려됐다고 말한다.
+    await loadSnapshot(true);
+    redrawApproval();
+  } catch (error) {
+    panel.busy = false;
+    panel.failure = error.message;
+    redrawApproval();
+  }
+}
+
+// 셈과 줄이 어긋나면 왜 어긋나는지를 말한다. 이유는 둘이고 뭉치면 안 된다 — 잘린 것은
+// "아직 못 봤다"이고 반려된 것은 "이미 답했다"라, 앞엣것만 적으면 자기가 방금 반려한
+// 문서를 스냅숏이 삼킨 줄로 읽는다. 어느 쪽인지는 줄이 상한에 닿았는지가 가른다.
+//
+// 한 문장으로 답이 되면 거기서 멈춘다. 같은 사실을 두 문단으로 적으면 읽는 사람은
+// 둘이 다른 사실인 줄 알고 두 번 센다.
+function reviewGapNotes(queue, shown, full) {
+  const note = (text) => `<p class="review-inbox-note">${text}</p>`;
+  const truncated = queue.total > queue.items.length;
+  const rejectedNote = `<b>${queue.rejected}건</b>은 반려되어 이 줄에서 빠졌습니다. 차례가 작성자에게 넘어간 것이고, 고쳐서 다시 올리면 돌아옵니다 — <code>rdl doc status --submission rejected</code>로 봅니다.`;
+  if (shown >= full) return queue.rejected ? note(rejectedNote) : '';
+  const why = truncated ? `스냅숏은 줄이 길어져도 앞 ${queue.items.length}건까지만 싣습니다` : '나머지는 반려되어 작성자 차례로 넘어갔습니다';
+  return note(`<b>${full}건 중 ${shown}건</b>만 실려 있습니다. ${why} — 나머지는 <code>rdl doc status</code>로 봅니다.`)
+    + (queue.rejected && truncated ? note(rejectedNote) : '');
 }
 
 function renderReviewInbox() {
@@ -676,9 +741,7 @@ function renderReviewInbox() {
   const full = filter === 'all' ? queue.total : counts[filter];
   summary.innerHTML = `<div class="review-inbox-counts">${[['검토 대기', queue.total], [REVIEW_STATUS_LABELS.stale, counts.stale], [REVIEW_STATUS_LABELS.unapproved, counts.unapproved], [REVIEW_STATUS_LABELS.approved, counts.approved]]
     .map(([label, count]) => `<span class="review-inbox-stat"><b>${count}</b> ${escapeHtml(label)}</span>`).join('')}</div>`
-    + (visible.length < full
-      ? `<p class="review-inbox-note"><b>${full}건 중 ${visible.length}건</b>만 실려 있습니다. 스냅숏은 줄이 길어져도 앞 ${queue.items.length}건까지만 싣습니다 — 나머지는 <code>rdl doc status</code>로 봅니다.</p>`
-      : '');
+    + reviewGapNotes(queue, visible.length, full);
   list.innerHTML = visible.length
     ? visible.map(reviewRowHtml).join('')
     : `<p class="empty-state">${filter === 'all' ? '검토를 기다리는 문서가 없습니다. 문서 전건이 지금 리비전으로 승인되어 있습니다.' : '이 상태인 문서가 없습니다.'}</p>`;
@@ -1112,6 +1175,14 @@ function documentApprovalHtml(item) {
     // 차분은 이제 이 화면이 싣는다. 다만 지어내지는 않는다 — 값은 서버가 요청 시 계산해
     // 주는 그것이고, 같은 값을 명령줄에서도 볼 수 있다는 것을 함께 적어 둔다.
     lines.push(`<p class="ledger-note">승인 이후 본문이 바뀌었습니다. 무엇이 바뀌었는지는 위 단추로 이 자리에서 보고 재승인할 수 있고, 같은 값을 <code>rdl doc diff ${escapeHtml(item.id)} --since-approval</code>로도 봅니다.</p>`);
+  }
+  // 반려는 검토 인박스에서 빠지므로, 여기서 말하지 않으면 그 판단이 화면 어디에도
+  // 남지 않는다 — 승인 옆에 반려가 없던 때와 같은 자리다. 사유를 함께 적는다: 사유가
+  // 반려의 내용 전부이고, 작성자가 무엇을 고쳐야 하는지는 그 문장에만 있다.
+  const rejection = approval.submission && approval.submission.state === 'rejected' ? approval.submission.rejection : null;
+  if (rejection) {
+    lines.push(`<p class="ledger-note"><b>${escapeHtml(personName(rejection.rejectedBy))}이(가) 반려했습니다.</b> ${escapeHtml(rejection.reason)}`
+      + ' — 신뢰 상태는 그대로이고 차례가 작성자에게 넘어갔습니다. 고쳐서 다시 올리면(<code>rdl doc submit</code>) 검토 줄로 돌아옵니다.</p>');
   }
   return lines.join('');
 }
@@ -2022,6 +2093,10 @@ document.addEventListener('click', (event) => {
   if (opener) return void toggleApproval(opener.dataset.approveOpen);
   const axis = event.target.closest('[data-approve-axis]');
   if (axis && state.docApproval) return void loadApprovalDiff(state.docApproval.id, axis.dataset.approveAxis);
+  // 반려는 폼의 submit이 아니라 눌러서만 나간다. submit에 얹으면 사유 칸에서 엔터를
+  // 친 사람이 반려를 보내게 되고, 판단은 실수로 나가면 안 된다.
+  const reject = event.target.closest('[data-approve-reject]');
+  if (reject) return void rejectOpenDocument(reject.dataset.approveReject);
 });
 // 폼의 값은 DOM이 아니라 state가 갖는다. 차분이 도착하거나 축을 바꾸면 이 자리를 다시
 // 그리는데, DOM에 두면 그때마다 적던 사유가 사라진다 — 댓글 칸을 state로 옮긴 것과 같은 이유다.

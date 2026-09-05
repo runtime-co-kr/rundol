@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { normalizeApprovalEvent, foldApprovals, trustState, documentApprovals, documentStatus, submitDocument, approveDocument, documentHistory, diffSinceApproval, diffSubmission } = require('../src/approval');
+const { normalizeApprovalEvent, foldApprovals, trustState, documentApprovals, documentStatus, submitDocument, approveDocument, rejectDocument, documentHistory, diffSinceApproval, diffSubmission } = require('../src/approval');
 
 const repository = path.resolve(__dirname, '..');
 const cli = path.join(repository, 'bin', 'rdl.js');
@@ -223,7 +223,10 @@ try {
   }
   assert.strictEqual(normalizeApprovalEvent(submissionEvent()).submittedBy, 'MEMBER-001');
   assert.strictEqual(normalizeApprovalEvent(submissionEvent({ reason: '결정 반영분' })).reason, '결정 반영분');
-  assert.throws(() => normalizeApprovalEvent(submissionEvent({ type: 'approval.rejected' })), /알 수 없는 승인 이벤트 종류/u);
+  // 모르는 종류는 여전히 형태에서 거부된다. 한때 이 자리가 approval.rejected였는데,
+  // 반려가 원장의 세 번째 종류가 되면서 그것은 더 이상 "모르는 종류"가 아니다 —
+  // 계약이 바뀌어 깨진 단언이라 값을 갈아 끼우고, 반려 자체는 아래에서 따로 잰다.
+  assert.throws(() => normalizeApprovalEvent(submissionEvent({ type: 'approval.revoked' })), /알 수 없는 승인 이벤트 종류/u);
   // 승인 근거는 제출의 칸이 아니다. 무엇에 기대어 올렸는가는 검토자가 물을 것이지
   // 제출자가 미리 증명할 것이 아니고, 칸을 열어 두면 "근거를 적었으니 승인된 셈"이 된다.
   assert.throws(() => normalizeApprovalEvent(submissionEvent({ basis: [{ kind: 'read' }] })), /알 수 없는 필드/u);
@@ -355,6 +358,167 @@ try {
   fs.writeFileSync(shard, original, 'utf8');
   assert.strictEqual(rdl(['check']).summary.errors, 0, '되돌린 원장은 다시 깨끗해야 합니다.');
 
+  // ── 문서 반려 ───────────────────────────────────────────────────────────────
+  //
+  // 승인 옆에 반려가 없는 동안 검토자가 "아니오"를 말할 자리가 아무 데도 없었고, 그
+  // 판단은 댓글이나 태스크로 샜다 — 새는 순간 원장 밖의 말이 되어 상태를 만들지 못한다.
+
+  function rejectionEvent(overrides) {
+    return Object.assign({
+      schemaVersion: 1,
+      eventId: 'EVT-55555555555555555555',
+      type: 'approval.rejected',
+      rootRequestId: 'REQ-11111111111111111111',
+      requestId: 'REQ-66666666666666666666',
+      clientId: 'desk-h',
+      projectId: 'crm',
+      targetId: 'REQ-001',
+      reviewedRevision: REVISION_B,
+      rejectedBy: 'MEMBER-001',
+      reason: '3장의 범위가 헌장과 어긋납니다.'
+    }, overrides || {});
+  }
+  assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).rejectedBy, 'MEMBER-001');
+  assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).reason, '3장의 범위가 헌장과 어긋납니다.');
+  // 사유는 형태에서 필수다. 승인에서 사유가 선택인 것은 근거가 따로 있어서이고, 반려는
+  // 사유가 내용 전부다 — 없으면 작성자는 무엇을 고쳐야 할지 모르고 반려가 침묵이 된다.
+  // 쓰기 경로에서만 막으면 병합으로 들어온 사유 없는 반려가 그대로 채택된다.
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ reason: undefined })), /reason이\(가\) 필요/u);
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ reason: '   ' })), /사유가 필요/u);
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ reason: '' })), /사유가 필요/u);
+  // 근거는 반려의 칸이 아니다. 반려는 책임을 지는 행위가 아니라서 무엇에 기댔는지를
+  // 가를 값이 없고, 칸을 열어 두면 "근거를 적었으니 검토한 셈"이 된다.
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ basis: [{ kind: 'read' }] })), /알 수 없는 필드/u);
+  // 반려에는 책임 이전이 없으므로 위임도, 행위자와 명의를 가르는 칸도 설 자리가 없다.
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ delegationId: 'DLG-AAAAAAAAAAAAAAAAAAAA' })), /알 수 없는 필드/u);
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ actorMemberId: 'MEMBER-001' })), /알 수 없는 필드/u);
+  assert.throws(() => normalizeApprovalEvent(rejectionEvent({ rejectedBy: 'desk-h' })), /MEMBER-ID/u);
+
+  // 한 접기가 세 종류를 함께 낸다. 반려가 승인 이력으로 새면 반려 한 건이 문서를
+  // 승인된 것으로 만든다 — 종류를 여집합("제출이 아닌 것")으로 고르면 나는 결함이다.
+  const denied = foldApprovals([approvalEvent(), submissionEvent(), rejectionEvent()], { authority: LEDGER_AUTHORITY });
+  assert.strictEqual(denied.approvals.get('REQ-001').length, 1, '반려가 승인 이력에 들어가면 안 됩니다.');
+  assert.strictEqual(denied.submissions.get('REQ-001').length, 1);
+  assert.strictEqual(denied.rejections.get('REQ-001').length, 1);
+  assert.strictEqual(denied.rejections.get('REQ-001')[0].reason, '3장의 범위가 헌장과 어긋납니다.');
+
+  // 신뢰 상태는 그대로다. 반려는 제출 축의 사건이지 승인 축의 사건이 아니다.
+  const refused = trustState({ id: 'REQ-001', revision: REVISION_B }, denied.approvals.get('REQ-001'), denied.submissions.get('REQ-001'), denied.rejections.get('REQ-001'));
+  assert.strictEqual(refused.status, 'stale', '반려가 신뢰 상태를 바꾸면 안 됩니다.');
+  assert.strictEqual(refused.approvedRevision, REVISION_A, '반려는 무엇이 승인됐던 것인지도 지우지 않습니다.');
+  assert.strictEqual(refused.submission.state, 'rejected', '반려는 제출 축에 선다.');
+  assert.strictEqual(refused.submission.rejection.rejectedBy, 'MEMBER-001');
+  // 제출 사유와 반려 사유는 다른 칸이다. 한 자리에 겹쳐 쓰면 "왜 올렸나"와 "왜 아닌가"가
+  // 섞이고, 그 둘은 쓰는 사람도 읽는 사람도 다르다.
+  assert.strictEqual(refused.submission.revision, REVISION_B, '무엇이 반려됐는지 알려면 제출본이 남아야 합니다.');
+  // 판 번호는 반려를 세지 않는다 — 큰 자리는 승인 횟수, 작은 자리는 마지막 승인 이후
+  // 올린 횟수이고 반려는 올린 것이 아니다. 세면 같은 판이 검토를 왕복할 때마다 번호가
+  // 올라 "몇 판째인가"가 "몇 번 거절당했나"로 바뀐다.
+  assert.strictEqual(refused.versionLabel,
+    trustState({ id: 'REQ-001', revision: REVISION_B }, denied.approvals.get('REQ-001'), denied.submissions.get('REQ-001'), []).versionLabel);
+  // 위조된 반려도 인가에서 걸린다. 반려는 남의 문서를 줄에서 내리는 행위라, 쓰기
+  // 경로에서만 막으면 병합으로 들어온 반려가 작성자를 아무도 안 내린 판단으로 돌려보낸다.
+  const forgedRejection = foldApprovals([rejectionEvent({ clientId: 'ghost' })], { authority: LEDGER_AUTHORITY });
+  assert.strictEqual(forgedRejection.rejections.size, 0, '등록되지 않은 Client의 반려는 채택되면 안 됩니다.');
+  assert.strictEqual(foldApprovals([rejectionEvent({ rejectedBy: 'MEMBER-002' })], { authority: LEDGER_AUTHORITY }).rejections.size, 0,
+    'Client 소유자가 아닌 명의의 반려는 채택되면 안 됩니다.');
+
+  // ── 실제 Workspace: 사람만 반려한다 ────────────────────────────────────────
+  //
+  // 지금 이 문서는 승인된 판이다. 승인된 리비전은 반려로 되돌리지 않는다 — 되돌리려면
+  // 반려가 신뢰 상태를 바꿔야 하고, 그 셋의 뜻을 바꾸면 그것을 읽는 곳이 전부 흔들린다.
+  assert.throws(() => rejectDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, reason: '아니오' }),
+    /이미 승인된 리비전/u, '승인된 판의 반려는 거절되어야 합니다.');
+
+  fs.appendFileSync(documentFile, '\n반려당할 문장입니다.\n', 'utf8');
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'edit for rejection'], projectRoot);
+  const staged = rdl(['doc', 'submit', created.id, '--client-id', 'agent-a', '--project', 'crm', '--reason', '반려 흐름 검증']);
+  assert.strictEqual(staged.document.submission.state, 'pending');
+
+  // 사유 없는 반려는 형태부터 거절된다. 명령줄에서도 마찬가지다.
+  assert.throws(() => rejectDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id }), /--reason이 필요/u);
+  assert.throws(() => rejectDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, reason: '  ' }), /--reason이 필요/u);
+  const refusedCli = spawnSync(process.execPath, [cli, 'doc', 'reject', created.id, '--client-id', 'desk-h', '--project', 'crm', '--root', temporary],
+    { cwd: repository, encoding: 'utf8', env: Object.assign({}, process.env, { RUNDOL_HOME: home }) });
+  assert.notStrictEqual(refusedCli.status, 0, '사유 없는 반려는 명령줄에서도 거절되어야 합니다.');
+  assert(/--reason이 필요/u.test(refusedCli.stderr), `무엇이 빠졌는지 말해야 합니다: ${refusedCli.stderr}`);
+
+  // 사람 게이트. 반려도 내용에 대한 사람의 판단이라 승인과 같은 자격을 요구하고,
+  // 판정은 같은 함수가 한다 — 표면마다 두면 그중 느슨한 쪽이 게이트의 높이가 된다.
+  assert.throws(() => rejectDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: created.id, reason: '에이전트가 반려' }),
+    /활성 human Client만 반려할 수 있습니다.*유형이 agent/u, '에이전트 Client의 반려는 거절되어야 합니다.');
+
+  const rejected = rdl(['doc', 'reject', created.id, '--client-id', 'desk-h', '--project', 'crm', '--reason', '결정 근거가 헌장과 어긋납니다.']);
+  assert.strictEqual(rejected.created, true);
+  assert.strictEqual(rejected.document.status, 'stale', '반려가 신뢰 상태를 바꾸면 안 됩니다 — 낡음은 낡음 그대로입니다.');
+  assert.strictEqual(rejected.document.submission.state, 'rejected');
+  assert.strictEqual(rejected.document.submission.rejection.reason, '결정 근거가 헌장과 어긋납니다.');
+  assert.strictEqual(rejected.document.submission.rejection.rejectedBy, 'MEMBER-001');
+  // 같은 판을 두 번 반려해도 원장이 늘지 않는다 — 아무 사실도 더하지 않는 줄이다.
+  assert.strictEqual(rdl(['doc', 'reject', created.id, '--client-id', 'desk-h', '--project', 'crm', '--reason', '한 번 더']).created, false);
+  // 문서에는 아무것도 쓰지 않는다. 썼다면 그 쓰기가 리비전을 바꿔 방금 한 반려가
+  // 다른 판의 반려가 된다.
+  const afterReject = documentStatus(temporary, { project: 'crm', submission: 'rejected' });
+  assert.strictEqual(afterReject.documents.length, 1, '제출 축으로 반려된 문서를 골라낼 수 있어야 합니다.');
+  assert.strictEqual(afterReject.documents[0].revision, rejected.document.revision, '반려가 문서 리비전을 바꾸면 안 됩니다.');
+  assert.strictEqual(afterReject.submissionCounts.rejected, 1, '반려도 0으로 채워 세는 축의 값이어야 합니다.');
+
+  // 반려된 문서는 검토 줄에서 빠진다. 「내 차례」가 아니라 「작성자 차례」로 넘어간
+  // 것이고, 그대로 세워 두면 검토자는 자기가 이미 답한 것을 매번 다시 지나쳐야 한다.
+  // 다만 몇 건이 빠졌는지는 값으로 나온다 — 조용히 빼면 그 판단이 어느 화면에도 없다.
+  const afterRejectQueue = require('../src/board').workspaceSnapshot(temporary, 'crm', null).reviewQueue;
+  assert.strictEqual(afterRejectQueue.rejected, 1, '반려로 줄에서 빠진 수를 화면이 말할 수 있어야 합니다.');
+  assert(!afterRejectQueue.items.some((item) => item.id === created.id), '반려한 문서는 검토 줄에서 빠져야 합니다.');
+  // 셈은 그대로 신뢰 상태의 셈이다. 반려가 그 축을 건드리면 안 되므로 여전히 낡음 1건이다.
+  assert.strictEqual(afterRejectQueue.counts.stale, 1);
+
+  // 고치기만 하고 다시 안 올리면 여전히 작성자 차례다. drifted로 떨어뜨리고 싶어지지만
+  // 그 값은 "승인자가 볼 것과 지금 파일이 다르다"는 승인자 쪽 경고이고, 반려된 뒤에는
+  // 볼 사람이 줄에 서 있지 않다 — 차례를 옮기는 것은 고치는 행위가 아니라 올리는 행위다.
+  fs.appendFileSync(documentFile, '\n반려를 받고 고친 문장입니다.\n', 'utf8');
+  const editedAfterReject = rdl(['doc', 'status', '--project', 'crm']).documents.find((document) => document.id === created.id);
+  assert.strictEqual(editedAfterReject.submission.state, 'rejected', '고치기만 해서는 차례가 넘어가지 않습니다.');
+  assert.strictEqual(editedAfterReject.status, 'stale');
+
+  // 다시 올리면 다시 사람 차례다. 반려가 막다른 길이면 작성자는 고칠 곳을 알아도
+  // 되돌아올 길이 없고, 그러면 반려는 문서를 죽이는 단추가 된다.
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'fix after rejection'], projectRoot);
+  const resubmittedAfterReject = rdl(['doc', 'submit', created.id, '--client-id', 'agent-a', '--project', 'crm', '--reason', '지적한 범위를 고쳤습니다']);
+  assert.strictEqual(resubmittedAfterReject.created, true);
+  assert.strictEqual(resubmittedAfterReject.document.submission.state, 'pending', '반려 뒤 다시 제출하면 다시 사람 차례여야 합니다.');
+  assert.strictEqual(resubmittedAfterReject.document.status, 'stale', '재제출도 신뢰 상태를 바꾸지 않습니다.');
+  assert.strictEqual(require('../src/board').workspaceSnapshot(temporary, 'crm', null).reviewQueue.rejected, 0, '다시 올린 문서는 반려에서 빠져나온다.');
+
+  // 이력에도 반려가 실린다. 이것이 없으면 두 번 되돌아온 문서의 이력이 "그냥 세 번
+  // 올렸다"로 읽히고, 왜 되돌아왔는지는 어디에도 남지 않는다.
+  const rejectionHistory = documentHistory(temporary, { project: 'crm', targetId: created.id });
+  assert.strictEqual(rejectionHistory.rejections.length, 1);
+  assert.strictEqual(rejectionHistory.rejections[0].reason, '결정 근거가 헌장과 어긋납니다.');
+  assert.strictEqual(documentApprovals(temporary, { project: 'crm' }).rejections.get(created.id).length, 1);
+
+  // 반려도 원장 검증을 지난다. 원장을 새로 열었다면 check.js의 검증 루프를 복제해야
+  // 했고, 복제를 잊는 순간 위조된 반려가 아무 데서도 안 걸린다.
+  // 샤드는 Client마다 갈린다. 제출은 agent-a가, 반려는 desk-h가 남겼으므로 첫 파일을
+  // 집으면 반려 줄이 없는 샤드를 고칠 수 있다 — 그러면 이 시험은 아무것도 재지 않는다.
+  const rejectionShard = fs.readdirSync(shardDirectory).map((name) => path.join(shardDirectory, name))
+    .find((file) => fs.readFileSync(file, 'utf8').includes('"approval.rejected"'));
+  assert(rejectionShard, '반려를 담은 샤드를 찾아야 합니다.');
+  const rejectionOriginal = fs.readFileSync(rejectionShard, 'utf8');
+  const rejectionTampered = rejectionOriginal.split(/\r?\n/u).filter(Boolean).map((line) => {
+    const event = JSON.parse(line);
+    // 반려 사유만 바꿔치기한다. 사유가 반려의 내용 전부라, 그것을 고치면 다른 반려가 된다.
+    return JSON.stringify(event.type === 'approval.rejected' ? Object.assign({}, event, { reason: '지어낸 반려 사유' }) : event);
+  }).join('\n');
+  assert.notStrictEqual(rejectionTampered, rejectionOriginal.trim(), '반려 줄이 이 샤드에 있어야 바꿔치기를 잴 수 있습니다.');
+  fs.writeFileSync(rejectionShard, `${rejectionTampered}\n`, 'utf8');
+  const rejectionCheck = require('../src/check').checkWorkspace(temporary, { project: 'crm' });
+  assert(rejectionCheck.diagnostics.some((item) => item.code === 'RDL-APPROVE-014'),
+    `위조된 반려는 원장 검증에서 걸려야 합니다: ${JSON.stringify(rejectionCheck.diagnostics.slice(0, 5))}`);
+  fs.writeFileSync(rejectionShard, rejectionOriginal, 'utf8');
+  assert.strictEqual(rdl(['check']).summary.errors, 0, '되돌린 원장은 다시 깨끗해야 합니다.');
+
   // 화면이 쓰는 자리도 여기서 지난다. 명령줄만 시험하면 보드가 자기 판정을 따로 갖게
   // 되고, 표면마다 판정이 갈리면 그중 느슨한 쪽이 게이트의 실제 높이가 된다.
   module.exports = boardApprovalSurface(created.id, documentFile)
@@ -446,7 +610,48 @@ async function boardApprovalSurface(documentId, documentFile) {
     assert.strictEqual((await request(port, `${diffPath}?axis=since-approval`)).status, 200, '하네스에서도 조회는 열려 있어야 합니다.');
     delete process.env.RUNDOL_HARNESS_CHILD;
 
-    // human Client의 승인은 그대로 된다.
+    // ── 화면에서 반려한다 ────────────────────────────────────────────────────
+    //
+    // 「승인」 옆에 「반려」가 없는 동안 검토자가 "아니오"를 말할 자리가 화면에 없었고,
+    // 그 판단은 댓글이나 태스크로 샜다. 서버에 엔드포인트가 없었기 때문이다.
+    const rejectPath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/reject`;
+    // 사유는 화면에서도 필수다. 반려는 사유가 내용 전부라, 없으면 작성자는 무엇을
+    // 고쳐야 할지 모른 채 되돌려받는다.
+    assert.strictEqual((await post(rejectPath, { clientId: 'desk-h' })).body.code, 'missing-reason');
+    assert.strictEqual((await post(rejectPath, { clientId: 'desk-h', reason: '   ' })).body.code, 'missing-reason');
+    assert.strictEqual((await post(rejectPath, { reason: '아닙니다' })).body.code, 'missing-approver');
+    // 근거는 반려의 칸이 아니다. 승인 폼을 같이 쓰므로 화면이 근거를 실어 보낼 수 있는데,
+    // 서버는 그것을 원장으로 넘기지 않고 떨어뜨린다 — 넘기면 반려 이벤트가 모르는 필드로
+    // 거절되어 화면은 "왜 안 되는지 모를 실패"를 받는다. 폼이 하나여도 계약은 둘이다.
+    const withBasis = await post(rejectPath, { clientId: 'desk-h', reason: '아닙니다', basis: [{ kind: 'read' }] });
+    assert.strictEqual(withBasis.status, 200, `근거는 떨어지고 반려는 성립해야 합니다: ${JSON.stringify(withBasis.body)}`);
+    assert.strictEqual(withBasis.body.document.submission.state, 'rejected');
+    // 신뢰 상태는 그대로다. 반려는 제출 축의 사건이라 미승인은 미승인, 낡음은 낡음이다.
+    assert.strictEqual(withBasis.body.document.status, 'stale', '반려가 신뢰 상태를 바꾸면 안 됩니다.');
+    assert.strictEqual(withBasis.body.document.submission.rejection.reason, '아닙니다');
+    assert.strictEqual(withBasis.body.document.submission.rejection.rejectedBy, 'MEMBER-001');
+    // 반려한 문서는 검토 줄에서 빠지되, 몇 건이 빠졌는지는 화면이 말할 수 있어야 한다.
+    const afterRejection = (await request(port, '/api/projects/crm/board-snapshot')).body;
+    assert.strictEqual(afterRejection.reviewQueue.rejected, 1);
+    assert(!afterRejection.reviewQueue.items.some((item) => item.id === documentId), '반려한 문서는 줄에서 빠져야 합니다.');
+    assert.strictEqual(afterRejection.documents.find((item) => item.id === documentId).approval.status, 'stale');
+    // 같은 판을 두 번 반려해도 원장이 늘지 않는다.
+    assert.strictEqual((await post(rejectPath, { clientId: 'desk-h', reason: '한 번 더' })).body.created, false);
+    // 사람 게이트는 반려에도 선다. 자격 없는 반려가 통하면 에이전트가 사람의 판단을
+    // 흉내 내어 남의 문서를 줄에서 내릴 수 있다.
+    const rejectedByAgent = await post(rejectPath, { clientId: 'agent-a', reason: '에이전트가 반려' });
+    assert.strictEqual(rejectedByAgent.status, 400, `에이전트 Client의 반려는 거절되어야 합니다: ${JSON.stringify(rejectedByAgent.body)}`);
+    assert(/활성 human Client만 반려할 수 있습니다/u.test(rejectedByAgent.body.error), `거절 사유가 그대로 와야 합니다: ${rejectedByAgent.body.error}`);
+    // 하네스가 띄운 Board는 human 자격을 HTTP로 빌려주는 창구다. 반려도 같은 자격을
+    // 요구하므로 같은 이유로 막힌다.
+    process.env.RUNDOL_HARNESS_CHILD = '1';
+    const harnessedRejection = await post(rejectPath, { clientId: 'desk-h', reason: '아닙니다' });
+    delete process.env.RUNDOL_HARNESS_CHILD;
+    assert.strictEqual(harnessedRejection.status, 403, '하네스가 띄운 Board에서는 반려도 거절되어야 합니다.');
+    assert.strictEqual(harnessedRejection.body.code, 'harness-board');
+
+    // human Client의 승인은 그대로 된다. 반려된 뒤에도 승인이 막히지 않는다는 것을
+    // 여기서 함께 본다 — 반려는 문서를 죽이는 단추가 아니다.
     const granted = await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read', detail: '3장 전체 재독' }], reason: '화면에서 차분을 보고 승인함' });
     assert.strictEqual(granted.status, 200, `승인이 되어야 합니다: ${JSON.stringify(granted.body)}`);
     assert.strictEqual(granted.body.document.status, 'approved');

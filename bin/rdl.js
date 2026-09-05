@@ -67,10 +67,11 @@ Usage:
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl doc identity [--project <key>] [--apply] [--json]
   rdl doc status [--project <key>] [--status <approved|stale|unapproved>]
-                 [--submission <none|pending|drifted|settled>] [--json]
+                 [--submission <none|pending|drifted|settled|rejected>] [--json]
   rdl doc submit <ARTIFACT-ID> --client-id <id> [--member <MEMBER-ID>] [--reason <사유>] [--project <key>] [--json]
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
                   --client-id <human-client-id> [--reason <사유>] [--project <key>] [--json]
+  rdl doc reject <ARTIFACT-ID> --client-id <human-client-id> --reason <사유> [--member <MEMBER-ID>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
   rdl doc pipeline [--project <key>] [--json]
@@ -1710,7 +1711,7 @@ async function main() {
       printOperation(require('../src/document-analysis').documentPipeline(pipelineOptions.root, { project: pipelineOptions.project }), pipelineOptions.json);
       return 0;
     }
-    if (['status', 'approve', 'history', 'diff', 'submit'].includes(subcommand)) {
+    if (['status', 'approve', 'reject', 'history', 'diff', 'submit'].includes(subcommand)) {
       const options = parseOperationArgs(argv);
       const approval = require('../src/approval');
       if (subcommand === 'status') {
@@ -1734,6 +1735,17 @@ async function main() {
         printOperation(approval.submitDocument(options.root, {
           project: options.project, clientId: options.clientId, targetId: options.positional[0],
           submittedBy: options.member, reason: options.reason, rootRequestId: options.requestId
+        }), options.json);
+        return 0;
+      }
+      // 반려는 검토자가 "아니오"를 말하는 자리다. 승인과 같은 사람 게이트를 지나지만
+      // 근거(--basis)는 받지 않고 사유가 필수다 — 승인에서 사유가 선택인 것은 근거가
+      // 따로 있어서이고, 반려는 사유가 내용 전부다. 명의는 Client 소유자이므로
+      // --member는 선택이다(승인과 달리 위임이 설 자리가 없어 고를 여지도 없다).
+      if (subcommand === 'reject') {
+        printOperation(approval.rejectDocument(options.root, {
+          project: options.project, clientId: options.clientId, targetId: options.positional[0],
+          rejectedBy: options.member, reason: options.reason, rootRequestId: options.requestId
         }), options.json);
         return 0;
       }

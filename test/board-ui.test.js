@@ -1024,8 +1024,17 @@ module.exports = (async () => {
       approvedBy: status === 'unapproved' ? null : 'MEMBER-001',
       approvals: status === 'unapproved' ? 0 : 2,
       versionLabel: '2.0',
-      submission: { state: submissionState || 'none', revision: null, submittedBy: null, reason: null, submissions: 0 }
+      submission: { state: submissionState || 'none', revision: null, submittedBy: null, reason: null, submissions: 0, rejection: null, rejections: 0 }
     };
+  }
+  // 반려된 판. 신뢰 상태는 그대로이고 제출 축만 바뀐다 — 그것이 이 갈래의 전부다.
+  function rejectedTrust(status, reason) {
+    const value = trust(status);
+    value.submission = Object.assign({}, value.submission, {
+      state: 'rejected', rejections: 1,
+      rejection: { revision: 'c'.repeat(64), rejectedBy: 'MEMBER-001', rejectedByClient: 'desk-h', reason, recordedAt: '2026-09-05T00:00:00.000Z' }
+    });
+    return value;
   }
   function snapshotOf(documents, queue, approvers) {
     return {
@@ -1209,6 +1218,87 @@ module.exports = (async () => {
     assert.strictEqual(panel.querySelector('[data-approve-form]'), null, '고를 자격자가 없으면 폼을 세우면 안 됩니다');
     assert(panel.textContent.includes('활성 human Client'), '자격이 무엇인지 말해야 합니다');
     dom.window.close();
+  }
+
+  // 7) 「반려」가 「승인」 옆에 선다. 이 단추가 없는 동안 검토자가 "아니오"를 말할 자리가
+  //    화면에 없었고, 그래서 그 판단은 댓글이나 태스크로 샜다 — 새면 원장 밖의 말이 되어
+  //    상태를 만들지 못한다.
+  {
+    const refusal = '활성 human Client만 반려할 수 있습니다: agent-a은(는) 유형이 agent입니다.';
+    let sent = null;
+    const { dom } = open((path, options) => {
+      if (/\/diff\?/u.test(path)) return { body: { axis: 'since-approval', status: 'stale', diff: '@@\n+반려당할 줄\n' } };
+      if (/\/reject$/u.test(path)) {
+        sent = JSON.parse(options.body);
+        return { ok: false, status: 400, body: { error: refusal, code: 'rejection-refused' } };
+      }
+      return null;
+    },
+    [documentValue('ADR-050', trust('stale'))],
+    { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 0 }, total: 1, rejected: 0,
+      items: [{ status: 'stale', id: 'ADR-050', kind: 'adr', title: '문서 ADR-050', file: 'docs/ADR-050.md', approvedBy: 'MEMBER-001', approvals: 1 }] },
+    'review-inbox');
+    const click = (selector) => dom.window.document.querySelector(selector).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    click('[data-approve-open="ADR-050"]');
+    await settle();
+    const panel = dom.window.document.querySelector('#review-inbox-list .approval-panel');
+    assert(panel.querySelector('[data-approve-reject="ADR-050"]'), '승인 옆에 반려가 서야 합니다');
+    // 반려는 기본 단추가 아니다. 사유 칸에서 엔터를 친 사람이 반려를 보내게 되면 안 된다 —
+    // 되돌릴 수 없는 판단은 눌러서만 나가야 한다.
+    assert.strictEqual(panel.querySelector('[data-approve-reject]').getAttribute('type'), 'button', '반려가 폼의 기본 동작이 되면 안 됩니다');
+    // 사유가 비면 보내지 않는다. 서버도 막지만 왕복하는 동안 사람은 자기가 무엇을
+    // 빠뜨렸는지 모른 채 기다린다.
+    click('[data-approve-reject="ADR-050"]');
+    await settle();
+    assert.strictEqual(sent, null, '사유 없이 반려가 나가면 안 됩니다');
+    const reason = dom.window.document.querySelector('[data-approve-field="reason"]');
+    reason.value = '   ';
+    reason.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    click('[data-approve-reject="ADR-050"]');
+    await settle();
+    assert.strictEqual(sent, null, '공백뿐인 사유도 사유가 아닙니다');
+    reason.value = '결정 근거가 헌장과 어긋납니다.';
+    reason.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    click('[data-approve-reject="ADR-050"]');
+    await settle();
+    assert.strictEqual(sent.reason, '결정 근거가 헌장과 어긋납니다.');
+    assert.strictEqual(sent.clientId, 'desk-h');
+    // 근거는 반려의 칸이 아니다. 폼을 승인과 같이 쓰지만 계약은 둘이라, 화면이 근거를
+    // 실어 보내면 서버가 모르는 필드로 거절한다.
+    assert.strictEqual(sent.basis, undefined, '반려에 근거를 실어 보내면 안 됩니다');
+    // 거절은 서버의 말 그대로 남는다. "반려 실패"로 뭉개면 무엇이 걸렸는지 사라진다.
+    assert.strictEqual(dom.window.document.querySelector('#review-inbox-list .approval-failure').textContent, refusal);
+    dom.window.close();
+  }
+
+  // 8) 반려한 문서는 검토 줄에서 빠지고 문서 화면이 그 사실을 말한다. 조용히 빼면 그
+  //    판단이 어느 화면에도 남지 않고, 그것은 승인 옆에 반려가 없던 때와 같은 자리다.
+  {
+    const said = '3장의 범위가 헌장과 어긋납니다.';
+    const { dom } = open((path) => (/\/diff\?/u.test(path) ? { body: { axis: 'since-approval', status: 'stale', diff: '@@\n+줄\n' } } : null),
+      [documentValue('ADR-060', rejectedTrust('stale', said))], null, 'document', 'ADR-060');
+    const detail = text(dom, 'document-approval');
+    // 신뢰 상태의 말은 그대로다. 반려는 그 축을 건드리지 않는다.
+    assert(detail.includes('낡음'), `신뢰 상태는 그대로여야 합니다: ${detail}`);
+    assert(detail.includes('반려했습니다'), '반려 사실이 문서 화면에 서야 합니다');
+    assert(detail.includes(said), '무엇을 고쳐야 하는지는 사유에만 있습니다');
+    assert(detail.includes('rdl doc submit'), '되돌아올 길을 안내해야 합니다');
+    dom.window.close();
+
+    const inbox = open(() => null, [],
+      { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 2 }, total: 1, rejected: 2,
+        items: [{ status: 'stale', id: 'ADR-070', kind: 'adr', title: '문서 ADR-070', file: 'docs/ADR-070.md', approvedBy: 'MEMBER-001', approvals: 1 }] },
+      'review-inbox');
+    const summary = text(inbox.dom, 'review-inbox-summary');
+    assert(summary.includes('2건') && summary.includes('반려되어'), `줄에서 빠진 수를 말해야 합니다: ${summary}`);
+    // 셈과 줄이 어긋나는 이유가 둘이라 뭉치면 안 된다. 여기서 빠진 것은 잘린 것이
+    // 아니라 반려된 것이고, 잘림으로 적으면 검토자는 자기가 방금 내린 판단을 스냅숏이
+    // 삼킨 줄로 읽는다.
+    inbox.dom.window.document.querySelector('[data-review-filter="unapproved"]').dispatchEvent(new inbox.dom.window.MouseEvent('click', { bubbles: true }));
+    const filtered = text(inbox.dom, 'review-inbox-summary');
+    assert(filtered.includes('2건 중 0건'), `거른 갈래에서도 어긋남을 말해야 합니다: ${filtered}`);
+    assert(filtered.includes('작성자 차례로 넘어갔습니다') && !filtered.includes('앞 1건까지만'), `빠진 이유가 잘림이면 안 됩니다: ${filtered}`);
+    inbox.dom.window.close();
   }
 
   console.log('document approval tests passed');
