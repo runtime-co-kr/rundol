@@ -137,6 +137,36 @@ assert.deepStrictEqual(
   '어느 성질도 쓸 수 없는 검증 방법이 있습니다.'
 );
 
+// 작성 순서 표는 정규 유형 전부를 덮어야 하고, 선행으로 적힌 것도 정규 유형이어야 한다.
+// 빠진 유형은 상류가 없는 것으로 읽히므로 그 유형의 하류가 영영 걸리지 않고, 모르는
+// 선행은 아무 문서와도 맞지 않아 조용히 죽는다 — 둘 다 아무 신호를 내지 않는 결함이다.
+assert.deepStrictEqual(
+  Object.keys(vocabulary.DEFAULT_DOCUMENT_ORDER).sort(),
+  vocabulary.REGULAR_TYPES.slice().sort(),
+  '작성 순서 표와 정규 문서 유형의 집합이 다릅니다.'
+);
+for (const [type, dependencies] of Object.entries(vocabulary.DEFAULT_DOCUMENT_ORDER)) {
+  for (const dependency of dependencies) {
+    assert(vocabulary.REGULAR_TYPES.includes(dependency), `${type}의 선행 ${dependency}가 정본에 없습니다.`);
+    assert.notStrictEqual(dependency, type, `${type}이 자기 자신을 선행으로 갖습니다.`);
+  }
+}
+// 순서에 순환이 있으면 상류의 이행 폐포가 끝나지 않는다. 표가 작아 눈으로 보이지만,
+// 눈으로 보이는 것은 표가 작을 때뿐이다.
+{
+  const visiting = new Set();
+  const done = new Set();
+  const walk = (type) => {
+    if (done.has(type)) return;
+    assert(!visiting.has(type), `작성 순서에 순환이 있습니다: ${type}`);
+    visiting.add(type);
+    for (const dependency of vocabulary.DEFAULT_DOCUMENT_ORDER[type] || []) walk(dependency);
+    visiting.delete(type);
+    done.add(type);
+  };
+  for (const type of vocabulary.REGULAR_TYPES) walk(type);
+}
+
 // 서브 종류는 정규 문서 유형과 겹치지 않아야 한다. 겹치면 문서 안 표기 FN-001이
 // 문서 식별자로도 읽히고, 그러면 참조에서 부모의 경계를 찾을 수 없다 — 부모를 단
 // 것 자체가 뜻을 잃는다. 정규 유형이 세 글자이므로 두 글자로 두는 것이 그 강제다.

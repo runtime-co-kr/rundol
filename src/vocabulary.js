@@ -77,6 +77,26 @@ const IMPLEMENTATION_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST']);
 const RELATED_REQUIRED_TYPES = Object.freeze(['REQ', 'SCR', 'MOD', 'IFC', 'TST', 'RUN']);
 
 /**
+ * 문서 작성 순서. 유형마다 그보다 먼저 서야 하는 유형을 적는다 — contract next가
+ * "지금 무엇을 쓸 수 있나"를 답할 때 보는 표이고, 하류가 상류 확정보다 앞섰는지를
+ * 판정할 때 무엇이 상류인지도 이 표가 정한다. related는 방향이 없으므로 방향은
+ * 유형이 갖는다.
+ *
+ * 어휘로 옮긴 이유. 이 표는 document-profile.js에 있었는데 그 모듈은 파일을 읽고,
+ * 판정 계층은 파일을 몰라야 한다. 표가 저 안에 있는 한 판정부는 이 표를 볼 수 없고,
+ * 못 보면 같은 순서를 두 번째로 적게 된다 — 두 벌은 한쪽만 고쳐지는 날 갈리고,
+ * 그때 같은 문서가 "쓸 수 있다"와 "상류가 아직 없다"를 동시에 듣는다.
+ * VALIDATION_METHODS_BY_NATURE와 TRANSITION_SLOT_UNIT_KINDS가 여기 있는 것과 같은
+ * 모양이다 — 어휘 사이의 관계도 값이다.
+ */
+const DEFAULT_DOCUMENT_ORDER = Object.freeze({
+  PRD: Object.freeze([]), REQ: Object.freeze(['PRD']), ARC: Object.freeze(['REQ']),
+  SCR: Object.freeze(['REQ']), MOD: Object.freeze(['REQ']), IFC: Object.freeze(['REQ']),
+  ADR: Object.freeze(['ARC']), TST: Object.freeze(['REQ']), RUN: Object.freeze(['REQ']),
+  STD: Object.freeze([]), GLS: Object.freeze([])
+});
+
+/**
  * 보드가 쓰는 문서 분류 키. REGULAR_TYPES와 짝이 아니다 — charter와 clipping은
  * 정규 유형이 아니고, 이쪽은 긴 이름을 쓴다. 둘을 합치면 저장값과 분류가 한 이름
  * 아래 섞인다.
@@ -654,6 +674,7 @@ module.exports = Object.freeze({
   REGULAR_TYPES,
   IMPLEMENTATION_TYPES,
   RELATED_REQUIRED_TYPES,
+  DEFAULT_DOCUMENT_ORDER,
   DOCUMENT_TYPE_KEYS,
   DOCUMENT_STATE_KEYS,
   PROFILE_NAMES,
