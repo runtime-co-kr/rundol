@@ -10,6 +10,9 @@ const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-hook-'));
 const home = path.join(temporary, 'runtime');
 process.env.RUNDOL_HOME = home;
 
+// 승인 낡음 시험은 실제 Workspace를 요구한다 — 원장이 없으면 낡음이라는 사실 자체가 없다.
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-hook-ws-'));
+
 const { normalizeEvent, normalizePayload, runHook } = require('../src/hook');
 
 function git(args, cwd) {
@@ -159,6 +162,65 @@ try {
   assert.strictEqual(recorded.record.binding, 'unbound', 'HEAD의 실제 결박 상태를 적는다 — 보고가 아니라 커밋이 답한다');
   assert.strictEqual(recorded.block, false, '계측은 막지 않는다');
 
+  // ── post-tool-use: 저장 시점의 승인 낡음 신호 ──────────────────────────
+  //
+  // 저장 직후가 "승인 대비 바뀌었다"를 말할 수 있는 가장 이른 자리다. 감시는 다음 스캔까지
+  // 기다리고 rdl doc status는 일부러 쳐야 보이므로, 그 사이에 승인 안 된 문서 위로 작업이
+  // 계속 쌓인다.
+  //
+  // Workspace가 없는 저장소에서는 아무 말도 하지 않는다 — 판정하지 못하면 통과다.
+  fs.writeFileSync(path.join(temporary, 'plain.md'), '---\nid: REQ-999\n---\n\n# 그냥 문서\n', 'utf8');
+  const noWorkspace = hook('post-tool-use', { cwd: temporary, tool_name: 'Edit', tool_input: { file_path: path.join(temporary, 'plain.md') } });
+  assert.deepStrictEqual(noWorkspace.context, [], 'Workspace를 찾지 못하면 판정하지 않는다');
+  assert.strictEqual(noWorkspace.block, false);
+
+  const cli = path.join(path.resolve(__dirname, '..'), 'bin', 'rdl.js');
+  const rdl = (args) => {
+    const result = spawnSync(process.execPath, [cli].concat(args, ['--root', workspace, '--json']), {
+      cwd: path.resolve(__dirname, '..'), encoding: 'utf8', env: Object.assign({}, process.env, { RUNDOL_HOME: home })
+    });
+    assert.strictEqual(result.status, 0, `rdl ${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
+    return JSON.parse(result.stdout.trim());
+  };
+
+  git(['init', '-b', 'main', workspace], os.tmpdir());
+  git(['config', 'user.email', 'hook@test.local'], workspace);
+  git(['config', 'user.name', 'Hook Test'], workspace);
+  fs.writeFileSync(path.join(workspace, 'README.md'), '# hook\n', 'utf8');
+  git(['add', 'README.md'], workspace);
+  git(['commit', '-m', 'initial'], workspace);
+  rdl(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
+  rdl(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
+
+  const projectRoot = path.join(workspace, 'projects', 'crm');
+  const created = rdl(['doc', 'create', 'ADR', '저장 시점 신호 검증', '--owner', 'MEMBER-001', '--scope', '저장 시점 낡음 신호 검증', '--exclude', '구현 절차', '--project', 'crm']);
+  const documentFile = path.join(projectRoot, created.relativeFile.replace(/^projects\/crm\//u, ''));
+
+  // 미승인은 신호가 아니다. 아직 아무도 근거로 삼지 않은 줄이고, 승인 축을 쓰지 않는
+  // 프로젝트에서는 문서가 전건 미승인이라 저장할 때마다 같은 말이 나온다.
+  const unapproved = hook('post-tool-use', { cwd: projectRoot, tool_name: 'Write', tool_input: { file_path: documentFile } });
+  assert.deepStrictEqual(unapproved.context, [], '미승인은 사건이 아니라 줄이므로 저장 시점에 말하지 않는다');
+
+  require('../src/approval').approveDocument(workspace, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] });
+  assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Write', tool_input: { file_path: documentFile } }).context, [],
+    '승인된 리비전을 그대로 저장하는 것은 사건이 아니다');
+
+  // 한 글자만 고쳐도 승인이 낡는다. 그 사실이 저장하는 그 자리에서 나와야 한다.
+  fs.appendFileSync(documentFile, '\n승인 이후 추가된 문장입니다.\n', 'utf8');
+  const staleSave = hook('post-tool-use', { cwd: projectRoot, session_id: 'sess-4', tool_name: 'Edit', tool_input: { file_path: documentFile } });
+  assert.strictEqual(staleSave.block, false, '알릴 뿐 막지 않는다');
+  assert.ok(staleSave.context.some((line) => line.includes(created.id) && line.includes('검토 필요')), `승인 대비 바뀌었음을 말한다: ${JSON.stringify(staleSave.context)}`);
+  assert.ok(staleSave.context.some((line) => line.includes('MEMBER-001')), '누가 승인했던 것인지를 싣는다');
+  assert.ok(staleSave.context.some((line) => line.includes('--since-approval')), '무엇이 바뀌었는지 볼 방법을 함께 준다');
+
+  // 판정은 approval.js가 한다 — 훅과 rdl doc status가 같은 문서에 같은 답을 내야 한다.
+  const status = rdl(['doc', 'status', '--project', 'crm', '--status', 'stale']);
+  assert.ok(status.documents.some((document) => document.id === created.id), '훅이 말한 낡음은 doc status의 낡음과 같은 것이다');
+
+  // 문서가 아닌 저장과 문서를 쓰지 않는 도구는 이 판정을 지나지 않는다.
+  assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Edit', tool_input: { file_path: path.join(projectRoot, 'tasks.json') } }).context, [], 'md가 아니면 볼 것이 없다');
+  assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Read', tool_input: { file_path: documentFile } }).context, [], '읽기는 저장이 아니다');
+
   // ── session-end ───────────────────────────────────────────────────────
 
   const ended = hook('session-end', { cwd: temporary, session_id: 'sess-3' });
@@ -167,5 +229,6 @@ try {
   assert.strictEqual(base.length, 40);
   console.log('hook tests passed');
 } finally {
-  fs.rmSync(temporary, { recursive: true, force: true });
+  fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }

@@ -171,6 +171,105 @@ const running = (async () => {
   const changedSourceKey = sourceChanged.records.find((record) => record.type === 'watch.diagnostic').dedupKey;
   assert.notStrictEqual(changedSourceKey, firstSourceKey, 'same code must re-emit when its responsible file revision changes');
 
+  // ── 승인 낡음이 감시 신호로 나간다 ──────────────────────────────────────────
+  //
+  // "문서가 승인 이후 바뀌었다"는 사실은 지금까지 화면(board)과 명령(doc status)에만
+  // 있었다. 감시가 그것을 못 내면 사람은 승인 대비 변경을 알기 위해 매번 명령을 쳐야 하고,
+  // 치지 않으면 승인 안 된 문서 위로 작업이 계속 쌓인다.
+  //
+  // 판정은 approval.js의 foldApprovals/trustState를 그대로 부른다. 원장 읽기만 주입해
+  // 두 벌의 판정이 생기지 않았다는 것을 이 시험이 못박는다.
+  const { foldApprovals } = require('../src/approval');
+  const LEDGER_AUTHORITY = { clientOwners: [['agent-a', 'MEMBER-001']], members: ['MEMBER-001'], delegations: [] };
+  const approvedRevision = '5'.repeat(64);
+  const editedRevision = '6'.repeat(64);
+  const reeditedRevision = '8'.repeat(64);
+  const approvalEvent = (eventId, reviewedRevision) => ({
+    schemaVersion: 1, eventId, type: 'approval.granted',
+    rootRequestId: 'REQ-11111111111111111111', requestId: eventId.replace(/^EVT-/u, 'REQ-'),
+    clientId: 'agent-a', projectId: 'demo', targetId: 'REQ-001', reviewedRevision,
+    approvedBy: 'MEMBER-001', actorMemberId: 'MEMBER-001', basis: [{ kind: 'read' }],
+    recordedAt: '2026-09-05T00:00:00.000Z'
+  });
+  const approvedOnce = foldApprovals([approvalEvent('EVT-AAAAAAAAAAAAAAAAAAAA', approvedRevision)], { authority: LEDGER_AUTHORITY }).approvals;
+
+  const staleRoot = fixture('approval-stale');
+  const staleHead = command(staleRoot, ['git', 'rev-parse', 'HEAD']);
+  let staleDocumentRevision = editedRevision;
+  // REQ-002는 승인 이력이 없다 — 미승인이다.
+  const staleSnapshot = () => ({
+    head: staleHead,
+    gitStatusDigest: 'a'.repeat(64),
+    documents: [['REQ-001', staleDocumentRevision], ['REQ-002', '7'.repeat(64)]],
+    taskShardDigests: [],
+    projectConfigDigests: [],
+    workspaceConfigDigests: [],
+    registeredEventShardHeads: [],
+    diagnosticSourceRevisions: []
+  });
+  const staleSession = createWatchSession(staleRoot, { project: 'demo', watchId: 'WATCH-00000000000000000012' }, {
+    inputSnapshot: staleSnapshot,
+    checkWorkspace: () => ({ diagnostics: [] }),
+    approvalHistories: () => approvedOnce,
+    writeRecords: () => {}
+  });
+  const staleFirst = await staleSession.scanOnce();
+  const staleSignals = staleFirst.records.filter((record) => record.type === 'watch.diagnostic');
+  assert.strictEqual(staleSignals.length, 1, '승인 후 개정된 문서만 신호가 된다');
+  assert.strictEqual(staleSignals[0].targetId, 'REQ-001');
+  assert.strictEqual(staleSignals[0].code, 'RDL-APPROVE-030', '판정이 approval.js의 것이므로 코드도 승인의 이름 공간에 선다');
+  assert.strictEqual(staleSignals[0].category, 'approval');
+  assert.strictEqual(staleSignals[0].severity, 'warning');
+  assert.strictEqual(staleSignals[0].targetRevision, editedRevision, '신호가 결박하는 리비전은 지금 스냅샷의 리비전이다');
+  assert.strictEqual(staleSignals[0].dedupKey, dedupKey('REQ-001', 'RDL-APPROVE-030', editedRevision));
+  assert.ok(staleSignals[0].message.includes('MEMBER-001'), '무엇으로 되돌아갈지 — 누가 승인했었는지를 싣는다');
+  staleFirst.records.forEach(validateWatchRecord);
+  // 미승인은 신호가 아니다. 아직 아무도 근거로 삼지 않은 줄이고, 승인 축을 쓰지 않는
+  // 프로젝트에서는 문서 전건이 미승인이라 그대로 태우면 신호가 문서 전건으로 찬다.
+  assert.ok(!staleSignals.some((record) => record.targetId === 'REQ-002'), '미승인은 사건이 아니라 줄이므로 감시 신호가 아니다');
+
+  // 같은 리비전은 한 번만 운다. 매 스캔마다 우는 신호는 꺼진 신호와 같다.
+  const staleAgain = await staleSession.scanOnce();
+  assert.strictEqual(staleAgain.records.filter((record) => record.type === 'watch.diagnostic').length, 0, '같은 리비전의 낡음은 다시 울지 않는다');
+  assert.deepStrictEqual(staleAgain.records.at(-1).activeDiagnosticKeys, [staleSignals[0].dedupKey], '울지 않아도 활성 집합에는 남는다');
+
+  // 다시 고치면 다시 운다 — 그래야 "이번에 바뀐 것"이 보인다.
+  staleDocumentRevision = reeditedRevision;
+  const staleReedited = await staleSession.scanOnce();
+  const reeditedSignals = staleReedited.records.filter((record) => record.type === 'watch.diagnostic');
+  assert.strictEqual(reeditedSignals.length, 1, '다시 개정되면 새 리비전으로 다시 운다');
+  assert.strictEqual(reeditedSignals[0].targetRevision, reeditedRevision);
+
+  // 재승인은 문서 리비전을 바꾸지 않으므로(승인을 파일에 쓰지 않는다) 해소는 활성 집합에서
+  // 빠지는 것으로만 표현된다. 새 레코드 타입 대신 watch.diagnostic 축을 쓴 이유가 이것이다.
+  const reapproved = foldApprovals([
+    approvalEvent('EVT-AAAAAAAAAAAAAAAAAAAA', approvedRevision),
+    Object.assign(approvalEvent('EVT-BBBBBBBBBBBBBBBBBBBB', reeditedRevision), { recordedAt: '2026-09-05T00:01:00.000Z' })
+  ], { authority: LEDGER_AUTHORITY }).approvals;
+  const resolvedSession = createWatchSession(staleRoot, { project: 'demo', watchId: 'WATCH-00000000000000000013' }, {
+    inputSnapshot: staleSnapshot,
+    checkWorkspace: () => ({ diagnostics: [] }),
+    approvalHistories: () => reapproved,
+    writeRecords: () => {}
+  });
+  const resolved = await resolvedSession.scanOnce();
+  assert.strictEqual(resolved.records.filter((record) => record.type === 'watch.diagnostic').length, 0);
+  assert.deepStrictEqual(resolved.records.at(-1).activeDiagnosticKeys, [], '재승인은 활성 집합에서 빠지는 것으로 해소된다');
+
+  // 승인 원장이 없어도 감시는 돈다. 감시는 저장소 전체를 훑는 자리라 원장 하나에 인질이
+  // 되면 안 된다 — 이 fixture는 판올림 전(schemaVersion 2)이라 원장 자체가 없다.
+  const noLedgerRoot = fixture('approval-no-ledger');
+  const noLedgerHead = command(noLedgerRoot, ['git', 'rev-parse', 'HEAD']);
+  const noLedgerSession = createWatchSession(noLedgerRoot, { project: 'demo', watchId: 'WATCH-00000000000000000014' }, {
+    inputSnapshot: () => snapshot(noLedgerHead, initialRevision),
+    checkWorkspace: () => diagnostic(),
+    writeRecords: () => {}
+  });
+  const noLedger = await noLedgerSession.scanOnce();
+  assert.strictEqual(noLedger.exitCode, 0, '승인 원장이 없어도 스캔은 완료된다');
+  assert.strictEqual(noLedger.records.filter((record) => record.code === 'RDL-APPROVE-030').length, 0, '원장이 없으면 낡음 신호 없이 그냥 돈다');
+  assert.strictEqual(noLedger.records.filter((record) => record.type === 'watch.diagnostic').length, 1, '나머지 진단은 원장과 무관하게 그대로 나간다');
+
   const flushRoot = fixture('flush-order');
   const flushHead = command(flushRoot, ['git', 'rev-parse', 'HEAD']);
   let finishWrite;

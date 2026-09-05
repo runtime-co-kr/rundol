@@ -72,6 +72,7 @@ Usage:
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
   rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
+  rdl doc review [--project <key>] [--status <stale|unapproved>] [--diff] [--max-items <n>] [--write] [--json]
   rdl sync --client-id <id> [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
   rdl sync watch --client-id <id> [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
   rdl conflict list [--project <key>] [--json]
@@ -246,7 +247,7 @@ Options:
 }
 
 function parseOperationArgs(argv) {
-  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], rule: null, sinceApproval: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
+  const options = { root: process.cwd(), project: null, name: null, profile: null, json: false, remote: 'origin', push: true, force: false, apply: false, write: false, once: false, done: false, undone: false, unreported: false, guided: false, new: false, status: undefined, owner: undefined, summary: '', scope: null, priority: 'mid', reviewers: [], stakeholders: [], links: [], acceptance: [], related: [], excludes: [], functionIds: [], traits: [], roles: [], lenses: [], adapters: [], member: null, organization: null, account: null, responsibility: null, policy: { required: [], recommended: [], onDemand: [], disabled: [] }, policySpecified: false, decisionOptions: [], evidence: [], irreversible: false, defaults: false, questions: false, active: false, externalRefs: [], unlinks: [], basis: [], rule: null, sinceApproval: false, diff: false, orphans: false, unexplained: false, allowedPaths: [], forbidden: [], met: [], unmet: [], changed: [], forbiddenTouched: [], exempts: [], positional: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
     if (value === '--json') options.json = true;
@@ -269,6 +270,7 @@ function parseOperationArgs(argv) {
     else if (value === '--questions') options.questions = true;
     else if (value === '--active') options.active = true;
     else if (value === '--since-approval') options.sinceApproval = true;
+    else if (value === '--diff') options.diff = true;
     else if (value === '--orphans') options.orphans = true;
     else if (value === '--unexplained') options.unexplained = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
@@ -1662,6 +1664,33 @@ async function main() {
       printOperation(require('../src/document-analysis').analyzeDocuments(analyzeOptions.root, {
         project: analyzeOptions.project, orphans: analyzeOptions.orphans, unexplained: analyzeOptions.unexplained
       }), analyzeOptions.json);
+      return 0;
+    }
+    // 검토 리포트는 status·history·diff를 한 산출물로 접는다. 세 명령을 문서마다
+    // 세 번씩 치는 것이 지금까지의 유일한 방법이었고, 그래서 29건이 쌓인 뒤에는
+    // 아무도 다 보지 않았다.
+    //
+    // 기본 출력이 마크다운인 것은 이 산출물이 읽히라고 만든 것이기 때문이다.
+    // printOperation은 중첩 객체를 건너뛰므로 문서마다의 승인자·사유·차분이 통째로
+    // 사라진다 — 그 값이 없으면 이 명령은 doc status와 다를 것이 없다.
+    if (subcommand === 'review') {
+      const reviewOptions = parseOperationArgs(argv);
+      if (reviewOptions.positional.length) throw new Error('rdl doc review에는 위치 인수를 사용할 수 없습니다.');
+      const { reviewReport, renderReviewMarkdown } = require('../src/review-report');
+      const report = reviewReport(reviewOptions.root, {
+        project: reviewOptions.project, status: reviewOptions.status,
+        diff: reviewOptions.diff, maxItems: reviewOptions.maxItems
+      });
+      const markdown = renderReviewMarkdown(report);
+      const view = reviewOptions.write ? require('../src/obsidian').writeReviewView(reviewOptions.root, report, markdown) : null;
+      if (reviewOptions.json) {
+        printOperation(Object.assign({}, report, view ? { view } : {}), true);
+        return 0;
+      }
+      // --write는 파일로 내보내라는 뜻이다. 그때 같은 내용을 화면에도 쏟으면 어디에
+      // 놓였는지가 그 안에 묻힌다.
+      if (view) printOperation({ project: report.project, pending: report.pending, file: view.relativeFile, changed: view.changed, ignored: view.ignored }, false);
+      else process.stdout.write(`${markdown}\n`);
       return 0;
     }
     if (['status', 'approve', 'history', 'diff'].includes(subcommand)) {

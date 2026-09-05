@@ -222,10 +222,73 @@ function responsibleRevision(diagnostic, inventory, revision) {
   return { targetId: candidateId || `project:${inventory.project}`, targetRevision: revision };
 }
 
-function diagnosticsForScan(result, snapshot, project, revision) {
+// 승인 낡음(승인 후 개정)을 감시 신호로 낸다.
+//
+// 새 레코드 타입을 열지 않고 기존 watch.diagnostic 축에 태운다. 이 신호가 성립하는 데
+// 필요한 것이 그 축에 이미 다 있기 때문이다 — dedupKey가 같은 사실을 한 번만 울리게 하고,
+// 해소는 다음 스캔의 activeDiagnosticKeys에서 빠지는 것으로 말한다. 재승인은 문서 리비전을
+// 바꾸지 않으므로(승인 결과를 파일에 쓰지 않는다) 낡음의 해소는 "활성 집합에서 사라짐"
+// 말고는 표현할 방법이 없고, 그 표현을 가진 축은 이것뿐이다. 새 타입을 열면 소비자마다
+// 그 해소 규칙을 다시 배워야 하고, 배우지 않은 소비자에게는 한 번 운 낡음이 영영 남는다.
+//
+// 코드는 승인의 이름 공간에 둔다. 판정이 approval.js의 것이므로 코드를 들고 찾아갈 자리가
+// 거기여야 한다. 01x(샤드 형식)와 02x(인가)는 check.js가 이미 쓰고 있어 030에서 시작한다.
+// category가 workspace가 아니라 approval인 이유는 낡음이 작업공간 위생이 아니라 문서 하나의
+// 상태여서다 — 승인 축을 쓰지 않는 프로젝트는 이 category를 한 번도 보지 않는다.
+const STALE_CODE = 'RDL-APPROVE-030';
+
+// 승인 원장을 접어 이 프로젝트의 문서별 승인 이력을 얻는다.
+//
+// 못 읽으면 null로 돌아가 낡음 신호 없이 그냥 돈다. 감시는 저장소 전체를 훑는 자리라
+// 원장 하나에 인질이 되면 안 된다 — 여기서 던지면 판올림 전(schemaVersion 6 미만)이거나
+// 원장이 깨진 저장소에서 감시가 통째로 서고, 낡음 하나를 못 보는 대신 나머지 진단을
+// 전부 잃는다. check.js가 깨진 설정을 진단으로 싣고 검사를 계속하는 것과 같은 태도다.
+function defaultApprovalHistories(layout, project) {
+  try {
+    if (layout.schemaVersion < 6) return null;
+    const approval = require('./approval');
+    const { authorityContext } = require('./authority');
+    const events = approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), project.key);
+    return approval.foldApprovals(events, { authority: authorityContext(layout.root, project.key, { now: Date.now() }) }).approvals;
+  } catch (_) {
+    return null;
+  }
+}
+
+// 낡음만 신호다. 미승인은 아직 아무도 근거로 삼지 않은 "줄"이지 사건이 아니고, 승인 축을
+// 쓰지 않는 프로젝트에서는 문서가 전건 미승인이라 그대로 태우면 신호가 문서 전건으로 찬다.
+// board.js가 attention과 reviewQueue를 가른 선과 같은 선이며, 여기서 선을 다시 그으면
+// 두 표면이 언젠가 다르게 답한다.
+//
+// 판정은 approval.js의 trustState가 한다. 리비전 비교 한 줄이라도 여기 다시 적으면
+// rdl doc status와 감시가 같은 문서에 다른 답을 내는 날이 온다.
+//
+// 리비전은 스냅샷의 것을 쓴다. 여기서 문서를 다시 읽으면 그 값이 scanRevision이 결박한
+// 스냅샷 밖에서 오고, 그러면 안정 판정을 지난 스캔이 스냅샷에 없는 리비전을 신호로 낸다.
+function approvalDiagnostics(snapshot, histories) {
+  if (!histories) return [];
+  const { trustState } = require('./approval');
+  const findings = [];
+  for (const [id, revision] of snapshot.documents) {
+    const state = trustState({ id, revision }, histories.get(id));
+    if (state.status !== 'stale') continue;
+    findings.push({
+      artifactId: id,
+      code: STALE_CODE,
+      severity: 'warning',
+      category: 'approval',
+      message: `승인 후 개정 — 재승인이 필요합니다: ${id} (승인 ${state.approvedBy || '(미상)'} · 승인 리비전 ${String(state.approvedRevision || '').slice(0, 12)}). 차이: rdl doc diff ${id} --since-approval`
+    });
+  }
+  return findings;
+}
+
+// 소견을 감시 레코드로 옮긴다. 받는 것이 검사 결과가 아니라 소견 목록인 이유는 이 자리에
+// 검사 말고도 실려야 할 것이 생겼기 때문이다 — 승인 낡음은 checkWorkspace가 답하지 않는다.
+function diagnosticsForScan(findings, snapshot, project, revision) {
   const inventory = { ...snapshot, project: project.key };
   const projectTargetRevision = digestJson({ documents: snapshot.documents, diagnosticSourceRevisions: snapshot.diagnosticSourceRevisions });
-  return (result.diagnostics || []).filter((diagnostic) => !diagnostic.project || diagnostic.project === project.key).map((diagnostic) => {
+  return findings.filter((diagnostic) => !diagnostic.project || diagnostic.project === project.key).map((diagnostic) => {
     const responsible = responsibleRevision(diagnostic, inventory, projectTargetRevision || revision);
     const record = {
       targetId: String(responsible.targetId),
@@ -305,6 +368,7 @@ function createWatchSession(start, options, dependencies) {
   const writeRecords = deps.writeRecords || settings.write || defaultWriteRecords;
   const captureSnapshot = deps.inputSnapshot || defaultInputSnapshot;
   const checker = deps.checkWorkspace || checkWorkspace;
+  const readApprovalHistories = deps.approvalHistories || defaultApprovalHistories;
 
   function recordsWithSequence(records) {
     let next = state.sequence;
@@ -324,9 +388,13 @@ function createWatchSession(start, options, dependencies) {
       const before = validateInputSnapshot(captureSnapshot({ layout, project }));
       const revision = scanRevision(before);
       const result = await checker(layout.root, { project: project.key });
+      // 원장 읽기는 안정 판정 창 안에 둔다. 승인 샤드는 스냅샷의 registeredEventShardHeads가
+      // 덮으므로, 스캔 도중 승인이 들어오면 before와 after가 갈려 이 회차가 버려진다 —
+      // 창 밖에서 읽으면 방금 승인된 문서를 낡음으로 울리고 그 신호가 리비전에 결박된 채 남는다.
+      const histories = readApprovalHistories(layout, project);
       const after = validateInputSnapshot(captureSnapshot({ layout, project }));
       if (canonicalJson(before) !== canonicalJson(after)) continue;
-      const diagnostics = diagnosticsForScan(result, before, project, revision);
+      const diagnostics = diagnosticsForScan((result.diagnostics || []).concat(approvalDiagnostics(before, histories)), before, project, revision);
       const active = {};
       for (const diagnostic of diagnostics) active[diagnostic.dedupKey] = { targetId: diagnostic.targetId, targetRevision: diagnostic.targetRevision, code: diagnostic.code };
       const emitted = diagnostics.filter((diagnostic) => !Object.prototype.hasOwnProperty.call(cache.activeDiagnostics, diagnostic.dedupKey));

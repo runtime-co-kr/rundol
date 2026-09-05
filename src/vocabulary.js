@@ -103,6 +103,20 @@ const APPROVAL_MODES = Object.freeze(['human-only', 'ai-assisted', 'ai-first', '
 /** 승인 근거의 종류. */
 const BASIS_KINDS = Object.freeze(['read', 'verdict', 'check', 'delegated']);
 
+/**
+ * 문서의 신뢰 상태. approval.js의 trustState()가 원장과 문서 리비전에서 파생하며,
+ * 저장되지 않는다 — 승인 결과를 문서에 쓰면 그 쓰기가 리비전을 바꿔 방금 한 승인을
+ * 스스로 무효화하기 때문이다.
+ *
+ * 목록으로 두는 이유는 이 세 값을 읽는 자리가 여럿이기 때문이다. doc status가 거르개로
+ * 받고, Board 스냅숏이 셈으로 싣고, 검토 리포트가 대기 줄을 고른다. 각자 문자열을 들면
+ * 상태가 하나 늘어나는 날 한쪽만 늘고, 그러면 같은 문서에 화면과 게이트가 다른 답을 낸다.
+ *
+ * 순서에 뜻이 있다. 낡음이 미승인보다 앞이다 — 승인된 것이 흔들린 상태라 이미 그것을
+ * 근거로 삼은 하류가 있고, 미승인은 아직 아무도 근거로 삼지 않았다.
+ */
+const DOCUMENT_TRUST_STATES = Object.freeze(['approved', 'stale', 'unapproved']);
+
 /** 검증 판정. 기권을 실패와 가르는 이유는 "보지 못했다"와 "보고 아니라 했다"가 다르기 때문이다. */
 const VERDICTS = Object.freeze(['pass', 'refuted', 'abstain']);
 
@@ -642,6 +656,16 @@ const HOOK_EVENTS = Object.freeze(['session-start', 'pre-tool-use', 'post-tool-u
 /** 훅을 부르는 클라이언트. 페이로드 모양의 차이를 흡수할 때만 쓴다. */
 const HOOK_CLIENTS = Object.freeze(['claude', 'codex']);
 
+/**
+ * 파일 하나를 file_path로 지목해 쓰는 도구. 훅이 "무엇이 방금 바뀌었나"를 이 이름으로
+ * 판정한다.
+ *
+ * 여기 두는 이유는 이름이 하네스의 것이지 Rundol의 것이 아니기 때문이다. 클라이언트가
+ * 도구 이름을 바꾸거나 늘리면 훅은 조용히 판정을 멈추고, 판정을 멈춘 훅은 통과시킨다 —
+ * 즉 아무 신호 없이 꺼진다. 이름이 한자리에 모여 있어야 그 날 고칠 곳이 하나다.
+ */
+const DOCUMENT_WRITE_TOOLS = Object.freeze(['Write', 'Edit', 'MultiEdit']);
+
 module.exports = Object.freeze({
   TASK_STATES,
   TASK_STATUS_ORDER,
@@ -662,6 +686,7 @@ module.exports = Object.freeze({
   TRAITS,
   APPROVAL_MODES,
   BASIS_KINDS,
+  DOCUMENT_TRUST_STATES,
   VERDICTS,
   EXECUTORS,
   WORKFLOW_STEPS,
@@ -708,6 +733,7 @@ module.exports = Object.freeze({
   COMMIT_BOUNDARY_HOOKS,
   HOOK_EVENTS,
   HOOK_CLIENTS,
+  DOCUMENT_WRITE_TOOLS,
   CONVENTIONAL_PRIMARY,
   ASSET_EXTENSIONS,
   SUB_KINDS,
