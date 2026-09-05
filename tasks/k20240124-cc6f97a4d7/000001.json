@@ -4876,7 +4876,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "REQ 다섯과 SCR 둘이 bounded-v1·atomic-v1로 생성되고 기능 ID마다 계약이 채워졌다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "각 REQ·SCR에 대응하는 TST가 시나리오 표와 통과 기준을 갖췄다",
@@ -4889,7 +4889,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-05T10:38:28.623Z",
-      "updatedAt": "2026-09-05T11:09:46.237Z",
+      "updatedAt": "2026-09-05T11:09:51.353Z",
       "statusChangedAt": "2026-09-05T11:09:46.237Z",
       "externalRefs": [],
       "project": "rundol"
