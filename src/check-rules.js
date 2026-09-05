@@ -300,6 +300,154 @@ function checkReference(list, fileRegistry, artifactRegistry, sourceDoc, rawValu
   }
 }
 
+// ── 하류가 상류 확정보다 앞서 있다 ──────────────────────────────────────────
+//
+// related는 방향이 없는 연결이다. 무엇이 상류이고 무엇이 하류인지는 유형이 정하고,
+// 그 유형 순서는 문서 작성 순서 표가 이미 알고 있다 — contract next가 "다음에 무엇을
+// 쓸 수 있나"를 답할 때 보는 그 표다. 여기서 표를 다시 지으면 두 벌이 되고, 두 벌은
+// 한쪽만 고쳐지는 날 갈린다. 그때 같은 문서가 "쓸 수 있다"와 "상류가 아직 없다"를
+// 동시에 듣는다.
+//
+// 표는 어휘에서 가져오고 판정은 여기 둔다. 표가 계약 층(document-profile)에 있으면
+// 이 판정은 그것을 볼 수 없다 — 그 모듈은 파일을 읽고 판정 계층은 파일을 몰라야 하며,
+// 그 불변식은 worker-contract-purity 시험이 지킨다.
+const { DEFAULT_DOCUMENT_ORDER } = require('./vocabulary');
+
+// 직계 선행만으로는 부족하다. SCR의 선행은 REQ뿐이지만 REQ의 선행인 PRD도 SCR의
+// 상류다 — 상류가 흔들리면 거리와 무관하게 하류가 흔들린다. 그래서 이행 폐포를
+// 미리 접어 둔다. 표가 상수라 한 번만 돈다.
+//
+// 층수도 같은 표에서 나온다. 선행이 없으면 0, 있으면 선행 중 가장 깊은 것보다 하나
+// 아래다. 문서 생성 파이프라인의 흐름을 훑는 자리가 이 값으로 층을 센다.
+const { UPSTREAM_CLOSURE, DOCUMENT_LAYERS } = (() => {
+  const closure = {};
+  const layers = {};
+  const resolve = (type, seen) => {
+    if (closure[type]) return closure[type];
+    // 표에 순환이 생기면 여기서 무한히 돈다. 순환은 계약의 오류지 이 함수가 고칠
+    // 것이 아니므로, 되짚어 온 유형은 자기 자신을 상류로 세지 않고 끊는다.
+    if (seen.has(type)) return new Set();
+    seen.add(type);
+    const direct = DEFAULT_DOCUMENT_ORDER[type] || [];
+    const collected = new Set();
+    let depth = 0;
+    for (const dependency of direct) {
+      collected.add(dependency);
+      for (const ancestor of resolve(dependency, seen)) collected.add(ancestor);
+      depth = Math.max(depth, (layers[dependency] === undefined ? 0 : layers[dependency]) + 1);
+    }
+    seen.delete(type);
+    closure[type] = collected;
+    layers[type] = depth;
+    return collected;
+  };
+  for (const type of Object.keys(DEFAULT_DOCUMENT_ORDER)) resolve(type, new Set());
+  return { UPSTREAM_CLOSURE: Object.freeze(closure), DOCUMENT_LAYERS: Object.freeze(layers) };
+})();
+
+/**
+ * 낡음과 미승인은 하류에 주는 뜻이 다르다. 앞엣것은 "네가 근거로 삼은 것이 바뀌었다"이고
+ * 뒤엣것은 "네가 아직 확정되지 않은 것 위에 섰다"이다. 한 코드로 묶으면 사람이 목록을
+ * 보고 어느 쪽을 먼저 볼지 정하지 못한다 — 보드의 attention이 낡음만 드는 것과 같은 가름.
+ */
+const UPSTREAM_TRUST_CODES = Object.freeze({ stale: 'RDL-APPROVE-030', unapproved: 'RDL-APPROVE-031' });
+
+function documentTypeCode(id) {
+  const value = String(id || '');
+  return ID_PATTERN.test(value) ? value.slice(0, 3) : null;
+}
+
+/** 이 유형이 근거로 삼는 유형 전부. 없는 유형에는 상류가 없다 — 모른다가 아니라 없다. */
+function upstreamTypes(type) {
+  return Array.from(UPSTREAM_CLOSURE[String(type || '')] || []).sort();
+}
+
+/** 문서 생성 파이프라인에서 이 유형이 서는 층. 정규 유형이 아니면 null이다. */
+function documentLayer(type) {
+  const key = String(type || '');
+  return DOCUMENT_LAYERS[key] === undefined ? null : DOCUMENT_LAYERS[key];
+}
+
+/**
+ * related 값에서 문서 식별자를 뽑는다. 표시 링크가 정본이라 [[REQ-001-제목|REQ-001]]과
+ * [[REQ-001]]이 모두 오고, 링크 표기 없이 식별자만 적힌 값도 온다.
+ *
+ * 그 대상이 실재하는지는 묻지 않는다. 여기서 걸러 버리면 "가리키는 것이 없다"와
+ * "가리킨 것이 미승인이다"가 같은 null이 되어 부르는 쪽이 둘을 가르지 못한다.
+ */
+function relatedTargetId(value) {
+  const target = wikiTarget(value);
+  const raw = String((target && target.id) || value || '').trim();
+  return ID_PATTERN.test(raw) ? raw : (/^([A-Z]{3}-\d{3,})-/u.exec(raw) || [])[1] || null;
+}
+
+function trustStatusOf(trust, id) {
+  if (!trust) return null;
+  const value = typeof trust.get === 'function' ? trust.get(id) : trust[id];
+  return value || null;
+}
+
+/**
+ * 하류가 미승인·낡은 상류를 근거로 삼고 있는가.
+ *
+ * 명령이 아니라 진단으로 내는 자리의 판정부다. 진단이면 check·보드·watch가 전부
+ * 공짜로 이것을 보고, 명령이면 따로 불러야 하는 통제가 되어 며칠 뒤 아무도 안 부른다.
+ *
+ * used는 이 프로젝트가 승인 축을 쓰는지다. 한 번도 승인하지 않은 프로젝트에서 전
+ * 문서가 미승인인 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 "하류가 앞섰다"로
+ * 읽으면 첫날부터 문서 전건이 경고로 쏟아져 진짜 신호를 덮는다. 선은 board.js의
+ * reviewQueue가 그은 것과 같다 — 승인되었거나 낡은 문서가 하나라도 있으면 쓰는 것이다.
+ * 판정은 표면이 하되 근거는 여기서 준다.
+ *
+ * 입력은 값뿐이다. documents는 { id, file, related }면 되고 trust는 id마다
+ * approved·stale·unapproved를 답하는 Map 또는 객체다 — 승인 판정은 approval.js의
+ * trustState가 이미 하므로 여기서 다시 세지 않는다.
+ */
+function upstreamTrustIssues(input) {
+  const documents = (input && input.documents) || [];
+  const trust = input && input.trust;
+  const known = new Set(documents.map((document) => String(document.id)));
+  const counts = { approved: 0, stale: 0, unapproved: 0 };
+  for (const document of documents) {
+    const status = trustStatusOf(trust, String(document.id));
+    if (status) counts[status] = (counts[status] || 0) + 1;
+  }
+  const issues = [];
+  for (const document of documents) {
+    const type = documentTypeCode(document.id);
+    const upstream = type ? UPSTREAM_CLOSURE[type] : null;
+    if (!upstream || upstream.size === 0) continue;
+    const seen = new Set();
+    for (const value of Array.isArray(document.related) ? document.related : []) {
+      const target = relatedTargetId(value);
+      // 해결되지 않는 참조는 여기서 말하지 않는다. 링크 계층의 물음이고 RDL-LINK-002가
+      // 이미 같은 값을 보고 답한다 — 없는 문서는 미승인 상류가 아니다.
+      if (!target || !known.has(target) || target === document.id || seen.has(target)) continue;
+      const targetType = documentTypeCode(target);
+      if (!targetType || !upstream.has(targetType)) continue;
+      seen.add(target);
+      const status = trustStatusOf(trust, target);
+      if (status !== 'stale' && status !== 'unapproved') continue;
+      issues.push({
+        code: UPSTREAM_TRUST_CODES[status],
+        severity: 'warning',
+        status,
+        artifactId: String(document.id),
+        type,
+        file: document.file || null,
+        target,
+        targetType,
+        message: status === 'stale'
+          ? `상류 ${target}이(가) 승인 후 개정되어 낡았습니다. 이 문서가 근거로 삼은 내용이 바뀌었으므로, 상류를 재승인하거나(rdl doc diff ${target} --since-approval) 이 문서를 다시 맞추세요.`
+          : `상류 ${target}이(가) 아직 승인되지 않았습니다. 확정되지 않은 것 위에 하류가 서 있습니다 — 상류를 먼저 승인하면 여기부터는 다시 타지 않습니다.`
+      });
+    }
+  }
+  issues.sort((left, right) => left.artifactId.localeCompare(right.artifactId) || left.target.localeCompare(right.target) || left.code.localeCompare(right.code));
+  // 승인된 것과 낡은 것이 하나도 없으면 이 프로젝트는 승인 축을 쓰지 않는다.
+  return { used: counts.approved + counts.stale > 0, counts, issues };
+}
+
 function isDocumentUid(value) {
   return DOCUMENT_UID.test(String(value || ''));
 }
@@ -577,5 +725,6 @@ module.exports = {
   MAX_ASSET_BYTES, MAX_ASSET_EDGE, isAssetPath, maskCode,
   governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
   checkContractViolations, checkTaskEntries, checkReference, referenceFromTask,
-  checkAssetReference, checkAssetInventory
+  checkAssetReference, checkAssetInventory,
+  UPSTREAM_TRUST_CODES, upstreamTypes, documentLayer, documentTypeCode, relatedTargetId, upstreamTrustIssues
 };

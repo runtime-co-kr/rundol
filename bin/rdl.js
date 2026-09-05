@@ -71,6 +71,7 @@ Usage:
                   --client-id <id> [--reason <사유>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
+  rdl doc pipeline [--project <key>] [--json]
   rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
   rdl doc review [--project <key>] [--status <stale|unapproved>] [--diff] [--max-items <n>] [--write] [--json]
   rdl sync --client-id <id> [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
@@ -1666,6 +1667,7 @@ async function main() {
       }), analyzeOptions.json);
       return 0;
     }
+
     // 검토 리포트는 status·history·diff를 한 산출물로 접는다. 세 명령을 문서마다
     // 세 번씩 치는 것이 지금까지의 유일한 방법이었고, 그래서 29건이 쌓인 뒤에는
     // 아무도 다 보지 않았다.
@@ -1691,6 +1693,15 @@ async function main() {
       // 놓였는지가 그 안에 묻힌다.
       if (view) printOperation({ project: report.project, pending: report.pending, file: view.relativeFile, changed: view.changed, ignored: view.ignored }, false);
       else process.stdout.write(`${markdown}\n`);
+      return 0;
+    }
+
+    // 파이프라인 점검은 층을 답하고 analyze는 행을 답한다. 물음이 다르므로 명령이
+    // 다르고, 계산은 같은 모듈에 있다.
+    if (subcommand === 'pipeline') {
+      const pipelineOptions = parseOperationArgs(argv);
+      if (pipelineOptions.positional.length) throw new Error('rdl doc pipeline에는 위치 인수를 사용할 수 없습니다.');
+      printOperation(require('../src/document-analysis').documentPipeline(pipelineOptions.root, { project: pipelineOptions.project }), pipelineOptions.json);
       return 0;
     }
     if (['status', 'approve', 'history', 'diff'].includes(subcommand)) {

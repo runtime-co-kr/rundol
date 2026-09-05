@@ -206,6 +206,69 @@ function testInvalidDriverShardIsDiagnosed() {
   }
 }
 
+// 하류가 상류 확정보다 앞서 있는가. 판정은 값만 보므로 작업공간 없이 시험한다 —
+// 이 규칙이 파일에 묶이면 check와 보드와 파이프라인 점검이 각자 다시 구현하게 된다.
+function testUpstreamTrustJudgment() {
+  const { upstreamTrustIssues, upstreamTypes, documentLayer } = require('../src/check-rules');
+
+  // 방향은 유형이 정한다. 표를 여기서 다시 적지 않고 판정이 무엇을 상류로 보는지만 본다.
+  assert.deepStrictEqual(upstreamTypes('SCR'), ['PRD', 'REQ'], 'SCR의 상류는 REQ와 그 위의 PRD입니다.');
+  assert.deepStrictEqual(upstreamTypes('PRD'), [], '가장 위에는 상류가 없습니다.');
+  assert.strictEqual(documentLayer('SCR'), 2);
+  assert.strictEqual(documentLayer('PRJ'), null, '정규 유형이 아니면 층이 없습니다.');
+
+  const documents = [
+    { id: 'PRD-001', file: 'docs/PRD-001.md', related: [] },
+    { id: 'REQ-001', file: 'docs/REQ-001.md', related: ['[[PRD-001-제품-요구|PRD-001]]'] },
+    { id: 'SCR-001', file: 'docs/SCR-001.md', related: ['[[REQ-001-로그인-요구|REQ-001]]'] }
+  ];
+
+  // ① 승인 축을 한 번도 쓰지 않은 프로젝트에서는 울지 않는다. 전 문서가 미승인인 것은
+  // 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 경고로 읽으면 첫날부터 전건이 쏟아진다.
+  const none = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'unapproved', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
+  });
+  assert.strictEqual(none.used, false, '승인도 낡음도 없으면 승인 축을 쓰지 않는 프로젝트입니다.');
+  assert.strictEqual(none.issues.length, 2, '판정 자체는 돌되 그것을 낼지는 표면이 정합니다.');
+
+  // ② 낡음과 미승인은 다른 코드로 운다. 앞엣것은 "근거로 삼은 것이 바뀌었다"이고
+  // 뒤엣것은 "아직 확정되지 않은 것 위에 섰다"라 사람이 볼 순서가 다르다.
+  const mixed = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'stale', 'REQ-001': 'approved', 'SCR-001': 'unapproved' }
+  });
+  assert.strictEqual(mixed.used, true);
+  assert.deepStrictEqual(mixed.issues.map((issue) => [issue.artifactId, issue.target, issue.code]),
+    [['REQ-001', 'PRD-001', 'RDL-APPROVE-030']], '낡은 상류를 가리키는 하류만 걸립니다.');
+
+  const pending = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'approved', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
+  });
+  assert.deepStrictEqual(pending.issues.map((issue) => [issue.artifactId, issue.target, issue.code]),
+    [['SCR-001', 'REQ-001', 'RDL-APPROVE-031']], '미승인 상류는 다른 코드로 웁니다.');
+  assert(pending.issues.every((issue) => issue.severity === 'warning'), '이 규칙은 언제나 권고입니다.');
+
+  // ③ 상류가 다시 승인되면 그친다.
+  const settled = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'approved', 'REQ-001': 'approved', 'SCR-001': 'unapproved' }
+  });
+  assert.deepStrictEqual(settled.issues, [], '상류가 전부 승인되면 하류는 앞선 것이 아닙니다.');
+
+  // 방향이 있다. 상류가 하류를 가리켜도 그것은 상류가 미승인인 것이 아니다.
+  const reversed = upstreamTrustIssues({
+    documents: [{ id: 'PRD-001', file: 'docs/PRD-001.md', related: ['[[SCR-001-로그인-화면|SCR-001]]'] }],
+    trust: { 'PRD-001': 'approved', 'SCR-001': 'unapproved' }
+  });
+  assert.deepStrictEqual(reversed.issues, [], 'related는 방향이 없지만 유형 계층은 방향을 갖습니다.');
+
+  // 해결되지 않는 참조는 여기서 말하지 않는다. 링크 계층의 RDL-LINK-002가 이미 답한다.
+  const dangling = upstreamTrustIssues({
+    documents: [{ id: 'SCR-001', file: 'docs/SCR-001.md', related: ['[[REQ-999]]'] }, { id: 'PRD-001', file: 'docs/PRD-001.md', related: [] }],
+    trust: { 'PRD-001': 'approved', 'SCR-001': 'unapproved' }
+  });
+  assert.deepStrictEqual(dangling.issues, [], '없는 대상은 미승인 상류가 아닙니다.');
+}
+
+testUpstreamTrustJudgment();
 testTmsFixture();
 testMissingReference();
 testLegacySpecIsRejectedInStrictMode();

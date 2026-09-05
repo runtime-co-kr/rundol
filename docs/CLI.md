@@ -65,6 +65,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
                   --client-id <id> [--reason <사유>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
+  rdl doc pipeline [--project <key>] [--json]
   rdl doc diff <ARTIFACT-ID> --since-approval [--project <key>] [--json]
   rdl doc review [--project <key>] [--status <stale|unapproved>] [--diff] [--max-items <n>] [--write] [--json]
   rdl sync --client-id <id> [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
