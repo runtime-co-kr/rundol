@@ -80,6 +80,10 @@
              둘을 붙여 세워야 어느 것이 무엇인지 한 번에 읽힌다 — 검토 인박스에서 "낡음"이라 부른
              문서를 눌러 도착하는 자리가 여기라, 여기가 원장을 말하지 않으면 인박스가 거짓말한 것이 된다. -->
         <div id="document-approval" class="document-approval"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
+        <!-- 승인 판은 머리글 밖에 선다. 머리글은 sticky라 그 안에 두면 차분과 폼이
+             스크롤 내내 화면 위에 붙어 정작 읽어야 할 본문을 덮는다. 상태 줄과 여는
+             손잡이만 머리글에 남고, 펼친 내용은 본문 앞의 이 자리로 온다. -->
+        <div id="document-approval-panel"></div>
         <article id="document-body" class="markdown-body"></article>
         <div id="document-check" class="editor-check" hidden></div>
         <div id="document-editor-surface" class="document-editor-surface" hidden></div>

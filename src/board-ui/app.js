@@ -1,7 +1,7 @@
 'use strict';
 
 const token = document.querySelector('meta[name="rdl-token"]').content;
-const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, clientIntent: null, commentComposer: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', reviewFilter: 'all', documentSearchScope: 'name', documentSort: 'id', documentApproval: 'all', presentationScope: 'project', presentationSettling: false, runs: null, runsError: '', approvingRun: null, review: null };
+const state = { project: null, snapshot: null, view: 'home', selected: null, taskScope: 'all', currentMember: '', taskMode: 'list', documentFilter: '', query: '', polling: null, lastVisit: null, pendingTasks: new Map(), blockerResolve: null, cancellationResolve: null, clientIntent: null, commentComposer: null, newTaskBlocker: null, rejectedDraft: null, attentionFilter: 'all', reviewFilter: 'all', documentSearchScope: 'name', documentSort: 'id', documentApproval: 'all', presentationScope: 'project', presentationSettling: false, runs: null, runsError: '', approvingRun: null, review: null, docApproval: null };
 const statusLabels = { todo: '할 일', doing: '진행 중', waiting: '대기', review: '검토', done: '완료', cancelled: '반려' };
 // 완료와 반려는 게이트가 다르지만 둘 다 더 진행되지 않는다. 숨기기·접기·선행 판정은 같이 다룬다.
 // 워크플로는 서버가 스냅숏에 실어 준다. 화면은 브라우저에서 그대로 돌아 require를
@@ -435,13 +435,195 @@ function reviewRowHtml(item) {
   const trail = item.approvals
     ? `${escapeHtml(personName(item.approvedBy))} · 승인 ${escapeHtml(item.approvals)}회`
     : '승인 이력 없음';
-  return `<button class="document-row review-inbox-row" data-document="${escapeHtml(item.id)}">`
+  // 행을 누르면 화면을 갈아치우지 않고 그 자리에서 펼친다. 인박스의 값은 줄을 훑으면서
+  // 처리하는 데 있고, 한 건마다 문서 화면을 오가면 훑던 자리를 매번 잃는다 — 그러면
+  // 목록은 있으나 인박스가 아니다. 문서 화면으로 가는 길은 펼친 안에 그대로 둔다.
+  const open = Boolean(approvalPanel(item.id));
+  return `<div class="review-inbox-item${open ? ' open' : ''}">`
+    + `<button class="document-row review-inbox-row" data-approve-open="${escapeHtml(item.id)}" aria-expanded="${open}">`
     + `<span class="tag ${REVIEW_STATUS_TONES[item.status] || 'info'}">${escapeHtml(REVIEW_STATUS_LABELS[item.status] || item.status)}</span>`
     + `<span class="eyebrow">${escapeHtml(item.id)}</span>`
     + `<strong>${escapeHtml(item.title)}</strong>`
     + `<span class="chip">${escapeHtml(documentTypeLabel(item))}</span>`
     + `<small>${trail}</small>`
-    + `<span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`;
+    + `<span class="row-chevron" aria-hidden="true">${CHEVRON_ICON}</span></button>`
+    + approvalPanelHtml(item.id, 'inbox')
+    + '</div>';
+}
+
+// ── 문서 승인 ───────────────────────────────────────────────────────────────
+//
+// 승인하는 자리는 하나만 만들고 검토 인박스와 문서 상세가 나눠 쓴다. 화면마다 폼을
+// 따로 그리면 한쪽만 근거를 받거나 한쪽만 거절 문장을 삼키게 되고, 그 차이는 승인이
+// 거절된 다음에야 드러난다 — 서버에서 자격 판정을 표면마다 두지 않는 것과 같은 이유다.
+//
+// 한 번에 한 건만 펼친다. 여럿을 열어 두면 어느 폼에 무엇을 적었는지가 화면에서
+// 흐려지고, 승인은 "이것을 내가 책임진다"는 선언이라 대상이 흐려지면 안 된다.
+
+// 근거의 우리말. 목록 자체는 서버가 싣는다(approvalCatalog.basisKinds) — 화면이 목록을
+// 적으면 그것은 vocabulary.js의 정본 사본이 되고, 근거 종류가 느는 날 화면만 모른 채
+// 돈다. 표에 없는 종류는 저장값을 그대로 보여 준다.
+const BASIS_LABELS = { read: '읽고 판단했다', verdict: '검증 판정을 봤다', check: '검사를 통과했다', delegated: '위임받았다' };
+// 비교 축 둘. 묻는 것이 다르다 — 앞엣것은 "승인 이후 무엇이 바뀌었나"이고 뒤엣것은
+// "승인 후보가 승인본과 무엇이 다른가"다. 승인자가 판정해야 하는 것은 작업본이 아니라
+// 후보이므로, 제출이 서 있으면 뒤엣것이 먼저다. 키 목록이 곧 단추의 목록이다.
+const DIFF_AXIS_LABELS = { 'since-approval': '승인 이후 변경', submission: '제출본 비교' };
+
+function approvalPanel(id) { return state.docApproval && state.docApproval.id === id ? state.docApproval : null; }
+function basisChoices() { return (state.snapshot.approvalCatalog && state.snapshot.approvalCatalog.basisKinds) || Object.keys(BASIS_LABELS); }
+
+// 펼치기·접기. 제출본이 서 있으면 그 축으로 연다 — 승인자가 볼 것은 승인 후보이고,
+// 후보와 작업본이 다를 수 있다는 사실 자체가 관문의 핵심이다.
+function toggleApproval(id) {
+  if (approvalPanel(id)) { state.docApproval = null; return redrawApproval(); }
+  const item = (state.snapshot.documents || []).find((value) => value.id === id);
+  const submission = item && item.approval && item.approval.submission;
+  const staged = submission && (submission.state === 'pending' || submission.state === 'drifted');
+  loadApprovalDiff(id, staged ? 'submission' : 'since-approval');
+}
+
+// 차분은 스냅숏에 없다. 문서마다 git 이력을 도는 계산이라 폴링에 실으면 보드가 서므로,
+// 펼친 그 건에 대해서만 물어 온다.
+async function loadApprovalDiff(id, axis) {
+  const approvers = state.snapshot.approvers || [];
+  const kept = state.docApproval && state.docApproval.id === id ? state.docApproval.form : null;
+  const panel = {
+    id,
+    axis,
+    diff: null,
+    reason: '',
+    error: '',
+    failure: '',
+    loading: true,
+    busy: false,
+    // 축을 바꿔도 쓰던 것은 남긴다. 여기서 비우면 사유를 적다가 다른 축을 눌러 본
+    // 사람이 자기가 쓴 문장을 잃는다.
+    form: kept || { clientId: (approvers[0] && approvers[0].id) || '', basis: basisChoices()[0] || '', detail: '', reason: '' }
+  };
+  state.docApproval = panel;
+  redrawApproval();
+  try {
+    const value = await api(`${projectPath(`/documents/${encodeURIComponent(id)}/diff`)}?axis=${encodeURIComponent(axis)}`);
+    if (state.docApproval !== panel) return;
+    panel.diff = value.diff === undefined ? null : value.diff;
+    panel.reason = value.reason || '';
+  } catch (error) {
+    if (state.docApproval !== panel) return;
+    panel.error = error.message;
+  }
+  panel.loading = false;
+  redrawApproval();
+}
+
+// 펼친 자리만 다시 그린다. 문서 상세에서 본문까지 다시 그리면 읽던 자리를 잃고,
+// 그 화면은 지금 읽고 승인하는 자리다.
+function redrawApproval() {
+  if (state.view === 'review-inbox') return renderReviewInbox();
+  if (state.view !== 'document' || !state.selected) return;
+  const item = (state.snapshot.documents || []).find((value) => value.id === state.selected);
+  if (!item) return;
+  el('document-approval').innerHTML = documentApprovalHtml(item);
+  el('document-approval-panel').innerHTML = approvalPanelHtml(item.id, 'document');
+}
+
+// git diff를 줄 단위로 칠한다. 무엇이 늘고 줄었는지는 색이 먼저 말해 주고, 그 다음에
+// 글자를 읽는다 — 색이 없으면 승인자는 전문을 처음부터 다시 읽는 것과 같아진다.
+function diffLinesHtml(text) {
+  return String(text).split('\n').map((line) => {
+    const tone = /^(?:diff |index |--- |\+\+\+ )/u.test(line) ? 'meta'
+      : line.startsWith('@@') ? 'hunk'
+        : line.startsWith('+') ? 'add'
+          : line.startsWith('-') ? 'del' : '';
+    return `<span class="diff-line${tone ? ` diff-${tone}` : ''}">${escapeHtml(line)}</span>`;
+  // 줄마다 block으로 세우므로 사이에 개행을 두면 안 된다. pre 안에서 그 개행은
+  // 글자로 남아 줄마다 빈 줄이 하나씩 더 생긴다.
+  }).join('');
+}
+
+function approvalDiffHtml(panel) {
+  if (panel.loading) return '<p class="ledger-note">무엇이 달라졌는지 읽는 중입니다…</p>';
+  if (panel.error) return `<p class="approval-failure">차이를 읽지 못했습니다: ${escapeHtml(panel.error)}</p>`;
+  // 비교 기준이 없는 것과 바뀐 것이 없는 것은 다른 값이다. 앞엣것을 빈 차분으로 그리면
+  // 사람은 아무것도 안 바뀐 줄 알고 승인한다 — 서버가 이유를 함께 내는 이유가 그것이고,
+  // 화면은 그 이유를 그대로 옮긴다.
+  if (panel.diff === null) return `<p class="ledger-note"><b>비교 기준이 없습니다.</b> ${escapeHtml(panel.reason || '이 축으로는 견줄 것이 없습니다.')}</p>`;
+  if (panel.diff === '') return `<p class="ledger-note"><b>바뀐 것이 없습니다.</b> ${escapeHtml(panel.reason || '')}</p>`;
+  return `<pre class="approval-diff">${diffLinesHtml(panel.diff)}</pre>`;
+}
+
+function approvalFormHtml(id, panel, surface) {
+  const approvers = state.snapshot.approvers || [];
+  // 지금 이 판이 이미 승인되어 있으면 승인할 것이 없다. 폼을 그대로 두면 눌러도 원장이
+  // 늘지 않는 단추가 되고, 아무 일도 하지 않는 단추는 다음에 진짜로 필요할 때도 안 눌린다.
+  const item = (state.snapshot.documents || []).find((value) => value.id === id);
+  if (item && item.approval && item.approval.status === 'approved') {
+    return `<p class="ledger-note"><b>지금 판은 이미 승인되어 있습니다.</b> ${escapeHtml(personName(item.approval.approvedBy))}이(가) 책임집니다 — 본문이 바뀌면 이 승인은 낡음이 되고 그때 다시 이 자리가 섭니다.</p>`;
+  }
+  // 고를 수 없는 것을 화면에 두면 사람은 거절당한 뒤에야 그것을 안다. 자격자가 없으면
+  // 폼 대신 자격이 무엇인지와 어떻게 만드는지를 적는다.
+  if (!approvers.length) {
+    return '<p class="ledger-note"><b>이 프로젝트에는 승인 자격을 가진 Client가 없습니다.</b> '
+      + '승인은 활성 human Client만 할 수 있고, 그 소유 멤버가 이 프로젝트의 활성 멤버여야 합니다. '
+      + '설정의 Client 목록에서 human 자격을 등록하거나, 비활성이 된 자격을 다시 켜십시오.</p>'
+      + '<div class="approval-form-actions"><button type="button" data-view="settings">설정 열기</button></div>';
+  }
+  const form = panel.form;
+  return `<form class="approval-form" data-approve-form="${escapeHtml(id)}">`
+    + `<label>승인자<select data-approve-field="clientId">${approvers.map((client) =>
+      `<option value="${escapeHtml(client.id)}"${client.id === form.clientId ? ' selected' : ''}>${escapeHtml(client.name || client.id)} (${escapeHtml(client.id)})</option>`).join('')}</select></label>`
+    // 근거는 화면에서도 필수다. 나중에 "AI 검토가 놓쳤나 사람이 건너뛰었나"를 가르려면
+    // 그 값이 있어야 하고, 그 구분이 없으면 승인 이력은 누가 눌렀다는 목록에 그친다.
+    + `<label>근거<select data-approve-field="basis">${basisChoices().map((kind) =>
+      `<option value="${escapeHtml(kind)}"${kind === form.basis ? ' selected' : ''}${kind === 'delegated' ? ' disabled' : ''}>`
+      + `${escapeHtml(BASIS_LABELS[kind] || kind)}${kind === 'delegated' ? ' — 위임 식별자가 필요해 명령줄에서만' : ''}</option>`).join('')}</select></label>`
+    + `<label>근거 상세<input data-approve-field="detail" maxlength="300" placeholder="예: 3장 전체 재독" value="${escapeHtml(form.detail || '')}"></label>`
+    + `<label>사유<textarea data-approve-field="reason" rows="2" maxlength="1000" placeholder="무엇을 보고 승인했는지">${escapeHtml(form.reason || '')}</textarea></label>`
+    + '<div class="approval-form-actions">'
+    + (surface === 'inbox' ? `<button type="button" data-document="${escapeHtml(id)}">문서 화면에서 열기</button>` : '')
+    + `<button type="submit" class="primary"${panel.busy ? ' disabled' : ''}>${panel.busy ? '승인하는 중…' : '승인'}</button></div>`
+    // 거절은 서버의 말 그대로 옮긴다. "승인 실패"로 바꾸면 사람 게이트에 걸린 것인지
+    // 근거가 모자란 것인지 알 수 없어 같은 단추를 다시 누르게 된다.
+    + (panel.failure ? `<p class="approval-failure">${escapeHtml(panel.failure)}</p>` : '')
+    + '</form>';
+}
+
+function approvalPanelHtml(id, surface) {
+  const panel = approvalPanel(id);
+  if (!panel) return '';
+  const axes = Object.keys(DIFF_AXIS_LABELS).map((key) =>
+    `<button type="button" data-approve-axis="${key}"${key === panel.axis ? ' class="active"' : ''}>${escapeHtml(DIFF_AXIS_LABELS[key])}</button>`).join('');
+  return `<div class="approval-panel"><div class="segmented approval-axis" aria-label="비교 축">${axes}</div>`
+    + approvalDiffHtml(panel) + approvalFormHtml(id, panel, surface) + '</div>';
+}
+
+async function approveOpenDocument(id) {
+  const panel = approvalPanel(id);
+  if (!panel || panel.busy) return;
+  const form = panel.form;
+  if (!form.clientId) return message('승인자를 고르세요. 활성 human Client만 승인할 수 있습니다.', true);
+  if (!form.basis) return message('무엇에 기대어 승인하는지 근거를 고르세요.', true);
+  if (!String(form.reason || '').trim()) return message('무엇을 보고 승인했는지 사유가 필요합니다.', true);
+  panel.busy = true;
+  panel.failure = '';
+  redrawApproval();
+  try {
+    const result = await api(projectPath(`/documents/${encodeURIComponent(id)}/approve`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify({ clientId: form.clientId, basis: [{ kind: form.basis, detail: form.detail }], reason: String(form.reason).trim() })
+    });
+    state.docApproval = null;
+    message(`${id}을(를) ${result.document.approvedBy} 자격으로 승인했습니다.`);
+    // 승인 뒤 화면은 새 상태를 그려야 한다. 판정은 원장에서 파생하므로 스냅숏을 다시
+    // 읽는 것 말고 화면이 할 일이 없다 — 여기서 상태를 직접 고치면 그것이 두 번째
+    // 진실 원천이 되고, 서버가 아니라고 답해도 화면은 승인됐다고 말한다.
+    await loadSnapshot(true);
+    redrawApproval();
+  } catch (error) {
+    panel.busy = false;
+    panel.failure = error.message;
+    redrawApproval();
+  }
 }
 
 function renderReviewInbox() {
@@ -917,14 +1099,19 @@ function documentApprovalHtml(item) {
     const reason = state.snapshot.reviewQueue && state.snapshot.reviewQueue.unknown;
     return `<h2>승인 원장</h2><p class="ledger-note"><b>승인 상태를 읽지 못했습니다.</b>${reason ? ` ${escapeHtml(reason)}` : ''} 그래서 이 문서를 미승인으로 적지 않습니다.</p>`;
   }
-  const lines = [`<h2>승인 원장</h2><p class="document-approval-line">${approvalTagHtml(approval.status)}<span>${approvalFacts(approval).join(' · ')}</span></p>`];
+  const open = Boolean(approvalPanel(item.id));
+  // 승인은 문서를 읽은 자리에서 이어져야 한다. 인박스를 거치지 않고 문서를 연 사람도
+  // 여기서 승인할 수 있어야 하고, 그러지 않으면 "승인은 명령줄에서"가 되어 화면을 보던
+  // 사람이 도구를 갈아타야 한다 — 그 왕복이 승인을 맨 뒤로 미루는 자리였다.
+  const lines = [`<h2>승인 원장</h2><p class="document-approval-line">${approvalTagHtml(approval.status)}<span>${approvalFacts(approval).join(' · ')}</span>`
+    + `<button type="button" class="approval-open" data-approve-open="${escapeHtml(item.id)}" aria-expanded="${open}">${open ? '접기' : '검토하고 승인'}</button></p>`];
   if (claimsUnbacked(item)) {
     lines.push(`<p class="ledger-note">frontmatter는 <code>${escapeHtml(item.state)}</code>(${escapeHtml(documentStateLabel(item.state))})라고 적었지만 원장은 이 리비전을 승인한 적이 없습니다. 앞엣것은 작성자의 주장이고 뒤엣것이 원장의 사실이라, 어긋난 채로 둘 수 있습니다.</p>`);
   }
   if (approval.status === 'stale') {
-    // 승인 이후의 diff 본문은 스냅숏에 없다. 없는 것을 화면이 지어내면 그 화면을 믿고
-    // 재승인한 사람이 자기가 무엇을 승인했는지 모르게 되므로, 명령을 안내하는 데서 멈춘다.
-    lines.push(`<p class="ledger-note">승인 이후 본문이 바뀌었습니다. 무엇이 바뀌었는지는 <code>rdl doc diff ${escapeHtml(item.id)} --since-approval</code>로 봅니다 — 이 화면은 diff 본문을 싣지 않습니다.</p>`);
+    // 차분은 이제 이 화면이 싣는다. 다만 지어내지는 않는다 — 값은 서버가 요청 시 계산해
+    // 주는 그것이고, 같은 값을 명령줄에서도 볼 수 있다는 것을 함께 적어 둔다.
+    lines.push(`<p class="ledger-note">승인 이후 본문이 바뀌었습니다. 무엇이 바뀌었는지는 위 단추로 이 자리에서 보고 재승인할 수 있고, 같은 값을 <code>rdl doc diff ${escapeHtml(item.id)} --since-approval</code>로도 봅니다.</p>`);
   }
   return lines.join('');
 }
@@ -948,7 +1135,7 @@ function renderContext(item, kind) {
   }
 }
 function renderDocument(id) { const item = state.snapshot.documents.find((documentValue) => documentValue.id === id); if (!item) return setView('documents'); el('document-breadcrumb').innerHTML = breadcrumb([{ label: state.project, view: 'home' }, { label: '문서', view: 'documents' }, { label: item.id }]);
-  closeBlockEditor(); renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-approval').innerHTML = documentApprovalHtml(item); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('document-editor-surface').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
+  closeBlockEditor(); renderEditAvailability(); el('document-title').textContent = item.title; el('document-description').textContent = item.description; el('document-badges').innerHTML = [item.id, documentTypeLabel(item), documentStateLabel(item.state), ownerName(item.owner)].filter(Boolean).map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join(''); el('document-approval').innerHTML = documentApprovalHtml(item); el('document-approval-panel').innerHTML = approvalPanelHtml(item.id, 'document'); el('document-body').innerHTML = markdown(item.body); resolveDocumentImages(el('document-body'), item.file, state.project); el('document-body').hidden = false; el('document-editor').hidden = true; el('document-editor-surface').hidden = true; el('edit-document').hidden = false; el('cancel-document-edit').hidden = true; el('save-document').hidden = true; renderContext(item, 'document'); renderMermaid(); }
 
 // 무엇이 막혀 있는지가 목록에서 가장 먼저 읽혀야 한다. 사람 대기(blocker)는 값으로 있었지만
 // 끝나지 않은 선행 태스크(deps)는 어디에도 보이지 않아, 목록만 보면 시작할 수 있는 일처럼 읽혔다.
@@ -1444,6 +1631,9 @@ el('project-switcher').addEventListener('change', async (event) => {
   state.project = event.target.value;
   state.snapshot = null;
   state.selected = null;
+  // 펼쳐 둔 승인 자리는 이전 프로젝트의 문서를 가리킨다. 들고 가면 그 문서가 없는
+  // 프로젝트에서 적던 사유만 남아 있다가 엉뚱한 대상에 붙는다.
+  state.docApproval = null;
   state.lastVisit = localStorage.getItem(visitKey());
   await loadSnapshot(true);
 });
@@ -1823,6 +2013,30 @@ document.addEventListener('click', (event) => {
   if (!button) return;
   state.reviewFilter = button.dataset.reviewFilter;
   renderReviewInbox();
+});
+// 승인 자리를 여닫고 비교 축을 고르는 곳. 인박스와 문서 상세가 같은 자리를 쓰므로
+// 손잡이도 하나여야 한다 — 화면마다 두면 한쪽만 축을 바꿀 수 있게 되고, 그 차이는
+// 승인하러 온 사람이 자기가 무엇을 보고 있는지 헷갈리는 것으로 나타난다.
+document.addEventListener('click', (event) => {
+  const opener = event.target.closest('[data-approve-open]');
+  if (opener) return void toggleApproval(opener.dataset.approveOpen);
+  const axis = event.target.closest('[data-approve-axis]');
+  if (axis && state.docApproval) return void loadApprovalDiff(state.docApproval.id, axis.dataset.approveAxis);
+});
+// 폼의 값은 DOM이 아니라 state가 갖는다. 차분이 도착하거나 축을 바꾸면 이 자리를 다시
+// 그리는데, DOM에 두면 그때마다 적던 사유가 사라진다 — 댓글 칸을 state로 옮긴 것과 같은 이유다.
+function rememberApprovalField(event) {
+  const field = event.target.closest('[data-approve-field]');
+  if (!field || !state.docApproval) return;
+  state.docApproval.form[field.dataset.approveField] = field.value;
+}
+document.addEventListener('input', rememberApprovalField);
+document.addEventListener('change', rememberApprovalField);
+document.addEventListener('submit', (event) => {
+  const form = event.target.closest('[data-approve-form]');
+  if (!form) return;
+  event.preventDefault();
+  approveOpenDocument(form.dataset.approveForm);
 });
 // 조치 필요는 옮겨 갈 화면이 따로 없다. 같은 화면 아래 목록이 그 내역이므로 그리로 데려간다.
 document.addEventListener('click', (event) => {

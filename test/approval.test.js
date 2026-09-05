@@ -22,6 +22,25 @@ function rdl(args) {
   return JSON.parse(command(process.execPath, [cli].concat(args, ['--root', temporary, '--json']), repository));
 }
 
+// 보드 표면은 서버를 띄우므로 비동기다. 이 파일의 나머지는 동기라, 마지막에 promise를
+// 내보내고 워커가 그것을 기다리게 한다(test/worker.js가 그 계약을 이미 갖고 있다).
+const http = require('http');
+function request(port, pathname, options) {
+  const settings = Object.assign({ method: 'GET', headers: {} }, options || {});
+  return new Promise((resolve, reject) => {
+    // 연결을 재사용하지 않는다. 전체 스위트를 동시에 돌리면 요청 사이 간격이 서버의
+    // 유휴 타임아웃을 넘고, 죽은 소켓을 재사용하면서 ECONNRESET으로 간헐 실패한다.
+    const call = http.request({ hostname: '127.0.0.1', port, path: pathname, method: settings.method, headers: settings.headers, agent: false }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null') }));
+    });
+    call.on('error', (error) => reject(new Error(`${settings.method} ${pathname} 실패: ${error.code || error.message}`)));
+    if (settings.body) call.write(settings.body);
+    call.end();
+  });
+}
+
 const REVISION_A = 'a'.repeat(64);
 const REVISION_B = 'b'.repeat(64);
 
@@ -44,7 +63,7 @@ function approvalEvent(overrides) {
 
 // 접기는 인가 컨텍스트를 요구한다. 손으로 만든 이벤트를 접는 시험도 같은
 // 조건을 지나야 한다 — 시험만 인가를 끄면 시험은 실제 경로를 시험하지 않는다.
-const LEDGER_AUTHORITY = { clientOwners: [['agent-a', 'MEMBER-001'], ['desk-b', 'MEMBER-001'], ['agent-b', 'MEMBER-002']], members: ['MEMBER-001', 'MEMBER-002'], delegations: [] };
+const LEDGER_AUTHORITY = { clientOwners: [['agent-a', 'MEMBER-001'], ['desk-b', 'MEMBER-001'], ['desk-h', 'MEMBER-001'], ['agent-b', 'MEMBER-002']], members: ['MEMBER-001', 'MEMBER-002'], delegations: [] };
 
 try {
   // 근거는 필수, 사유는 선택이다 — 강제된 사유는 "확인함"으로 채워질 뿐이고
@@ -80,6 +99,10 @@ try {
   command('git', ['commit', '-m', 'initial']);
   rdl(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
   rdl(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
+  // 승인은 사람의 것이다. 이 시험이 오래 agent-a로 승인하고 통과했는데, 그것은
+  // 게이트가 옳았다는 뜻이 아니라 게이트에 시험이 없었다는 뜻이었다 — approval.js
+  // 머리말이 선언한 "AI가 쓴 초안과 사람이 책임지는 정본의 경계"가 코드에 없었다.
+  rdl(['client', 'register', 'desk-h', '--name', '강윤정 데스크', '--type', 'human', '--owner', 'MEMBER-001']);
 
   const created = rdl(['doc', 'create', 'ADR', '승인 대상 결정', '--owner', 'MEMBER-001', '--scope', '승인 흐름 검증을 위한 결정 기록', '--exclude', '구현 절차', '--project', 'crm']);
   const documentFile = path.join(temporary, 'projects', 'crm', created.relativeFile.replace(/^projects\/crm\//u, ''));
@@ -94,12 +117,22 @@ try {
   assert.strictEqual(target.status, 'unapproved', 'AI가 만든 문서는 승인 전까지 미승인이어야 합니다.');
   assert.strictEqual(initial.counts.unapproved >= 1, true);
 
-  assert.throws(() => approveDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-404', basis: [{ kind: 'read' }] }), /등록된 멤버만/u);
-  const approved = approveDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }], reason: '범위와 결정을 확인함' });
+  // 사람 게이트. 에이전트 Client는 자기가 쓴 초안을 스스로 정본으로 만들 수 없다.
+  // 거절의 문장은 무엇이 걸렸는지까지 말해야 한다 — "승인할 수 없습니다"만 돌려주면
+  // 유형이 문제인지 상태가 문제인지 모른 채 같은 명령을 다시 치게 된다.
+  assert.throws(() => approveDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] }),
+    /활성 human Client만 승인할 수 있습니다.*유형이 agent/u, '에이전트 Client의 문서 승인은 거절되어야 합니다.');
+  assert.throws(() => approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-404', basis: [{ kind: 'read' }] }), /등록된 멤버만/u);
+  const approved = approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }], reason: '범위와 결정을 확인함' });
   assert.strictEqual(approved.document.status, 'approved');
   assert.strictEqual(approved.created, true);
   // 같은 리비전을 다시 승인해도 기록이 늘지 않는다.
-  assert.strictEqual(approveDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] }).created, false);
+  assert.strictEqual(approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] }).created, false);
+  // 비활성 human도 지나지 못한다. 자격은 유형 하나가 아니라 셋(유형·상태·멤버십)이다.
+  rdl(['client', 'disable', 'desk-h']);
+  assert.throws(() => approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] }),
+    /활성 human Client만 승인할 수 있습니다.*상태가 disabled/u, '비활성 human Client의 승인도 거절되어야 합니다.');
+  rdl(['client', 'enable', 'desk-h']);
 
   // 승인 결과를 파일에 쓰지 않으므로 리비전이 유지된다 — 썼다면 자기 승인을 무효화했을 것이다.
   const afterApproval = documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === created.id);
@@ -285,7 +318,7 @@ try {
   assert(pendingOnly.documents.every((document) => document.submission.state === 'pending'));
 
   // 승인하면 줄에 서 있던 것이 판정을 받는다.
-  const settled = approveDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] });
+  const settled = approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] });
   assert.strictEqual(settled.document.status, 'approved');
   assert.strictEqual(settled.document.submission.state, 'settled');
   assert.strictEqual(settled.document.versionLabel, '2.0', '승인이 큰 자리를 올리고 작은 자리를 되돌린다.');
@@ -322,7 +355,119 @@ try {
   fs.writeFileSync(shard, original, 'utf8');
   assert.strictEqual(rdl(['check']).summary.errors, 0, '되돌린 원장은 다시 깨끗해야 합니다.');
 
-  process.stdout.write('approval tests passed\n');
-} finally {
+  // 화면이 쓰는 자리도 여기서 지난다. 명령줄만 시험하면 보드가 자기 판정을 따로 갖게
+  // 되고, 표면마다 판정이 갈리면 그중 느슨한 쪽이 게이트의 실제 높이가 된다.
+  module.exports = boardApprovalSurface(created.id, documentFile)
+    .then(() => { process.stdout.write('approval tests passed\n'); })
+    .finally(cleanup);
+} catch (error) {
+  cleanup();
+  throw error;
+}
+
+function cleanup() {
   fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
+// ── 화면에서 비교하고 승인한다 ──────────────────────────────────────────────
+//
+// 지금까지 보드에는 문서 승인도 비교도 없었다. 검토 인박스는 목록이었고, 행을 눌러
+// 도착한 문서 화면에도 승인할 자리가 없었다 — 서버에 그 엔드포인트 자체가 없었기
+// 때문이다. 그래서 화면을 보던 사람은 승인할 때마다 터미널로 갈아타야 했고, 그
+// 왕복이 승인을 맨 뒤로 미루는 자리였다.
+// 대상은 인자로 받는다. 시험 본문의 const는 try 블록의 것이라 이 함수에서 보이지
+// 않고, 보이게 하려고 밖으로 올리면 어느 값이 언제 채워지는지가 흐려진다.
+async function boardApprovalSurface(documentId, documentFile) {
+  const board = require('../src/board').createBoardServer(temporary, { token: 'test-session-token', project: 'crm' });
+  await new Promise((resolve, reject) => {
+    board.server.once('error', reject);
+    board.server.listen(0, '127.0.0.1', resolve);
+  });
+  const port = board.server.address().port;
+  const post = (pathname, payload, headers) => request(port, pathname, {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json', 'X-Rundol-Token': 'test-session-token' }, headers || {}),
+    body: JSON.stringify(payload)
+  });
+  const approvePath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/approve`;
+  const diffPath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/diff`;
+  try {
+    // 승인된 문서를 한 글자 고쳐 낡음으로 만든다. 화면이 승인하는 자리는 늘 이 상태다.
+    fs.appendFileSync(documentFile, '\n화면에서 승인할 문장입니다.\n', 'utf8');
+
+    // 승인자 목록은 서버가 낸다. 화면이 clients와 people로 이 목록을 직접 만들면 그것이
+    // 자격 판정의 네 번째 표면이 되고, 화면의 판정은 아무도 시험하지 않는다.
+    const snapshotValue = (await request(port, '/api/projects/crm/board-snapshot')).body;
+    assert.deepStrictEqual(snapshotValue.approvers.map((client) => client.id), ['desk-h'],
+      '승인 자격자만 화면에 실려야 합니다 — 에이전트 Client는 고를 수 없습니다.');
+    assert(snapshotValue.approvalCatalog.basisKinds.includes('read'), '근거 목록은 서버가 실어 줍니다.');
+
+    // 비교. 승인본 ↔ 작업본이라 방금 고친 문장이 그대로 나와야 한다.
+    const diff = (await request(port, `${diffPath}?axis=since-approval`)).body;
+    assert.strictEqual(diff.axis, 'since-approval');
+    assert.strictEqual(diff.status, 'stale');
+    assert(diff.diff && diff.diff.includes('화면에서 승인할 문장'), `승인 이후 변경분이 나와야 합니다: ${String(diff.diff).slice(0, 200)}`);
+    // 제출 축도 같은 자리에서 물을 수 있어야 한다. 승인자가 판정해야 하는 것은 작업본이
+    // 아니라 승인 후보이고, 그 둘이 다를 수 있다는 사실이 관문의 핵심이다.
+    const proposedAxis = (await request(port, `${diffPath}?axis=submission`)).body;
+    assert.strictEqual(proposedAxis.axis, 'submission');
+    // 지어내지 않는다. 비교할 것이 없으면 빈 차분이 아니라 이유가 온다 — "비교 기준 없음"과
+    // "바뀐 것 없음"은 다른 값이고, 앞엣것을 뒤엣것으로 그리면 사람은 안 바뀐 줄 알고 승인한다.
+    assert(proposedAxis.diff || proposedAxis.reason, '차분이 없으면 이유가 있어야 합니다.');
+    const unknownAxis = await request(port, `${diffPath}?axis=nonsense`);
+    assert.strictEqual(unknownAxis.status, 400, '모르는 축은 서버 결함이 아니라 잘못된 요청입니다.');
+    const missing = await request(port, '/api/projects/crm/documents/ADR-999/diff?axis=since-approval');
+    assert.strictEqual(missing.status, 404, '없는 문서는 404입니다.');
+
+    // 사람 게이트. 에이전트 Client는 화면으로도 지나지 못하고, 왜 못 지나는지가 답에 있어야
+    // 한다 — 화면이 그 문장을 그대로 옮기므로 여기서 삼키면 화면에서도 사라진다.
+    const byAgent = await post(approvePath, { clientId: 'agent-a', basis: [{ kind: 'read' }], reason: '읽었습니다' });
+    assert.strictEqual(byAgent.status, 400, `에이전트 Client의 승인은 거절되어야 합니다: ${JSON.stringify(byAgent.body)}`);
+    assert(/활성 human Client만 승인할 수 있습니다/u.test(byAgent.body.error), `거절 사유가 그대로 와야 합니다: ${byAgent.body.error}`);
+    assert(/유형이 agent/u.test(byAgent.body.error), '무엇이 걸렸는지까지 말해야 합니다.');
+
+    // 근거와 사유는 화면에서도 필수다. 근거가 없으면 나중에 "AI 검토가 놓쳤나 사람이
+    // 건너뛰었나"를 가를 수 없고, 사유가 없으면 훑기와 판단이 같은 동작이 된다.
+    assert.strictEqual((await post(approvePath, { clientId: 'desk-h', basis: [], reason: '확인' })).body.code, 'missing-basis');
+    assert.strictEqual((await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read' }] })).body.code, 'missing-reason');
+    assert.strictEqual((await post(approvePath, { basis: [{ kind: 'read' }], reason: '확인' })).body.code, 'missing-approver');
+    // 토큰 없는 쓰기는 이 로컬 세션의 것이 아니다.
+    assert.strictEqual((await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read' }], reason: '확인' }, { 'X-Rundol-Token': '' })).status, 403);
+
+    // 하네스가 띄운 Board는 human 자격을 HTTP로 빌려주는 창구가 된다. 런 승인이 그것을
+    // 거절하는 이유가 문서 승인에는 더 곧다 — 정본을 AI가 스스로 정본으로 만드는 자리다.
+    process.env.RUNDOL_HARNESS_CHILD = '1';
+    const harnessed = await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read' }], reason: '확인' });
+    delete process.env.RUNDOL_HARNESS_CHILD;
+    assert.strictEqual(harnessed.status, 403, '하네스가 띄운 Board에서는 승인이 거절되어야 합니다.');
+    assert.strictEqual(harnessed.body.code, 'harness-board');
+    // 조회는 막지 않는다. 무엇이 막혀 있는지는 하네스도 알아야 사람에게 가져갈 수 있다.
+    process.env.RUNDOL_HARNESS_CHILD = '1';
+    assert.strictEqual((await request(port, `${diffPath}?axis=since-approval`)).status, 200, '하네스에서도 조회는 열려 있어야 합니다.');
+    delete process.env.RUNDOL_HARNESS_CHILD;
+
+    // human Client의 승인은 그대로 된다.
+    const granted = await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read', detail: '3장 전체 재독' }], reason: '화면에서 차분을 보고 승인함' });
+    assert.strictEqual(granted.status, 200, `승인이 되어야 합니다: ${JSON.stringify(granted.body)}`);
+    assert.strictEqual(granted.body.document.status, 'approved');
+    assert.strictEqual(granted.body.created, true);
+    // 명의는 고를 여지가 없다 — 위임이 아니면 언제나 그 Client의 소유자다.
+    assert.strictEqual(granted.body.document.approvedBy, 'MEMBER-001');
+
+    // 승인 뒤 화면이 받는 값도 새 상태여야 한다. 화면은 스냅숏을 다시 읽는 것 말고
+    // 할 일이 없어야 하고, 그러려면 스냅숏이 그 사실을 이미 알고 있어야 한다.
+    const after = (await request(port, '/api/projects/crm/board-snapshot')).body;
+    assert.strictEqual(after.documents.find((item) => item.id === documentId).approval.status, 'approved');
+    assert(!after.reviewQueue.items.some((item) => item.id === documentId), '승인한 문서는 검토 줄에서 빠져야 합니다.');
+    // 원장에는 근거와 사유가 그대로 남는다. 화면으로 한 승인과 명령줄로 한 승인이
+    // 같은 값을 남기지 않으면 이력은 표면마다 다른 이야기를 하게 된다.
+    const recorded = documentHistory(temporary, { project: 'crm', targetId: documentId }).approvals.slice(-1)[0];
+    assert.deepStrictEqual(recorded.basis, [{ kind: 'read', detail: '3장 전체 재독' }]);
+    assert.strictEqual(recorded.reason, '화면에서 차분을 보고 승인함');
+
+    // 이미 승인된 판은 다시 승인해도 원장이 늘지 않는다.
+    assert.strictEqual((await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read' }], reason: '한 번 더' })).body.created, false);
+  } finally {
+    await new Promise((resolve) => board.server.close(resolve));
+  }
 }

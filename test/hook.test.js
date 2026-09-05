@@ -191,6 +191,9 @@ try {
   git(['commit', '-m', 'initial'], workspace);
   rdl(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
   rdl(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
+  // 승인은 활성 human Client만 지난다. 이 시험의 관심은 승인 그 자체가 아니라 승인된
+  // 문서가 만드는 판정이므로, 자격을 갖춘 Client를 하나 두고 그것으로 승인한다.
+  rdl(['client', 'register', 'desk-h', '--name', '검토자 데스크', '--type', 'human', '--owner', 'MEMBER-001']);
 
   const projectRoot = path.join(workspace, 'projects', 'crm');
   const created = rdl(['doc', 'create', 'ADR', '저장 시점 신호 검증', '--owner', 'MEMBER-001', '--scope', '저장 시점 낡음 신호 검증', '--exclude', '구현 절차', '--project', 'crm']);
@@ -201,7 +204,7 @@ try {
   const unapproved = hook('post-tool-use', { cwd: projectRoot, tool_name: 'Write', tool_input: { file_path: documentFile } });
   assert.deepStrictEqual(unapproved.context, [], '미승인은 사건이 아니라 줄이므로 저장 시점에 말하지 않는다');
 
-  require('../src/approval').approveDocument(workspace, { project: 'crm', clientId: 'agent-a', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] });
+  require('../src/approval').approveDocument(workspace, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] });
   assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Write', tool_input: { file_path: documentFile } }).context, [],
     '승인된 리비전을 그대로 저장하는 것은 사건이 아니다');
 

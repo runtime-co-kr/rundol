@@ -70,7 +70,7 @@ Usage:
                  [--submission <none|pending|drifted|settled>] [--json]
   rdl doc submit <ARTIFACT-ID> --client-id <id> [--member <MEMBER-ID>] [--reason <사유>] [--project <key>] [--json]
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
-                  --client-id <id> [--reason <사유>] [--project <key>] [--json]
+                  --client-id <human-client-id> [--reason <사유>] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
   rdl doc pipeline [--project <key>] [--json]

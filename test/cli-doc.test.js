@@ -75,12 +75,27 @@ for (const line of ['rdl sync --client-id <id>', 'rdl sync watch --client-id <id
     };
 
     rdlJson(['client', 'register', 'agent-a', '--name', 'Agent A', '--type', 'agent', '--owner', 'MEMBER-001']);
+    // 승인은 활성 human Client만 지난다. 이 시험이 에이전트 Client로 승인하고 통과하던
+    // 것은 게이트가 옳았다는 뜻이 아니라 게이트가 없었다는 뜻이다 — 문서 승인만 유형을
+    // 보지 않아, 에이전트가 자기가 쓴 초안을 스스로 정본으로 만들 수 있었다.
+    rdlJson(['client', 'register', 'desk-h', '--name', '검토자 데스크', '--type', 'human', '--owner', 'MEMBER-001']);
     const staleDocument = rdlJson(['doc', 'create', 'ADR', '낡을 결정', '--owner', 'MEMBER-001', '--scope', '승인 뒤에 바뀔 결정', '--exclude', '구현 절차', '--project', 'crm']);
     const freshDocument = rdlJson(['doc', 'create', 'ADR', '미승인 결정', '--owner', 'MEMBER-001', '--scope', '승인 기록이 없는 결정', '--exclude', '구현 절차', '--project', 'crm']);
     // 승인된 리비전을 담은 커밋이 실제로 있어야 차분에 기준이 생긴다.
     git(['add', '-A']);
     git(['commit', '-m', 'add documents']);
-    rdlJson(['doc', 'approve', staleDocument.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--reason', '결정 범위를 확인함', '--project', 'crm']);
+    // 에이전트 Client는 명령줄에서도 지나지 못한다. 제출은 그대로 열려 있다 —
+    // 에이전트가 쓰고 사람이 책임지는 것이 이 도구의 협업 모형이고, 제출까지 막으면
+    // 관문이 아니라 병목이 된다.
+    const refusedApproval = spawnSync(process.execPath,
+      [cli, 'doc', 'approve', staleDocument.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--project', 'crm', '--root', temporary],
+      { cwd: root, encoding: 'utf8', env });
+    assert.notStrictEqual(refusedApproval.status, 0, `에이전트 Client의 문서 승인은 거절되어야 합니다: ${refusedApproval.stdout}`);
+    assert(/활성 human Client만 승인할 수 있습니다/u.test(refusedApproval.stderr),
+      `거절 사유가 그대로 나와야 합니다: ${refusedApproval.stderr}`);
+    assert.strictEqual(rdlJson(['doc', 'submit', staleDocument.id, '--client-id', 'agent-a', '--project', 'crm']).created, true,
+      '제출은 에이전트 Client도 할 수 있어야 합니다.');
+    rdlJson(['doc', 'approve', staleDocument.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--reason', '결정 범위를 확인함', '--project', 'crm']);
     fs.appendFileSync(path.join(temporary, staleDocument.relativeFile), '\n승인 이후 추가된 문장입니다.\n', 'utf8');
 
     const report = rdlJson(['doc', 'review', '--project', 'crm']);
@@ -141,7 +156,7 @@ for (const line of ['rdl sync --client-id <id>', 'rdl sync watch --client-id <id
     const second = rdlJson(['doc', 'create', 'ADR', '또 낡을 결정', '--owner', 'MEMBER-001', '--scope', '두 번째로 낡게 만들 결정', '--exclude', '구현 절차', '--project', 'crm']);
     git(['add', '-A']);
     git(['commit', '-m', 'add second document']);
-    rdlJson(['doc', 'approve', second.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--project', 'crm']);
+    rdlJson(['doc', 'approve', second.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--project', 'crm']);
     fs.appendFileSync(path.join(temporary, second.relativeFile), '\n또 바뀐 문장입니다.\n', 'utf8');
 
     const limited = rdlJson(['doc', 'review', '--project', 'crm', '--max-items', '1']);

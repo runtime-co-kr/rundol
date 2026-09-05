@@ -51,6 +51,9 @@ try {
   command('git', ['commit', '-m', 'initial']);
   rdl(['init', 'crm', '--name', 'CRM', '--profile', 'lean']);
   rdl(['client', 'register', 'agent-a', '--name', 'A', '--type', 'agent', '--owner', 'MEMBER-001']);
+  // 승인은 활성 human Client만 지난다. 이 시험의 관심은 승인 그 자체가 아니라 승인된
+  // 문서가 만드는 판정이므로, 자격을 갖춘 Client를 하나 두고 그것으로 승인한다.
+  rdl(['client', 'register', 'desk-h', '--name', '검토자 데스크', '--type', 'human', '--owner', 'MEMBER-001']);
 
   const referenced = rdl(['doc', 'create', 'ADR', '참조되는 결정', '--owner', 'MEMBER-001', '--scope', '다른 문서가 참조하는 결정', '--exclude', '그 밖', '--project', 'crm']);
   const referring = rdl(['doc', 'create', 'ADR', '참조하는 결정', '--owner', 'MEMBER-001', '--scope', '앞 결정을 참조하는 결정', '--exclude', '그 밖', '--related', referenced.id, '--project', 'crm']);
@@ -70,7 +73,7 @@ try {
   assert(analyzed.summary.unexplained >= 2);
 
   // 승인하면 설명된 상태가 된다.
-  rdl(['doc', 'approve', referenced.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--project', 'crm']);
+  rdl(['doc', 'approve', referenced.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--project', 'crm']);
   const afterApproval = analyzeDocuments(temporary, { project: 'crm' });
   const approvedEntry = afterApproval.documents.find((entry) => entry.id === referenced.id);
   assert.strictEqual(approvedEntry.trust, 'approved');
@@ -131,8 +134,8 @@ try {
 
   // ② 낡음과 미승인은 다른 코드로 운다. 상류를 승인하면 미승인 경고가 그치고,
   // 그 상류를 승인 후 고치면 같은 자리가 낡음으로 바뀐다.
-  rdl(['doc', 'approve', productRequirement.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--project', 'crm']);
-  rdl(['doc', 'approve', upstreamRequirement.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--project', 'crm']);
+  rdl(['doc', 'approve', productRequirement.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--project', 'crm']);
+  rdl(['doc', 'approve', upstreamRequirement.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--project', 'crm']);
   assert.deepStrictEqual(upstreamDiagnostics().filter((item) => item.artifactId === downstreamScreen.id), [],
     '상류가 승인되면 하류는 앞선 것이 아닙니다.');
 
@@ -157,7 +160,7 @@ try {
     '추적성은 contract trace가 이미 내는 값을 그대로 씁니다.');
 
   // ③ 상류가 다시 승인되면 그친다.
-  rdl(['doc', 'approve', upstreamRequirement.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'agent-a', '--project', 'crm']);
+  rdl(['doc', 'approve', upstreamRequirement.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--project', 'crm']);
   assert.deepStrictEqual(upstreamDiagnostics().filter((item) => item.artifactId === downstreamScreen.id), [],
     '상류를 재승인하면 하류 경고가 그쳐야 합니다.');
   const settledPipeline = documentPipeline(temporary, { project: 'crm' });
