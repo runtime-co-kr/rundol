@@ -14,7 +14,8 @@ implementationContract: atomic-v1
 functionIds:
   - FN-001
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/requirement

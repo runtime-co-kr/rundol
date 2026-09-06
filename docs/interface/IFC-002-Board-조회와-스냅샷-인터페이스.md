@@ -13,7 +13,8 @@ scope: "REQ-021#FN-001 문서 태스크 Client lease sync contract를 조회하�
 excludes:
   - "변경 요청의 token 인증과 baseRevision 충돌 처리"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/interface

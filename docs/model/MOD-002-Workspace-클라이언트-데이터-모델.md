@@ -13,7 +13,8 @@ scope: "REQ-019#FN-001 Client manifest의 생성·상태 변경·조회 데이�
 excludes:
   - "프로젝트 task shard"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/model

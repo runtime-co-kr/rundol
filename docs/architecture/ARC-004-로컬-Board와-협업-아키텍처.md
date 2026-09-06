@@ -11,7 +11,8 @@ excludes:
   - "Git ref와 linked worktree의 소유 경계"
   - "문서 계획 profile의 정책 의미"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/architecture

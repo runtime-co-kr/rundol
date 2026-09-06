@@ -11,7 +11,8 @@ excludes:
   - "localhost Board HTTP 서버와 화면 구성"
   - "Client manifest와 문서 lease의 필드 계약"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/architecture

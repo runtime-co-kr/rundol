@@ -10,7 +10,8 @@ scope: "코드 Workspace 프로젝트가 서로 다른 동일 이름 Git ref와 
 excludes:
   - "문서 유형별 본문 책임과 원자 기능 계약"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: accepted
+state: draft
+lifecycle: accepted
 tags:
   - rundol/artifact
   - artifact/adr

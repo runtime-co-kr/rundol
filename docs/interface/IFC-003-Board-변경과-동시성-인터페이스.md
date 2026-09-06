@@ -13,7 +13,8 @@ scope: "REQ-022#FN-001 token과 revision으로 보호되는 Board 변경 HTTP �
 excludes:
   - "읽기 전용 snapshot의 집계와 정렬"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/interface

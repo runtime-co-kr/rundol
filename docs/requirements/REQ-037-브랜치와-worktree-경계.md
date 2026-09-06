@@ -24,7 +24,8 @@ diagnostics:
   - RDL-PUSH-002
   - RDL-PUSH-003
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/requirement

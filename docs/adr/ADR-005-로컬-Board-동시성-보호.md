@@ -10,7 +10,8 @@ scope: "localhost token 낙관적 revision soft lease를 함께 사용하는 동
 excludes:
   - "공개 네트워크 다중 사용자 인증과 중앙 잠금"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: accepted
+state: draft
+lifecycle: accepted
 tags:
   - rundol/artifact
   - artifact/adr

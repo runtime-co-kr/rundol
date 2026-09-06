@@ -6,7 +6,8 @@ kind: charter
 title: Rundol
 description: Git 저장소 안에서 문서, 태스크, 책임, 협업 상태와 변경 이력을 검증 가능한 프로젝트 정보로 운영하는 로컬 우선 도구를 개발한다.
 owner: "[[project#^MEMBER-001|강영준]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/project-charter

@@ -10,7 +10,8 @@ scope: "Workspace 프로젝트 Client lease 문서 계약 task branch의 공용 
 excludes:
   - "사용자 제품 도메인별 업무 용어"
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
+lifecycle: active
 tags:
   - rundol/artifact
   - artifact/glossary
