@@ -187,6 +187,56 @@ const NOTE_TAG_NAMESPACES = ['rundol/'];
 // 그 모듈은 파일을 읽으므로, 판정이 거기 있으면 판정도 함께 파일에 묶인다.
 const DOCUMENT_UID = /^[0-9A-HJKMNP-TV-Z]{8}$/u;
 
+// 두 축의 어휘. 목록을 여기 다시 적지 않는 이유는 이 저장소가 vocabulary.js를 만든
+// 이유 그대로다 — 두 번째로 적을 수 있으면 언젠가 두 목록은 갈리고, 갈린 날 검사기는
+// 정본이 모르는 값을 통과시키거나 정본이 아는 값을 막는다.
+const { DOCUMENT_STATE_KEYS, DOCUMENT_LIFECYCLE_KEYS } = require('./vocabulary');
+
+/**
+ * `state`와 `lifecycle`의 값 판정. 두 칸이 같은 모양인데 심각도가 다르다.
+ *
+ * `lifecycle`은 **사람이 소유한다.** 아무것도 이 칸을 굴리지 않으므로 어휘 밖 값은
+ * 스스로 낫지 않고, 낫지 않는 오타는 그 문서를 수명 조회에서 영영 빼놓는다. 고칠 수
+ * 있는 사람이 그 자리에 있으므로 오류로 막는다.
+ *
+ * `state`는 **rdl이 소유한다.** 사람은 이 칸을 적는 자리에 있지 않고, 어휘 밖 값은
+ * 다음 동기화의 투영이 덮어써 스스로 낫는다. 그 값을 오류로 막으면 아직 이관하지 않은
+ * 저장소가 판올림만으로 전 문서에서 멈추는데 — 여기만 해도 151건, run-ops는 55건이다 —
+ * 막힌 사람이 할 수 있는 일은 자기가 소유하지도 않은 칸을 손으로 고치는 것뿐이다.
+ * 그리고 모든 문서에서 터지는 관문은 곧 꺼진다. 그래서 경고로 알리고 갈 길을 말한다.
+ *
+ * 요약하면 심각도는 "무엇이 잘못됐나"가 아니라 "누가 고칠 수 있나"로 갈린다.
+ *
+ * 없는 것은 진단하지 않는다. `lifecycle`은 선택 칸이고, 비어 있는 것과 `active`는
+ * 다르다 — 대부분의 문서는 수명을 따로 말할 것이 없다. `state`가 없는 것은 필수 필드
+ * 판정(RDL-DOC-002 · RDL-PROJECT-002)이 이미 말하므로 여기서 다시 말하지 않는다.
+ */
+function checkStateVocabulary(list, doc, artifactId) {
+  const meta = doc.frontmatter.data;
+  const locations = doc.frontmatter.locations;
+  const value = (key) => {
+    const raw = meta[key];
+    if (raw === undefined || raw === null || raw === '') return null;
+    // 값 없는 `lifecycle:` 한 줄은 파서가 빈 배열로 읽는다. 그것을 "없음"으로 접으면
+    // 적다 만 줄이 정상으로 보이므로, 문자열이 아닌 것은 어긋난 값으로 다룬다.
+    return typeof raw === 'string' ? raw.trim() : String(Array.isArray(raw) ? raw.join(', ') : raw);
+  };
+  const lifecycle = value('lifecycle');
+  if (lifecycle !== null && !DOCUMENT_LIFECYCLE_KEYS.includes(lifecycle)) {
+    diagnostic(list, {
+      code: 'RDL-DOC-017', file: doc.relativeFile, line: locations.lifecycle || 2, artifactId,
+      message: `문서 수명 값이 어휘 밖입니다: ${lifecycle || '(빈 값)'} (가능: ${DOCUMENT_LIFECYCLE_KEYS.join(', ')}, 또는 칸 자체를 두지 않습니다)`
+    });
+  }
+  const state = value('state');
+  if (state !== null && !DOCUMENT_STATE_KEYS.includes(state)) {
+    diagnostic(list, {
+      code: 'RDL-DOC-018', severity: 'warning', file: doc.relativeFile, line: locations.state || 2, artifactId,
+      message: `문서 상태 값이 어휘 밖입니다: ${state} (가능: ${DOCUMENT_STATE_KEYS.join(', ')}). state는 rdl이 원장에서 투영하는 칸입니다. 수명을 뜻하는 값이면 rdl doc migrate가 lifecycle 칸으로 옮깁니다.`
+    });
+  }
+}
+
 const GOVERNANCE_HEADINGS = ['미션', '목표', '범위', '역할', '프로젝트 팀원', '이해관계자', '책임 매트릭스', '의사결정과 에스컬레이션', '위험과 제약', '협업 리듬', '완료 정의'];
 const GOVERNANCE_BLOCK_FIELDS = {
   ROLE: ['미션', '결정권', '주요 산출물', '에스컬레이션'],
@@ -504,6 +554,8 @@ function checkDocumentMetadata(list, doc, fileName, delegates) {
   if (meta.uid === undefined) diagnostic(list, { code: 'RDL-DOC-014', severity: 'warning', file: doc.relativeFile, artifactId, message: '문서 고유 식별자(uid)가 없습니다. rdl doc identity --apply로 부여하세요.' });
   else if (!isDocumentUid(meta.uid)) diagnostic(list, { code: 'RDL-DOC-015', file: doc.relativeFile, line: locations.uid, artifactId, message: `문서 고유 식별자 형식이 잘못되었습니다: ${meta.uid}` });
 
+  checkStateVocabulary(list, doc, artifactId);
+
   const tags = Array.isArray(meta.tags) ? meta.tags : [];
   const namespaces = NON_CANONICAL_CODES.has(typeof artifactId === 'string' ? artifactId.slice(0, 3) : '') ? NOTE_TAG_NAMESPACES : REQUIRED_TAG_NAMESPACES;
   for (const namespace of namespaces) {
@@ -543,6 +595,11 @@ function checkCharterMetadata(list, doc, projectKey) {
       diagnostic(list, { code: 'RDL-PROJECT-002', category: 'governance', file: doc.relativeFile, line: locations[field] || 2, artifactId: expectedId, message: `project.md 필수 메타 필드가 없습니다: ${field}` });
     }
   }
+  // 값 어휘는 헌장이라고 달라지지 않는다. 필수 필드처럼 코드를 따로 주면 같은 오타가
+  // 두 이름으로 답하게 되고, 그러면 어느 이름으로 찾아야 하는지를 파일 종류로 먼저
+  // 판단해야 한다. 필수 필드가 코드를 가르는 이유는 규칙 자체가 다르기 때문이지만
+  // (헌장은 파일명·ID 규칙이 아예 없다) 값 목록은 한 벌이므로 코드도 한 벌이다.
+  checkStateVocabulary(list, doc, expectedId);
   if (meta.id !== expectedId) diagnostic(list, { code: 'RDL-PROJECT-003', category: 'governance', file: doc.relativeFile, line: locations.id || 2, artifactId: meta.id, message: `project.md id는 ${expectedId}여야 합니다.` });
   if (meta.type !== 'project') diagnostic(list, { code: 'RDL-PROJECT-004', category: 'governance', file: doc.relativeFile, artifactId: expectedId, message: 'project.md type은 project여야 합니다.' });
   const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
@@ -738,7 +795,7 @@ module.exports = {
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, isDocumentUid,
   ALLOWED_TASK_STATES, CONTRACT_VIOLATION_CODES, DEFAULT_TASK_GATES,
   MAX_ASSET_BYTES, MAX_ASSET_EDGE, isAssetPath, maskCode,
-  governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata,
+  governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata, checkStateVocabulary,
   checkContractViolations, checkTaskEntries, checkReference, referenceFromTask,
   checkAssetReference, checkAssetInventory,
   UPSTREAM_TRUST_CODES, upstreamTypes, documentLayer, documentTypeCode, relatedTargetId, upstreamTrustIssues

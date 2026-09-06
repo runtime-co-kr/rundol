@@ -69,6 +69,16 @@ function defaultInputSnapshot(context) {
     .split(/\r?\n/u).filter(Boolean).sort();
   const listedDocuments = listDocuments(project);
   const documents = listedDocuments.map((document) => [document.id, document.revision]).sort((left, right) => left[0].localeCompare(right[0]));
+  // 판 1로 잰 리비전. 판 2와 다른 문서만 싣는다 — 소유 칸(state)이 없는 문서는 두 판이
+  // 같은 값이라 실을 것이 없고, 없는 것은 "같다"는 뜻이다.
+  //
+  // 이것이 없으면 판 1로 기록된 옛 승인을 맞히지 못해 승인이 멀쩡한 문서에 낡음을 외친다.
+  // 감시는 막지 않는 표면이라 그 헛울림은 아무것도 세우지 못하면서 신뢰만 깎고, 한 번
+  // 그런 신호는 사람이 끈다.
+  const documentPriorRevisions = listedDocuments
+    .filter((document) => document.revisions && document.revisions[1] && document.revisions[1] !== document.revision)
+    .map((document) => [document.id, document.revisions[1]])
+    .sort((left, right) => left[0].localeCompare(right[0]));
   const projectConfigs = [project.manifest, project.charter, path.join(project.root, 'harness.json'), path.join(project.root, 'procedures.json'), path.join(project.root, 'board.json')];
   const workspaceRoot = path.join(layout.root, 'projects', 'workspace');
   const workspaceConfigs = [layout.manifest && layout.manifest.file, path.join(workspaceRoot, 'workspace.yaml'), path.join(workspaceRoot, 'harness.json'), path.join(workspaceRoot, 'procedures.json'), path.join(workspaceRoot, 'board.json'), layout.projectsDirectory];
@@ -89,6 +99,7 @@ function defaultInputSnapshot(context) {
     head,
     gitStatusDigest: digestJson(status),
     documents,
+    documentPriorRevisions,
     taskShardDigests,
     projectConfigDigests,
     workspaceConfigDigests,
@@ -100,9 +111,9 @@ function defaultInputSnapshot(context) {
 function validateInputSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('Watch inputSnapshot must be an object.');
   const keys = Object.keys(snapshot).sort();
-  const expected = ['diagnosticSourceRevisions', 'documents', 'gitStatusDigest', 'head', 'projectConfigDigests', 'registeredEventShardHeads', 'taskShardDigests', 'workspaceConfigDigests'];
+  const expected = ['diagnosticSourceRevisions', 'documentPriorRevisions', 'documents', 'gitStatusDigest', 'head', 'projectConfigDigests', 'registeredEventShardHeads', 'taskShardDigests', 'workspaceConfigDigests'];
   if (canonicalJson(keys) !== canonicalJson(expected) || !/^[0-9a-f]{40,64}$/u.test(snapshot.head || '') || !DIGEST.test(snapshot.gitStatusDigest || '')) throw new Error('Watch inputSnapshot boundary is invalid.');
-  for (const key of ['documents', 'taskShardDigests', 'projectConfigDigests', 'workspaceConfigDigests', 'registeredEventShardHeads', 'diagnosticSourceRevisions']) {
+  for (const key of ['documents', 'documentPriorRevisions', 'taskShardDigests', 'projectConfigDigests', 'workspaceConfigDigests', 'registeredEventShardHeads', 'diagnosticSourceRevisions']) {
     const values = snapshot[key];
     if (!Array.isArray(values) || values.some((item) => !Array.isArray(item) || item.length !== 2 || typeof item[0] !== 'string' || !item[0] || !DIGEST.test(item[1] || ''))) throw new Error(`Watch inputSnapshot ${key} is invalid.`);
     const sorted = values.slice().sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]));
@@ -275,8 +286,10 @@ function approvalDiagnostics(snapshot, histories) {
   if (!histories) return [];
   const { trustState } = require('./approval');
   const findings = [];
+  // 판마다 다른 값을 함께 넘긴다. 표에 없는 문서는 두 판이 같으므로 지금 값이 곧 판 1이다.
+  const prior = new Map((snapshot.documentPriorRevisions || []).map((item) => [item[0], item[1]]));
   for (const [id, revision] of snapshot.documents) {
-    const state = trustState({ id, revision }, histories.get(id));
+    const state = trustState({ id, revision, revisions: { 1: prior.get(id) || revision, 2: revision } }, histories.get(id));
     if (state.status !== 'stale') continue;
     findings.push({
       artifactId: id,

@@ -6,12 +6,24 @@
 // 가능성은 요구를 없앨 이유가 아니라 드러나게 만들 이유다 — 승인을 그 시점의
 // 내용 리비전에 결박하면 나중에 "그건 다른 버전이었다"가 통하지 않는다.
 //
-// 신뢰 상태는 저장하지 않고 파생한다. 승인 결과를 frontmatter에 쓰면 그 쓰기가
-// 리비전을 바꿔 방금 한 승인을 스스로 무효화한다(documentRevision은 metadata를
-// 포함한다). 그리고 파생이라야 AI가 state를 active로 적어도 소용이 없다 —
+// 판정은 저장하지 않고 파생한다. 파생이라야 AI가 state를 손으로 적어도 소용이 없다 —
 // 게이트는 파일이 아니라 원장을 본다.
+//
+// 그러면서도 문서의 state 칸은 이제 원장에서 투영한다. 오래 그 칸은 사람이 적는
+// 주장이었고 아무것도 그것을 굴리지 않아, 원장이 승인이라 말하는 문서가 파일에서는
+// 초안으로 남았다 — 화면이 같은 문서에 두 말을 했다. 그래서 승인·제출·반려가 원장에
+// 사건을 적으면서 그 칸을 함께 쓴다.
+//
+// 그 쓰기가 자기 승인을 무효화하지 않는 것은 리비전 계산이 그 칸을 빼기 때문이다
+// (board-data.js의 판 2). 빼지 않으면 승인이 state를 쓰고, 그 쓰기가 리비전을 바꾸고,
+// 방금 승인한 리비전이 더 이상 이 문서가 아니게 된다.
+//
+// 정본은 여전히 원장이다. 파일의 칸은 파생 캐시이며 손으로 고쳐도 다음 사건에서
+// 되돌아간다. 위조를 막는 것은 그 칸이 아니라 원장의 봉투와 인가이므로, 이 파일의
+// 어느 판정도 그 칸을 읽지 않는다.
 
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const eventStore = require('./event-store');
@@ -35,8 +47,48 @@ const DELEGATION_ID = /^DLG-[A-F0-9]{20}$/u;
 // 승인이 무엇에 기댔는지는 필수다. 사유 문장은 선택이다 — 강제하면 "확인함"
 // 같은 빈 문장이 채워질 뿐이고, 그것으로는 나중에 "AI 검토가 놓쳤나 사람이
 // 건너뛰었나"를 구분할 수 없다. 개선하려면 그 구분이 필요하다.
-const { BASIS_KINDS, SUBMISSION_STATES } = require('./vocabulary');
+const { BASIS_KINDS, SUBMISSION_STATES, REVISION_FORMULAS, DEFAULT_REVISION_FORMULA, CURRENT_REVISION_FORMULA } = require('./vocabulary');
 const BASE_FIELDS = ['schemaVersion', 'eventId', 'type', 'rootRequestId', 'requestId', 'clientId', 'projectId', 'targetId', 'reviewedRevision'];
+
+/**
+ * 이 사건이 어느 판으로 잰 리비전을 결박했는가.
+ *
+ * BASE_FIELDS에 넣지 않는다 — 넣으면 필수가 되고, 그러면 판을 적지 않은 옛 사건이
+ * 전부 형태에서 거절되어 RDL-APPROVE-014로 울린다. 없으면 판 1이라는 규약이 그
+ * 되돌림이고, 그 규약의 정본은 vocabulary의 DEFAULT_REVISION_FORMULA다.
+ *
+ * 칸이 없는 사건은 canonical에도 키가 없으므로 봉투 다이제스트가 예전 그대로다.
+ * 여기가 이 판올림의 가장 가는 자리였다 — 옛 사건의 다이제스트가 1비트라도 달라지면
+ * 이미 공유된 원장 전체가 손상으로 잡힌다. 그래서 칸을 "있으면 그 값, 없으면 판 1"로
+ * 두었고, 새 사건만 값을 적는다.
+ *
+ * 그러면서도 적힌 값은 canonical 안이라 다이제스트가 덮는다. 밖에 두면 판만 1로
+ * 바꿔치기해 판 2로 잰 승인을 판 1로 재게 만들 수 있고, 그것은 승인을 다른 문서에
+ * 옮겨 붙이는 것과 같다.
+ */
+const REVISION_FORMULA_FIELD = 'revisionFormula';
+
+function assignRevisionFormula(normalized, input) {
+  if (input[REVISION_FORMULA_FIELD] === undefined) return normalized;
+  if (!REVISION_FORMULAS.includes(input[REVISION_FORMULA_FIELD])) {
+    throw new Error(`지원하지 않는 리비전 계산 판입니다: ${input[REVISION_FORMULA_FIELD]} (가능: ${REVISION_FORMULAS.join(', ')})`);
+  }
+  normalized[REVISION_FORMULA_FIELD] = input[REVISION_FORMULA_FIELD];
+  return normalized;
+}
+
+/**
+ * 그 사건이 결박한 판으로 잰 문서 리비전.
+ *
+ * 문서가 판마다의 표(listDocuments의 revisions)를 들고 있으면 그 판의 값을 쓰고, 표가
+ * 없으면 들고 있는 한 값으로 답한다. 표 없이 부르는 자리(훅·감시)는 리비전을 스스로
+ * 계산해 넘기므로 판을 가릴 수단이 없고, 그때는 넘어온 값이 곧 그 자리의 답이다.
+ */
+function boundRevision(document, formula) {
+  const table = document && document.revisions;
+  const measured = table && table[formula === undefined || formula === null ? DEFAULT_REVISION_FORMULA : formula];
+  return measured || (document ? document.revision : null);
+}
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 
@@ -96,7 +148,7 @@ const REJECTION_TYPE = 'approval.rejected';
 // reviewedRevision)으로 문서의 한 리비전을 지목한다는 불변식이 유지되어야, 리비전을
 // 보는 소비자(check의 리비전 해소, 커밋 역추적)가 종류별 분기를 갖지 않는다.
 function normalizeSubmissionEvent(input) {
-  const allowed = BASE_FIELDS.concat(['submittedBy', 'reason', 'recordedAt', 'canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(['submittedBy', 'reason', REVISION_FORMULA_FIELD, 'recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`제출 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['submittedBy'])) if (input[field] === undefined) throw new Error(`${SUBMISSION_TYPE}.${field}이(가) 필요합니다.`);
@@ -112,6 +164,7 @@ function normalizeSubmissionEvent(input) {
   // 올렸는가는 검토자가 물을 것이지 제출자가 미리 증명할 것이 아니다.
   const reason = normalizeText(input.reason, '사유', 1000);
   if (reason) normalized.reason = reason;
+  assignRevisionFormula(normalized, input);
   if (input.recordedAt !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.recordedAt || '')) throw new Error('기록 시각은 밀리초 단위 ISO-8601 UTC여야 합니다.');
     normalized.recordedAt = input.recordedAt;
@@ -136,7 +189,7 @@ function normalizeSubmissionEvent(input) {
 // reviewedRevision)으로 문서의 한 리비전을 지목한다는 불변식이 유지되어야 리비전을
 // 보는 소비자가 종류별 분기를 갖지 않는다.
 function normalizeRejectionEvent(input) {
-  const allowed = BASE_FIELDS.concat(['rejectedBy', 'reason', 'recordedAt', 'canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(['rejectedBy', 'reason', REVISION_FORMULA_FIELD, 'recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`반려 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['rejectedBy', 'reason'])) if (input[field] === undefined) throw new Error(`${REJECTION_TYPE}.${field}이(가) 필요합니다.`);
@@ -153,6 +206,7 @@ function normalizeRejectionEvent(input) {
   const reason = normalizeText(input.reason, '반려 사유', 1000);
   if (!reason) throw new Error('반려에는 사유가 필요합니다. 왜 아닌지를 남기지 않으면 작성자는 무엇을 고쳐야 할지 알 수 없고, 그때 반려는 침묵과 같아집니다.');
   normalized.reason = reason;
+  assignRevisionFormula(normalized, input);
   if (input.recordedAt !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.recordedAt || '')) throw new Error('기록 시각은 밀리초 단위 ISO-8601 UTC여야 합니다.');
     normalized.recordedAt = input.recordedAt;
@@ -168,7 +222,7 @@ function normalizeApprovalEvent(input) {
   if (input.type === SUBMISSION_TYPE) return normalizeSubmissionEvent(input);
   if (input.type === REJECTION_TYPE) return normalizeRejectionEvent(input);
   if (input.type !== APPROVAL_TYPE) throw new Error(`알 수 없는 승인 이벤트 종류입니다: ${input.type || '(없음)'}`);
-  const allowed = BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis', 'reason', 'delegationId', 'recordedAt', 'canonicalDigest', 'occurredAt']);
+  const allowed = BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis', 'reason', 'delegationId', REVISION_FORMULA_FIELD, 'recordedAt', 'canonicalDigest', 'occurredAt']);
   const extra = Object.keys(input).filter((key) => !allowed.includes(key));
   if (extra.length) throw new Error(`승인 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis'])) if (input[field] === undefined) throw new Error(`approval.granted.${field}이(가) 필요합니다.`);
@@ -194,6 +248,7 @@ function normalizeApprovalEvent(input) {
     if (!DELEGATION_ID.test(input.delegationId || '')) throw new Error('위임 식별자가 유효하지 않습니다.');
     normalized.delegationId = input.delegationId;
   }
+  assignRevisionFormula(normalized, input);
   // 인가 판정에 쓰는 기록 시각. canonical 안에 있으므로 고치면 다이제스트가 달라진다.
   if (input.recordedAt !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.recordedAt || '')) throw new Error('기록 시각은 밀리초 단위 ISO-8601 UTC여야 합니다.');
@@ -332,6 +387,10 @@ function foldApprovals(events, options) {
     approvals.set(targetId, inOrder(events).map((event) => ({
       targetId,
       reviewedRevision: event.reviewedRevision,
+      // 판을 접힌 항목까지 나른다. 여기서 떨어뜨리면 판정 자리가 "어느 판으로 잰
+      // 리비전인가"를 물을 수 없고, 물을 수 없으면 옛 승인을 지금 판으로 재게 된다 —
+      // 그 순간 다시 만들 수 없는 판단이 통째로 낡음이 된다.
+      revisionFormula: event.revisionFormula || DEFAULT_REVISION_FORMULA,
       approvedBy: event.approvedBy,
       basis: event.basis,
       reason: event.reason || null,
@@ -348,6 +407,7 @@ function foldApprovals(events, options) {
     submissions.set(targetId, inOrder(events).map((event) => ({
       targetId,
       submittedRevision: event.reviewedRevision,
+      revisionFormula: event.revisionFormula || DEFAULT_REVISION_FORMULA,
       submittedBy: event.submittedBy,
       reason: event.reason || null,
       recordedAt: event.recordedAt || null,
@@ -363,6 +423,7 @@ function foldApprovals(events, options) {
     rejections.set(targetId, inOrder(events).map((event) => ({
       targetId,
       rejectedRevision: event.reviewedRevision,
+      revisionFormula: event.revisionFormula || DEFAULT_REVISION_FORMULA,
       rejectedBy: event.rejectedBy,
       reason: event.reason,
       recordedAt: event.recordedAt || null,
@@ -407,7 +468,9 @@ function foldApprovals(events, options) {
 // 승인되면 settled가 되고, 그것이 옳다 — 신뢰 상태의 정본은 승인이고 반려는 그것을
 // 되돌리지 않는다.
 function submissionState(document, approvals, submissions, rejections) {
-  const approvedRevisions = new Set(approvals.map((entry) => entry.reviewedRevision));
+  // 견줌은 언제나 그 사건의 판으로 잰 값과 한다. 지금 판으로만 재면 판을 안 적은 옛
+  // 승인이 전부 어긋나고, 어긋난 승인은 사람이 다시 만들어야 하는데 만들 수 없다.
+  const settledHere = approvals.some((entry) => entry.reviewedRevision === boundRevision(document, entry.revisionFormula));
   const latest = submissions.length ? submissions[submissions.length - 1] : null;
   const denied = rejections.length ? rejections[rejections.length - 1] : null;
   // 마지막 말이 무엇이었나. 둘이 한 원장에 있어 순서가 원장 자신의 성질이므로, 파일들의
@@ -420,9 +483,9 @@ function submissionState(document, approvals, submissions, rejections) {
     || String(left.eventId || '').localeCompare(String(right.eventId || ''));
   const deniedLast = Boolean(denied) && (!latest || later(denied, latest) > 0);
   const state = !latest && !denied ? 'none'
-    : approvedRevisions.has(document.revision) ? 'settled'
+    : settledHere ? 'settled'
       : deniedLast ? 'rejected'
-        : latest.submittedRevision === document.revision ? 'pending' : 'drifted';
+        : latest.submittedRevision === boundRevision(document, latest.revisionFormula) ? 'pending' : 'drifted';
   return {
     state,
     revision: latest ? latest.submittedRevision : null,
@@ -471,7 +534,9 @@ function trustState(document, history, submissionHistory, rejectionHistory) {
   const entries = history || [];
   const submissions = submissionHistory || [];
   const rejections = rejectionHistory || [];
-  const matched = entries.filter((entry) => entry.reviewedRevision === document.revision);
+  // 판마다 재는 자리가 여기다. 승인 사건이 결박한 리비전을 그 사건의 판으로 잰 지금
+  // 문서와 견주므로, 판 1로 기록된 승인은 판올림 뒤에도 판 1로 재어 그대로 유효하다.
+  const matched = entries.filter((entry) => entry.reviewedRevision === boundRevision(document, entry.revisionFormula));
   // "마지막 승인"은 eventId 사전순의 끝이 아니다 — 그건 시간 순서가 아니라 해시
   // 순서다. 승인은 문서가 커밋된 순서를 따르므로, 낡음 상태에서 무엇으로
   // 되돌아갈지는 이력의 실제 순서(기록 순)로 판정한다.
@@ -479,7 +544,10 @@ function trustState(document, history, submissionHistory, rejectionHistory) {
   const trust = !entries.length
     ? { status: 'unapproved', approvedRevision: null, approvedBy: null, approvals: 0 }
     : matched.length
-      ? { status: 'approved', approvedRevision: document.revision, approvedBy: matched[matched.length - 1].approvedBy, approvals: entries.length }
+      // 승인된 리비전은 그 승인이 적은 값을 그대로 낸다. document.revision을 실으면
+      // 판 1로 승인된 문서가 판 2의 값을 승인 리비전으로 말하게 되고, 그 값으로는
+      // 승인본을 담은 커밋을 영영 찾지 못한다.
+      ? { status: 'approved', approvedRevision: matched[matched.length - 1].reviewedRevision, approvedBy: matched[matched.length - 1].approvedBy, approvals: entries.length }
       : { status: 'stale', approvedRevision: last.reviewedRevision, approvedBy: last.approvedBy, approvals: entries.length };
   return Object.assign(trust, {
     submission: submissionState(document, entries, submissions, rejections),
@@ -488,6 +556,118 @@ function trustState(document, history, submissionHistory, rejectionHistory) {
     // 때마다 번호가 올라 "몇 판째인가"가 "몇 번 거절당했나"로 바뀐다.
     versionLabel: versionLabel(entries, submissions)
   });
+}
+
+// ── 원장에서 문서로: state 투영 ─────────────────────────────────────────────
+//
+// 정본은 원장이고 파일의 칸은 파생 캐시다. 이 층이 존재하는 이유는 파일만 열어도 지금
+// 상태를 알 수 있어야 하기 때문이고 — 사람은 문서를 편집기에서 열지 rdl doc status로
+// 열지 않는다 — 그 이상은 아니다. 판정은 아무 데서도 이 칸을 읽지 않는다.
+
+/**
+ * 두 축을 한 칸으로 접는다. 손실은 결함이 아니라 이 칸의 정의다.
+ *
+ * 원장은 신뢰(승인됨·낡음·미승인)와 제출(none·pending·drifted·settled·rejected)을 따로
+ * 알지만 파일의 한 칸은 그것을 다 담지 못한다. 캐시는 파일을 연 사람이 읽을 한 낱말이면
+ * 되고, 두 축이 다 필요한 자리는 원장을 묻는다 — 어휘 주석이 그렇게 정해 두었다.
+ *
+ * 우선순위와 그 이유.
+ *
+ *   승인됨   가장 강한 사실이다. 승인된 판은 제출 축이 무엇이든 승인된 판이고,
+ *            그 축의 값(settled)은 승인의 그림자라 따로 말할 것이 없다.
+ *   반려     승인 다음이다. 차례가 작성자에게 넘어갔다는 것이 이 문서를 여는 사람이
+ *            가장 먼저 알아야 할 사실이고, 그 사람이 곧 작성자다.
+ *   제출됨   pending과 drifted를 한 낱말로 접는다. 파일을 여는 쪽에 필요한 것은
+ *            "지금 남의 검토를 기다린다"이고, 승인자가 볼 것과 지금 파일이 다르다는
+ *            경고는 승인자 쪽 물음이라 원장이 답한다.
+ *   낡음     승인이 있었지만 지금 판은 그것이 아니다. 제출 뒤라면 위에서 이미
+ *            제출됨으로 답했으므로, 여기 남는 것은 "고쳐 놓고 아직 안 올렸다"이다.
+ *   초안     나머지. 아무에게도 올린 적 없고 승인된 적도 없다.
+ *
+ * 다섯 값이 정확히 DOCUMENT_STATE_KEYS 다섯이고 전부 실제로 나온다. 안 나오는 값을
+ * 어휘에 두면 그 칸은 죽고, 죽은 칸은 아무도 그것이 죽었다는 사실을 모른다.
+ */
+function projectedDocumentState(state) {
+  const submission = (state && state.submission && state.submission.state) || 'none';
+  if (state && state.status === 'approved') return 'approved';
+  if (submission === 'rejected') return 'rejected';
+  if (submission === 'pending' || submission === 'drifted') return 'proposed';
+  if (state && state.status === 'stale') return 'stale';
+  return 'draft';
+}
+
+/**
+ * frontmatter의 state 한 줄만 갈아 끼운 원본. 바꿀 것이 없으면 원본 그대로 돌려준다.
+ *
+ * 줄 하나만 손대는 이유는 나머지가 전부 리비전이기 때문이다. 파싱해서 다시 쓰면 따옴표
+ * 표기나 줄 순서 같은 것이 조용히 정규화되고, 그 정규화는 판 2에서도 리비전을 바꿔
+ * 이 문서에 걸린 모든 승인을 낡음으로 만든다. 줄바꿈도 그 문서가 쓰던 것을 그대로 둔다 —
+ * [^\r\n]*는 CRLF의 \r을 먹지 않는다.
+ *
+ * 칸이 없으면 만든다. 없는 채로 두면 그 문서만 영영 투영을 못 받는데, 원장에 승인이
+ * 있는 문서가 파일에서 아무 말도 하지 않는 것이 이 갈래가 없애려는 상태 그 자체다.
+ */
+function withProjectedState(source, value) {
+  if (!/^---\r?\n/u.test(source)) return null;
+  const close = /\r?\n---[^\S\r\n]*(?:\r?\n|$)/u.exec(source);
+  if (!close) return null;
+  const head = source.slice(0, close.index);
+  const tail = source.slice(close.index);
+  const line = `state: ${value}`;
+  if (/^state:[^\r\n]*$/mu.test(head)) {
+    const replaced = head.replace(/^state:[^\r\n]*$/mu, line);
+    return replaced === head ? source : `${replaced}${tail}`;
+  }
+  return `${head}${head.includes('\r\n') ? '\r\n' : '\n'}${line}${tail}`;
+}
+
+/**
+ * 원장에 적힌 것을 문서 파일에 투영한다. 부르는 쪽은 사건을 실제로 남긴 뒤에만 부른다.
+ *
+ * **원장이 먼저다.** 파일이 원장에 없는 것을 주장하면 안 되므로 쓰기 순서는 뒤집을 수
+ * 없다. 그래서 이 쓰기는 사건이 이미 원장에 든 뒤에 일어나고, 여기서 실패해도 승인·
+ * 제출·반려 자체는 성립한다 — 실패를 예외로 올리면 사람은 "승인이 실패했다"로 읽고 다시
+ * 누르는데, 그 판단은 이미 원장에 있다. 그래서 실패는 값으로 나른다(projectionError).
+ *
+ * 문서를 못 쓴다고 승인을 막지 않는 이유도 같다. 읽기 전용 파일이나 잠긴 파일은 사람이
+ * 내린 판단의 유효성과 아무 상관이 없고, 캐시를 못 썼다고 판단을 버리면 도구가 판단보다
+ * 캐시를 중히 여기는 것이 된다. 다음 사건이 같은 자리에 다시 쓴다.
+ *
+ * **사건을 남기지 않은 호출에서는 쓰지 않는다.** 이것이 옛 승인을 지키는 자리다 —
+ * 판 1로 기록된 승인이 서 있는 문서에 state를 쓰면 그 파일의 판 1 리비전이 달라져
+ * 승인이 그 자리에서 낡음이 된다. 세 명령 모두 이미 승인된 판에서는 사건을 남기지
+ * 않으므로(승인·제출은 created:false, 반려는 거절), 쓰기는 그 상태에 닿지 않는다.
+ * 그래서 옛 승인이 붙은 문서의 칸은 다음 사건이 실제로 날 때까지 그대로 둔다.
+ *
+ * 실패는 명령의 결과에 평평한 칸으로 실린다. 중첩 객체로 실으면 사람이 보는 출력이
+ * 그것을 통째로 건너뛰어(printOperation의 규칙) 쓰기 실패가 화면에서 사라지고, 사람은
+ * 파일이 갱신된 줄 안다 — 값으로 나르기로 한 결정이 거기서 반쪽이 된다.
+ *
+ * 이미 그 값이면 쓰지 않는다. 같은 내용을 다시 써서 파일 시각만 흔들면 그것을 보는
+ * 감시와 훅이 바뀐 것 없는 변경을 신호로 낸다.
+ */
+function projectDocumentState(project, document, state) {
+  const projectedState = projectedDocumentState(state);
+  try {
+    const file = path.resolve(project.root, document.file);
+    const source = fs.readFileSync(file, 'utf8');
+    const next = withProjectedState(source, projectedState);
+    if (next === null) return { projectedState, projectionError: `frontmatter가 없어 ${document.file}에 state를 투영할 자리가 없습니다.` };
+    if (next === source) return { projectedState };
+    const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      fs.writeFileSync(temporary, next, 'utf8');
+      fs.renameSync(temporary, file);
+    } catch (error) {
+      if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
+      throw error;
+    }
+    return { projectedState };
+  } catch (error) {
+    // 원장에는 이미 들어갔다. 여기서 던지면 사람은 "승인이 실패했다"로 읽고 다시 누르는데,
+    // 그 판단은 이미 원장에 있다 — 실패는 값으로 나르고 명령 자체는 성립시킨다.
+    return { projectedState, projectionError: `문서의 state를 갱신하지 못했습니다(${document.file}): ${error.message}. 원장에는 기록되었으므로 판정은 그대로입니다.` };
+  }
 }
 
 // ── Workspace 경로 ──────────────────────────────────────────────────────────
@@ -596,16 +776,16 @@ function submitDocument(start, input) {
   appendApprovalEvent(context.eventsRoot, {
     schemaVersion: 1, eventId: requestJournal.eventIdForRequest(requestId), type: SUBMISSION_TYPE,
     rootRequestId, requestId, clientId, projectId: context.project.key,
-    targetId: document.id, reviewedRevision: document.revision,
+    targetId: document.id, reviewedRevision: document.revision, revisionFormula: CURRENT_REVISION_FORMULA,
     submittedBy, reason: settings.reason
   }, { lockDirectory: context.lockDirectory });
   const after = foldedApprovalLedger(start, context.project.key).folded;
-  return {
+  const projected = trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id));
+  return Object.assign({
     project: context.project.key,
-    document: Object.assign({ id: document.id, revision: document.revision },
-      trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id))),
+    document: Object.assign({ id: document.id, revision: document.revision }, projected),
     created: true
-  };
+  }, projectDocumentState(context.project, document, projected));
 }
 
 function approveDocument(start, input) {
@@ -651,12 +831,17 @@ function approveDocument(start, input) {
   appendApprovalEvent(context.eventsRoot, {
     schemaVersion: 1, eventId: requestJournal.eventIdForRequest(requestId), type: 'approval.granted',
     rootRequestId, requestId, clientId, projectId: context.project.key,
-    targetId: document.id, reviewedRevision: document.revision,
+    targetId: document.id, reviewedRevision: document.revision, revisionFormula: CURRENT_REVISION_FORMULA,
     approvedBy: settings.approvedBy, actorMemberId: authority.actor, basis: settings.basis, reason: settings.reason,
     ...(settings.delegationId ? { delegationId: settings.delegationId } : {})
   }, { lockDirectory: context.lockDirectory });
   const after = foldedApprovalLedger(start, context.project.key).folded;
-  return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id))), created: true };
+  const projected = trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id));
+  return Object.assign({
+    project: context.project.key,
+    document: Object.assign({ id: document.id, revision: document.revision }, projected),
+    created: true
+  }, projectDocumentState(context.project, document, projected));
 }
 
 /**
@@ -705,7 +890,8 @@ function rejectDocument(start, input) {
   }
   // 같은 판을 두 번 반려하는 것은 원장에 아무 사실도 더하지 않는다. 같은 리비전의
   // 재승인·재제출을 기록하지 않는 것과 같은 이유다.
-  if (state.submission.state === 'rejected' && state.submission.rejection.revision === document.revision) {
+  const denied = rejections.length ? rejections[rejections.length - 1] : null;
+  if (state.submission.state === 'rejected' && denied && denied.rejectedRevision === boundRevision(document, denied.revisionFormula)) {
     return { project: context.project.key, document: Object.assign({ id: document.id, revision: document.revision }, state), created: false };
   }
   const requestJournal = require('./request-journal');
@@ -718,16 +904,16 @@ function rejectDocument(start, input) {
   appendApprovalEvent(context.eventsRoot, {
     schemaVersion: 1, eventId: requestJournal.eventIdForRequest(requestId), type: REJECTION_TYPE,
     rootRequestId, requestId, clientId, projectId: context.project.key,
-    targetId: document.id, reviewedRevision: document.revision,
+    targetId: document.id, reviewedRevision: document.revision, revisionFormula: CURRENT_REVISION_FORMULA,
     rejectedBy, reason
   }, { lockDirectory: context.lockDirectory });
   const after = foldedApprovalLedger(start, context.project.key).folded;
-  return {
+  const projected = trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id));
+  return Object.assign({
     project: context.project.key,
-    document: Object.assign({ id: document.id, revision: document.revision },
-      trustState(document, after.approvals.get(document.id), after.submissions.get(document.id), after.rejections.get(document.id))),
+    document: Object.assign({ id: document.id, revision: document.revision }, projected),
     created: true
-  };
+  }, projectDocumentState(context.project, document, projected));
 }
 
 // git은 "무엇이 언제", 원장은 "왜 그리고 누구 책임"을 안다. 이력의 값은 둘을
@@ -780,9 +966,18 @@ function revisionCandidates(root, file) {
 // 리비전 해시 → 그 해시를 담은 커밋. "버전"은 파일이 아니라 (내용 해시, 그 해시를
 // 담은 커밋)의 짝으로 이미 주소가 있고, 그 짝을 만드는 자리는 하나여야 한다 —
 // 승인본 전용 루프로 두면 제출본을 같은 방식으로 지목할 수 없어 사본 설계로 밀린다.
+//
+// 판을 묻지 않고 판 전부로 잰다. 이 함수가 답하는 것은 "이 해시를 담은 커밋이
+// 무엇인가"이지 "이 문서가 승인되었나"가 아니고, 해시는 판을 가로질러 유일하다 —
+// 부르는 쪽마다 판을 함께 나르게 하면 그 배선이 하나 빠지는 날 옛 승인본의 커밋을
+// 못 찾아 차분이 통째로 사라진다.
+//
+// 소유 칸만 다른 커밋 여럿이 판 2에서 같은 값을 낼 수 있다. 그때는 가장 최근 것이
+// 잡히고, 그것이 옳다 — 차분의 기준은 내용이 같은 것 중 가장 가까운 커밋이어야
+// state 투영이 만든 커밋이 차분에 섞이지 않는다.
 function commitForRevision(root, file, revision, candidates) {
   if (!revision) return null;
-  const { documentRevision } = require('./board-data');
+  const { documentRevisions } = require('./board-data');
   const { parseFrontmatter } = require('./frontmatter');
   for (const commit of candidates || revisionCandidates(root, file)) {
     // runGit은 stdout을 trim한다. 파일 내용을 그렇게 읽으면 후행 개행이 잘려
@@ -791,7 +986,7 @@ function commitForRevision(root, file, revision, candidates) {
     const shown = showFileAtCommit(root, commit, file);
     if (shown === null) continue;
     const parsed = parseFrontmatter(shown);
-    if (!parsed || documentRevision(parsed.data, parsed.body) !== revision) continue;
+    if (!parsed || !Object.values(documentRevisions(parsed.data, parsed.body)).includes(revision)) continue;
     return commit;
   }
   return null;
@@ -808,7 +1003,11 @@ function diffSinceApproval(start, input) {
   const approvedRevision = state.approvedRevision;
   const commit = commitForRevision(context.project.root, document.file, approvedRevision);
   if (!commit) return { project: context.project.key, targetId: document.id, status: state.status, approvedRevision, approvedBy: state.approvedBy, baseCommit: null, diff: null, reason: '승인된 리비전을 담은 커밋을 찾지 못했습니다. 승인 이후 커밋되지 않았을 수 있습니다.' };
-  const diff = runGit(['diff', `${commit}`, '--', document.file], { cwd: context.project.root, allowFailure: true });
+  // core.quotepath=false를 준다. 이 저장소의 정본 파일명은 한글이고, git은 기본으로
+  // 비ASCII 바이트를 8진수로 이스케이프해 diff 머리 네 줄을 사람이 못 읽는 문자열로
+  // 만든다. 세 자리(승인본↔작업본·승인본↔제출본·임의 두 지점)가 같은 문제를 갖고,
+  // 한 곳만 고치면 같은 문서의 차분이 축마다 다르게 보인다.
+  const diff = runGit(['-c', 'core.quotepath=false', 'diff', `${commit}`, '--', document.file], { cwd: context.project.root, allowFailure: true });
   return { project: context.project.key, targetId: document.id, status: state.status, approvedRevision, approvedBy: state.approvedBy, baseCommit: commit, diff: diff.status === 0 ? diff.stdout : null };
 }
 
@@ -851,14 +1050,14 @@ function diffSubmission(start, input) {
       reason: `${missing}의 리비전을 담은 커밋을 찾지 못했습니다. 비교는 커밋된 리비전 사이에서만 성립합니다 — 아직 커밋하지 않은 작업본은 다음 순간 달라질 수 있어 승인자가 본 것과 결박되지 않습니다.`
     });
   }
-  const diff = runGit(['diff', approvedCommit, submittedCommit, '--', document.file], { cwd: context.project.root, allowFailure: true });
+  const diff = runGit(['-c', 'core.quotepath=false', 'diff', approvedCommit, submittedCommit, '--', document.file], { cwd: context.project.root, allowFailure: true });
   return Object.assign(shared, { approvedCommit, submittedCommit, diff: diff.status === 0 ? diff.stdout : null });
 }
 
 module.exports = {
   BASIS_KINDS, SUBMISSION_STATES, SUBMISSION_TYPE, APPROVAL_TYPE, REJECTION_TYPE,
   normalizeApprovalEvent, approvalEnvelope, appendApprovalEvent, readApprovalEvents,
-  foldApprovals, trustState, commitForRevision,
+  foldApprovals, trustState, commitForRevision, revisionCandidates, projectedDocumentState, withProjectedState,
   documentApprovals, documentStatus, submitDocument, approveDocument, rejectDocument, documentHistory,
   diffSinceApproval, diffSubmission
 };

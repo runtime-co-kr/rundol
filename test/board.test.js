@@ -335,6 +335,76 @@ async function testBoard() {
     const rejected = await request(port, '/api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': 'wrong' }, body: '{}' });
     assert.strictEqual(rejected.status, 403);
 
+    // ── 문서 이력과 임의 비교 ──────────────────────────────────────────────
+    //
+    // 승인 판은 정해진 두 축만 답한다. 검토하다 보면 "세 판 전과 견주면 어떤가"와
+    // "언제부터 이렇게 됐나"를 묻게 되는데, 앞엣것의 기준은 원장이 아니라 사람이 이력에서
+    // 고르고 뒤엣것의 답은 이력에만 있다 — 축을 늘려서는 둘 다 답하지 못한다.
+    const historyAnswer = await request(port, '/api/projects/tms/documents/ADR-001/history');
+    // 이력 자리가 문서 조회 경로에 삼켜지지 않는다. `/documents/:id` 정규식이 뒤 조각까지
+    // 먹으면 이 경로는 조용히 문서 하나를 돌려주고, 화면은 이력이 빈 채로 온 줄로 읽는다.
+    assert.strictEqual(historyAnswer.headers['content-type'], 'application/json; charset=utf-8');
+    // 이 픽스처는 schemaVersion 3이라 승인 원장 자체가 없다. 없는 것을 500으로 내면 화면은
+    // "보드가 죽었다"로 읽고 무엇을 고쳐야 하는지 알 수 없다 — 못 읽은 이유를 그대로 내는
+    // 것이 이 축의 규율이고, 차분 자리가 이미 지키는 선이다.
+    assert.strictEqual(historyAnswer.status, 400, `원장을 못 읽는 것은 서버 결함이 아닙니다: ${historyAnswer.body}`);
+    assert(/schemaVersion/u.test(JSON.parse(historyAnswer.body).error), `못 읽은 이유가 그대로 와야 합니다: ${historyAnswer.body}`);
+
+    const { runGit } = require('../src/git');
+    const tmsRoot = path.join(root, 'test', 'fixtures', 'workspace', 'projects', 'tms');
+    const recent = runGit(['log', '-n', '2', '--format=%H'], { cwd: tmsRoot, allowFailure: true });
+    const commits = (recent.status === 0 ? recent.stdout : '').split(/\r?\n/u).filter(Boolean);
+    assert(commits.length >= 1, '픽스처가 사는 저장소에 커밋이 있어야 이 축을 잴 수 있습니다.');
+    const rangeAt = (query) => request(port, `/api/projects/tms/documents/ADR-001/diff?axis=range&${query}`);
+
+    // 지점 값은 그대로 git 인자가 된다. 모양에서 막지 않으면 조회 경로가 곧 임의의
+    // 문자열을 git에 넘기는 경로가 되고, 그 사실은 넘어간 다음에야 드러난다.
+    for (const query of [`from=zzzzzzz&to=${commits[0]}`, `from=${commits[0]}&to=..%2F..%2Fpackage.json`, `from=--output%3Dx&to=${commits[0]}`]) {
+      const refused = await rangeAt(query);
+      assert.strictEqual(refused.status, 400, `모양이 아닌 지점은 거부되어야 합니다(${query}): ${refused.body}`);
+      assert.strictEqual(JSON.parse(refused.body).code, 'invalid-point');
+    }
+    // 지점이 하나만 오면 비교가 성립하지 않는다. 없는 쪽을 지금 리비전이나 HEAD로 메우면
+    // 사람이 고르지 않은 기준으로 견준 차분을 사람이 고른 것으로 믿게 된다.
+    for (const query of [`to=${commits[0]}`, `from=${commits[0]}`]) {
+      const half = await rangeAt(query);
+      assert.strictEqual(half.status, 400, `한 지점만으로는 비교가 성립하지 않습니다(${query}): ${half.body}`);
+      assert.strictEqual(JSON.parse(half.body).code, 'missing-point');
+    }
+
+    // 값의 종류는 길이가 가른다. 리비전은 sha256이라 64자리이고 커밋은 40자리가 최대라
+    // 두 집합이 겹치지 않는다 — 종류를 따로 받는 칸을 두면 화면이 그 칸을 틀리게 채우는
+    // 갈래가 생기는데, 길이는 값 자신이 이미 말하고 있어 틀릴 수 없다.
+    const unknownRevision = JSON.parse((await rangeAt(`from=${'a'.repeat(64)}&to=${commits[0]}`)).body);
+    assert.strictEqual(unknownRevision.from.kind, 'revision', '64자리는 원장의 주소로 읽혀야 합니다.');
+    assert.strictEqual(unknownRevision.to.kind, 'commit', '40자리는 git의 주소로 읽혀야 합니다.');
+    // 못 찾은 지점에 빈 차분을 지어내지 않는다. "비교 기준 없음"과 "바뀐 것 없음"은 다른
+    // 값이고, 앞엣것을 뒤엣것으로 그리면 사람은 아무것도 안 바뀐 줄 알고 승인한다.
+    assert.strictEqual(unknownRevision.diff, null, '못 찾은 지점으로 차분을 지어내면 안 됩니다.');
+    assert(/찾지 못했습니다/u.test(unknownRevision.reason), `못 찾았으면 이유가 있어야 합니다: ${JSON.stringify(unknownRevision.reason)}`);
+    const unknownCommit = JSON.parse((await rangeAt(`from=${'0'.repeat(40)}&to=${commits[0]}`)).body);
+    assert.strictEqual(unknownCommit.from.commit, null, '없는 커밋을 있는 것으로 답하면 안 됩니다.');
+    assert(/찾지 못했습니다/u.test(unknownCommit.reason));
+
+    // 같은 지점 둘은 사이가 없다. 이유 없이 빈 차분으로 그리면 "안 바뀌었다"로 읽힌다.
+    const identical = JSON.parse((await rangeAt(`from=${commits[0]}&to=${commits[0]}`)).body);
+    assert.strictEqual(identical.diff, '');
+    assert(/같은 커밋/u.test(identical.reason), `같은 지점이라는 사실을 말해야 합니다: ${identical.reason}`);
+
+    if (commits.length >= 2) {
+      const between = JSON.parse((await rangeAt(`from=${commits[1]}&to=${commits[0]}`)).body);
+      assert.strictEqual(between.axis, 'range');
+      assert.strictEqual(between.from.commit, commits[1]);
+      assert.strictEqual(between.to.commit, commits[0]);
+      assert.strictEqual(typeof between.diff, 'string', `두 커밋 사이는 차분이 나와야 합니다: ${JSON.stringify(between.reason)}`);
+    }
+
+    // 모르는 축은 가능한 축을 말한다. 늘어난 축이 그 문장에 없으면 화면은 서버가 아는
+    // 것보다 좁은 것만 물을 수 있는 줄로 읽는다.
+    const unknownAxis = await request(port, '/api/projects/tms/documents/ADR-001/diff?axis=nonsense');
+    assert.strictEqual(unknownAxis.status, 400);
+    assert(/range/u.test(JSON.parse(unknownAxis.body).error), `가능한 축에 range가 있어야 합니다: ${unknownAxis.body}`);
+
     // ── 프로젝트 자산 경로 ────────────────────────────────────────────────
     //
     // 디스크에서 파일을 읽어 내보내는 경로다. 열어 준 범위가 곧 공격면이므로,

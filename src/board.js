@@ -20,6 +20,7 @@ const { loadDocumentContract, planDocumentContract, updateDocumentContract } = r
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
 const { CONSTRAINT_KINDS, EXEMPTABLE_GATES } = require('./item-type');
+const { runGit } = require('./git');
 const { pendingRuns } = require('./run-pending');
 const runLedger = require('./run-ledger');
 const { approveRun } = require('./run');
@@ -1046,10 +1047,120 @@ function approverOwner(root, clientId) {
 }
 
 /**
- * 문서 차분. 축은 둘이고 묻는 것이 다르다.
+ * 문서 이력. 원장의 사건(승인·제출·반려)과 git의 커밋을 한 답에 담는다.
+ *
+ * 스냅숏에 싣지 않는다. 문서마다 git log --follow를 돌고 연결 태스크까지 훑는 값이라
+ * 폴링마다 계산하면 문서 수에 비례해 보드가 선다 — 차분이 요청할 때만 계산하는
+ * 자리인 것과 같은 이유이고, 같은 관례를 따른다.
+ *
+ * 접는 일 자체는 approval.js의 documentHistory가 한다. 여기서 다시 접으면 원장을 두 번
+ * 읽는 자리가 생기고, 두 읽기는 서로 다른 시점을 볼 수 있다 — 그때 화면이 말하는
+ * "언제부터 이렇게 됐나"는 명령줄의 답과 갈린다.
+ */
+function boardDocumentHistory(root, projectKey, documentId) {
+  try {
+    return require('./approval').documentHistory(root, { project: projectKey, targetId: documentId });
+  } catch (error) {
+    // 차분 자리와 같은 선을 긋는다. 없는 문서와 원장을 못 읽는 저장소는 서버 결함이
+    // 아니고, 500으로 내면 화면은 그 둘을 "보드가 죽었다"로 뭉뚱그린다.
+    if (!error.statusCode) error.statusCode = /찾지 못했습니다/u.test(error.message || '') ? 404 : 400;
+    throw error;
+  }
+}
+
+/**
+ * 비교 지점의 두 주소.
+ *
+ * 리비전 해시는 원장이 쓰는 주소다. 승인·제출·반려 사건은 자기가 무엇을 판정했는지를
+ * reviewedRevision으로만 말하므로, 이력의 원장 줄을 지목하려면 이 주소여야 한다.
+ * 커밋 해시는 git이 바로 답하는 주소다. 이력의 커밋 줄은 커밋 해시만 알고, 그 줄을
+ * 리비전으로 지목하려면 화면이 커밋마다 문서를 다시 재야 한다 — 그것은 화면이 판정을
+ * 다시 짓는 일이라 이 보드가 하지 않기로 한 것이다.
+ *
+ * 그래서 둘 다 받는다. 한쪽만 받으면 이력의 절반이 지목할 수 없는 줄이 되고, 지목할 수
+ * 없는 줄이 섞인 시간축은 "이 둘을 견주자"는 이 화면의 물음에 답하지 못한다.
+ *
+ * 값의 종류는 길이로 가른다. 리비전은 sha256이라 언제나 64자리이고 커밋은 40자리가
+ * 최대라 두 집합은 겹치지 않는다 — 종류를 따로 받는 칸을 두면 화면이 그 칸을 틀리게
+ * 채우는 갈래가 생기는데, 길이는 값 자신이 이미 말하고 있어 틀릴 수 없다.
+ *
+ * 16진수 밖의 글자는 여기서 끊는다. 이 값들은 그대로 git 인자가 되므로, 통과시키면
+ * 임의의 문자열이 git 명령으로 들어간다 — 프로젝트 키를 경로 정규식으로 좁히는 것과
+ * 같은 선이고, 값이 아니라 모양에서 막는다는 점도 같다.
+ */
+const REVISION_POINT = /^[a-f0-9]{64}$/u;
+const COMMIT_POINT = /^[a-f0-9]{7,40}$/u;
+
+function resolveDiffPoint(projectRoot, file, raw, label, candidates) {
+  const value = String(raw === undefined || raw === null ? '' : raw).trim().toLowerCase();
+  if (!value) inputError(`${label} 지점이 없습니다. 이력에서 견줄 두 지점을 골라야 비교가 성립합니다.`, 'missing-point');
+  if (REVISION_POINT.test(value)) {
+    // 리비전은 커밋을 되짚어야 한다. 그 되짚기는 approval.js가 소유한다 — 여기서 다시
+    // 짜면 같은 물음에 두 답이 생기고, 그중 느슨한 쪽이 화면이 믿는 답이 된다.
+    return { kind: 'revision', value, commit: require('./approval').commitForRevision(projectRoot, file, value, candidates) };
+  }
+  if (COMMIT_POINT.test(value)) {
+    // 없는 커밋을 지어내지 않는다. 확인 없이 git diff로 넘기면 git이 자기 말로 죽고,
+    // 그 문장은 "이 지점이 이 저장소에 없다"를 사람에게 말해 주지 못한다.
+    const found = runGit(['rev-parse', '--verify', `${value}^{commit}`], { cwd: projectRoot, allowFailure: true });
+    return { kind: 'commit', value, commit: found.status === 0 ? found.stdout : null };
+  }
+  return inputError(`${label} 지점의 모양이 아닙니다: ${value.slice(0, 16)}. 64자리 리비전 해시나 7~40자리 커밋 해시여야 합니다.`, 'invalid-point');
+}
+
+/**
+ * 임의의 두 지점 비교. 정해진 축 둘이 답하지 못하는 물음을 받는 자리다.
+ *
+ * 「승인 이후 변경」과 「제출본 비교」는 기준이 원장에 못박혀 있다. 그런데 검토하다
+ * 보면 "세 판 전과 견주면 어떤가", "언제부터 이렇게 됐나"를 묻게 되고, 그 물음의 기준은
+ * 사람이 이력에서 고른다 — 축을 늘려서는 답할 수 없고 지점을 받아야 답할 수 있다.
+ *
+ * 못 찾은 지점을 빈 차분으로 그리지 않는다. approval.js가 이미 지키는 선이고 이유도
+ * 같다: "비교 기준 없음"과 "바뀐 것 없음"은 다른 값이라, 앞엣것을 뒤엣것으로 그리면
+ * 사람은 아무것도 안 바뀐 줄 알고 승인한다.
+ */
+function boardDocumentRangeDiff(root, projectKey, documentId, search) {
+  const project = selectProject(workspaceLayout(root), projectKey, true);
+  const document = listDocuments(project).find((item) => item.id === documentId);
+  if (!document) inputError(`문서를 찾지 못했습니다: ${documentId}`, 'unknown-document');
+  // 후보 커밋 목록을 한 번만 만들어 두 지점이 나눠 쓴다. 넘기지 않으면 둘 다 리비전일 때
+  // 커밋별 git show 루프가 통째로 두 번 돌고, 지점은 사람이 고르는 값이라 그 갈래가 흔하다.
+  //
+  // 목록을 여기서 다시 만들지 않는다. 같은 git log를 두 곳에 적으면 한쪽만 고쳐지는 날이
+  // 오고, 그때 두 자리가 서로 다른 커밋 집합을 후보로 삼는다 — 같은 지점이 화면에 따라
+  // 찾아지기도 하고 안 찾아지기도 한다.
+  const candidates = require('./approval').revisionCandidates(project.root, document.file);
+  const from = resolveDiffPoint(project.root, document.file, search && search.get('from'), '기준', candidates);
+  const to = resolveDiffPoint(project.root, document.file, search && search.get('to'), '비교', candidates);
+  const base = { project: project.key, targetId: document.id, from, to };
+  if (!from.commit || !to.commit) {
+    const missing = !from.commit && !to.commit ? '두 지점' : !from.commit ? '기준 지점' : '비교 지점';
+    return Object.assign(base, {
+      diff: null,
+      reason: `${missing}을 담은 커밋을 찾지 못했습니다. 비교는 커밋된 지점 사이에서만 성립합니다 — 아직 커밋하지 않은 작업본은 다음 순간 달라질 수 있어 사람이 본 것과 결박되지 않습니다.`
+    });
+  }
+  if (from.commit === to.commit) {
+    return Object.assign(base, { diff: '', reason: '두 지점이 같은 커밋을 가리킵니다. 서로 다른 두 지점이라야 사이가 생깁니다.' });
+  }
+  // core.quotepath=false를 준다. 이 저장소의 정본 파일명은 한글이고, git은 기본으로
+  // 비ASCII 바이트를 8진수로 이스케이프해 diff 머리 네 줄을 사람이 못 읽는 문자열로
+  // 만든다. 세 자리(승인본↔작업본·승인본↔제출본·임의 두 지점)가 같은 문제를 갖고,
+  // 한 곳만 고치면 같은 문서의 차분이 축마다 다르게 보인다.
+  const diff = runGit(['-c', 'core.quotepath=false', 'diff', from.commit, to.commit, '--', document.file], { cwd: project.root, allowFailure: true });
+  return Object.assign(base, { diff: diff.status === 0 ? diff.stdout : null });
+}
+
+/**
+ * 문서 차분. 축은 셋이고 묻는 것이 다르다.
  *
  *   since-approval  승인본 ↔ 작업본. "승인 이후 무엇이 바뀌었나"
  *   submission      승인본 ↔ 제출본. "승인 후보가 승인본과 무엇이 다른가"
+ *   range           고른 두 지점. "세 판 전과 견주면 어떤가"
+ *
+ * 앞의 둘은 기준이 원장에 못박혀 있고 셋째만 사람이 기준을 고른다. 그래서 셋째만
+ * 지점을 받고, 나머지 둘에 지점 칸을 열지 않는다 — 열면 "승인본 이후"라는 이름의 축이
+ * 승인본이 아닌 것을 기준으로 삼을 수 있게 되어 축의 이름이 거짓말이 된다.
  *
  * 스냅숏에 싣지 않는다. 문서마다 git log --follow와 커밋별 git show를 돌므로 폴링마다
  * 계산하면 문서 수에 비례해 보드가 선다 — 요청할 때만 계산하는 자리다.
@@ -1065,7 +1176,8 @@ function boardDocumentDiff(root, projectKey, documentId, search) {
   try {
     if (axis === 'submission') return Object.assign({ axis }, approval.diffSubmission(root, input));
     if (axis === 'since-approval') return Object.assign({ axis }, approval.diffSinceApproval(root, input));
-    return inputError(`알 수 없는 비교 축입니다: ${axis} (가능: since-approval, submission)`, 'unknown-axis');
+    if (axis === 'range') return Object.assign({ axis }, boardDocumentRangeDiff(root, projectKey, documentId, search));
+    return inputError(`알 수 없는 비교 축입니다: ${axis} (가능: since-approval, submission, range)`, 'unknown-axis');
   } catch (error) {
     // 없는 문서와 원장을 못 읽는 저장소는 서버 결함이 아니다. 500으로 내보내면 화면은
     // 그 둘을 "보드가 죽었다"로 뭉뚱그리고, 사람은 무엇을 고쳐야 하는지 알 수 없다.
@@ -1117,6 +1229,9 @@ function createBoardServer(start, options) {
       const projectDocumentApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/approve$/u);
       const projectDocumentRejectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/reject$/u);
       const projectDocumentDiffMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/diff$/u);
+      // 이력은 차분과 나란한 짝이다. 차분이 "무엇이 달라졌나"에 답하면 이력은 "언제
+      // 그리고 왜 그렇게 됐나"에 답하고, 뒤엣것 없이는 앞엣것의 기준을 사람이 고를 수 없다.
+      const projectDocumentHistoryMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/history$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
@@ -1151,6 +1266,11 @@ function createBoardServer(start, options) {
       // 돌므로 폴링마다 계산하면 보드가 선다 — 물을 때만 계산한다.
       if (request.method === 'GET' && projectDocumentDiffMatch) {
         return json(response, 200, boardDocumentDiff(config.root, projectDocumentDiffMatch[1], decodeURIComponent(projectDocumentDiffMatch[2]), url.searchParams));
+      }
+      // 이력도 같은 이유로 스냅숏 밖이다. 문서마다 git log --follow를 도는 값이라 폴링에
+      // 실으면 문서 수에 비례해 보드가 선다.
+      if (request.method === 'GET' && projectDocumentHistoryMatch) {
+        return json(response, 200, boardDocumentHistory(config.root, projectDocumentHistoryMatch[1], decodeURIComponent(projectDocumentHistoryMatch[2])));
       }
       if (request.method === 'GET' && projectSyncMatch) return json(response, 200, syncStatus(selectProject(workspaceLayout(config.root), projectSyncMatch[1], true)));
       if (request.method === 'GET' && projectRunsMatch) return json(response, 200, boardRuns(config.root, projectRunsMatch[1]));

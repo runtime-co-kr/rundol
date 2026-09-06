@@ -1624,4 +1624,148 @@ module.exports = (async () => {
   }
 
   console.log('document approval tests passed');
+
+  // 9) 이력은 원장 사건과 커밋을 한 시간축에 낸다. 따로 세우면 사람이 두 목록의 시각을
+  //    눈으로 번갈아 훑으며 머리로 합쳐야 하고, 그 합치기는 줄이 늘면 곧 실패한다 —
+  //    실패하면 "승인 뒤에 저 커밋이 왔나 앞에 왔나"를 알 수 없고, 이력을 여는 이유가
+  //    바로 그 물음이라 거기서 값이 통째로 사라진다.
+  function historyValue(extra) {
+    return Object.assign({
+      project: 'demo',
+      document: { id: 'ADR-080', title: '문서 ADR-080', file: 'docs/ADR-080.md', revision: 'a'.repeat(64), status: 'stale', approvedRevision: 'b'.repeat(64), approvedBy: 'MEMBER-001', approvals: 2 },
+      approvals: [{ targetId: 'ADR-080', reviewedRevision: 'b'.repeat(64), approvedBy: 'MEMBER-001', basis: [{ kind: 'read', detail: '' }], reason: '읽고 책임집니다', recordedAt: '2026-08-10T00:00:00.000Z', eventId: 'EVT-A' }],
+      submissions: [{ targetId: 'ADR-080', submittedRevision: 'c'.repeat(64), submittedBy: 'MEMBER-001', reason: '고쳐서 올립니다', recordedAt: '2026-08-20T00:00:00.000Z', eventId: 'EVT-S' }],
+      rejections: [{ targetId: 'ADR-080', rejectedRevision: 'c'.repeat(64), rejectedBy: 'MEMBER-001', reason: '3장이 헌장과 어긋납니다', recordedAt: '2026-08-25T00:00:00.000Z', eventId: 'EVT-R' }],
+      tasks: [{ id: 'TASK-0001', title: '3장 고치기', status: 'doing' }],
+      commits: [
+        { commit: 'f'.repeat(40), author: '강윤정', at: '2026-08-30T00:00:00.000Z', subject: '3장을 고쳤다' },
+        { commit: 'e'.repeat(40), author: '강윤정', at: '2026-08-15T00:00:00.000Z', subject: '2장을 더했다' },
+        { commit: 'd'.repeat(40), author: '강윤정', at: '2026-08-05T00:00:00.000Z', subject: '문서를 만들었다' }
+      ]
+    }, extra || {});
+  }
+  {
+    const rangeDiff = 'diff --git a/docs/ADR-080.md b/docs/ADR-080.md\n@@ -1,2 +1,2 @@\n+세 판 전과 달라진 줄\n-옛 줄\n';
+    let rangeQuery = null;
+    const { dom, calls } = open((path) => {
+      if (/\/history$/u.test(path)) return { body: historyValue({ warning: '이 문서의 현재 리비전은 승인도 연결된 태스크도 없습니다.' }) };
+      if (/axis=range/u.test(path)) { rangeQuery = String(path); return { body: { axis: 'range', from: { kind: 'revision', value: 'b'.repeat(64), commit: '1'.repeat(40) }, to: { kind: 'commit', value: 'f'.repeat(40), commit: 'f'.repeat(40) }, diff: rangeDiff } }; }
+      if (/\/diff\?/u.test(path)) return { body: { axis: 'since-approval', status: 'stale', diff: '@@\n+승인 이후 줄\n' } };
+      return null;
+    }, [documentValue('ADR-080', trust('stale'))], null, 'document', 'ADR-080');
+
+    // 이력으로 가는 손잡이는 승인 옆에 선다. 승인 원장 줄은 "지금 어떤 상태인가"만 말하는데,
+    // 검토하다 보면 "언제부터 이렇게 됐나"를 묻게 되고 그 답은 이력에만 있다.
+    const historyOpener = dom.window.document.querySelector('#document-approval [data-approve-tab="history"]');
+    assert(historyOpener, '문서 상세에 이력으로 가는 손잡이가 있어야 합니다');
+    historyOpener.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    await settle();
+    assert(calls.some((call) => call.path.includes('/documents/ADR-080/history')), `이력을 물어야 합니다: ${calls.map((call) => call.path).join(', ')}`);
+    // 이력만 보러 온 사람에게 승인 축의 차분까지 미리 물으면, 쓰지도 않을 git 계산을 매번
+    // 치른다 — 이 값들이 스냅숏 밖에 있는 이유가 그 비용이다.
+    assert(!calls.some((call) => /axis=since-approval/u.test(call.path)), `열지 않은 탭의 값을 미리 물으면 안 됩니다: ${calls.map((call) => call.path).join(', ')}`);
+
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(panel, '이력도 본문 옆의 같은 판에서 열려야 합니다');
+    // 모달이 아니라 같은 판의 탭이다. 모달은 이력을 넓게 볼 수 있지만 본문을 통째로
+    // 가리는데, "언제부터 이렇게 됐나"를 묻는 사람은 그 답을 본문의 어느 문단에 겹쳐 읽는다.
+    assert.strictEqual(dom.window.document.getElementById('document-body').hidden, false, '이력이 본문을 감추면 안 됩니다');
+    assert(dom.window.document.getElementById('document-body').textContent.includes('본문'), '이력을 열어도 본문은 그대로 서야 합니다');
+    assert.strictEqual(panel.querySelectorAll('.approval-tabs [data-approve-tab]').length, 2, '한 판이 두 물음을 탭으로 나눠 가져야 합니다');
+
+    // 한 축이다. 종류를 지우지 않고 표시로 가르되 목록은 하나여야 한다.
+    const rows = Array.from(panel.querySelectorAll('.history-list .history-row'));
+    assert.strictEqual(panel.querySelectorAll('.history-list').length, 1, '원장 사건과 커밋이 한 목록에 서야 합니다');
+    assert.deepStrictEqual(
+      rows.map((row) => Array.from(row.classList).find((name) => name.startsWith('history-') && name !== 'history-row')),
+      ['history-commit', 'history-rejection', 'history-submission', 'history-commit', 'history-approval', 'history-commit'],
+      '한 시간축이라면 두 종류가 시각 순서대로 섞여 서야 합니다'
+    );
+    // 원장 줄은 누가·왜를 알고 커밋 줄은 무엇이·언제를 안다. 둘을 나란히 두는 것이 값이다.
+    assert(rows[1].textContent.includes('3장이 헌장과 어긋납니다'), '반려의 사유가 그 줄에 있어야 합니다');
+    assert(rows[4].textContent.includes('읽고 판단했다'), '승인의 근거가 그 줄에 있어야 합니다');
+    assert(rows[0].textContent.includes('3장을 고쳤다'), '커밋의 제목이 그 줄에 있어야 합니다');
+    assert(rows[0].textContent.includes('2026-08-30'), '언제인지는 달력의 값으로도 읽혀야 합니다');
+    // 경고를 삼키지 않는다. 승인도 태스크도 없이 바뀐 정본은 이력이 답할 수 없는 변경이고,
+    // 이 화면이 그 사실을 아는 유일한 자리다.
+    assert(panel.textContent.includes('승인도 연결된 태스크도 없습니다'), '경고를 삼키면 안 됩니다');
+    assert(panel.textContent.includes('TASK-0001'), '연결 태스크도 "왜 바뀌었나"의 갈래입니다');
+
+    // 이력을 열면 흔히 묻는 것이 이미 골라져 있다 — 승인본 ↔ 가장 최근 커밋.
+    assert(rangeQuery, '기본으로 고른 두 지점을 물어야 합니다');
+    assert(rangeQuery.includes(`from=${'b'.repeat(64)}`), `기준은 승인본이어야 합니다: ${rangeQuery}`);
+    assert(rangeQuery.includes(`to=${'f'.repeat(40)}`), `대상은 가장 최근 커밋이어야 합니다: ${rangeQuery}`);
+    assert(panel.querySelector('.approval-diff').textContent.includes('세 판 전과 달라진 줄'), '고른 두 지점 사이의 차분이 보여야 합니다');
+    // 차분 렌더링은 승인 판의 것을 그대로 쓴다. 두 벌 만들면 한쪽만 "기준 없음"과
+    // "변경 없음"을 가르게 되고, 그 차이는 사람이 잘못 승인한 다음에야 드러난다.
+    assert.strictEqual(panel.querySelectorAll('.diff-add').length, 1, '늘어난 줄은 승인 판과 같은 색으로 갈려야 합니다');
+
+    // 두 번째를 고르기 전에도 화면은 무엇을 기다리는지 말한다. 안 말하면 사람은 한 번
+    // 누른 뒤 아무 일도 안 일어난 줄로 읽는다.
+    panel.querySelector('[data-history-clear="to"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const waiting = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(waiting.textContent.includes('「대상」을 하나 더 고르면'), `무엇을 기다리는지 말해야 합니다: ${waiting.textContent.slice(0, 200)}`);
+    assert.strictEqual(waiting.querySelector('.approval-diff'), null, '지점이 하나뿐이면 차분을 지어내면 안 됩니다');
+
+    // 다른 지점을 고르면 그 사이를 다시 묻는다. 커밋 줄은 커밋 해시로, 원장 줄은 리비전
+    // 해시로 지목된다 — 종류를 하나로 통일하면 이력의 절반이 고를 수 없는 줄이 된다.
+    rangeQuery = null;
+    waiting.querySelector(`[data-history-pick="to"][data-history-point="${'e'.repeat(40)}"]`).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert(rangeQuery && rangeQuery.includes(`to=${'e'.repeat(40)}`), `고른 지점으로 다시 물어야 합니다: ${rangeQuery}`);
+    dom.window.close();
+  }
+
+  // 10) 이력이 길면 앞쪽만 그리고 나머지는 「더 보기」로 편다. 오래된 정본은 커밋만 수십
+  //     줄이라 통째로 그리면 판이 스크롤 덩어리가 되고, 이력을 여는 이유는 맨 위에 있다.
+  {
+    const many = [];
+    for (let index = 0; index < 24; index += 1) {
+      many.push({ commit: String(index).padStart(40, '0'), author: '강윤정', at: `2026-08-${String((index % 28) + 1).padStart(2, '0')}T00:00:00.000Z`, subject: `커밋 ${index}` });
+    }
+    const { dom } = open((path) => {
+      if (/\/history$/u.test(path)) return { body: historyValue({ approvals: [], submissions: [], rejections: [], tasks: [], commits: many }) };
+      if (/axis=range/u.test(path)) return { body: { axis: 'range', from: {}, to: {}, diff: '' } };
+      return null;
+    }, [documentValue('ADR-081', trust('stale'))], null, 'document', 'ADR-081');
+    dom.window.document.querySelector('#document-approval [data-approve-tab="history"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    await settle();
+    const panel = () => dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert.strictEqual(panel().querySelectorAll('.history-row').length, 12, '한 번에 그리는 수를 정해야 합니다');
+    const more = panel().querySelector('[data-history-expand]');
+    assert(more, '나머지를 보는 길이 있어야 합니다');
+    assert(more.textContent.includes('12개 더 보기'), `몇 개가 남았는지 말해야 합니다: ${more.textContent}`);
+    // 더 보기는 그 자리에서 끝까지 편다. 열둘씩 또 나누면 찾는 것을 만날 때까지 몇 번을
+    // 눌러야 하고, 몇 번 눌렀는지도 남지 않는다 — 인박스와 태스크 묶음이 쓰는 규칙과 같다.
+    more.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(panel().querySelectorAll('.history-row').length, 24, '더 보기는 끝까지 펴야 합니다');
+    assert.strictEqual(panel().querySelector('[data-history-expand]'), null, '다 폈으면 손잡이가 남으면 안 됩니다');
+    dom.window.close();
+  }
+
+  // 11) 이력을 못 읽으면 그 이유를 그대로 낸다. 삼키면 원장이 깨진 저장소와 아직 아무
+  //     일도 없던 저장소가 화면에서 같아 보이고, 앞엣것은 고쳐야 할 사고인데 아무도 모른다.
+  {
+    const said = '승인 기록에는 schemaVersion 6 이상의 Workspace가 필요합니다.';
+    const { dom } = open((path) => (/\/history$/u.test(path) ? { ok: false, status: 400, body: { error: said } } : null),
+      [documentValue('ADR-082', trust('stale'))], null, 'document', 'ADR-082');
+    dom.window.document.querySelector('#document-approval [data-approve-tab="history"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    await settle();
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(panel.textContent.includes(said), `못 읽은 이유가 그대로 와야 합니다: ${panel.textContent.slice(0, 200)}`);
+    assert.strictEqual(panel.querySelector('.history-list'), null, '못 읽었으면 빈 이력을 지어내면 안 됩니다');
+    // 이력을 못 읽어도 승인 자리는 그대로다. 탭 하나가 막혔다고 판정하는 자리까지 잃으면
+    // 사람은 화면을 떠나 명령줄로 가야 한다.
+    dom.window.document.querySelector('.approval-tabs [data-approve-tab="approve"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert(dom.window.document.querySelector('#document-approval-panel [data-approve-form]'), '다른 탭이 막혀도 승인은 할 수 있어야 합니다');
+    dom.window.close();
+  }
+
+  console.log('document history tests passed');
 })();

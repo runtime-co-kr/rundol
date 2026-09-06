@@ -15,6 +15,7 @@ const { normalizeItemTypes, mergeItemTypes, BUILTIN_ITEM_TYPES } = require('./it
 const {
   DOCUMENT_TYPE_KEYS,
   DOCUMENT_STATE_KEYS,
+  DOCUMENT_LIFECYCLE_KEYS,
   POLICY_STATES: POLICY_STATE_KEYS,
   ENFORCEMENTS: ENFORCEMENT_KEYS,
   TASK_STATES: TASK_STATUS_KEYS,
@@ -80,15 +81,43 @@ function validateApproval(value, file) {
 // 표시 키의 옛 이름. 유형 이름을 바꾸면서 이관 경로를 함께 내지 않으면, 이름을 바꾼 것만으로
 // 이미 저장된 board.json이 "지원하지 않는 키"로 거부되어 기존 Workspace가 멈춘다.
 const LEGACY_GROUP_KEYS = { documentTypes: { api: 'interface' } };
+// 그룹을 옮긴 옛 키. 이름은 그대로인데 사는 그룹이 바뀐 경우다 — `state` 칸이 나눠
+// 쓰던 두 축을 가르면서 수명 쪽 낱말이 documentStates에서 documentLifecycles로
+// 통째로 옮겨갔다. 위의 이름 바꾸기와 같은 이유로 이관 경로를 낸다. 저장된 라벨은
+// 팀이 적은 말이고, 우리가 축을 가른 사정 때문에 그 말이 버려지면 안 된다.
+// 이 판에서 처음 생긴 표시 그룹. 이름을 상수로 두는 이유는 아래에서 세 번 쓰이기
+// 때문이고, 그중 하나가 "옛 판이 모르는 키"를 가리는 판정이라 철자가 갈리면 조용히
+// 새는 자리다.
+const LIFECYCLE_GROUP = 'documentLifecycles';
+const MOVED_GROUP_KEYS = {
+  documentStates: { active: LIFECYCLE_GROUP, accepted: LIFECYCLE_GROUP, superseded: LIFECYCLE_GROUP, deprecated: LIFECYCLE_GROUP, archived: LIFECYCLE_GROUP }
+};
+// 어느 어휘에도 남지 않은 옛 키. 라벨은 값에 붙는 표시 문자열인데 그 값이 사라졌으므로
+// 이 라벨은 가리킬 것이 없다. 거부하지 않고 읽으면서 버린다 — 거부하면 팀이 retire하지도
+// 않은 낱말 하나 때문에 Workspace 전체가 열리지 않고, 그 팀이 대신 적을 수 있는 값도 없다.
+const RETIRED_GROUP_KEYS = { documentStates: ['review', 'unread'] };
 const PRESENTATION_GROUPS = {
   documentTypes: DOCUMENT_TYPE_KEYS,
   documentStates: DOCUMENT_STATE_KEYS,
+  [LIFECYCLE_GROUP]: DOCUMENT_LIFECYCLE_KEYS,
   policyStates: POLICY_STATE_KEYS,
   enforcementLevels: ENFORCEMENT_KEYS,
   taskStatuses: TASK_STATUS_KEYS,
   priorities: PRIORITY_KEYS,
   profiles: PROFILE_KEYS
 };
+// board.json에 실제로 적히는 그룹. **읽는 쪽은 새 그룹을 받고 쓰는 쪽은 옛 판이 아는
+// 것만 적는다.**
+//
+// 같은 저장소를 옛 판과 함께 보는 일이 실제로 일어난다. 최상위 그룹 키가 하나 늘면
+// 옛 판은 board.json을 "지원하지 않는 필드"로 거부하고, 거부된 board.json은 check도
+// sync도 세운다 — 아무도 값을 적지 않은 빈 칸 하나 때문에 그 사람의 저장소 전체가
+// 열리지 않는다. 뼈대가 기본값을 파일에 복사하지 않는 이유가 그것이고, 여기서는
+// 값이 아니라 키 자체가 그 위험이다. p15-compat 시험이 그 계약을 지킨다.
+//
+// 새 그룹을 쓸 수 없다는 뜻은 아니다. 그 그룹을 실제로 덮어쓴 파일에는 키가 적히고,
+// 그때는 사람이 그 기능을 골라 쓴 것이다. 빈 칸을 미리 깔아 두는 것과 다르다.
+const SCAFFOLD_GROUPS = Object.freeze(Object.keys(PRESENTATION_GROUPS).filter((group) => group !== LIFECYCLE_GROUP));
 const DEFAULT_PRESENTATION = {
   schemaVersion: 1,
   itemTypes: BUILTIN_ITEM_TYPES,
@@ -107,15 +136,23 @@ const DEFAULT_PRESENTATION = {
     glossary: { label: '용어집', description: '프로젝트 공통 용어와 정의', order: 100 },
     clipping: { label: '수집 노트', description: '정규화 전 임시 참고 자료', order: 110 }
   },
+  // 진행 축. rdl이 원장에서 투영하는 값이라 설명도 "원장이 무엇을 아는가"로 쓴다 —
+  // 사람이 고를 값이 아니므로 "무엇을 하라"가 아니라 "지금 무엇이 사실인가"를 말한다.
   documentStates: {
-    draft: { label: '초안', description: '작성 중이며 계약 검증이 끝나지 않음', order: 0 },
-    proposed: { label: '제안', description: '검토를 위해 제안됨', order: 10 },
-    review: { label: '검토 중', description: '책임자의 검토가 진행 중', order: 20 },
-    approved: { label: '승인됨', description: '승인되어 적용 가능함', order: 30 },
-    active: { label: '활성', description: '현재 유효한 정본', order: 40 },
-    deprecated: { label: '폐기 예정', description: '대체 문서로 전환 중', order: 50 },
-    archived: { label: '보관됨', description: '현재 사용하지 않는 기록', order: 60 },
-    unread: { label: '미확인', description: '아직 검토되지 않은 수집 자료', order: 70 }
+    draft: { label: '초안', description: '아직 제출하지 않았습니다. 원장에 이 문서의 사건이 없습니다', order: 0 },
+    proposed: { label: '제출됨', description: '승인을 기다립니다. 원장에 제출 사건이 있습니다', order: 10 },
+    approved: { label: '승인됨', description: '승인된 판과 지금 파일이 같습니다', order: 20 },
+    stale: { label: '낡음', description: '승인 뒤에 고쳐져 그 승인이 지금 판을 덮지 않습니다', order: 30 },
+    rejected: { label: '반려됨', description: '사유와 함께 되돌아왔습니다', order: 40 }
+  },
+  // 수명 축. 사람이 적고 원장은 모른다. 비어 있는 것과 active는 다르므로 "없음"에
+  // 라벨을 주지 않는다 — 라벨을 주면 대부분의 문서가 말한 적 없는 값을 말하게 된다.
+  documentLifecycles: {
+    active: { label: '유효', description: '지금 효력이 있는 내용입니다', order: 0 },
+    accepted: { label: '채택됨', description: '이 결정이 채택되어 서 있습니다. 문서 승인과 다른 축입니다', order: 10 },
+    superseded: { label: '대체됨', description: '다른 문서가 이 내용을 대신합니다', order: 20 },
+    deprecated: { label: '폐기 예정', description: '아직 남아 있지만 새로 기대지 않습니다', order: 30 },
+    archived: { label: '보관됨', description: '더 이상 쓰지 않고 기록으로만 남습니다', order: 40 }
   },
   policyStates: {
     required: { label: '필수', description: '이 유형의 문서가 반드시 있어야 한다', order: 0 },
@@ -275,6 +312,26 @@ function readConfig(file) {
         }
       }
     }
+  }
+  // 그룹이 옮겨간 옛 키를 먼저 제자리로 보낸다. 아래 순회 안에서 옮기면 받을 그룹이
+  // 이미 지나간 뒤일 수 있고, 그 순서는 선언 순서라는 우연에 기댄다.
+  for (const [group, moves] of Object.entries(MOVED_GROUP_KEYS)) {
+    const entries = value[group];
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+    for (const [key, destination] of Object.entries(moves)) {
+      if (!Object.prototype.hasOwnProperty.call(entries, key)) continue;
+      const moved = entries[key];
+      delete entries[key];
+      if (!value[destination] || typeof value[destination] !== 'object' || Array.isArray(value[destination])) value[destination] = {};
+      // 새 자리에 이미 값이 있으면 그것이 이긴다. 옛 자리를 지우지 않은 파일에서
+      // 지운 줄 알았던 값이 되살아나면 안 된다 — 이름 바꾸기와 같은 규칙이다.
+      if (!Object.prototype.hasOwnProperty.call(value[destination], key)) value[destination][key] = moved;
+    }
+  }
+  for (const [group, retired] of Object.entries(RETIRED_GROUP_KEYS)) {
+    const entries = value[group];
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+    for (const key of retired) delete entries[key];
   }
   for (const [group, keys] of Object.entries(PRESENTATION_GROUPS)) {
     const entries = value[group] || {};
@@ -466,8 +523,13 @@ function savePresentation(start, projectKey, scope, input, options) {
   const previous = readConfig(file);
   const next = { schemaVersion: 1 };
   for (const group of Object.keys(PRESENTATION_GROUPS)) {
-    const supplied = (input && input[group]) || {};
+    // 옛 판이 모르는 그룹은 저장 요청이 담지 않았다고 빈 칸으로 깔지 않고, 이미 적혀
+    // 있던 것은 지우지도 않는다. approval과 최상위 맵을 보존하는 것과 같은 이유다 —
+    // 표시 문구 한 줄 고치는 저장이 남의 칸을 없애면 없어진 것을 아무도 알아채지 못한다.
+    const scaffolded = SCAFFOLD_GROUPS.includes(group);
+    const supplied = (input && input[group]) || (scaffolded ? {} : (previous && previous[group]) || {});
     if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied)) throw new Error(`${group}는 객체여야 합니다.`);
+    if (!scaffolded && !Object.keys(supplied).length) continue;
     next[group] = {};
     for (const [key, entry] of Object.entries(supplied)) {
       validateEntry(group, key, entry, file);
@@ -518,7 +580,7 @@ function savePresentation(start, projectKey, scope, input, options) {
 // 갖고 파일은 사람이 바꾼 것만 갖는다 — 그래야 무엇이 덮인 것인지도 파일에서 보인다.
 function renderEmptyBoardConfig() {
   const empty = { schemaVersion: 1 };
-  for (const group of Object.keys(PRESENTATION_GROUPS)) empty[group] = {};
+  for (const group of SCAFFOLD_GROUPS) empty[group] = {};
   return `${JSON.stringify(empty, null, 2)}\n`;
 }
 
@@ -531,8 +593,8 @@ function renderProjectBoardConfig() {
 }
 
 module.exports = {
-  DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
-  TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, DEFAULT_PRESENTATION,
+  DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, DOCUMENT_LIFECYCLE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
+  TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, SCAFFOLD_GROUPS, DEFAULT_PRESENTATION,
   BOUNDARY_KEYS, POLICY_FIELDS, SCALAR_KEYS, MAP_KEYS, APPROVAL_MODE_NAMES,
   readConfig, mergePresentation, loadBoardPresentation, computeOrigins, policyDifferences,
   resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile, savePresentation,

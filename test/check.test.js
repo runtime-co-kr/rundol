@@ -281,6 +281,59 @@ function testUpstreamTrustJudgment() {
   assert.deepStrictEqual(dangling.issues, [], '없는 대상은 미승인 상류가 아닙니다.');
 }
 
+// state 칸이 나눠 쓰던 두 축을 가른 뒤의 값 판정.
+//
+// 심각도가 축마다 다르고, 그 차이가 이 갈래의 결정이므로 값으로 못박는다. 두 칸의
+// 판정문은 거의 같아 보이므로, 나중에 "일관되게" 맞추려는 손이 반드시 온다. 그때
+// 이 시험이 먼저 걸려야 한다 — 심각도는 무엇이 잘못됐나가 아니라 누가 고칠 수
+// 있나로 갈렸고, 두 칸은 그 답이 다르다.
+function testStateAndLifecycleVocabulary() {
+  const { checkStateVocabulary } = require('../src/check-rules');
+  const { DOCUMENT_STATE_KEYS, DOCUMENT_LIFECYCLE_KEYS } = require('../src/vocabulary');
+  const judge = (data) => {
+    const list = [];
+    checkStateVocabulary(list, { relativeFile: 'docs/REQ-001-x.md', frontmatter: { data, locations: { state: 8, lifecycle: 9 } } }, 'REQ-001');
+    return list;
+  };
+
+  // 비어 있는 lifecycle이 정상이다. 대부분의 문서는 수명을 따로 말할 것이 없고,
+  // 없는 것과 active는 다르다 — 없음을 진단하면 그 둘이 같아진다.
+  assert.deepStrictEqual(judge({ state: 'draft' }), [], '수명을 적지 않은 문서는 정상입니다.');
+  assert.deepStrictEqual(judge({ state: 'draft', lifecycle: null }), [], 'null도 적지 않은 것입니다.');
+  for (const value of DOCUMENT_LIFECYCLE_KEYS) {
+    assert.deepStrictEqual(judge({ state: 'draft', lifecycle: value }), [], `${value}는 어휘 안입니다.`);
+  }
+  for (const value of DOCUMENT_STATE_KEYS) {
+    assert.deepStrictEqual(judge({ state: value }), [], `${value}는 어휘 안입니다.`);
+  }
+
+  // 어휘 밖 lifecycle은 오류다. 사람이 소유한 칸이라 아무것도 이 값을 굴리지 않고,
+  // 낫지 않는 오타는 그 문서를 수명 조회에서 영영 빼놓는다.
+  const strayLifecycle = judge({ state: 'draft', lifecycle: 'retired' });
+  assert.deepStrictEqual(strayLifecycle.map((item) => [item.code, item.severity, item.line]), [['RDL-DOC-017', 'error', 9]],
+    '어휘 밖 수명은 그 값이 적힌 줄에서 오류여야 합니다.');
+
+  // 값 없는 `lifecycle:` 한 줄은 없는 것과 다르다. frontmatter 파서가 그것을 빈
+  // 배열로 읽으므로, 없음으로 접으면 적다 만 줄이 정상으로 보인다.
+  assert.deepStrictEqual(judge({ state: 'draft', lifecycle: [] }).map((item) => item.code), ['RDL-DOC-017'],
+    '값을 적지 않은 lifecycle 줄은 비워 둔 것이 아닙니다.');
+
+  // 어휘 밖 state는 경고다. rdl이 소유하는 칸이고 사람은 이 값을 적는 자리에 있지
+  // 않으며, 다음 투영이 덮어써 스스로 낫는다. 오류로 막으면 아직 이관하지 않은
+  // 저장소가 판올림만으로 전 문서에서 멈추고 — 이 저장소의 정본만 해도 73건이
+  // 어휘 밖이었다 — 막힌 사람이 할 수 있는 일은 소유하지도 않은 칸을 손으로
+  // 고치는 것뿐이다. 그리고 모든 문서에서 터지는 관문은 곧 꺼진다.
+  const legacyState = judge({ state: 'accepted' });
+  assert.deepStrictEqual(legacyState.map((item) => [item.code, item.severity, item.line]), [['RDL-DOC-018', 'warning', 8]],
+    '어휘 밖 상태는 경고여야 합니다. 소유하지 않은 칸으로 사람을 막지 않습니다.');
+  assert(legacyState[0].message.includes('rdl doc migrate'), '막지 않는 대신 갈 길을 말해야 합니다.');
+
+  // 두 칸은 서로를 가리지 않는다. 한 번에 둘 다 어긋난 문서는 둘 다 듣는다.
+  assert.deepStrictEqual(judge({ state: 'unread', lifecycle: 'retired' }).map((item) => item.code).sort(),
+    ['RDL-DOC-017', 'RDL-DOC-018'], '두 축은 따로 판정합니다.');
+}
+
+testStateAndLifecycleVocabulary();
 testUpstreamTrustJudgment();
 testTmsFixture();
 testMissingReference();

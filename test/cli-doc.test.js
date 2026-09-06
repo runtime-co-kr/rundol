@@ -170,6 +170,36 @@ for (const line of ['rdl sync --client-id <id>', 'rdl sync watch --client-id <id
     const limitedMarkdown = rdlText(['doc', 'review', '--project', 'crm', '--max-items', '1']);
     assert(limitedMarkdown.includes('차분 미계산'), '계산하지 않은 문서는 기준 없음과 다른 문장으로 적어야 합니다.');
 
+    // 이관은 문서 내용을 바꾸므로 그 문서에 걸린 승인이 낡는다. 승인 45건이 걸린
+    // 저장소에서 사람이 그것을 다시 눌러야 하므로, --apply를 치기 전에 계획이
+    // **어느 문서인지**를 말해야 한다 — 건수만으로는 "지금 다시 승인할 수 있나"를
+    // 판단할 수 없다.
+    {
+      const live = rdlJson(['doc', 'create', 'ADR', '수명을 적은 결정', '--owner', 'MEMBER-001', '--scope', '수명 칸이 아직 state에 있는 결정', '--exclude', '구현 절차', '--project', 'crm']);
+      git(['add', '-A']);
+      git(['commit', '-m', 'add lifecycle document']);
+      rdlJson(['doc', 'approve', live.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--project', 'crm']);
+      // 승인 뒤에 state만 수명 값으로 바꾼다. state는 REVISION_OWNED_FIELDS라 판 2
+      // 리비전이 움직이지 않으므로 이 문서의 승인은 그대로 살아 있다 — 이관 전의
+      // 정본이 실제로 이 모양이었다(원장은 승인이라 하고 파일은 accepted라 적었다).
+      const file = path.join(temporary, live.relativeFile);
+      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^state:[ \t]*.*?(\r?)$/mu, (whole, eol) => `state: accepted${eol}`), 'utf8');
+      assert.strictEqual(rdlJson(['doc', 'status', '--project', 'crm']).documents.find((item) => item.id === live.id).status, 'approved',
+        'state만 바꾼 것으로 승인이 낡으면 안 됩니다. 그 칸은 rdl이 소유하므로 리비전에서 빠집니다.');
+
+      const plan = rdlJson(['doc', 'migrate', '--project', 'crm']);
+      assert.strictEqual(plan.applied, false, '계획은 파일에 닿지 않습니다.');
+      assert(plan.fields.some((item) => item.id === live.id && item.lifecycle === 'accepted' && item.state === 'draft'));
+      assert.deepStrictEqual(plan.approvalsAtRisk.map((item) => item.id), [live.id],
+        '승인이 살아 있는 문서만 위험 목록에 오릅니다. 이미 낡은 것은 잃을 것이 없습니다.');
+      assert.strictEqual(plan.approvalsAtRisk[0].approvedBy, 'MEMBER-001');
+      assert(/승인 1건이 낡습니다/u.test(plan.approvalNote), plan.approvalNote);
+      // 사람이 읽는 출력에도 그대로 나와야 한다. --json만 알면 명령을 치는 사람은
+      // 무엇을 잃는지 모른 채 --apply를 친다.
+      const spoken = rdlText(['doc', 'migrate', '--project', 'crm']);
+      assert(spoken.includes('approvalNote:') && spoken.includes(live.id), spoken);
+    }
+
     for (const args of [['doc', 'review', '--project', 'crm', '--status', 'approved'], ['doc', 'review', '--project', 'crm', 'ADR-001'], ['doc', 'review', '--project', 'crm', '--max-items', '0']]) {
       const refused = spawnSync(process.execPath, [cli].concat(args, ['--root', temporary]), { cwd: root, encoding: 'utf8', env });
       assert.strictEqual(refused.status, 2, `거부해야 합니다: rdl ${args.join(' ')}\n${refused.stdout}${refused.stderr}`);

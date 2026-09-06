@@ -1779,6 +1779,11 @@ async function main() {
       const selected = selectProject(layout, migrationOptions.project, true);
       const migrated = migrateProject(selected.root, {
         apply: migrationOptions.apply,
+        // 이관은 문서 내용을 바꾸므로 그 문서에 걸린 승인이 낡는다. 몇 건인지가 아니라
+        // 어느 문서인지를 계획에서 봐야 "그것을 지금 다시 승인할 수 있나"를 판단할 수
+        // 있다. 이관 모듈은 작업공간을 모르므로 원장 조회를 여기서 넘긴다 — 아래
+        // validate와 같은 모양이고 같은 이유다.
+        approvals: () => require('../src/approval').documentStatus(layout.root, { project: selected.key }),
         validate: () => {
           const checked = checkWorkspace(layout.root, { project: selected.key, strict: true, skipProfilePolicy: true });
           const structure = auditStructure(layout.root, { project: selected.key });

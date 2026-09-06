@@ -39,6 +39,14 @@ try {
   assert(next.ready.some((item) => item.type === 'PRD'));
   const guidedReq = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--scope', '사용자가 항목을 등록하는 동작', '--exclude', '항목 조회와 삭제', '--function-id', 'FN-001', '--related', 'project:demo', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(guidedReq.type, 'REQ');
+  // 만들어진 문서도 원장에 사건이 없다. 그러므로 state는 바닥값이고 수명은 비어 있다.
+  // 뼈대를 고쳤는지가 아니라 만드는 자리가 그것을 보장하는지를 본다 — 뼈대는 열세
+  // 벌이고 그중 하나가 다시 갈리는 날 아무 신호도 나지 않는다.
+  {
+    const created = fs.readFileSync(guidedReq.file, 'utf8');
+    assert.match(created, /^state: draft$/mu, '새 문서가 원장 없이 주장할 수 있는 값은 바닥뿐입니다.');
+    assert.ok(!/^lifecycle:/mu.test(created), '비어 있는 것과 active는 다르므로 scaffold는 수명을 적지 않습니다.');
+  }
   const afterReq = run(['contract', 'next', '--project', 'demo', '--root', root, '--json'], root);
   assert.strictEqual(afterReq.blocked.length, 0);
   const planned = run(['contract', 'plan', '--profile', 'lean', '--enforcement', 'advisory', '--project', 'demo', '--root', root, '--json'], root);

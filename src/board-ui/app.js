@@ -581,51 +581,221 @@ const BASIS_LABELS = { read: '읽고 판단했다', verdict: '검증 판정을 �
 // 비교 축 둘. 묻는 것이 다르다 — 앞엣것은 "승인 이후 무엇이 바뀌었나"이고 뒤엣것은
 // "승인 후보가 승인본과 무엇이 다른가"다. 승인자가 판정해야 하는 것은 작업본이 아니라
 // 후보이므로, 제출이 서 있으면 뒤엣것이 먼저다. 키 목록이 곧 단추의 목록이다.
+//
+// 임의 비교(range)는 여기 없다. 이 표의 축들은 기준이 원장에 못박혀 있어 누구나 같은
+// 것을 보지만, 임의 비교의 기준은 사람이 이력에서 고른다 — 단추 하나로 세우면 무엇과
+// 무엇을 견주는 축인지가 이름에 없게 된다. 그래서 그쪽은 이력 탭에서 지점을 골라 연다.
 const DIFF_AXIS_LABELS = { 'since-approval': '승인 이후 변경', submission: '제출본 비교' };
+// 판의 탭 둘. 승인은 "지금 이것을 책임질까"를 묻고 이력은 "어쩌다 이렇게 됐나"를 묻는다.
+// 같은 표면에 두는 이유는 renderDocumentApprovalPanel의 머리말에 적어 두었다.
+const PANEL_TABS = { approve: '검토하고 승인', history: '이력과 비교' };
+// 이력 줄의 종류. 원장 사건 셋과 커밋 하나가 한 시간축에 섞여 선다 — 값이 아니라 표시
+// 이름이므로 키 목록이 곧 화면이 아는 종류의 목록이다.
+const HISTORY_KIND_LABELS = { approval: '승인', submission: '제출', rejection: '반려', commit: '커밋' };
+// 줄의 색. 목록에서 쓰는 태그 색을 그대로 물려받는다 — 같은 뜻에 화면마다 다른 색을 주면
+// 사용자는 그것을 다른 종류로 읽는다. 색만으로 갈리지 않게 이름도 함께 적는다.
+const HISTORY_KIND_TONES = { approval: 'pass', submission: 'warning', rejection: 'error', commit: 'info' };
+// 한 번에 그리는 이력 줄의 수. 오래된 정본은 커밋만 수십 줄이라 통째로 그리면 판이
+// 스크롤 덩어리가 되고, 이력을 여는 이유(가장 최근에 무슨 일이 있었나)는 맨 위에 있다.
+// 나머지는 「더 보기」로 한 번에 편다 — 인박스와 태스크 묶음이 쓰는 그 수법이다.
+const HISTORY_PAGE = 12;
 
 function approvalPanel(id) { return state.docApproval && state.docApproval.id === id ? state.docApproval : null; }
 function basisChoices() { return (state.snapshot.approvalCatalog && state.snapshot.approvalCatalog.basisKinds) || Object.keys(BASIS_LABELS); }
 
+// 열려 있으면 그 판을 쓰고 없으면 만든다. 판의 상태를 부르는 자리마다 새로 짓지 않는
+// 이유는, 갈아 끼우면 그 안의 다른 값이 함께 사라지기 때문이다 — 예전 판은 축을 바꿀
+// 때마다 객체를 새로 만들고 폼만 손으로 옮겨 담았는데, 옮길 것이 늘 때마다 빠뜨리는
+// 자리가 하나씩 생긴다. 지금은 이력·고른 지점·임의 비교 결과까지 이 안에 산다.
+function documentPanel(id) {
+  const open = approvalPanel(id);
+  if (open) return open;
+  const approvers = state.snapshot.approvers || [];
+  state.docApproval = {
+    id,
+    tab: 'approve',
+    axis: 'since-approval', diff: null, reason: '', error: '', loading: false,
+    busy: false, failure: '',
+    history: null, historyLoading: false, historyError: '', historyExpanded: false,
+    // 고른 두 지점과 그 사이의 차분. pick은 사람이 고른 것이고 range는 서버가 답한 것이라
+    // 따로 둔다 — 합치면 "고르는 중"과 "못 찾았다"가 같은 빈 값이 되어 구분되지 않는다.
+    pick: { from: null, to: null }, range: null,
+    form: { clientId: (approvers[0] && approvers[0].id) || '', basis: basisChoices()[0] || '', detail: '', reason: '' }
+  };
+  return state.docApproval;
+}
+
+// 늦게 온 답이 먼저 온 답을 덮지 않게 하는 표. 판 객체를 갈아 끼우지 않게 되면서
+// 객체 동일성만으로는 요청을 가릴 수 없어졌다 — 축을 빨리 두 번 누르면 먼저 나간
+// 요청이 나중에 돌아와 화면이 사람이 고르지 않은 축의 차분을 보이게 된다.
+let panelRequest = 0;
+
 // 펼치기·접기. 제출본이 서 있으면 그 축으로 연다 — 승인자가 볼 것은 승인 후보이고,
 // 후보와 작업본이 다를 수 있다는 사실 자체가 관문의 핵심이다.
-function toggleApproval(id) {
-  if (approvalPanel(id)) { state.docApproval = null; return redrawApproval(); }
-  const item = (state.snapshot.documents || []).find((value) => value.id === id);
-  const submission = item && item.approval && item.approval.submission;
-  const staged = submission && (submission.state === 'pending' || submission.state === 'drifted');
-  loadApprovalDiff(id, staged ? 'submission' : 'since-approval');
+//
+// 탭을 인자로 받는다. 같은 탭을 다시 누르면 접고, 다른 탭이면 접지 않고 옮긴다 —
+// 열린 판을 닫았다 다시 여는 왕복은 사람에게 "안 열린다"로 보인다.
+function toggleApproval(id, tab) {
+  const wanted = PANEL_TABS[tab] ? tab : 'approve';
+  const open = approvalPanel(id);
+  if (open && open.tab === wanted) { state.docApproval = null; return redrawApproval(); }
+  if (!open) {
+    const item = (state.snapshot.documents || []).find((value) => value.id === id);
+    const submission = item && item.approval && item.approval.submission;
+    const staged = submission && (submission.state === 'pending' || submission.state === 'drifted');
+    documentPanel(id).axis = staged ? 'submission' : 'since-approval';
+  }
+  selectPanelTab(id, wanted);
+}
+
+// 탭이 자기 값을 열 때 한 번만 물어 온다. 오갈 때마다 물으면 문서마다 git 이력이 그만큼
+// 다시 돌고, 그 값은 사람이 탭을 누르는 사이에 바뀌지 않는다. 반대로 열지 않은 탭의 값을
+// 미리 물으면, 이력만 보러 온 사람이 쓰지도 않을 차분 계산을 매번 치른다.
+//
+// "물은 적이 있는가"는 답이 아니라 표로 안다. 차분은 없음(null)도 답이라 값으로는 아직
+// 안 물은 것과 기준이 없다는 답을 가를 수 없다.
+function selectPanelTab(id, tab) {
+  const panel = documentPanel(id);
+  panel.tab = PANEL_TABS[tab] ? tab : 'approve';
+  if (panel.tab === 'history') loadDocumentHistory(id);
+  else if (!panel.diffTicket) return void loadApprovalDiff(id, panel.axis);
+  redrawApproval();
 }
 
 // 차분은 스냅숏에 없다. 문서마다 git 이력을 도는 계산이라 폴링에 실으면 보드가 서므로,
 // 펼친 그 건에 대해서만 물어 온다.
 async function loadApprovalDiff(id, axis) {
-  const approvers = state.snapshot.approvers || [];
-  const kept = state.docApproval && state.docApproval.id === id ? state.docApproval.form : null;
-  const panel = {
-    id,
-    axis,
-    diff: null,
-    reason: '',
-    error: '',
-    failure: '',
-    loading: true,
-    busy: false,
-    // 축을 바꿔도 쓰던 것은 남긴다. 여기서 비우면 사유를 적다가 다른 축을 눌러 본
-    // 사람이 자기가 쓴 문장을 잃는다.
-    form: kept || { clientId: (approvers[0] && approvers[0].id) || '', basis: basisChoices()[0] || '', detail: '', reason: '' }
-  };
-  state.docApproval = panel;
+  const panel = documentPanel(id);
+  // 축을 바꿔도 쓰던 것은 남긴다. 여기서 비우면 사유를 적다가 다른 축을 눌러 본
+  // 사람이 자기가 쓴 문장을 잃는다.
+  Object.assign(panel, { axis, diff: null, reason: '', error: '', loading: true });
+  const ticket = panel.diffTicket = ++panelRequest;
   redrawApproval();
   try {
     const value = await api(`${projectPath(`/documents/${encodeURIComponent(id)}/diff`)}?axis=${encodeURIComponent(axis)}`);
-    if (state.docApproval !== panel) return;
+    if (state.docApproval !== panel || panel.diffTicket !== ticket) return;
     panel.diff = value.diff === undefined ? null : value.diff;
     panel.reason = value.reason || '';
   } catch (error) {
-    if (state.docApproval !== panel) return;
+    if (state.docApproval !== panel || panel.diffTicket !== ticket) return;
     panel.error = error.message;
   }
   panel.loading = false;
+  redrawApproval();
+}
+
+// 이력도 스냅숏에 없다. 문서마다 git log --follow를 도는 값이라 폴링에 실으면 문서 수에
+// 비례해 보드가 서고, 그 사실은 문서가 몇 건 안 되는 저장소에서는 드러나지 않는다.
+async function loadDocumentHistory(id) {
+  const panel = documentPanel(id);
+  if (panel.history || panel.historyLoading) return;
+  panel.historyLoading = true;
+  panel.historyError = '';
+  const ticket = panel.historyTicket = ++panelRequest;
+  redrawApproval();
+  try {
+    const value = await api(projectPath(`/documents/${encodeURIComponent(id)}/history`));
+    if (state.docApproval !== panel || panel.historyTicket !== ticket) return;
+    panel.history = value;
+    applyDefaultPick(panel);
+  } catch (error) {
+    if (state.docApproval !== panel || panel.historyTicket !== ticket) return;
+    panel.historyError = error.message;
+  }
+  panel.historyLoading = false;
+  redrawApproval();
+  if (panel.pick.from && panel.pick.to && !panel.range) loadRangeDiff(id);
+}
+
+/**
+ * 원장 사건과 커밋을 한 시간축에 세운다.
+ *
+ * 따로 세우면 사람이 머리로 합쳐야 한다. 그 합치기는 두 목록의 시각을 눈으로 번갈아
+ * 훑는 일이라 줄이 늘면 곧 실패하고, 실패하면 "승인 뒤에 저 커밋이 왔나 앞에 왔나"를
+ * 알 수 없다 — 이력을 여는 이유가 바로 그 물음이라 거기서 값이 통째로 사라진다.
+ *
+ * 원장 줄은 누가·왜를 알고(승인자·사유·근거) 커밋 줄은 무엇이·언제를 안다. 둘을
+ * 나란히 두는 것이 이 화면의 값이므로 종류를 지우지 않고 표시로 갈라 둔다.
+ *
+ * 지목할 주소도 종류마다 다르다. 원장 줄은 자기가 판정한 리비전만 알고 커밋 줄은 커밋
+ * 해시만 안다 — 한 종류로 통일하려면 화면이 커밋마다 문서를 다시 재야 하는데, 그것은
+ * 화면이 판정을 다시 짓는 일이라 이 보드가 하지 않기로 한 것이다. 그래서 주소를 둘 다
+ * 싣고 어느 쪽인지를 함께 적는다.
+ */
+function historyRows(history) {
+  const rows = [];
+  for (const item of (history && history.approvals) || []) {
+    rows.push({ kind: 'approval', at: item.recordedAt, who: personName(item.approvedBy), point: item.reviewedRevision, pointKind: 'revision', detail: item.reason || '', basis: item.basis || [] });
+  }
+  for (const item of (history && history.submissions) || []) {
+    rows.push({ kind: 'submission', at: item.recordedAt, who: personName(item.submittedBy), point: item.submittedRevision, pointKind: 'revision', detail: item.reason || '', basis: [] });
+  }
+  for (const item of (history && history.rejections) || []) {
+    rows.push({ kind: 'rejection', at: item.recordedAt, who: personName(item.rejectedBy), point: item.rejectedRevision, pointKind: 'revision', detail: item.reason || '', basis: [] });
+  }
+  for (const item of (history && history.commits) || []) {
+    // 커밋의 author는 git이 아는 이름이라 MEMBER-ID가 아니다. personName에 넣으면 못 찾은
+    // 값을 그대로 돌려주지만, 그 자리를 원장 명의와 같은 함수로 지나가게 두면 다음 사람은
+    // 두 축의 신원이 같은 것이라 읽는다.
+    rows.push({ kind: 'commit', at: item.at, who: item.author || '', point: item.commit, pointKind: 'commit', detail: item.subject || '', basis: [] });
+  }
+  // 최근이 위다. 이력을 여는 물음("언제부터 이렇게 됐나")은 지금에서 거슬러 올라가는
+  // 물음이고, 「더 보기」로 뒤를 접는 것도 그 방향이라야 접힌 쪽이 오래된 쪽이 된다.
+  return rows.sort((left, right) => String(right.at || '').localeCompare(String(left.at || '')));
+}
+
+// 이력을 열면 흔히 묻는 것이 이미 골라져 있다. 승인본 ↔ 가장 최근 커밋이 그것이다 —
+// 「승인 이후 변경」과 다른 점은 오른쪽이 작업본이 아니라 커밋이라는 것이고, 그래서
+// 두 지점 모두 다시 볼 수 있는 주소를 갖는다.
+//
+// 승인이 없으면 최근 두 커밋을 고른다. 아무것도 안 고른 채 열면 사람은 무엇을 눌러야
+// 무엇이 나오는지 모른 채 목록만 보게 된다 — 첫 화면이 답을 하나 보여야 그 다음 물음을
+// 만들 수 있다. 고를 것이 둘도 안 되면 비워 둔다: 없는 지점을 지어내지 않는다.
+function applyDefaultPick(panel) {
+  if (panel.pick.from || panel.pick.to) return;
+  const rows = historyRows(panel.history);
+  const approvedRevision = panel.history && panel.history.document && panel.history.document.approvedRevision;
+  const approved = approvedRevision ? rows.find((row) => row.kind === 'approval' && row.point === approvedRevision) : null;
+  const commits = rows.filter((row) => row.kind === 'commit');
+  if (approved && commits.length) { panel.pick = { from: pickOf('approval', approved.point), to: pickOf('commit', commits[0].point) }; return; }
+  if (commits.length >= 2) panel.pick = { from: pickOf('commit', commits[1].point), to: pickOf('commit', commits[0].point) };
+}
+
+// 고른 지점의 이름은 줄의 종류에서 온다. 해시 앞자리만으로는 어느 줄을 골랐는지
+// 되짚을 수 없고, 되짚지 못하면 "무엇과 무엇을 견주고 있는가"가 화면에서 사라진다.
+function pickOf(rowKind, point) {
+  return { kind: rowKind === 'commit' ? 'commit' : 'revision', value: point, label: `${HISTORY_KIND_LABELS[rowKind] || rowKind} ${String(point || '').slice(0, 8)}` };
+}
+
+// 고른 두 지점 사이의 차분. 서버가 값의 종류를 길이로 가르므로 화면은 고른 주소를 그대로
+// 보내기만 한다 — 종류를 따로 실으면 화면이 그 칸을 틀리게 채우는 갈래가 생긴다.
+async function loadRangeDiff(id) {
+  const panel = documentPanel(id);
+  const from = panel.pick.from;
+  const to = panel.pick.to;
+  if (!from || !to) { panel.range = null; return redrawApproval(); }
+  panel.range = { loading: true, diff: null, reason: '', error: '' };
+  const ticket = panel.rangeTicket = ++panelRequest;
+  redrawApproval();
+  try {
+    const value = await api(`${projectPath(`/documents/${encodeURIComponent(id)}/diff`)}?axis=range&from=${encodeURIComponent(from.value)}&to=${encodeURIComponent(to.value)}`);
+    if (state.docApproval !== panel || panel.rangeTicket !== ticket) return;
+    panel.range = { loading: false, diff: value.diff === undefined ? null : value.diff, reason: value.reason || '', error: '' };
+  } catch (error) {
+    if (state.docApproval !== panel || panel.rangeTicket !== ticket) return;
+    panel.range = { loading: false, diff: null, reason: '', error: error.message };
+  }
+  redrawApproval();
+}
+
+// 지점을 고른다. 이미 그 칸에 있는 것을 다시 누르면 놓는다 — 잘못 고른 것을 무르는 길이
+// 없으면 사람은 판을 닫았다 다시 여는 것으로 무르게 되고, 그때 쓰던 사유까지 잃는다.
+function pickHistoryPoint(id, slot, rowKind, value) {
+  const panel = documentPanel(id);
+  const current = panel.pick[slot];
+  panel.pick = Object.assign({}, panel.pick, { [slot]: current && current.value === value ? null : pickOf(rowKind, value) });
+  panel.range = null;
+  if (panel.pick.from && panel.pick.to) return void loadRangeDiff(id);
   redrawApproval();
 }
 
@@ -646,6 +816,15 @@ async function loadApprovalDiff(id, axis) {
 //
 // 바깥을 눌러도 닫지 않는다. 사유를 적다가 본문을 짚어 읽는 것이 이 화면에서 하는 일이고,
 // 그때 판이 닫히면 쓰던 문장을 잃는다 — peek의 바깥 클릭 규칙을 그대로 물려받지 않는 이유다.
+//
+// 이력과 임의 비교도 이 판의 탭으로 들어온다. 모달로 세우지 않은 이유는 승인 판과 같다:
+// 모달은 이력을 넓게 볼 수 있지만 본문을 통째로 가리는데, "언제부터 이렇게 됐나"를 묻는
+// 사람은 그 답을 본문의 어느 문단에 겹쳐 읽는다 — 가리면 오너가 겪은 그 결함("문서를
+// 눌렀는데 문서가 안 열린다")이 모양만 바꿔 돌아온다.
+//
+// 표면을 하나 더 세우지도 않았다. 이력과 승인은 같은 판단의 앞뒤라 나란히 서면 둘 다
+// 본문의 폭을 가져가고, 그러면 본문이 다시 읽을 수 없는 폭이 된다 — 옆으로 나오는 표면은
+// 화면에 하나여야 한다는 규칙이 서 있는 자리가 여기다. 그래서 같은 판을 탭으로 나눈다.
 function renderDocumentApprovalPanel(id) {
   const open = Boolean(approvalPanel(id));
   el('document-approval-panel').innerHTML = open ? approvalPanelHtml(id) : '';
@@ -681,6 +860,10 @@ function diffLinesHtml(text) {
   }).join('');
 }
 
+// 차분 한 벌을 두 자리가 나눠 쓴다. 정해진 축(승인 탭)과 고른 두 지점(이력 탭)은 기준을
+// 정하는 방법만 다르고 그려야 할 것은 같다 — 두 벌 만들면 한쪽만 "기준 없음"과 "변경
+// 없음"을 가르게 되고, 그 차이는 사람이 잘못 승인한 다음에야 드러난다. 그래서 받는 것을
+// 판이 아니라 {loading, error, diff, reason} 모양으로 좁혔다.
 function approvalDiffHtml(panel) {
   if (panel.loading) return '<p class="ledger-note">무엇이 달라졌는지 읽는 중입니다…</p>';
   if (panel.error) return `<p class="approval-failure">차이를 읽지 못했습니다: ${escapeHtml(panel.error)}</p>`;
@@ -750,11 +933,89 @@ function approvalFormHtml(id, panel) {
 function approvalPanelHtml(id) {
   const panel = approvalPanel(id);
   if (!panel) return '';
+  const head = `<div class="approval-panel-head"><h2>문서 검토</h2><span class="eyebrow">${escapeHtml(id)}</span><button type="button" class="icon-button" data-approve-open="${escapeHtml(id)}" aria-label="검토 판 닫기">${CLOSE_ICON}</button></div>`;
+  // 탭은 판의 머리 바로 아래 하나뿐이다. 두 물음이 한 표면을 나눠 쓰므로 어느 쪽을 보고
+  // 있는지가 언제나 화면에 있어야 하고, 그 표시가 곧 옮겨 가는 손잡이여야 한다.
+  const tabs = Object.keys(PANEL_TABS).map((key) =>
+    `<button type="button" data-approve-open="${escapeHtml(id)}" data-approve-tab="${key}"${key === panel.tab ? ' class="active"' : ''}>${escapeHtml(PANEL_TABS[key])}</button>`).join('');
+  const body = panel.tab === 'history' ? historyTabHtml(id, panel) : approveTabHtml(id, panel);
+  return `<div class="approval-panel">${head}<div class="segmented approval-tabs" aria-label="검토 판 탭">${tabs}</div>${body}</div>`;
+}
+
+function approveTabHtml(id, panel) {
   const axes = Object.keys(DIFF_AXIS_LABELS).map((key) =>
     `<button type="button" data-approve-axis="${key}"${key === panel.axis ? ' class="active"' : ''}>${escapeHtml(DIFF_AXIS_LABELS[key])}</button>`).join('');
-  const head = `<div class="approval-panel-head"><h2>검토하고 승인</h2><span class="eyebrow">${escapeHtml(id)}</span><button type="button" class="icon-button" data-approve-open="${escapeHtml(id)}" aria-label="승인 판 닫기">${CLOSE_ICON}</button></div>`;
-  return `<div class="approval-panel">${head}<div class="segmented approval-axis" aria-label="비교 축">${axes}</div>`
-    + approvalDiffHtml(panel) + approvalFormHtml(id, panel) + '</div>';
+  return `<div class="segmented approval-axis" aria-label="비교 축">${axes}</div>`
+    + approvalDiffHtml(panel) + approvalFormHtml(id, panel);
+}
+
+/**
+ * 이력과 임의 비교.
+ *
+ * 고른 지점을 이력보다 먼저 그린다. 두 번째를 고르기 전에도 화면이 무엇을 기다리는지
+ * 말해야 하는데, 그 말이 목록 아래에 있으면 이력이 길어질수록 화면 밖으로 나간다 —
+ * 기다린다는 말이 안 보이면 사람은 한 번 누른 뒤 아무 일도 안 일어난 줄로 읽는다.
+ */
+function historyTabHtml(id, panel) {
+  if (panel.historyLoading) return '<p class="ledger-note">이력을 읽는 중입니다…</p>';
+  if (panel.historyError) return `<p class="approval-failure">이력을 읽지 못했습니다: ${escapeHtml(panel.historyError)}</p>`;
+  if (!panel.history) return '<p class="ledger-note">이력을 아직 읽지 않았습니다.</p>';
+  const rows = historyRows(panel.history);
+  const shown = panel.historyExpanded ? rows : rows.slice(0, HISTORY_PAGE);
+  const lines = [historyPickHtml(id, panel)];
+  // 승인도 태스크도 없이 바뀐 정본은 이력이 답할 수 없는 변경이다. 삼키면 이 화면이
+  // 그 사실을 아는 유일한 자리인데도 아무 말을 하지 않게 된다.
+  if (panel.history.warning) lines.push(`<p class="approval-failure">${escapeHtml(panel.history.warning)}</p>`);
+  if (!rows.length) lines.push('<p class="ledger-note">원장 사건도 커밋도 없습니다. 이 문서는 아직 저장소의 이력에 남은 적이 없습니다.</p>');
+  else lines.push(`<ol class="history-list">${shown.map((row) => historyRowHtml(id, panel, row)).join('')}</ol>`);
+  if (rows.length > shown.length) lines.push(`<button type="button" class="review-inbox-more" data-history-expand="${escapeHtml(id)}">${rows.length - shown.length}개 더 보기</button>`);
+  // 연결 태스크는 "왜 바뀌었나"의 다른 갈래다. 원장에 승인이 없어도 태스크가 있으면 그
+  // 변경에는 답할 기록이 있고, 그 사실이 화면에 없으면 위의 경고만 보고 겁먹게 된다.
+  const tasks = panel.history.tasks || [];
+  if (tasks.length) lines.push(`<p class="ledger-note">연결 태스크 ${tasks.length}건: ${tasks.map((task) => `<code>${escapeHtml(task.id)}</code>`).join(' ')}</p>`);
+  return lines.join('');
+}
+
+function historyPickHtml(id, panel) {
+  const from = panel.pick.from;
+  const to = panel.pick.to;
+  const slot = (key, label, value) => `<span class="history-slot"><b>${label}</b> ${value ? escapeHtml(value.label) : '고르지 않음'}`
+    + (value ? `<button type="button" class="history-slot-clear" data-history-clear="${key}" data-history-document="${escapeHtml(id)}" aria-label="${label} 지점 놓기">${CLOSE_ICON}</button>` : '') + '</span>';
+  const waiting = from && to ? ''
+    : `<p class="ledger-note">${from ? '기준을 골랐습니다. 이력에서 「대상」을 하나 더 고르면 그 사이를 견줍니다.'
+      : to ? '대상을 골랐습니다. 이력에서 「기준」을 하나 더 고르면 그 사이를 견줍니다.'
+        : '이력에서 「기준」과 「대상」을 하나씩 고르면 그 두 지점 사이를 견줍니다.'}</p>`;
+  // 작업본은 이 비교에 서지 않는다. 두 지점 모두 커밋된 주소라야 사람이 본 것과 결박되고,
+  // 커밋되지 않은 작업본까지 견주는 물음은 승인 탭의 「승인 이후 변경」이 이미 답한다.
+  const note = from && to ? '' : '<p class="ledger-note">아직 커밋하지 않은 작업본과 견주려면 「검토하고 승인」 탭의 「승인 이후 변경」을 보십시오.</p>';
+  return `<div class="history-pick">${slot('from', '기준', from)}<span class="history-slot-arrow" aria-hidden="true">→</span>${slot('to', '대상', to)}</div>`
+    + waiting + note + (from && to ? approvalDiffHtml(panel.range || { loading: true, diff: null, reason: '', error: '' }) : '');
+}
+
+function historyRowHtml(id, panel, row) {
+  const picked = (slot) => panel.pick[slot] && panel.pick[slot].value === row.point;
+  // 지목할 주소가 없는 줄은 고를 수 없다. 없는 지점을 만들어 보내면 서버가 거절하고,
+  // 그 거절은 사람이 누른 뒤에야 온다 — 고를 수 없는 것은 고르는 손잡이를 두지 않는다.
+  const pick = row.point
+    ? `<span class="history-pick-buttons">${['from', 'to'].map((slot) =>
+      `<button type="button" data-history-pick="${slot}" data-history-document="${escapeHtml(id)}" data-history-kind="${escapeHtml(row.kind)}" data-history-point="${escapeHtml(row.point)}"${picked(slot) ? ' class="active"' : ''}>${slot === 'from' ? '기준' : '대상'}</button>`).join('')}</span>`
+    : '';
+  const basis = (row.basis || []).map((item) => BASIS_LABELS[item.kind] || item.kind).join(' · ');
+  return `<li class="history-row history-${escapeHtml(row.kind)}">`
+    + `<span class="history-head"><span class="tag ${HISTORY_KIND_TONES[row.kind] || 'info'}">${escapeHtml(HISTORY_KIND_LABELS[row.kind] || row.kind)}</span>`
+    + `<span class="history-who">${escapeHtml(row.who || '이름 없음')}</span>`
+    + `<time class="history-at">${escapeHtml(historyStamp(row.at))}</time>${pick}</span>`
+    + (row.detail ? `<span class="history-detail">${escapeHtml(row.detail)}</span>` : '')
+    + (basis ? `<span class="history-detail">근거: ${escapeHtml(basis)}</span>` : '')
+    + `<code class="history-point">${escapeHtml(String(row.point || '').slice(0, 12) || '주소 없음')}</code></li>`;
+}
+
+// 이력의 시각은 절대값이 먼저다. "언제부터 이렇게 됐나"는 달력의 물음이라 "3일 전"으로는
+// 답하지 못하고, 그래도 최근인지는 알아야 하므로 상대값을 함께 붙인다.
+function historyStamp(value) {
+  const stamp = Date.parse(value || '');
+  if (Number.isNaN(stamp)) return '시각 없음';
+  return `${String(value).slice(0, 10)} · ${relativeTime(value)}`;
 }
 
 async function approveOpenDocument(id) {
@@ -1332,8 +1593,20 @@ function documentApprovalHtml(item) {
   // 승인은 문서를 읽은 자리에서 이어져야 한다. 인박스를 거치지 않고 문서를 연 사람도
   // 여기서 승인할 수 있어야 하고, 그러지 않으면 "승인은 명령줄에서"가 되어 화면을 보던
   // 사람이 도구를 갈아타야 한다 — 그 왕복이 승인을 맨 뒤로 미루는 자리였다.
+  // 이력으로 가는 손잡이가 승인 옆에 선다. 승인 원장 줄은 "지금 어떤 상태인가"만 말하는데,
+  // 검토하다 보면 "언제부터 이렇게 됐나"를 묻게 되고 그 답은 여기서 열리는 이력에만 있다 —
+  // 손잡이를 안 두면 그 물음은 다시 명령줄로 나가고, 그 왕복이 검토를 미루는 자리였다.
+  const history = approvalPanel(item.id) && approvalPanel(item.id).tab === 'history';
   const lines = [`<h2>승인 원장</h2><p class="document-approval-line">${approvalTagHtml(approval.status)}<span>${approvalFacts(approval).join(' · ')}</span>`
-    + `<button type="button" class="approval-open" data-approve-open="${escapeHtml(item.id)}" aria-expanded="${open}">${open ? '접기' : '검토하고 승인'}</button></p>`];
+    // 승인 손잡이가 먼저다. 이 줄에서 먼저 읽혀야 하는 것은 "지금 이것을 어떻게 할까"이고,
+    // 이력은 그 판단이 막혔을 때 찾는 자리다 — 순서를 뒤집으면 훑는 눈이 매번 이력을 먼저
+    // 지나간다.
+    // 이름은 열려 있든 아니든 그대로다. 손잡이가 둘이 되면서 열린 쪽만 「접기」로 바꾸면
+    // 나란히 선 두 단추가 "검토하고 승인"과 "접기"가 되어, 무엇을 접는다는 것인지가 이름에
+    // 없어진다 — 자리로 기억하는 손잡이의 이름을 상태에 따라 갈면 자리도 함께 흔들린다.
+    // 열려 있다는 사실은 눌린 표시와 aria-expanded가 말한다.
+    + `<button type="button" class="approval-open${open && !history ? ' active' : ''}" data-approve-open="${escapeHtml(item.id)}" aria-expanded="${open && !history}">검토하고 승인</button>`
+    + `<button type="button"${history ? ' class="active"' : ''} data-approve-open="${escapeHtml(item.id)}" data-approve-tab="history" aria-expanded="${history}">이력과 비교</button></p>`];
   if (claimsUnbacked(item)) {
     lines.push(`<p class="ledger-note">frontmatter는 <code>${escapeHtml(item.state)}</code>(${escapeHtml(documentStateLabel(item.state))})라고 적었지만 원장은 이 리비전을 승인한 적이 없습니다. 앞엣것은 작성자의 주장이고 뒤엣것이 원장의 사실이라, 어긋난 채로 둘 수 있습니다.</p>`);
   }
@@ -2311,9 +2584,31 @@ document.addEventListener('click', (event) => {
 // 승인하러 온 사람이 자기가 무엇을 보고 있는지 헷갈리는 것으로 나타난다.
 document.addEventListener('click', (event) => {
   const opener = event.target.closest('[data-approve-open]');
-  if (opener) return void toggleApproval(opener.dataset.approveOpen);
+  if (opener) return void toggleApproval(opener.dataset.approveOpen, opener.dataset.approveTab);
   const axis = event.target.closest('[data-approve-axis]');
   if (axis && state.docApproval) return void loadApprovalDiff(state.docApproval.id, axis.dataset.approveAxis);
+  // 이력에서 지점을 고르는 자리. 문서 ID를 손잡이에 실어 보내는 이유는 판이 닫혔다
+  // 열리는 사이에 다른 문서로 옮겨 갔을 수 있어서다 — state에서 꺼내면 그때 엉뚱한
+  // 문서의 이력을 견주게 되고, 화면은 그것을 아무 신호 없이 그린다.
+  const pick = event.target.closest('[data-history-pick]');
+  if (pick) return void pickHistoryPoint(pick.dataset.historyDocument, pick.dataset.historyPick, pick.dataset.historyKind, pick.dataset.historyPoint);
+  const clear = event.target.closest('[data-history-clear]');
+  if (clear) {
+    const panel = approvalPanel(clear.dataset.historyDocument);
+    if (!panel) return;
+    panel.pick = Object.assign({}, panel.pick, { [clear.dataset.historyClear]: null });
+    panel.range = null;
+    return void redrawApproval();
+  }
+  // 더 보기는 그 자리에서 끝까지 편다. 열둘씩 또 나누면 찾는 것을 만날 때까지 몇 번을
+  // 눌러야 하고, 몇 번 눌렀는지도 남지 않는다 — 인박스와 태스크 묶음이 쓰는 규칙과 같다.
+  const expand = event.target.closest('[data-history-expand]');
+  if (expand) {
+    const panel = approvalPanel(expand.dataset.historyExpand);
+    if (!panel) return;
+    panel.historyExpanded = true;
+    return void redrawApproval();
+  }
   // 반려는 폼의 submit이 아니라 눌러서만 나간다. submit에 얹으면 사유 칸에서 엔터를
   // 친 사람이 반려를 보내게 되고, 판단은 실수로 나가면 안 된다.
   const reject = event.target.closest('[data-approve-reject]');
@@ -2490,6 +2785,11 @@ function renderContractSettings() {
 const PRESENTATION_GROUP_LABELS = {
   documentTypes: '문서 유형',
   documentStates: '문서 상태',
+  // 수명은 사람이 적는 축이라 이름을 팀이 고칠 자리가 있어야 한다. 이 표에 없으면
+  // 그룹이 오류 없이 조용히 빠져 — 순회 대상이 이 표라 — 설정 화면에서 보이지도
+  // 고쳐지지도 않는다. 저장 계층은 이미 그 그룹을 받고 있으므로 빠진 것은 표면뿐이고,
+  // 빠졌다는 사실은 아무 신호도 내지 않는다.
+  documentLifecycles: '문서 수명',
   policyStates: '정책 상태',
   enforcementLevels: '강제 수준',
   taskStatuses: '태스크 상태',

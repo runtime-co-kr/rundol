@@ -273,7 +273,11 @@ function staleDocumentOf(root, worktree, filePath) {
       approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), project.key),
       { authority: authorityContext(layout.root, project.key, { now: Date.now() }) }
     );
-    const state = approval.trustState({ id: parsed.data.id, revision: documentRevision(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
+    // 리비전 표를 통째로 넘긴다. 판 2 값 하나만 주면 판 1로 기록된 옛 승인을 못 맞혀
+    // 낡음으로 읽고, 훅은 승인이 멀쩡한 문서에 "승인 후 개정"을 저장할 때마다 외친다.
+    // 그 헛울림은 막지도 않으면서 신뢰만 깎고, 한 번 그런 훅은 꺼진다.
+    const { documentRevisions } = require('./board-data');
+    const state = approval.trustState({ id: parsed.data.id, revisions: documentRevisions(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
     if (state.status !== 'stale') return null;
     return { project: project.key, id: parsed.data.id, approvedBy: state.approvedBy };
   } catch (_) { return null; }
