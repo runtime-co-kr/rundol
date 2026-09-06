@@ -4960,7 +4960,7 @@
       "acceptanceCriteria": {
         "AC-001": {
           "text": "REQ-078~080과 TST-050~052가 오류 0으로 선다",
-          "done": false
+          "done": true
         },
         "AC-002": {
           "text": "SCR-005·SCR-006이 지금 화면과 어긋나지 않는다",
@@ -4969,7 +4969,7 @@
       },
       "blocker": null,
       "createdAt": "2026-09-06T21:21:09.441Z",
-      "updatedAt": "2026-09-06T21:21:09.441Z",
+      "updatedAt": "2026-09-06T21:21:25.262Z",
       "statusChangedAt": "2026-09-06T21:21:09.441Z",
       "externalRefs": [],
       "project": "rundol"
