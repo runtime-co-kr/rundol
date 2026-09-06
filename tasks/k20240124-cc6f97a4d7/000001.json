@@ -4934,6 +4934,45 @@
       "statusChangedAt": "2026-09-05T18:41:20.872Z",
       "externalRefs": [],
       "project": "rundol"
+    },
+    "TASK-2PQWVNQP": {
+      "title": "[문서] 0.45.0 계약을 정본으로 세우고 화면 문서를 사실에 맞춘다",
+      "summary": "state 투영·리비전 계산 판·이력과 두 지점 비교가 코드로만 있었고, SCR 둘은 여러 판 전 사실을 계약으로 들고 있었다.",
+      "owner": "MEMBER-001",
+      "reviewers": [],
+      "stakeholders": [],
+      "status": "todo",
+      "priority": "high",
+      "kind": "normal",
+      "result": null,
+      "round": null,
+      "links": [
+        "REQ-078",
+        "REQ-079",
+        "REQ-080",
+        "TST-050",
+        "TST-051",
+        "TST-052",
+        "SCR-005",
+        "SCR-006"
+      ],
+      "deps": [],
+      "acceptanceCriteria": {
+        "AC-001": {
+          "text": "REQ-078~080과 TST-050~052가 오류 0으로 선다",
+          "done": false
+        },
+        "AC-002": {
+          "text": "SCR-005·SCR-006이 지금 화면과 어긋나지 않는다",
+          "done": false
+        }
+      },
+      "blocker": null,
+      "createdAt": "2026-09-06T21:21:09.441Z",
+      "updatedAt": "2026-09-06T21:21:09.441Z",
+      "statusChangedAt": "2026-09-06T21:21:09.441Z",
+      "externalRefs": [],
+      "project": "rundol"
     }
   }
 }
