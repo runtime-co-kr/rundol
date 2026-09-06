@@ -106,7 +106,61 @@ const DOCUMENT_TYPE_KEYS = Object.freeze([
   'interface', 'decision', 'standard', 'test', 'runbook', 'glossary', 'clipping'
 ]);
 
-const DOCUMENT_STATE_KEYS = Object.freeze(['draft', 'proposed', 'active', 'review', 'approved', 'deprecated', 'archived', 'unread']);
+/**
+ * 문서의 `state`. **rdl이 소유하고 원장에서 투영한다** — 사람이 손으로 적는 칸이 아니다.
+ *
+ * 오래 이 칸은 사람이 적는 주장이었고 아무것도 그것을 굴리지 않았다. 만들 때 draft가
+ * 한 번 적히고 그 뒤로는 파일을 손으로 고쳐야만 바뀌었다. 그래서 원장이 승인이라 말하는
+ * 문서가 파일에서는 초안으로 남았고, 화면은 같은 문서에 두 말을 했다.
+ *
+ * 이제 승인·제출·반려가 원장에 사건을 적으면서 이 칸을 함께 쓴다. 파일만 열어도 지금
+ * 상태를 알 수 있고, 문서를 복제하면 상태가 따라온다.
+ *
+ * **정본은 여전히 원장이다.** 이 칸은 파생 캐시이며, 손으로 고쳐도 다음 동기화에서
+ * 되돌아간다. 위조를 막는 것은 이 칸이 아니라 원장의 봉투와 인가다.
+ *
+ * 값이 두 축의 손실 있는 요약인 것은 의도다. 원장은 신뢰(승인됨·낡음·미승인)와 제출을
+ * 따로 알지만 파일의 한 칸은 그것을 다 담지 못한다. 캐시는 사람이 파일을 열었을 때 읽을
+ * 한 낱말이면 되고, 두 축이 다 필요한 자리는 원장을 묻는다.
+ */
+const DOCUMENT_STATE_KEYS = Object.freeze(['draft', 'proposed', 'approved', 'stale', 'rejected']);
+
+/**
+ * 문서 내용의 수명. **사람이 적는다** — 원장이 모르는 축이다.
+ *
+ * 원장은 "누가 이 리비전을 책임졌나"를 알지 "이 결정이 아직 효력이 있나"는 모른다.
+ * ADR의 accepted가 그 예다. 그것은 문서 승인이 아니라 그 결정이 채택되어 서 있다는 뜻이고,
+ * 15건이 그 값을 state 칸에 적고 있었다 — 승인 축과 한 칸을 나눠 쓰다 서로를 덮었다.
+ *
+ * 비워 둘 수 있다. 대부분의 문서는 수명을 따로 말할 것이 없고, 없는 것과 active는 다르다.
+ */
+const DOCUMENT_LIFECYCLE_KEYS = Object.freeze(['active', 'accepted', 'superseded', 'deprecated', 'archived']);
+
+/**
+ * 문서 리비전 해시에서 빼는 칸. rdl이 소유하는 칸이라 사람이 쓴 내용이 아니다.
+ *
+ * 빼지 않으면 승인이 자기를 무효화한다. 승인하면서 state를 쓰면 그 쓰기가 리비전을 바꾸고,
+ * 방금 승인한 리비전이 더 이상 이 문서가 아니게 되어 그 자리에서 낡음이 된다.
+ *
+ * **이 목록은 하중을 받는 계약이다.** 여기 칸을 더하거나 빼면 같은 파일이 다른 리비전을
+ * 내고, 그러면 그 이전에 기록된 승인이 전부 어긋난다. 그래서 목록을 고칠 때는 계산 판을
+ * 함께 올리고 옛 기록은 옛 판으로 재야 한다 — REVISION_FORMULAS가 그 판의 이름이다.
+ */
+const REVISION_OWNED_FIELDS = Object.freeze(['state']);
+
+/**
+ * 리비전 계산 판. 원장의 승인·제출·반려는 자기가 어느 판으로 잰 리비전인지 함께 적고,
+ * 접을 때는 그 판으로 문서를 다시 재어 견준다.
+ *
+ *   1  frontmatter 전부 + 본문
+ *   2  frontmatter에서 REVISION_OWNED_FIELDS를 뺀 나머지 + 본문
+ *
+ * 판을 적지 않은 옛 기록은 1이다. 이 되돌림이 없으면 계산을 바꾸는 순간 이미 기록된 승인이
+ * 전부 어긋나고, 그것은 되돌릴 수 없다 — 승인은 다시 만들 수 없는 사람의 판단이다.
+ */
+const REVISION_FORMULAS = Object.freeze([1, 2]);
+const DEFAULT_REVISION_FORMULA = 1;
+const CURRENT_REVISION_FORMULA = 2;
 
 // ── 문서 계약 ───────────────────────────────────────────────────────────
 
@@ -727,6 +781,11 @@ module.exports = Object.freeze({
   DEFAULT_DOCUMENT_ORDER,
   DOCUMENT_TYPE_KEYS,
   DOCUMENT_STATE_KEYS,
+  DOCUMENT_LIFECYCLE_KEYS,
+  REVISION_OWNED_FIELDS,
+  REVISION_FORMULAS,
+  DEFAULT_REVISION_FORMULA,
+  CURRENT_REVISION_FORMULA,
   PROFILE_NAMES,
   POLICY_STATES,
   ENFORCEMENTS,

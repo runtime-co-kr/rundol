@@ -5,7 +5,7 @@ kind: charter
 title: <프로젝트 이름>
 description: <프로젝트의 미션, 목표, 역할과 이해관계자를 한 문장으로 작성>
 owner: "[[project#^MEMBER-001|프로젝트 책임자]]"
-state: active
+state: draft
 tags:
   - rundol/artifact
   - artifact/project-charter

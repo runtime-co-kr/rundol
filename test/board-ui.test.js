@@ -45,7 +45,13 @@ assert(!html.includes('<style>'), 'Board HTML must not use CSP-blocked inline st
 assert(html.includes('data-task-scope="mine"'), 'My Work must be a task filter instead of a top-level screen');
 assert(!html.includes('data-view="my-work"'), 'My Work must not duplicate the task screen in top navigation');
 assert(app.includes("task.owner === state.currentMember"), 'My Work must filter by the current member');
-assert(app.includes("(task.reviewers || []).includes(state.currentMember)"), 'My Review must filter by reviewer identity');
+// 내가 검토자인 것만 추리는 자리는 홈의 「내 차례」다. 태스크 화면의 검토 범위는 홈 카드가
+// 세는 것과 같은 줄(승인 스텝에 선 태스크 전체)을 보여야 하므로 그 축으로 거르지 않는다 —
+// 카드가 프로젝트 전체를 세는데 목적지가 내 것만 거르면 수를 눌러 도착한 곳이 0건이 된다.
+{
+  const queue = app.slice(app.indexOf('function renderMyQueue'), app.indexOf('function visitKey'));
+  assert(queue.includes("(task.reviewers || []).includes(state.currentMember)"), '내 차례는 검토자 신원으로 걸러야 합니다');
+}
 assert(app.includes("return setView('task', button.dataset.task)"), 'Task selection must open task detail');
 assert(app.includes('documents.map(documentCard)'), 'Task links must resolve to navigable document cards');
 assert(app.includes('data-task-acceptance'), 'Acceptance criteria must render interactive checkboxes');
@@ -646,20 +652,28 @@ assert(app.includes("else if (state.view === 'review-inbox') renderReviewInbox()
 assert(app.includes("'검토 요청 태스크'") && app.includes("'검토 대기 문서'"), '두 축의 요약은 이름이 갈려야 합니다');
 assert(style.includes('.review-inbox-row'), '검토 인박스 행 스타일이 필요합니다');
 {
-  const render = app.slice(app.indexOf('function reviewRowHtml'), app.indexOf('function renderHome'));
+  const render = app.slice(app.indexOf('function reviewRowHtml'), app.indexOf('function reviewVisibleItems'));
   // 서버는 낡음을 앞에 두고 이미 정렬해 보낸다. 화면이 다시 정렬하면 두 순서가 갈리고,
   // 그때 화면이 말하는 "먼저 볼 것"은 근거 없는 순서가 된다.
   assert(!render.includes('.sort('), '서버가 정한 순서를 화면이 다시 정하면 안 됩니다');
   // 판정을 새로 짓지 않는다. 리비전을 비교하는 순간 rdl doc status와 보드가 같은 문서에
   // 다른 답을 내고, 그때 사람이 믿는 쪽은 화면이다.
   assert(!render.includes('revision'), '화면이 승인 판정을 다시 지으면 안 됩니다');
-  assert(render.includes('data-document='), '펼친 자리에서 문서 화면으로 가는 길은 이미 있는 경로를 그대로 써야 합니다');
-  // 펼치는 것과 승인하는 것은 같은 자리에 있어야 한다. 펼쳐 놓고 승인은 다른 화면에서
-  // 하게 하면 인박스는 다시 목록이 된다.
-  assert(render.includes('data-approve-open='), '행은 그 자리에서 펼쳐져야 합니다');
-  assert(render.includes('approvalPanelHtml(item.id'), '펼친 자리에 승인 판이 서야 합니다');
+  // 줄의 첫 동작이 바뀌었다. 오래 이 자리는 그 줄에서 펼치는 손잡이였고 펼치면 차분과
+  // 승인 폼이 나왔는데, 본문은 그 안 어디에도 없었다 — 차분은 "무엇이 바뀌었나"에만
+  // 답하고 "이게 맞는 문서인가"는 본문에만 있다. 근거 어휘에 read(읽고 판단했다)를 두고
+  // 읽을 자리를 주지 않은 채 그것을 고르게 하고 있었다는 뜻이라, 줄은 이제 본문이 보이는
+  // 검토 자리로 데려간다. 그 자리는 문서 상세이고 승인 판은 본문 옆에 선다.
+  assert(render.includes('data-document='), '줄을 누르면 그 문서의 검토 자리로 가야 합니다');
+  assert(render.includes('data-review-origin='), '인박스에서 왔다는 것이 그 길에 실려야 합니다');
+  assert(!render.includes('data-approve-open='), '본문 없는 자리에서 승인을 받으면 안 됩니다');
+  assert(!render.includes('approvalPanelHtml'), '승인 판은 본문이 있는 화면에만 서야 합니다');
 }
-assert(app.includes("if (button.dataset.document) return setView('document', button.dataset.document);"), '문서로 가는 길은 하나여야 합니다');
+// 문서로 가는 길은 여전히 하나다. 인박스에서 왔는지는 그 길에 얹은 표식으로만 갈린다 —
+// 경로를 둘로 파면 온 곳의 차이가 아니라 화면 전체가 갈리고, 그때 두 길 중 한쪽만
+// 고쳐지는 날이 온다.
+assert.strictEqual(app.split("setView('document', button.dataset.document)").length - 1, 1, '문서로 가는 길은 하나여야 합니다');
+assert(app.includes('state.reviewFrom = button.dataset.reviewOrigin ? button.dataset.document : null;'), '온 곳은 그 하나의 길에 얹은 표식으로 갈라야 합니다');
 
 // 여기부터는 글자가 있는지가 아니라 실제로 무엇이 그려지는지를 본다. 이 화면이 가르는
 // 갈래 셋(승인 축을 안 쓰는 프로젝트 · 원장을 못 읽은 경우 · 줄이 잘린 경우)은 어느 것도
@@ -677,7 +691,7 @@ assert(app.includes("if (button.dataset.document) return setView('document', but
     dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
     // const는 그 eval의 렉시컬 스코프에만 산다. state를 만지려면 같은 문자열 끝에
     // 붙어야 하고, 그래서 손잡이도 여기서 함께 만든다.
-    dom.window.eval(app + '\n;window.__probe = { snapshot(value) { state.snapshot = value; }, view(name) { setView(name); } };');
+    dom.window.eval(app + '\n;window.__probe = { snapshot(value) { state.snapshot = value; }, view(name, selected) { setView(name, selected); } };');
     return dom;
   }
   function snapshot(reviewQueue, documents) {
@@ -685,17 +699,37 @@ assert(app.includes("if (button.dataset.document) return setView('document', but
       project: 'demo', documents: documents || [], tasks: { tasks: [] }, attention: [],
       people: { members: [{ id: 'MEMBER-001', name: '강윤정' }], stakeholders: [], roles: [] },
       presentation: { documentTypes: {}, documentStates: {} },
+      // 승인 자격자가 없으면 판이 폼 대신 "자격자가 없습니다"만 그린다. 판이 열렸는가는
+      // 그때도 확인할 수 있지만, 그 화면은 이 갈래에서 보려는 화면이 아니다.
+      approvers: [{ id: 'CLIENT-1', name: '개발용' }],
       reviewQueue
     };
   }
-  function queueItems(count, staleCount) {
+  // 줄에 선 문서의 상세. 스냅숏의 documents와 reviewQueue.items는 같은 문서의 다른 축이라
+  // 한쪽만 채우면 줄을 눌러 도착한 화면이 빈 문서가 된다 — 실제 서버는 둘을 함께 싣는다.
+  function queueDocuments(items) {
+    return items.map((item) => ({
+      id: item.id, kind: 'adr', title: item.title, description: '설명', file: 'docs/a.md',
+      state: 'accepted', owner: 'MEMBER-001', modifiedAt: '2026-08-20T00:00:00Z', revision: 'a'.repeat(64),
+      body: `# ${item.id}\n\n읽어야 할 내용이 여기 있다.`, tags: [], related: [],
+      approval: {
+        status: item.status, approvedRevision: 'b'.repeat(64), approvedBy: item.approvedBy,
+        approvals: item.approvals, submission: { state: 'none', rejection: null }
+      }
+    }));
+  }
+  // 대기 시각은 서버가 싣는 값이고 줄의 순서를 정하는 축이다. 시험이 그 값을 안 주면
+  // 여기서 그리는 모든 줄이 "대기 시간 모름"으로 서고, 그러면 값이 있는 줄과 없는 줄을
+  // 가르는 갈래를 이 파일이 확인하지 못한다.
+  function queueItems(count, staleCount, prefix) {
     const items = [];
     for (let index = 0; index < count; index += 1) {
       const stale = index < staleCount;
       items.push({
-        status: stale ? 'stale' : 'unapproved', id: `ADR-${String(index).padStart(3, '0')}`,
-        type: 'adr', title: `문서 ${index}`, file: 'docs/a.md',
-        approvedBy: stale ? 'MEMBER-001' : null, approvals: stale ? 2 : 0
+        status: stale ? 'stale' : 'unapproved', id: `${prefix || 'ADR'}-${String(index).padStart(3, '0')}`,
+        type: 'adr', title: `${prefix || '문서'} ${index}`, file: 'docs/a.md',
+        approvedBy: stale ? 'MEMBER-001' : null, approvals: stale ? 2 : 0,
+        waitingSince: new Date(Date.UTC(2026, 0, 1) + index * 3600000).toISOString()
       });
     }
     return items;
@@ -709,39 +743,80 @@ assert(app.includes("if (button.dataset.document) return setView('document', but
   const rowsOf = (dom) => Array.from(dom.window.document.querySelectorAll('#review-inbox-list .review-inbox-row'));
   const textOf = (dom, id) => dom.window.document.getElementById(id).textContent;
 
-  // 1) 줄이 잘렸다는 사실. board.js가 셈은 전건으로 하고 목록만 자르는 이유가 이것이다 —
-  //    화면이 "133건 중 50건"을 말할 수 있어야 줄의 길이가 보이고, 길이가 보여야 사람이
-  //    승인을 관문으로 쓸지 판단한다. 목록의 길이를 줄의 길이로 적으면 그 판단이 막힌다.
+  // 1) 줄은 통째로 오고 화면이 접는다. 예전에는 서버가 앞 50건에서 잘랐고, 잘린 뒤는
+  //    화면 어디에서도 볼 수 없어 명령으로만 봤다 — 잘려서 없는 것과 접혀서 안 그린 것은
+  //    다르고, 뒤엣것은 목록 끝의 「더 보기」가 그 자리에서 편다. 셈은 여전히 전건이다.
   {
-    const dom = open({ used: true, unknown: null, counts: { approved: 84, stale: 10, unapproved: 123 }, total: 133, items: queueItems(50, 10) }, []);
+    const dom = open({ used: true, unknown: null, counts: { approved: 84, stale: 10, unapproved: 123 }, total: 133, rejected: 0, items: queueItems(133, 10) }, []);
     const summary = textOf(dom, 'review-inbox-summary');
-    assert(summary.includes('133건 중 50건'), `잘린 사실을 말해야 합니다: ${summary}`);
+    assert(summary.includes('133건 중 25건'), `접은 사실을 말해야 합니다: ${summary}`);
     assert(summary.includes('133') && summary.includes('10') && summary.includes('123') && summary.includes('84'), '전건 셈 넷이 헤더에 있어야 합니다');
     const rows = rowsOf(dom);
-    assert.strictEqual(rows.length, 50, '실린 만큼만 그려야 합니다');
+    assert.strictEqual(rows.length, 25, '한 번에 그리는 만큼만 그려야 합니다');
     // 서버가 낡음을 앞에 두고 보냈다. 그 순서가 그대로 살아 있어야 한다.
     assert.deepStrictEqual(rows.slice(0, 10).map((row) => row.querySelector('.tag').textContent), new Array(10).fill('낡음'), '낡음이 먼저여야 합니다');
     assert.strictEqual(rows[10].querySelector('.tag').textContent, '미승인', '미승인은 낡음 뒤에 서야 합니다');
-    // 행의 첫 동작은 문서 화면으로 가는 것이 아니라 그 자리에서 펼치는 것이다. 인박스의
-    // 값은 줄을 훑으면서 처리하는 데 있고, 한 건마다 화면을 오가면 훑던 자리를 매번
-    // 잃는다 — 그러면 남는 것은 목록이지 인박스가 아니다. 문서로 가는 길은 펼친 안에 있다.
-    assert.strictEqual(rows[0].dataset.approveOpen, 'ADR-000', '행은 그 문서의 승인 자리를 여는 손잡이여야 합니다');
-    assert.strictEqual(rows[0].dataset.document, undefined, '행을 누르면 화면이 갈아치워지면 안 됩니다');
+    // 행의 첫 동작은 그 문서의 검토 자리로 가는 것이다. 그 자리에서 펼치던 때에는 본문
+    // 없이 승인을 받았고, 그것은 승인 근거로 read(읽고 판단했다)를 고를 수 있는 화면이
+    // 정작 읽을 자리를 주지 않았다는 뜻이다.
+    assert.strictEqual(rows[0].dataset.document, 'ADR-000', '행은 그 문서로 가는 손잡이여야 합니다');
+    assert.strictEqual(rows[0].dataset.reviewOrigin, '1', '인박스에서 왔다는 표식이 행에 있어야 합니다');
+    assert.strictEqual(rows[0].dataset.approveOpen, undefined, '본문 없는 자리에서 승인 폼을 펼치면 안 됩니다');
     assert(rows[0].textContent.includes('강윤정') && rows[0].textContent.includes('승인 2회'), '승인자와 승인 횟수가 행에 있어야 합니다');
     assert(rows[10].textContent.includes('승인 이력 없음'), '미승인 행은 빈 칸이 아니라 없다고 적어야 합니다');
     // 거르개의 수는 전건이다. 목록의 길이를 적으면 잘린 줄에서 두 수가 어긋난다.
     assert(textOf(dom, 'review-inbox-filter').includes('낡음 10') && textOf(dom, 'review-inbox-filter').includes('미승인 123'), '거르개는 전건을 세어야 합니다');
+    // 나머지는 그 자리에서 펴진다. 예전에는 잘린 뒤가 화면에 아예 없어 명령으로만 봤다.
+    assert.strictEqual(dom.window.document.querySelector('[data-review-expand]').textContent, '108개 더 보기', '남은 수를 손잡이에 적어야 합니다');
+    dom.window.document.querySelector('[data-review-expand]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(rowsOf(dom).length, 133, '더 보기는 나머지를 끝까지 펴야 합니다');
     dom.window.document.querySelector('[data-review-filter="stale"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(rowsOf(dom).length, 10, '낡음만 남아야 합니다');
+    // 거르개를 바꾸면 편 상태가 풀린다. 다른 갈래는 다른 목록이라, 낡음 10건을 보려고 편
+    // 것이 미승인 123건에 그대로 걸리면 사람이 요청하지 않은 벽이 선다.
+    dom.window.document.querySelector('[data-review-filter="unapproved"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(rowsOf(dom).length, 25, '거르개를 바꾸면 다시 접혀야 합니다');
     dom.window.close();
   }
 
-  // 2) 거른 뒤에도 잘림은 그 갈래의 수로 말한다. 전체 기준으로만 말하면 낡음 60건 중
-  //    50건을 보면서 화면은 아무 말도 하지 않게 된다.
+  // 2) 거른 뒤에도 접힘은 그 갈래의 수로 말한다. 전체 기준으로만 말하면 낡음 60건 중
+  //    25건을 보면서 화면은 아무 말도 하지 않게 된다.
   {
-    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 60, unapproved: 5 }, total: 65, items: queueItems(50, 50) }, []);
+    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 60, unapproved: 5 }, total: 65, rejected: 0, items: queueItems(65, 60) }, []);
     dom.window.document.querySelector('[data-review-filter="stale"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    assert(textOf(dom, 'review-inbox-summary').includes('60건 중 50건'), '거른 갈래의 잘림도 말해야 합니다');
+    assert(textOf(dom, 'review-inbox-summary').includes('60건 중 25건'), '거른 갈래의 접힘도 말해야 합니다');
+    dom.window.close();
+  }
+
+  // 2-1) 거르개는 줄 전체에서 고른다. 예전에는 서버가 앞 50건만 실었고 화면은 그 50건을
+  //      걸렀다 — 미승인이 149건인 이 저장소에서 SCR·STD·TST로 시작하는 문서는 "미승인만"을
+  //      눌러도 한 건도 나타나지 않았다. 검증 문서만 47건이 그랬다. 셈이 말하는 수와 눌러서
+  //      닿을 수 있는 것이 다르면 요약은 막다른 길이 된다.
+  {
+    const items = queueItems(60, 2).concat(queueItems(47, 0, 'TST'));
+    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 2, unapproved: 105 }, total: 107, rejected: 0, items }, []);
+    dom.window.document.querySelector('[data-review-filter="unapproved"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    dom.window.document.querySelector('[data-review-expand]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    const ids = rowsOf(dom).map((row) => row.dataset.document);
+    assert.strictEqual(ids.length, 105, '미승인 전건이 줄에 서야 합니다');
+    assert.strictEqual(ids.filter((id) => id.startsWith('TST')).length, 47, '뒤쪽 유형에 거르개로 닿을 수 있어야 합니다');
+    dom.window.close();
+  }
+
+  // 2-2) 대기 시간. 줄의 순서를 정하는 값이라 줄에 보여야 하고, 못 구한 것은 "모름"이라
+  //      적어야 한다 — 빈 칸이나 "0분"으로 메우면 값이 없는 문서가 방금 올라온 것처럼
+  //      보이고, 서버가 그런 줄을 맨 뒤로 보낸 이유가 화면에서 사라진다.
+  {
+    const day = 24 * 60 * 60 * 1000;
+    const items = [
+      { status: 'unapproved', id: 'ADR-001', type: 'adr', title: '오래 기다린 것', file: 'docs/a.md', approvedBy: null, approvals: 0, waitingSince: new Date(Date.now() - 3 * day).toISOString() },
+      { status: 'unapproved', id: 'ADR-002', type: 'adr', title: '모르는 것', file: 'docs/b.md', approvedBy: null, approvals: 0, waitingSince: null }
+    ];
+    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 0, unapproved: 2 }, total: 2, rejected: 0, items }, []);
+    const rows = rowsOf(dom);
+    assert(rows[0].textContent.includes('3일 기다림'), `기다린 시간이 줄에 보여야 합니다: ${rows[0].textContent}`);
+    assert(rows[1].textContent.includes('대기 시간 모름'), '못 구한 값은 없다고 적어야 합니다');
+    assert(rows[1].querySelector('.review-wait').classList.contains('unknown'), '모르는 것과 오래된 것을 같은 모양으로 그리면 안 됩니다');
     dom.window.close();
   }
 
@@ -782,9 +857,247 @@ assert(app.includes("if (button.dataset.document) return setView('document', but
     assert(textOf(unknown, 'metrics').includes('—검토 대기 문서'), '모를 때도 수를 내지 않는다');
     unknown.window.close();
   }
+
+  // 6) 줄을 누르면 문서 검토 자리로 간다. 오래 이 줄은 그 자리에서 펼쳐 차분과 승인 폼을
+  //    냈고 본문은 어디에도 없었다 — 차분은 "무엇이 바뀌었나"에만 답하므로, 그 화면은
+  //    승인 근거로 read(읽고 판단했다)를 고르게 하면서 정작 읽을 자리를 주지 않았다.
+  //
+  //    여기서 보는 것은 넷이고 어느 것도 문자열로는 지켜지지 않는다 — 본문이 서는가,
+  //    판이 열린 채로 도착하는가, 돌아갈 곳이 인박스인가, 다음 차례가 화면에 있는가.
+  {
+    const items = queueItems(3, 1);
+    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 2 }, total: 3, rejected: 0, items }, queueDocuments(items));
+    const doc = dom.window.document;
+    rowsOf(dom)[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(doc.getElementById('document-view').hidden, false, '줄을 누르면 문서 화면이 열려야 합니다');
+    assert(doc.getElementById('document-body').textContent.includes('읽어야 할 내용'), '검토하러 온 자리에 본문이 있어야 합니다');
+    // 판이 닫힌 채로 도착하면 본문 앞에서 한 번 더 눌러야 하고, 인박스에서 온 사람에게
+    // 그 한 번은 이유가 없다 — 그 사람은 읽으러 온 것이 아니라 판정하러 왔다.
+    assert(doc.body.classList.contains('approval-open'), '인박스에서 온 사람에게는 승인 판이 열려 있어야 합니다');
+    assert(doc.getElementById('document-approval-panel').textContent.includes('검토하고 승인'), '옆으로 나온 판이 서야 합니다');
+    // 돌아갈 곳은 문서 목록이 아니라 인박스다. 「문서」로 돌려보내면 훑던 줄과 걸어 둔
+    // 거르개를 잃고, 그러면 인박스의 값이 한 건마다 사라진다.
+    assert(doc.getElementById('document-breadcrumb').textContent.includes('검토 인박스'), 'breadcrumb은 왔던 곳으로 돌려보내야 합니다');
+    const nav = doc.getElementById('document-review-nav');
+    assert.strictEqual(nav.hidden, false, '줄을 훑는 띠가 서야 합니다');
+    assert(nav.textContent.includes('1 / 3'), `줄의 어디쯤인지를 말해야 합니다: ${nav.textContent}`);
+    assert.strictEqual(nav.querySelector('.review-nav-next').dataset.document, 'ADR-001', '다음 대기 건은 줄의 다음 줄이어야 합니다');
+
+    // 다음 대기 건도 같은 길을 쓴다. 표식이 함께 실리지 않으면 두 번째 문서부터는 판이
+    // 닫힌 채로 도착하고, 그때 사람은 자기가 무엇을 잘못 눌렀는지 찾게 된다.
+    nav.querySelector('.review-nav-next').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert(doc.body.classList.contains('approval-open'), '다음 건에서도 판이 열려 있어야 합니다');
+    assert(doc.getElementById('document-review-nav').textContent.includes('2 / 3'), '순번이 함께 움직여야 합니다');
+
+    // 띠의 손잡이는 실제로 인박스를 연다. 줄도 그대로여야 한다 — 돌아온 곳이 다른 목록이면
+    // 훑던 자리를 잃는 것은 매한가지다.
+    doc.getElementById('document-review-nav').querySelector('[data-view="review-inbox"]')
+      .dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(doc.getElementById('review-inbox-view').hidden, false, '띠의 손잡이는 인박스로 돌아가야 합니다');
+    assert.strictEqual(rowsOf(dom).length, 3, '돌아온 줄은 그대로여야 합니다');
+    dom.window.close();
+  }
+
+  // 6-2) 판정이 끝나면 이 문서는 줄에서 빠진다. 그때 순번을 그대로 두면 화면은 이미
+  //      처리한 건을 아직 기다리는 것으로 말하고, 빈 칸으로 두면 방금 자기가 무엇을 했는지가
+  //      사라진다. 빠졌다고 적고 다음 차례는 줄의 맨 앞으로 잡는다 — 서버가 급한 순으로
+  //      정렬해 보냈으므로 그 앞이 곧 먼저 볼 것이다.
+  {
+    const items = queueItems(3, 1);
+    const documents = queueDocuments(items);
+    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 2 }, total: 3, rejected: 0, items }, documents);
+    const doc = dom.window.document;
+    rowsOf(dom)[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    // 승인이 나간 뒤 서버가 주는 것과 같은 줄. 처리한 건만 빠지고 나머지는 그대로다.
+    const left = items.slice(1);
+    dom.window.__probe.snapshot(Object.assign(snapshot({ used: true, unknown: null, counts: { approved: 1, stale: 0, unapproved: 2 }, total: 2, rejected: 0, items: left }, documents)));
+    dom.window.__probe.view('document', 'ADR-000');
+    const nav = doc.getElementById('document-review-nav');
+    assert.strictEqual(nav.hidden, false, '줄에서 빠져도 돌아갈 길은 남아야 합니다');
+    assert(nav.textContent.includes('이 줄에서 빠짐'), `방금 무엇을 했는지가 남아야 합니다: ${nav.textContent}`);
+    assert(nav.textContent.includes('남은 2건'), '남은 줄의 길이를 말해야 합니다');
+    assert.strictEqual(nav.querySelector('.review-nav-next').dataset.document, 'ADR-001', '빠진 뒤의 다음 차례는 줄의 맨 앞입니다');
+    dom.window.close();
+  }
+
+  // 6-1) 문서 목록에서 그냥 열어 본 사람은 검토하러 온 것이 아니다. 그 사람에게 판을 열면
+  //      읽으러 온 화면의 폭을 판이 가져가고, 줄의 순번을 보여 주면 자기가 서 있지도 않은
+  //      줄을 읽게 된다. 온 곳을 가르지 못하면 이 둘이 한 화면으로 뭉개진다.
+  {
+    const items = queueItems(3, 1);
+    const dom = open({ used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 2 }, total: 3, rejected: 0, items }, queueDocuments(items), 'documents');
+    const doc = dom.window.document;
+    doc.querySelector('#documents-list [data-document]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(doc.getElementById('document-view').hidden, false, '문서 목록의 줄도 문서를 열어야 합니다');
+    assert.strictEqual(doc.body.classList.contains('approval-open'), false, '읽으러 온 사람의 본문 폭을 판이 가져가면 안 됩니다');
+    assert.strictEqual(doc.getElementById('document-review-nav').hidden, true, '서 있지도 않은 줄의 순번을 보여주면 안 됩니다');
+    assert(doc.getElementById('document-breadcrumb').textContent.includes('문서'), '문서 목록에서 온 사람은 문서 목록으로 돌아갑니다');
+    dom.window.close();
+  }
 }
 
 console.log('review inbox tests passed');
+
+// ── 홈의 「검토 요청 태스크」와 그 목적지 ────────────────────────────────────
+//
+// 카드는 프로젝트 전체에서 승인 스텝에 선 태스크를 세는데 목적지는 "내가 검토자인 것"만
+// 걸렀다. 그래서 1을 눌러 도착하면 0건이었고, 이 저장소의 그 1건은 같은 홈 화면이
+// "검토자 없음"이라 적은 태스크라 누구를 골라도 영원히 0건이었다 — 수를 보고 그 수를
+// 만든 목록으로 갈 수 없으면 요약은 막다른 길이 된다.
+//
+// 여기서 못박는 것은 두 수가 같다는 것이다. 어느 쪽으로 맞췄는지가 아니라 어긋나지
+// 않는다는 것이 계약이고, 어긋나는 순간 카드는 다시 막다른 길이 된다.
+{
+  const { JSDOM } = require('jsdom');
+  function mount() {
+    const dom = new JSDOM(html, { url: 'http://127.0.0.1/', runScripts: 'outside-only' });
+    dom.window.fetch = () => new Promise(() => {});
+    dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+    dom.window.eval(`${app}\n;window.__probe = { snapshot(value) { state.snapshot = value; }, view(name) { setView(name); }, member(id) { state.currentMember = id; } };`);
+    return dom;
+  }
+  // 워크플로는 서버가 싣는다. 화면은 상태 이름을 모르고 스텝으로 묻는다 — 실어 주지
+  // 않으면 승인 스텝에 선 태스크가 한 건도 없는 것으로 보여 이 시험이 0 = 0으로 통과한다.
+  const workflow = {
+    nodes: {
+      todo: { step: 'unclaimed', validity: null, label: null, requires: [] },
+      doing: { step: 'in-progress', validity: null, label: null, requires: [] },
+      review: { step: 'in-approval', validity: null, label: null, requires: [] },
+      done: { step: 'completed', validity: 'valid', label: null, requires: [] }
+    },
+    steps: ['unclaimed', 'in-progress', 'in-approval', 'completed'],
+    terminalSteps: ['completed'], openSteps: ['unclaimed', 'in-progress', 'in-approval'], activeSteps: ['in-progress', 'in-approval']
+  };
+  const task = (id, status, reviewers) => ({
+    id, title: `${id} 제목`, status, priority: 'mid', owner: 'MEMBER-001', reviewers, deps: [], links: [], acceptanceCriteria: {}
+  });
+  const snapshot = {
+    project: 'demo', documents: [], attention: [], workflow,
+    tasks: { tasks: [
+      // 이 저장소의 그 1건이다. 검토자가 없어 어떤 신원으로도 걸러지지 않는다.
+      task('TASK-AAAAAAAA', 'review', []),
+      task('TASK-BBBBBBBB', 'review', ['MEMBER-002']),
+      task('TASK-CCCCCCCC', 'doing', [])
+    ] },
+    people: { members: [{ id: 'MEMBER-001', name: '강윤정' }, { id: 'MEMBER-002', name: '류승호' }], stakeholders: [], roles: [] },
+    presentation: { documentTypes: {}, documentStates: {} },
+    reviewQueue: { used: true, unknown: null, counts: { approved: 0, stale: 0, unapproved: 0 }, total: 0, rejected: 0, items: [] }
+  };
+  const click = (dom, element) => element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  const metricOf = (dom) => Array.from(dom.window.document.querySelectorAll('#metrics .metric'))
+    .find((button) => button.textContent.includes('검토 요청 태스크'));
+  const taskRowsOf = (dom) => Array.from(dom.window.document.querySelectorAll('#task-list .task-row'));
+
+  // 1) 사람을 안 골랐을 때. 승인 스텝에 서 있다는 것은 태스크의 사실이고 누가 보는가와
+  //    무관하므로, 신원 안내로 목록을 가리지 않는다 — 가리면 카드의 수는 2인데 목적지는
+  //    아무것도 안 보여 준다.
+  {
+    const dom = mount();
+    dom.window.__probe.snapshot(snapshot);
+    dom.window.__probe.view('home');
+    const metric = metricOf(dom);
+    assert.strictEqual(metric.querySelector('strong').textContent, '2', '카드는 프로젝트 전체에서 승인 스텝에 선 수를 센다');
+    click(dom, metric);
+    assert.strictEqual(dom.window.document.getElementById('tasks-heading').textContent, '검토 대기', '목적지의 이름이 세는 것과 같아야 합니다');
+    assert.strictEqual(taskRowsOf(dom).length, 2, '카드의 수와 목적지의 줄 수가 같아야 합니다');
+    assert.strictEqual(dom.window.document.querySelectorAll('#task-list .identity-prompt').length, 0, '사람을 안 골라도 검토 대기는 보여야 합니다');
+    dom.window.close();
+  }
+
+  // 2) 사람을 골랐을 때도 두 수는 같다. 내가 검토자인 것만 남기면 검토자 없이 멈춰 선
+  //    태스크가 어느 수에도 안 잡혀 화면에서 사라지는데, 그 태스크야말로 아무도 안 보고
+  //    있다는 뜻이라 가장 먼저 보여야 하는 것이다. 대신 그중 몇 건이 내 것인지를 적는다.
+  {
+    const dom = mount();
+    dom.window.__probe.snapshot(snapshot);
+    dom.window.__probe.member('MEMBER-002');
+    dom.window.__probe.view('home');
+    click(dom, metricOf(dom));
+    assert.strictEqual(taskRowsOf(dom).length, 2, '신원을 골라도 목적지가 세는 것은 그대로여야 합니다');
+    assert(dom.window.document.getElementById('tasks-description').textContent.includes('1건이 내가 검토자'),
+      '그중 몇 건이 내 것인지는 말해야 합니다');
+    dom.window.close();
+  }
+
+  // 3) 「내 작업」은 여전히 신원을 요구한다. 담당은 사람 없이는 물을 수 없는 축이라
+  //    검토 대기와 같은 규칙을 쓰면 안 된다.
+  {
+    const dom = mount();
+    dom.window.__probe.snapshot(snapshot);
+    dom.window.__probe.view('my-work');
+    assert.strictEqual(dom.window.document.querySelectorAll('#task-list .identity-prompt').length, 1, '내 작업은 신원을 먼저 물어야 합니다');
+    dom.window.close();
+  }
+}
+
+console.log('review request metric tests passed');
+
+// ── 문서 상세의 승인 판이 본문을 밀어내지 않는가 ─────────────────────────────
+//
+// 오너가 여기서 막혔다. 「검토하고 승인」을 누르면 685px짜리 판이 본문 앞에 끼어들어 본문을
+// 뷰포트 밖으로 밀어냈고(1500×1000에서 본문의 보이는 높이가 584px → 0px), 사람이 보기에는
+// "문서를 눌렀는데 문서가 안 열리고 승인만 나온다"였다. 본문은 DOM에 그대로 있고 hidden도
+// 아니었으므로, 있는지를 세는 검사로는 하나도 안 잡힌다.
+//
+// jsdom은 조판을 계산하지 않아 픽셀로는 못 잰다. 그래서 픽셀을 만드는 두 가지를 각각
+// 못박는다 — 판이 열렸다는 것을 body가 표식으로 알리는가(동작), 그리고 그 표식이 판을
+// 흐름에서 빼고 본문에 그만큼 여백을 주는가(조판). 둘 중 하나만 있으면 본문은 다시
+// 밀려나거나 판에 덮인다.
+{
+  // 조판. 흐름에서 빼는 것과 본문이 비켜 주는 것은 언제나 같이 가야 하고, 폭과 여백은
+  // 같은 수여야 한다 — 두 곳에 따로 적으면 한쪽만 고쳐지는 날 판이 본문을 덮는다.
+  const surface = style.slice(style.indexOf('body.approval-open {'), style.indexOf('.approval-panel-head {'));
+  assert(/body\.approval-open #document-approval-panel \{[^}]*position: fixed/u.test(surface),
+    '승인 판은 본문 흐름에서 빠져야 합니다. 흐름에 두면 열 때마다 본문이 그만큼 아래로 밀립니다');
+  assert(/body\.approval-open #document-approval-panel \{[^}]*width: var\(--approval-Width\)/u.test(surface)
+    && /body\.approval-open \.main-content \{[^}]*padding-right: calc\(var\(--approval-Width\)/u.test(surface),
+    '판의 폭과 본문이 비켜 줄 여백은 같은 값에서 와야 합니다. 갈리면 판이 본문을 덮거나 빈 띠가 남습니다');
+  assert(/body\.approval-open \.workspace-shell \{[^}]*grid-template-columns/u.test(surface),
+    'Context 열을 정리해야 합니다. 안 하면 빈 300px이 판 뒤에 남아 본문 폭만 깎습니다');
+
+  // 동작. 판을 열면 body에 표식이 서고, 화면을 옮기면 사라진다.
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(html, { url: 'http://127.0.0.1/', runScripts: 'outside-only' });
+  dom.window.fetch = () => new Promise(() => {});
+  dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  dom.window.eval(`${app}\n;window.__probe = { snapshot(value) { state.snapshot = value; }, view(name, selected) { setView(name, selected); } };`);
+  const item = {
+    id: 'ADR-020', kind: 'adr', type: 'document', title: '설정 자유도를 가역성으로 나눈다', description: '설명',
+    file: 'docs/adr/ADR-020.md', state: 'accepted', owner: 'MEMBER-001', modifiedAt: '2026-08-20T00:00:00Z',
+    revision: 'a'.repeat(64), body: '# 본문\n\n읽어야 할 내용이 여기 있다.', tags: [], related: [],
+    approval: { status: 'stale', approvedRevision: 'b'.repeat(64), approvedBy: 'MEMBER-001', approvals: 1, submission: { state: 'none', rejection: null } }
+  };
+  dom.window.__probe.snapshot({
+    project: 'demo', documents: [item], tasks: { tasks: [] }, attention: [],
+    people: { members: [{ id: 'MEMBER-001', name: '강윤정' }], stakeholders: [], roles: [] },
+    presentation: { documentTypes: {}, documentStates: {} },
+    approvers: [{ id: 'CLIENT-1', name: '개발용' }],
+    reviewQueue: { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 0 }, total: 1, rejected: 0, items: [] }
+  });
+  dom.window.__probe.view('document', 'ADR-020');
+  const body = dom.window.document.getElementById('document-body');
+  const panel = dom.window.document.getElementById('document-approval-panel');
+  assert.strictEqual(dom.window.document.body.classList.contains('approval-open'), false, '열기 전에는 표식이 없어야 합니다');
+  assert.strictEqual(panel.innerHTML, '', '열기 전에는 판이 비어 있어야 합니다');
+
+  dom.window.document.querySelector('#document-approval [data-approve-open]')
+    .dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert(dom.window.document.body.classList.contains('approval-open'),
+    '판을 열면 body가 그 사실을 알려야 합니다. 조판이 판을 흐름에서 빼는 근거가 이 표식뿐입니다');
+  assert(panel.textContent.includes('검토하고 승인'), '옆으로 나온 판은 자기가 무엇인지 말해야 합니다');
+  assert(panel.querySelector('[data-approve-open]'), '덮는 표면은 자기 안에 닫는 길을 가져야 합니다');
+  // 본문은 그대로다. 밀려나는 것은 조판의 문제라 여기서는 "지워지지 않았다"까지만 본다.
+  assert.strictEqual(body.hidden, false, '본문을 감추지 않습니다');
+  assert(body.textContent.includes('읽어야 할 내용'), '본문이 그대로 서 있어야 합니다');
+
+  // 화면을 옮기면 표식이 사라진다. 안 지우면 본문이 없는 화면에서도 오른쪽 여백이 남아,
+  // 아무것도 없는 자리가 목록의 폭을 먹는다.
+  dom.window.__probe.view('documents');
+  assert.strictEqual(dom.window.document.body.classList.contains('approval-open'), false, '화면을 옮기면 자리를 돌려줘야 합니다');
+  dom.window.close();
+}
+
+console.log('document approval surface tests passed');
 
 // ── 문서 목록의 승인 축 ──────────────────────────────────────────────────────
 //
@@ -1000,9 +1313,14 @@ console.log('document ledger tests passed');
 // ── 화면에서 비교하고 승인한다 ──────────────────────────────────────────────
 //
 // 오너가 계속 요구한 자리다: "상세 페이지에서 승인을 어떻게 하고 비교를 어떻게 하고".
-// 검토 인박스는 목록일 뿐이었고 행 안에 단추가 0개였다. 여기서 못박는 것은 셋이다 —
-// 행을 펼치면 화면을 갈아치우지 않고 그 자리에서 차분이 보일 것, 비교 기준이 없을 때
-// 빈 차분을 지어내지 않을 것, 거절당하면 왜 거절당했는지가 그대로 보일 것.
+// 검토 인박스는 목록일 뿐이었고 행 안에 단추가 0개였다. 여기서 못박는 것은 넷이다 —
+// 인박스의 줄을 누르면 본문이 보이는 검토 자리로 갈 것, 그 자리에서 차분이 본문 옆에
+// 설 것, 비교 기준이 없을 때 빈 차분을 지어내지 않을 것, 거절당하면 왜 거절당했는지가
+// 그대로 보일 것.
+//
+// 셋에서 넷이 된 것은 계약이 바뀌어서다. 오래 이 판은 인박스의 줄 안에서 펼쳐졌는데 그
+// 자리에는 본문이 없었고, 그래서 근거로 read(읽고 판단했다)를 고르면서 정작 읽을 자리는
+// 없는 화면이었다. 승인을 받는 자리는 이제 본문이 있는 문서 상세 하나다.
 //
 // 이 갈래들은 문자열이 파일에 있다는 것만으로는 지켜지지 않는다. 어느 갈래로 갔는가가
 // 답이고, 그것은 실제로 그려 봐야 안다.
@@ -1071,8 +1389,9 @@ module.exports = (async () => {
   }
   const text = (dom, id) => dom.window.document.getElementById(id).textContent;
 
-  // 1) 행을 펼치면 그 자리에서 차분이 보인다. 화면을 갈아치우지 않는 것이 핵심이다 —
-  //    인박스의 값은 줄을 훑으면서 처리하는 데 있고, 한 건마다 화면을 오가면 그 값이 사라진다.
+  // 1) 줄을 누르면 그 문서의 검토 자리로 가고, 본문 옆에 차분과 폼이 선다. 이 순서가
+  //    핵심이다 — 차분은 "무엇이 바뀌었나"에만 답하고 "이게 맞는 문서인가"는 본문에만
+  //    있어서, 본문 없이 받은 승인은 읽었다는 증거가 되지 못한다.
   {
     const stale = { status: 'stale', diff: 'diff --git a/docs/ADR-001.md b/docs/ADR-001.md\n@@ -1,3 +1,4 @@\n 그대로인 줄\n+더한 줄\n-지운 줄\n' };
     const { dom, calls } = open((path) => (/\/diff\?/u.test(path) ? { body: Object.assign({ axis: 'since-approval' }, stale) } : null),
@@ -1080,12 +1399,13 @@ module.exports = (async () => {
       { used: true, unknown: null, counts: { approved: 0, stale: 1, unapproved: 0 }, total: 1,
         items: [{ status: 'stale', id: 'ADR-001', kind: 'adr', title: '문서 ADR-001', file: 'docs/ADR-001.md', approvedBy: 'MEMBER-001', approvals: 2 }] },
       'review-inbox');
-    dom.window.document.querySelector('[data-approve-open="ADR-001"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    dom.window.document.querySelector('#review-inbox-list [data-document="ADR-001"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await settle();
-    assert.strictEqual(dom.window.document.getElementById('review-inbox-view').hidden, false, '펼쳐도 인박스 화면에 머물러야 합니다');
+    assert.strictEqual(dom.window.document.getElementById('document-view').hidden, false, '줄을 누르면 그 문서의 검토 자리로 가야 합니다');
+    assert(dom.window.document.getElementById('document-body').textContent.includes('본문'), '판정하는 자리에 본문이 있어야 합니다');
     assert(calls.some((call) => call.path.includes('/documents/ADR-001/diff')), `차분을 물어야 합니다: ${calls.map((call) => call.path).join(', ')}`);
-    const panel = dom.window.document.querySelector('#review-inbox-list .approval-panel');
-    assert(panel, '펼친 행 안에 승인 판이 서야 합니다');
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(panel, '인박스에서 왔으면 승인 판이 열린 채로 도착해야 합니다');
     assert(panel.querySelector('.approval-diff').textContent.includes('더한 줄'), '차분이 그 자리에 보여야 합니다');
     assert.strictEqual(panel.querySelectorAll('.diff-add').length, 1, '늘어난 줄은 색으로 갈려야 합니다');
     assert.strictEqual(panel.querySelectorAll('.diff-del').length, 1, '줄어든 줄도 색으로 갈려야 합니다');
@@ -1099,11 +1419,13 @@ module.exports = (async () => {
     // 위임 근거는 위임 식별자가 필요해 화면이 실어 나를 수 없다. 안 되는 것을 고를 수
     // 있게 두면 눌러 본 사람만 그 사실을 알게 된다.
     assert(panel.querySelector('[data-approve-field="basis"] option[value="delegated"]').disabled, '화면이 못 하는 것은 고를 수 없어야 합니다');
-    // 문서 화면으로 가는 길은 남는다 — 펼치기가 그 길을 대신하는 것이 아니라 더한 것이다.
-    assert(panel.querySelector('[data-document="ADR-001"]'), '문서 화면으로 가는 길이 있어야 합니다');
-    // 한 번 더 누르면 접힌다.
-    dom.window.document.querySelector('[data-approve-open="ADR-001"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    assert.strictEqual(dom.window.document.querySelector('#review-inbox-list .approval-panel'), null, '다시 누르면 접혀야 합니다');
+    // 「문서 화면에서 열기」는 없앴다. 판이 서는 곳이 곧 그 문서의 화면이라 자기 자신으로
+    // 가는 단추가 되고, 아무 데도 데려가지 않는 단추는 다음에 진짜 필요할 때도 안 눌린다.
+    assert.strictEqual(panel.querySelector('[data-document="ADR-001"]'), null, '지금 보고 있는 화면으로 가는 단추를 두면 안 됩니다');
+    // 덮는 표면은 자기 안에 닫는 길을 갖는다. 여는 손잡이는 본문 위 상태 줄에 있어서,
+    // 판을 열고 스크롤을 내리면 그 손잡이가 화면 밖으로 나간다.
+    panel.querySelector('.approval-panel-head [data-approve-open="ADR-001"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(dom.window.document.querySelector('#document-approval-panel .approval-panel'), null, '닫는 손잡이를 누르면 접혀야 합니다');
     dom.window.close();
   }
 
@@ -1117,9 +1439,9 @@ module.exports = (async () => {
       { used: true, unknown: null, counts: { approved: 1, stale: 0, unapproved: 1 }, total: 1,
         items: [{ status: 'unapproved', id: 'ADR-002', kind: 'adr', title: '문서 ADR-002', file: 'docs/ADR-002.md', approvedBy: null, approvals: 0 }] },
       'review-inbox');
-    dom.window.document.querySelector('[data-approve-open="ADR-002"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    dom.window.document.querySelector('#review-inbox-list [data-document="ADR-002"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await settle();
-    const panel = dom.window.document.querySelector('#review-inbox-list .approval-panel');
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
     assert.strictEqual(panel.querySelector('.approval-diff'), null, '비교 기준이 없으면 빈 차분을 그리면 안 됩니다');
     assert(panel.textContent.includes('비교 기준이 없습니다'), '기준이 없다는 사실을 말해야 합니다');
     assert(panel.textContent.includes(reason), `서버의 이유를 그대로 옮겨야 합니다: ${panel.textContent}`);
@@ -1148,7 +1470,7 @@ module.exports = (async () => {
       items: [{ status: 'stale', id: 'ADR-003', kind: 'adr', title: '문서 ADR-003', file: 'docs/ADR-003.md', approvedBy: 'MEMBER-001', approvals: 1 }] },
     'review-inbox');
     const click = (selector) => dom.window.document.querySelector(selector).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    click('[data-approve-open="ADR-003"]');
+    click('#review-inbox-list [data-document="ADR-003"]');
     await settle();
     const fill = (field, value) => {
       const input = dom.window.document.querySelector(`[data-approve-field="${field}"]`);
@@ -1165,7 +1487,7 @@ module.exports = (async () => {
     await settle();
     assert.deepStrictEqual(approved.basis, [{ kind: 'read', detail: '' }], '근거가 함께 나가야 합니다');
     assert.strictEqual(approved.clientId, 'desk-h');
-    const failed = dom.window.document.querySelector('#review-inbox-list .approval-failure');
+    const failed = dom.window.document.querySelector('#document-approval-panel .approval-failure');
     assert(failed, '거절이 화면에 남아야 합니다');
     assert.strictEqual(failed.textContent, refusal, '서버의 말을 삼키면 안 됩니다');
     // 쓴 것은 그대로 남는다. 거절당한 사람이 처음부터 다시 쓰게 하면 안 된다.
@@ -1184,7 +1506,7 @@ module.exports = (async () => {
     const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
     assert(panel, '상세에서도 그 자리에서 펼쳐져야 합니다');
     assert(panel.querySelector('.approval-diff').textContent.includes('상세에서 본 줄'), '상세도 차분을 실어야 합니다');
-    // 이미 여기가 그 문서의 화면이므로 "문서 화면에서 열기"는 자기 자신으로 가는 단추다.
+    // 판이 서는 곳이 곧 그 문서의 화면이라 "문서 화면에서 열기"는 자기 자신으로 가는 단추다.
     assert.strictEqual(panel.querySelector('[data-document="ADR-020"]'), null, '지금 보고 있는 화면으로 가는 단추를 두면 안 됩니다');
     // 두 축을 여기서 갈아탈 수 있어야 한다. 승인자가 판정해야 하는 것은 작업본이 아니라
     // 승인 후보이고, 그 둘이 다를 수 있다는 사실이 관문의 핵심이다.
@@ -1239,9 +1561,9 @@ module.exports = (async () => {
       items: [{ status: 'stale', id: 'ADR-050', kind: 'adr', title: '문서 ADR-050', file: 'docs/ADR-050.md', approvedBy: 'MEMBER-001', approvals: 1 }] },
     'review-inbox');
     const click = (selector) => dom.window.document.querySelector(selector).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    click('[data-approve-open="ADR-050"]');
+    click('#review-inbox-list [data-document="ADR-050"]');
     await settle();
-    const panel = dom.window.document.querySelector('#review-inbox-list .approval-panel');
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
     assert(panel.querySelector('[data-approve-reject="ADR-050"]'), '승인 옆에 반려가 서야 합니다');
     // 반려는 기본 단추가 아니다. 사유 칸에서 엔터를 친 사람이 반려를 보내게 되면 안 된다 —
     // 되돌릴 수 없는 판단은 눌러서만 나가야 한다.
@@ -1267,7 +1589,7 @@ module.exports = (async () => {
     // 실어 보내면 서버가 모르는 필드로 거절한다.
     assert.strictEqual(sent.basis, undefined, '반려에 근거를 실어 보내면 안 됩니다');
     // 거절은 서버의 말 그대로 남는다. "반려 실패"로 뭉개면 무엇이 걸렸는지 사라진다.
-    assert.strictEqual(dom.window.document.querySelector('#review-inbox-list .approval-failure').textContent, refusal);
+    assert.strictEqual(dom.window.document.querySelector('#document-approval-panel .approval-failure').textContent, refusal);
     dom.window.close();
   }
 
@@ -1302,4 +1624,148 @@ module.exports = (async () => {
   }
 
   console.log('document approval tests passed');
+
+  // 9) 이력은 원장 사건과 커밋을 한 시간축에 낸다. 따로 세우면 사람이 두 목록의 시각을
+  //    눈으로 번갈아 훑으며 머리로 합쳐야 하고, 그 합치기는 줄이 늘면 곧 실패한다 —
+  //    실패하면 "승인 뒤에 저 커밋이 왔나 앞에 왔나"를 알 수 없고, 이력을 여는 이유가
+  //    바로 그 물음이라 거기서 값이 통째로 사라진다.
+  function historyValue(extra) {
+    return Object.assign({
+      project: 'demo',
+      document: { id: 'ADR-080', title: '문서 ADR-080', file: 'docs/ADR-080.md', revision: 'a'.repeat(64), status: 'stale', approvedRevision: 'b'.repeat(64), approvedBy: 'MEMBER-001', approvals: 2 },
+      approvals: [{ targetId: 'ADR-080', reviewedRevision: 'b'.repeat(64), approvedBy: 'MEMBER-001', basis: [{ kind: 'read', detail: '' }], reason: '읽고 책임집니다', recordedAt: '2026-08-10T00:00:00.000Z', eventId: 'EVT-A' }],
+      submissions: [{ targetId: 'ADR-080', submittedRevision: 'c'.repeat(64), submittedBy: 'MEMBER-001', reason: '고쳐서 올립니다', recordedAt: '2026-08-20T00:00:00.000Z', eventId: 'EVT-S' }],
+      rejections: [{ targetId: 'ADR-080', rejectedRevision: 'c'.repeat(64), rejectedBy: 'MEMBER-001', reason: '3장이 헌장과 어긋납니다', recordedAt: '2026-08-25T00:00:00.000Z', eventId: 'EVT-R' }],
+      tasks: [{ id: 'TASK-0001', title: '3장 고치기', status: 'doing' }],
+      commits: [
+        { commit: 'f'.repeat(40), author: '강윤정', at: '2026-08-30T00:00:00.000Z', subject: '3장을 고쳤다' },
+        { commit: 'e'.repeat(40), author: '강윤정', at: '2026-08-15T00:00:00.000Z', subject: '2장을 더했다' },
+        { commit: 'd'.repeat(40), author: '강윤정', at: '2026-08-05T00:00:00.000Z', subject: '문서를 만들었다' }
+      ]
+    }, extra || {});
+  }
+  {
+    const rangeDiff = 'diff --git a/docs/ADR-080.md b/docs/ADR-080.md\n@@ -1,2 +1,2 @@\n+세 판 전과 달라진 줄\n-옛 줄\n';
+    let rangeQuery = null;
+    const { dom, calls } = open((path) => {
+      if (/\/history$/u.test(path)) return { body: historyValue({ warning: '이 문서의 현재 리비전은 승인도 연결된 태스크도 없습니다.' }) };
+      if (/axis=range/u.test(path)) { rangeQuery = String(path); return { body: { axis: 'range', from: { kind: 'revision', value: 'b'.repeat(64), commit: '1'.repeat(40) }, to: { kind: 'commit', value: 'f'.repeat(40), commit: 'f'.repeat(40) }, diff: rangeDiff } }; }
+      if (/\/diff\?/u.test(path)) return { body: { axis: 'since-approval', status: 'stale', diff: '@@\n+승인 이후 줄\n' } };
+      return null;
+    }, [documentValue('ADR-080', trust('stale'))], null, 'document', 'ADR-080');
+
+    // 이력으로 가는 손잡이는 승인 옆에 선다. 승인 원장 줄은 "지금 어떤 상태인가"만 말하는데,
+    // 검토하다 보면 "언제부터 이렇게 됐나"를 묻게 되고 그 답은 이력에만 있다.
+    const historyOpener = dom.window.document.querySelector('#document-approval [data-approve-tab="history"]');
+    assert(historyOpener, '문서 상세에 이력으로 가는 손잡이가 있어야 합니다');
+    historyOpener.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    await settle();
+    assert(calls.some((call) => call.path.includes('/documents/ADR-080/history')), `이력을 물어야 합니다: ${calls.map((call) => call.path).join(', ')}`);
+    // 이력만 보러 온 사람에게 승인 축의 차분까지 미리 물으면, 쓰지도 않을 git 계산을 매번
+    // 치른다 — 이 값들이 스냅숏 밖에 있는 이유가 그 비용이다.
+    assert(!calls.some((call) => /axis=since-approval/u.test(call.path)), `열지 않은 탭의 값을 미리 물으면 안 됩니다: ${calls.map((call) => call.path).join(', ')}`);
+
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(panel, '이력도 본문 옆의 같은 판에서 열려야 합니다');
+    // 모달이 아니라 같은 판의 탭이다. 모달은 이력을 넓게 볼 수 있지만 본문을 통째로
+    // 가리는데, "언제부터 이렇게 됐나"를 묻는 사람은 그 답을 본문의 어느 문단에 겹쳐 읽는다.
+    assert.strictEqual(dom.window.document.getElementById('document-body').hidden, false, '이력이 본문을 감추면 안 됩니다');
+    assert(dom.window.document.getElementById('document-body').textContent.includes('본문'), '이력을 열어도 본문은 그대로 서야 합니다');
+    assert.strictEqual(panel.querySelectorAll('.approval-tabs [data-approve-tab]').length, 2, '한 판이 두 물음을 탭으로 나눠 가져야 합니다');
+
+    // 한 축이다. 종류를 지우지 않고 표시로 가르되 목록은 하나여야 한다.
+    const rows = Array.from(panel.querySelectorAll('.history-list .history-row'));
+    assert.strictEqual(panel.querySelectorAll('.history-list').length, 1, '원장 사건과 커밋이 한 목록에 서야 합니다');
+    assert.deepStrictEqual(
+      rows.map((row) => Array.from(row.classList).find((name) => name.startsWith('history-') && name !== 'history-row')),
+      ['history-commit', 'history-rejection', 'history-submission', 'history-commit', 'history-approval', 'history-commit'],
+      '한 시간축이라면 두 종류가 시각 순서대로 섞여 서야 합니다'
+    );
+    // 원장 줄은 누가·왜를 알고 커밋 줄은 무엇이·언제를 안다. 둘을 나란히 두는 것이 값이다.
+    assert(rows[1].textContent.includes('3장이 헌장과 어긋납니다'), '반려의 사유가 그 줄에 있어야 합니다');
+    assert(rows[4].textContent.includes('읽고 판단했다'), '승인의 근거가 그 줄에 있어야 합니다');
+    assert(rows[0].textContent.includes('3장을 고쳤다'), '커밋의 제목이 그 줄에 있어야 합니다');
+    assert(rows[0].textContent.includes('2026-08-30'), '언제인지는 달력의 값으로도 읽혀야 합니다');
+    // 경고를 삼키지 않는다. 승인도 태스크도 없이 바뀐 정본은 이력이 답할 수 없는 변경이고,
+    // 이 화면이 그 사실을 아는 유일한 자리다.
+    assert(panel.textContent.includes('승인도 연결된 태스크도 없습니다'), '경고를 삼키면 안 됩니다');
+    assert(panel.textContent.includes('TASK-0001'), '연결 태스크도 "왜 바뀌었나"의 갈래입니다');
+
+    // 이력을 열면 흔히 묻는 것이 이미 골라져 있다 — 승인본 ↔ 가장 최근 커밋.
+    assert(rangeQuery, '기본으로 고른 두 지점을 물어야 합니다');
+    assert(rangeQuery.includes(`from=${'b'.repeat(64)}`), `기준은 승인본이어야 합니다: ${rangeQuery}`);
+    assert(rangeQuery.includes(`to=${'f'.repeat(40)}`), `대상은 가장 최근 커밋이어야 합니다: ${rangeQuery}`);
+    assert(panel.querySelector('.approval-diff').textContent.includes('세 판 전과 달라진 줄'), '고른 두 지점 사이의 차분이 보여야 합니다');
+    // 차분 렌더링은 승인 판의 것을 그대로 쓴다. 두 벌 만들면 한쪽만 "기준 없음"과
+    // "변경 없음"을 가르게 되고, 그 차이는 사람이 잘못 승인한 다음에야 드러난다.
+    assert.strictEqual(panel.querySelectorAll('.diff-add').length, 1, '늘어난 줄은 승인 판과 같은 색으로 갈려야 합니다');
+
+    // 두 번째를 고르기 전에도 화면은 무엇을 기다리는지 말한다. 안 말하면 사람은 한 번
+    // 누른 뒤 아무 일도 안 일어난 줄로 읽는다.
+    panel.querySelector('[data-history-clear="to"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    const waiting = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(waiting.textContent.includes('「대상」을 하나 더 고르면'), `무엇을 기다리는지 말해야 합니다: ${waiting.textContent.slice(0, 200)}`);
+    assert.strictEqual(waiting.querySelector('.approval-diff'), null, '지점이 하나뿐이면 차분을 지어내면 안 됩니다');
+
+    // 다른 지점을 고르면 그 사이를 다시 묻는다. 커밋 줄은 커밋 해시로, 원장 줄은 리비전
+    // 해시로 지목된다 — 종류를 하나로 통일하면 이력의 절반이 고를 수 없는 줄이 된다.
+    rangeQuery = null;
+    waiting.querySelector(`[data-history-pick="to"][data-history-point="${'e'.repeat(40)}"]`).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert(rangeQuery && rangeQuery.includes(`to=${'e'.repeat(40)}`), `고른 지점으로 다시 물어야 합니다: ${rangeQuery}`);
+    dom.window.close();
+  }
+
+  // 10) 이력이 길면 앞쪽만 그리고 나머지는 「더 보기」로 편다. 오래된 정본은 커밋만 수십
+  //     줄이라 통째로 그리면 판이 스크롤 덩어리가 되고, 이력을 여는 이유는 맨 위에 있다.
+  {
+    const many = [];
+    for (let index = 0; index < 24; index += 1) {
+      many.push({ commit: String(index).padStart(40, '0'), author: '강윤정', at: `2026-08-${String((index % 28) + 1).padStart(2, '0')}T00:00:00.000Z`, subject: `커밋 ${index}` });
+    }
+    const { dom } = open((path) => {
+      if (/\/history$/u.test(path)) return { body: historyValue({ approvals: [], submissions: [], rejections: [], tasks: [], commits: many }) };
+      if (/axis=range/u.test(path)) return { body: { axis: 'range', from: {}, to: {}, diff: '' } };
+      return null;
+    }, [documentValue('ADR-081', trust('stale'))], null, 'document', 'ADR-081');
+    dom.window.document.querySelector('#document-approval [data-approve-tab="history"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    await settle();
+    const panel = () => dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert.strictEqual(panel().querySelectorAll('.history-row').length, 12, '한 번에 그리는 수를 정해야 합니다');
+    const more = panel().querySelector('[data-history-expand]');
+    assert(more, '나머지를 보는 길이 있어야 합니다');
+    assert(more.textContent.includes('12개 더 보기'), `몇 개가 남았는지 말해야 합니다: ${more.textContent}`);
+    // 더 보기는 그 자리에서 끝까지 편다. 열둘씩 또 나누면 찾는 것을 만날 때까지 몇 번을
+    // 눌러야 하고, 몇 번 눌렀는지도 남지 않는다 — 인박스와 태스크 묶음이 쓰는 규칙과 같다.
+    more.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(panel().querySelectorAll('.history-row').length, 24, '더 보기는 끝까지 펴야 합니다');
+    assert.strictEqual(panel().querySelector('[data-history-expand]'), null, '다 폈으면 손잡이가 남으면 안 됩니다');
+    dom.window.close();
+  }
+
+  // 11) 이력을 못 읽으면 그 이유를 그대로 낸다. 삼키면 원장이 깨진 저장소와 아직 아무
+  //     일도 없던 저장소가 화면에서 같아 보이고, 앞엣것은 고쳐야 할 사고인데 아무도 모른다.
+  {
+    const said = '승인 기록에는 schemaVersion 6 이상의 Workspace가 필요합니다.';
+    const { dom } = open((path) => (/\/history$/u.test(path) ? { ok: false, status: 400, body: { error: said } } : null),
+      [documentValue('ADR-082', trust('stale'))], null, 'document', 'ADR-082');
+    dom.window.document.querySelector('#document-approval [data-approve-tab="history"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    await settle();
+    const panel = dom.window.document.querySelector('#document-approval-panel .approval-panel');
+    assert(panel.textContent.includes(said), `못 읽은 이유가 그대로 와야 합니다: ${panel.textContent.slice(0, 200)}`);
+    assert.strictEqual(panel.querySelector('.history-list'), null, '못 읽었으면 빈 이력을 지어내면 안 됩니다');
+    // 이력을 못 읽어도 승인 자리는 그대로다. 탭 하나가 막혔다고 판정하는 자리까지 잃으면
+    // 사람은 화면을 떠나 명령줄로 가야 한다.
+    dom.window.document.querySelector('.approval-tabs [data-approve-tab="approve"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert(dom.window.document.querySelector('#document-approval-panel [data-approve-form]'), '다른 탭이 막혀도 승인은 할 수 있어야 합니다');
+    dom.window.close();
+  }
+
+  console.log('document history tests passed');
 })();

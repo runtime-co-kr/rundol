@@ -20,6 +20,7 @@ const { loadDocumentContract, planDocumentContract, updateDocumentContract } = r
 const { loadBoardPresentation, savePresentation } = require('./board-presentation');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
 const { CONSTRAINT_KINDS, EXEMPTABLE_GATES } = require('./item-type');
+const { runGit } = require('./git');
 const { pendingRuns } = require('./run-pending');
 const runLedger = require('./run-ledger');
 const { approveRun } = require('./run');
@@ -321,6 +322,37 @@ function documentApprovals(root, projectKey, documents) {
   }
 }
 
+// 언제부터 검토자의 차례였나. 지금까지 줄에는 시각이 하나도 없어서 화면이 "며칠 기다렸나"를
+// 쓸 수 없었고, 그래서 정렬도 식별자 알파벳순이었다 — SCR-002는 대기 시간을 필수 표시로
+// 못박고 대기 시간이 긴 순을 정해 두었으므로, 이것은 새 축이 아니라 빠져 있던 자리다.
+//
+// 기준은 "지금 판이 검토자 앞에 놓인 시각"이다. 검토자가 볼 것은 언제나 지금 파일이고
+// 승인도 지금 리비전에 대해 내려지므로, 그 판이 생긴 시각부터가 기다린 시간이다.
+//
+//   제출이 지금 판으로 서 있으면(pending) 제출 시각을 쓴다. 원장이 기록한 사실이고
+//   "차례가 작성자에게서 검토자에게 넘어왔다"를 정확히 가리키는 유일한 값이다.
+//
+//   그 밖에는 파일이 마지막으로 바뀐 시각이다. 제출 축을 안 쓰는 저장소가 그렇고 —
+//   이 저장소에는 제출이 한 건도 없다 — drifted도 여기다. drifted의 제출 시각은 지금
+//   파일이 아닌 다른 판의 것이라, 그것을 쓰면 이미 지나간 판을 기다린 시간이 지금 판의
+//   것으로 적힌다. 반려는 줄에서 이미 빠졌으므로 이 함수가 볼 일이 없다.
+//
+//   마지막 승인 시각은 쓰지 않는다. 낡음은 승인 뒤 어느 시점에 바뀐 것인데 그 "어느
+//   시점"은 원장에 없고(형상 이력을 문서마다 거슬러야 나오는 값이라 폴링에 실을 수 없다),
+//   승인 시각부터 세면 승인 직후 한참 묵혀 두었다가 어제 고친 문서가 "1년 기다림"으로 뜬다.
+//
+// 못 구하면 null이다. 지어내지 않는다 — 없는 것과 오래된 것은 다르고, 0으로 채우면 값이
+// 없는 문서가 줄의 맨 앞에서 가장 급한 것 행세를 한다.
+//
+// mtime은 참고 값이라는 점을 알고 쓴다. 새로 클론한 저장소에서는 전 문서가 클론 시각을
+// 갖는다. 그래도 이 층에서 구할 수 있는 "지금 판이 언제 생겼나"는 이것뿐이고, 값이 거친
+// 것과 값이 없는 것은 다르다 — 거친 값은 순서를 주지만 없는 값은 아무것도 주지 않는다.
+function waitingSince(document, state) {
+  const submission = state.submission;
+  if (submission && submission.state === 'pending' && submission.recordedAt) return submission.recordedAt;
+  return document.modifiedAt || null;
+}
+
 // 검토를 기다리는 문서의 줄. attention과 가르는 이유는 성격이 달라서다 — attention은
 // "봐야 할 문제"이고 이것은 "사람이 처리해야 할 줄"이다. 섞으면 승인을 안 쓰는 프로젝트의
 // 문서 전건이 문제 목록으로 들어가 진짜 문제를 덮고, 반대로 승인을 쓰는 프로젝트에서는
@@ -329,9 +361,24 @@ function documentApprovals(root, projectKey, documents) {
 // 승인이 밀리는 실질 원인은 "무엇이 내 검토를 기다리는지" 볼 자리가 없는 것이다. 그 사이에
 // 승인 안 된 문서 위로 작업이 계속 쌓이고, 상류가 흔들릴 때마다 하류 전체를 다시 탄다.
 //
-// 셈은 전건으로 하고 목록만 자른다. 화면이 "133건 중 12건"을 말할 수 있어야 줄의 길이가
-// 보이고, 길이가 보여야 사람이 승인을 관문으로 쓸지 판단한다.
-const REVIEW_QUEUE_LIMIT = 50;
+// 줄은 통째로 싣는다. 오래 앞 50건에서 잘랐는데, 절단면이 정렬 축(낡음 먼저 · 그 안에서
+// 식별자 순)과 겹쳐 특정 유형이 통째로 사라졌다 — 이 저장소는 미승인이 149건이라 마지막에
+// 실리는 것이 REQ 대의 문서였고, SCR·STD·TST로 시작하는 문서는 한 건도 실리지 않았다.
+// 검증 문서만 47건이 그렇게 보이지 않았다. 게다가 화면의 거르개는 이미 잘린 50건을 거르므로
+// "미승인만"을 눌러도 잘린 뒤는 영영 나타나지 않았다 — 셈은 전건인데 고를 수 있는 것은
+// 앞 50건이라, 수를 보고 그 수를 만든 목록으로 갈 수 없었다.
+//
+// 상한을 올리는 것으로는 이 결함이 없어지지 않는다. 절단면이 어디에 있든 정렬 축과 겹쳐
+// 있는 한 같은 일이 더 큰 저장소에서 다시 일어나고, 그때 사라지는 유형이 무엇인지는
+// 아무 신호도 내지 않는다. 서버가 거르개를 받는 길도 접었다 — 거르는 것은 화면 안의 값이라
+// 스냅숏을 다시 묻지 않는다는 것이 이 화면의 계약인데(SCR-005), 그 계약을 깨면 거를 때마다
+// 목록이 잠깐 비고 폴링이 되돌린 값과 겹친다.
+//
+// 그리고 아낄 것이 없다. 줄 하나는 이미 실린 documents의 부분 사본이고(id·kind·type·
+// title·file은 그 문서에 그대로 있다) 그 documents는 본문까지 통째로 실린다 — 이 저장소에서
+// 스냅숏 1,072KB 중 documents가 707KB이고 줄 151건은 28KB다. 앞 50건에서 자르며 아낀 것은
+// 스냅숏의 1.8%였고, 대신 문서 유형 넷이 화면에서 통째로 사라졌다. 한 번에 몇 줄을 그릴지는
+// 화면이 정한다 — 화면이 접으면 거르개는 여전히 전건을 보지만, 서버가 자르면 못 본다.
 function reviewQueue(documents, approvals) {
   if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, rejected: 0, items: [] };
   const counts = { approved: 0, stale: 0, unapproved: 0 };
@@ -356,12 +403,27 @@ function reviewQueue(documents, approvals) {
     // 통째로 받아 kind를 갖고 있으므로, 두 화면이 같은 문서에 다른 유형을 적게 된다.
     items.push({
       status: state.status, id: document.id, kind: document.kind || null, type: document.type, title: document.title,
-      file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals
+      file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals,
+      waitingSince: waitingSince(document, state)
     });
   }
   // 낡음이 먼저다. 승인된 것이 흔들린 상태라 하류가 이미 그것을 근거로 삼았고,
-  // 미승인은 아직 아무도 근거로 삼지 않았다.
-  items.sort((left, right) => (left.status === right.status ? left.id.localeCompare(right.id) : left.status === 'stale' ? -1 : 1));
+  // 미승인은 아직 아무도 근거로 삼지 않았다. 대기 시간은 이 축을 뒤집지 않고 그 안에서만
+  // 적용한다 — 뒤집으면 어제 흔들린 승인본이 반년 묵은 초안 뒤로 밀리는데, 앞엣것은 이미
+  // 하류가 근거로 쓰고 있어 미룰수록 다시 타야 할 것이 늘어난다.
+  //
+  // 같은 갈래 안에서는 오래 기다린 것이 먼저다. 예전에는 식별자 오름차순이었는데 그것은
+  // 순서가 아니라 이름이라, 줄의 앞에 선 것이 "먼저 볼 것"이 아니라 "A로 시작하는 것"이었다.
+  // SCR-002가 대기 시간이 긴 순을 정해 둔 자리이기도 하다.
+  //
+  // 대기 시각을 못 구한 줄은 맨 뒤다. 없는 값을 0(=가장 오래)으로 읽으면 모르는 문서가 줄의
+  // 맨 앞에 서서 가장 급한 것 행세를 한다 — 없는 것과 오래된 것은 다르다. 시각까지 같으면
+  // 식별자로 가른다. 폴링마다 순서가 흔들리면 사람이 훑던 자리를 잃는다.
+  items.sort((left, right) => {
+    if (left.status !== right.status) return left.status === 'stale' ? -1 : 1;
+    if (Boolean(left.waitingSince) !== Boolean(right.waitingSince)) return left.waitingSince ? -1 : 1;
+    return (left.waitingSince ? left.waitingSince.localeCompare(right.waitingSince) : 0) || left.id.localeCompare(right.id);
+  });
   // 이 프로젝트가 승인 축을 쓰는가. 한 번도 승인하지 않은 프로젝트에서 전 문서가 미승인인
   // 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 검토 대기로 읽으면 인박스가 첫날부터
   // 문서 전건으로 찬다. 판단은 화면이 하되 근거는 여기서 준다.
@@ -369,7 +431,7 @@ function reviewQueue(documents, approvals) {
   // 반려도 그 축을 쓴다는 증거다. 승인 한 번 없이 반려만 한 프로젝트는 관문을 안 쓰는
   // 것이 아니라 아직 아무것도 통과시키지 않은 것이고, 그때 화면이 "쓰지 않습니다"라고
   // 말하면 방금 내린 판단이 화면에서 사라진다.
-  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
+  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items };
 }
 
 function attentionItems(tasks, documents, sync, approvals) {
@@ -985,10 +1047,120 @@ function approverOwner(root, clientId) {
 }
 
 /**
- * 문서 차분. 축은 둘이고 묻는 것이 다르다.
+ * 문서 이력. 원장의 사건(승인·제출·반려)과 git의 커밋을 한 답에 담는다.
+ *
+ * 스냅숏에 싣지 않는다. 문서마다 git log --follow를 돌고 연결 태스크까지 훑는 값이라
+ * 폴링마다 계산하면 문서 수에 비례해 보드가 선다 — 차분이 요청할 때만 계산하는
+ * 자리인 것과 같은 이유이고, 같은 관례를 따른다.
+ *
+ * 접는 일 자체는 approval.js의 documentHistory가 한다. 여기서 다시 접으면 원장을 두 번
+ * 읽는 자리가 생기고, 두 읽기는 서로 다른 시점을 볼 수 있다 — 그때 화면이 말하는
+ * "언제부터 이렇게 됐나"는 명령줄의 답과 갈린다.
+ */
+function boardDocumentHistory(root, projectKey, documentId) {
+  try {
+    return require('./approval').documentHistory(root, { project: projectKey, targetId: documentId });
+  } catch (error) {
+    // 차분 자리와 같은 선을 긋는다. 없는 문서와 원장을 못 읽는 저장소는 서버 결함이
+    // 아니고, 500으로 내면 화면은 그 둘을 "보드가 죽었다"로 뭉뚱그린다.
+    if (!error.statusCode) error.statusCode = /찾지 못했습니다/u.test(error.message || '') ? 404 : 400;
+    throw error;
+  }
+}
+
+/**
+ * 비교 지점의 두 주소.
+ *
+ * 리비전 해시는 원장이 쓰는 주소다. 승인·제출·반려 사건은 자기가 무엇을 판정했는지를
+ * reviewedRevision으로만 말하므로, 이력의 원장 줄을 지목하려면 이 주소여야 한다.
+ * 커밋 해시는 git이 바로 답하는 주소다. 이력의 커밋 줄은 커밋 해시만 알고, 그 줄을
+ * 리비전으로 지목하려면 화면이 커밋마다 문서를 다시 재야 한다 — 그것은 화면이 판정을
+ * 다시 짓는 일이라 이 보드가 하지 않기로 한 것이다.
+ *
+ * 그래서 둘 다 받는다. 한쪽만 받으면 이력의 절반이 지목할 수 없는 줄이 되고, 지목할 수
+ * 없는 줄이 섞인 시간축은 "이 둘을 견주자"는 이 화면의 물음에 답하지 못한다.
+ *
+ * 값의 종류는 길이로 가른다. 리비전은 sha256이라 언제나 64자리이고 커밋은 40자리가
+ * 최대라 두 집합은 겹치지 않는다 — 종류를 따로 받는 칸을 두면 화면이 그 칸을 틀리게
+ * 채우는 갈래가 생기는데, 길이는 값 자신이 이미 말하고 있어 틀릴 수 없다.
+ *
+ * 16진수 밖의 글자는 여기서 끊는다. 이 값들은 그대로 git 인자가 되므로, 통과시키면
+ * 임의의 문자열이 git 명령으로 들어간다 — 프로젝트 키를 경로 정규식으로 좁히는 것과
+ * 같은 선이고, 값이 아니라 모양에서 막는다는 점도 같다.
+ */
+const REVISION_POINT = /^[a-f0-9]{64}$/u;
+const COMMIT_POINT = /^[a-f0-9]{7,40}$/u;
+
+function resolveDiffPoint(projectRoot, file, raw, label, candidates) {
+  const value = String(raw === undefined || raw === null ? '' : raw).trim().toLowerCase();
+  if (!value) inputError(`${label} 지점이 없습니다. 이력에서 견줄 두 지점을 골라야 비교가 성립합니다.`, 'missing-point');
+  if (REVISION_POINT.test(value)) {
+    // 리비전은 커밋을 되짚어야 한다. 그 되짚기는 approval.js가 소유한다 — 여기서 다시
+    // 짜면 같은 물음에 두 답이 생기고, 그중 느슨한 쪽이 화면이 믿는 답이 된다.
+    return { kind: 'revision', value, commit: require('./approval').commitForRevision(projectRoot, file, value, candidates) };
+  }
+  if (COMMIT_POINT.test(value)) {
+    // 없는 커밋을 지어내지 않는다. 확인 없이 git diff로 넘기면 git이 자기 말로 죽고,
+    // 그 문장은 "이 지점이 이 저장소에 없다"를 사람에게 말해 주지 못한다.
+    const found = runGit(['rev-parse', '--verify', `${value}^{commit}`], { cwd: projectRoot, allowFailure: true });
+    return { kind: 'commit', value, commit: found.status === 0 ? found.stdout : null };
+  }
+  return inputError(`${label} 지점의 모양이 아닙니다: ${value.slice(0, 16)}. 64자리 리비전 해시나 7~40자리 커밋 해시여야 합니다.`, 'invalid-point');
+}
+
+/**
+ * 임의의 두 지점 비교. 정해진 축 둘이 답하지 못하는 물음을 받는 자리다.
+ *
+ * 「승인 이후 변경」과 「제출본 비교」는 기준이 원장에 못박혀 있다. 그런데 검토하다
+ * 보면 "세 판 전과 견주면 어떤가", "언제부터 이렇게 됐나"를 묻게 되고, 그 물음의 기준은
+ * 사람이 이력에서 고른다 — 축을 늘려서는 답할 수 없고 지점을 받아야 답할 수 있다.
+ *
+ * 못 찾은 지점을 빈 차분으로 그리지 않는다. approval.js가 이미 지키는 선이고 이유도
+ * 같다: "비교 기준 없음"과 "바뀐 것 없음"은 다른 값이라, 앞엣것을 뒤엣것으로 그리면
+ * 사람은 아무것도 안 바뀐 줄 알고 승인한다.
+ */
+function boardDocumentRangeDiff(root, projectKey, documentId, search) {
+  const project = selectProject(workspaceLayout(root), projectKey, true);
+  const document = listDocuments(project).find((item) => item.id === documentId);
+  if (!document) inputError(`문서를 찾지 못했습니다: ${documentId}`, 'unknown-document');
+  // 후보 커밋 목록을 한 번만 만들어 두 지점이 나눠 쓴다. 넘기지 않으면 둘 다 리비전일 때
+  // 커밋별 git show 루프가 통째로 두 번 돌고, 지점은 사람이 고르는 값이라 그 갈래가 흔하다.
+  //
+  // 목록을 여기서 다시 만들지 않는다. 같은 git log를 두 곳에 적으면 한쪽만 고쳐지는 날이
+  // 오고, 그때 두 자리가 서로 다른 커밋 집합을 후보로 삼는다 — 같은 지점이 화면에 따라
+  // 찾아지기도 하고 안 찾아지기도 한다.
+  const candidates = require('./approval').revisionCandidates(project.root, document.file);
+  const from = resolveDiffPoint(project.root, document.file, search && search.get('from'), '기준', candidates);
+  const to = resolveDiffPoint(project.root, document.file, search && search.get('to'), '비교', candidates);
+  const base = { project: project.key, targetId: document.id, from, to };
+  if (!from.commit || !to.commit) {
+    const missing = !from.commit && !to.commit ? '두 지점' : !from.commit ? '기준 지점' : '비교 지점';
+    return Object.assign(base, {
+      diff: null,
+      reason: `${missing}을 담은 커밋을 찾지 못했습니다. 비교는 커밋된 지점 사이에서만 성립합니다 — 아직 커밋하지 않은 작업본은 다음 순간 달라질 수 있어 사람이 본 것과 결박되지 않습니다.`
+    });
+  }
+  if (from.commit === to.commit) {
+    return Object.assign(base, { diff: '', reason: '두 지점이 같은 커밋을 가리킵니다. 서로 다른 두 지점이라야 사이가 생깁니다.' });
+  }
+  // core.quotepath=false를 준다. 이 저장소의 정본 파일명은 한글이고, git은 기본으로
+  // 비ASCII 바이트를 8진수로 이스케이프해 diff 머리 네 줄을 사람이 못 읽는 문자열로
+  // 만든다. 세 자리(승인본↔작업본·승인본↔제출본·임의 두 지점)가 같은 문제를 갖고,
+  // 한 곳만 고치면 같은 문서의 차분이 축마다 다르게 보인다.
+  const diff = runGit(['-c', 'core.quotepath=false', 'diff', from.commit, to.commit, '--', document.file], { cwd: project.root, allowFailure: true });
+  return Object.assign(base, { diff: diff.status === 0 ? diff.stdout : null });
+}
+
+/**
+ * 문서 차분. 축은 셋이고 묻는 것이 다르다.
  *
  *   since-approval  승인본 ↔ 작업본. "승인 이후 무엇이 바뀌었나"
  *   submission      승인본 ↔ 제출본. "승인 후보가 승인본과 무엇이 다른가"
+ *   range           고른 두 지점. "세 판 전과 견주면 어떤가"
+ *
+ * 앞의 둘은 기준이 원장에 못박혀 있고 셋째만 사람이 기준을 고른다. 그래서 셋째만
+ * 지점을 받고, 나머지 둘에 지점 칸을 열지 않는다 — 열면 "승인본 이후"라는 이름의 축이
+ * 승인본이 아닌 것을 기준으로 삼을 수 있게 되어 축의 이름이 거짓말이 된다.
  *
  * 스냅숏에 싣지 않는다. 문서마다 git log --follow와 커밋별 git show를 돌므로 폴링마다
  * 계산하면 문서 수에 비례해 보드가 선다 — 요청할 때만 계산하는 자리다.
@@ -1004,7 +1176,8 @@ function boardDocumentDiff(root, projectKey, documentId, search) {
   try {
     if (axis === 'submission') return Object.assign({ axis }, approval.diffSubmission(root, input));
     if (axis === 'since-approval') return Object.assign({ axis }, approval.diffSinceApproval(root, input));
-    return inputError(`알 수 없는 비교 축입니다: ${axis} (가능: since-approval, submission)`, 'unknown-axis');
+    if (axis === 'range') return Object.assign({ axis }, boardDocumentRangeDiff(root, projectKey, documentId, search));
+    return inputError(`알 수 없는 비교 축입니다: ${axis} (가능: since-approval, submission, range)`, 'unknown-axis');
   } catch (error) {
     // 없는 문서와 원장을 못 읽는 저장소는 서버 결함이 아니다. 500으로 내보내면 화면은
     // 그 둘을 "보드가 죽었다"로 뭉뚱그리고, 사람은 무엇을 고쳐야 하는지 알 수 없다.
@@ -1056,6 +1229,9 @@ function createBoardServer(start, options) {
       const projectDocumentApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/approve$/u);
       const projectDocumentRejectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/reject$/u);
       const projectDocumentDiffMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/diff$/u);
+      // 이력은 차분과 나란한 짝이다. 차분이 "무엇이 달라졌나"에 답하면 이력은 "언제
+      // 그리고 왜 그렇게 됐나"에 답하고, 뒤엣것 없이는 앞엣것의 기준을 사람이 고를 수 없다.
+      const projectDocumentHistoryMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/history$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
@@ -1090,6 +1266,11 @@ function createBoardServer(start, options) {
       // 돌므로 폴링마다 계산하면 보드가 선다 — 물을 때만 계산한다.
       if (request.method === 'GET' && projectDocumentDiffMatch) {
         return json(response, 200, boardDocumentDiff(config.root, projectDocumentDiffMatch[1], decodeURIComponent(projectDocumentDiffMatch[2]), url.searchParams));
+      }
+      // 이력도 같은 이유로 스냅숏 밖이다. 문서마다 git log --follow를 도는 값이라 폴링에
+      // 실으면 문서 수에 비례해 보드가 선다.
+      if (request.method === 'GET' && projectDocumentHistoryMatch) {
+        return json(response, 200, boardDocumentHistory(config.root, projectDocumentHistoryMatch[1], decodeURIComponent(projectDocumentHistoryMatch[2])));
       }
       if (request.method === 'GET' && projectSyncMatch) return json(response, 200, syncStatus(selectProject(workspaceLayout(config.root), projectSyncMatch[1], true)));
       if (request.method === 'GET' && projectRunsMatch) return json(response, 200, boardRuns(config.root, projectRunsMatch[1]));
@@ -1302,4 +1483,4 @@ function startBoard(start, options) {
   });
 }
 
-module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, composeDocumentFile, approveBoardDocument, boardDocumentDiff, createBoardServer, startBoard };
+module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, reviewQueue, composeDocumentFile, approveBoardDocument, boardDocumentDiff, createBoardServer, startBoard };

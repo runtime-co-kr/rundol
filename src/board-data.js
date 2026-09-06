@@ -6,6 +6,7 @@ const path = require('path');
 const { parseFrontmatter } = require('./frontmatter');
 const { runGit } = require('./git');
 const { loadWorkflows, workflowFor, readJson, BINDING_FALLBACK } = require('./workflow-config');
+const { REVISION_FORMULAS, REVISION_OWNED_FIELDS, DEFAULT_REVISION_FORMULA, CURRENT_REVISION_FORMULA } = require('./vocabulary');
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -23,11 +24,78 @@ function entityRevision(value) {
   return canonicalRevision(value);
 }
 
-function documentRevision(metadata, body) {
-  const input = arguments.length === 1 && metadata && typeof metadata === 'object' && Object.prototype.hasOwnProperty.call(metadata, 'metadata') && Object.prototype.hasOwnProperty.call(metadata, 'body')
-    ? metadata
-    : { metadata, body };
-  return canonicalRevision({ metadata: input.metadata, body: input.body });
+// ── 문서 리비전과 그 계산 판 ────────────────────────────────────────────
+//
+// 리비전은 승인이 결박하는 값이다. 계산을 바꾸면 같은 파일이 다른 리비전을 내고,
+// 그러면 그 전에 기록된 승인이 전부 어긋난다 — 승인은 다시 만들 수 없는 사람의
+// 판단이라 되돌릴 방법이 없다. 그래서 계산에는 판이 붙고, 원장의 사건은 자기가 어느
+// 판으로 잰 리비전인지 함께 적으며, 접을 때 그 판으로 문서를 다시 재어 견준다.
+// 판의 정본과 뜻은 vocabulary의 REVISION_FORMULAS가 갖는다.
+
+function revisionFormula(value) {
+  if (value === undefined || value === null) return CURRENT_REVISION_FORMULA;
+  if (!REVISION_FORMULAS.includes(value)) throw new Error(`지원하지 않는 리비전 계산 판입니다: ${value} (가능: ${REVISION_FORMULAS.join(', ')})`);
+  return value;
+}
+
+/**
+ * 그 판이 실제로 재는 metadata.
+ *
+ * 판 2는 rdl이 소유하는 칸(REVISION_OWNED_FIELDS)을 뺀다. 빼지 않으면 승인이 자기를
+ * 무효화한다 — 승인하면서 state를 쓰면 그 쓰기가 리비전을 바꾸고, 방금 승인한 리비전이
+ * 더 이상 이 문서가 아니게 되어 그 자리에서 낡음이 된다.
+ *
+ * 판 1은 옛 계산 그대로 손대지 않는다. 여기 한 줄이 달라지면 이 저장소 밖에 이미
+ * 기록된 승인이 전부 어긋나고, 그 사실은 아무 신호도 내지 않은 채 문서를 낡음으로 만든다.
+ *
+ * 사본을 만들고 원본을 지우지 않는다. 부르는 쪽이 넘긴 문서 객체에서 칸을 지우면
+ * 리비전을 한 번 계산한 것만으로 그 문서의 state가 사라진다.
+ *
+ * 소유 칸이 아예 없는 문서는 두 판이 같은 값을 낸다 — 지울 키가 없으므로 canonical이
+ * 같기 때문이다. 그래서 판올림으로 리비전이 달라지는 것은 state를 실제로 적고 있는
+ * 문서뿐이고, 그 밖의 문서에 걸린 옛 승인은 판을 따지지 않아도 그대로 유효하다.
+ */
+function measuredMetadata(metadata, formula) {
+  if (formula === DEFAULT_REVISION_FORMULA) return metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
+  if (!REVISION_OWNED_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(metadata, field))) return metadata;
+  const measured = {};
+  for (const key of Object.keys(metadata)) if (!REVISION_OWNED_FIELDS.includes(key)) measured[key] = metadata[key];
+  return measured;
+}
+
+function packedDocument(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+    && Object.prototype.hasOwnProperty.call(value, 'metadata') && Object.prototype.hasOwnProperty.call(value, 'body');
+}
+
+/**
+ * 그 판으로 잰 문서 리비전. 판을 안 적으면 지금 판(CURRENT_REVISION_FORMULA)이다.
+ *
+ * 묶음 형태({metadata, body})를 계속 받는다. 그때 판은 둘째 칸이고, 판은 숫자라 본문
+ * 문자열과 헷갈리지 않는다 — 옛 두 칸 호출(metadata, body)은 그대로 두 칸으로 읽힌다.
+ */
+function documentRevision(metadata, body, formula) {
+  const packed = packedDocument(metadata) && (body === undefined || REVISION_FORMULAS.includes(body));
+  const input = packed ? metadata : { metadata, body };
+  const selected = revisionFormula(packed ? body : formula);
+  return canonicalRevision({ metadata: measuredMetadata(input.metadata, selected), body: input.body });
+}
+
+/**
+ * 판마다 잰 리비전의 표. 접기가 "이 사건은 어느 판으로 쟀나"에 답하려면 문서 쪽도
+ * 판마다의 값을 들고 있어야 한다.
+ *
+ * 표를 문서에 실어 두는 이유는 판정이 문서를 다시 읽지 않게 하기 위해서다. 판정
+ * 자리에서 파일을 다시 읽으면 그 값이 목록을 만든 시점 밖에서 오고, 그러면 같은
+ * 스냅숏 안에서 문서 목록과 승인 판정이 서로 다른 파일을 본다.
+ */
+function documentRevisions(metadata, body) {
+  const packed = packedDocument(metadata) && body === undefined;
+  const input = packed ? metadata : { metadata, body };
+  const table = {};
+  for (const formula of REVISION_FORMULAS) table[formula] = documentRevision(input.metadata, input.body, formula);
+  return Object.freeze(table);
 }
 
 function projectRevision(documents) {
@@ -58,6 +126,10 @@ function listDocuments(project) {
   for (const file of markdownFiles(project.root)) {
     const parsed = parseFrontmatter(fs.readFileSync(file, 'utf8'));
     if (!parsed || !parsed.data.id) continue;
+    // 판마다의 값을 함께 싣는다. revision은 지금 판이고, 판을 안 적은 옛 사건은
+    // 판 1로 잰 값과 견주어야 하므로 그 값도 여기서 한 번에 계산해 둔다 — 판정
+    // 자리에서 다시 계산하면 같은 파일을 두 번 읽게 되고, 두 읽기는 갈릴 수 있다.
+    const revisions = documentRevisions(parsed.data, parsed.body);
     documents.push({
       id: parsed.data.id,
       type: parsed.data.type || null,
@@ -71,7 +143,8 @@ function listDocuments(project) {
       file: path.relative(project.root, file).replace(/\\/g, '/'),
       body: parsed.body,
       modifiedAt: fs.statSync(file).mtime.toISOString(),
-      revision: documentRevision(parsed.data, parsed.body)
+      revision: revisions[CURRENT_REVISION_FORMULA],
+      revisions
     });
   }
   return documents.sort((left, right) => String(left.id).localeCompare(String(right.id)));
@@ -232,4 +305,4 @@ function boardWorkflow(start, projectKey) {
   });
 }
 
-module.exports = { canonicalJson, canonicalRevision, entityRevision, documentRevision, projectRevision, listDocuments, syncStatus, boardWorkflow, taskWorkflow };
+module.exports = { canonicalJson, canonicalRevision, entityRevision, documentRevision, documentRevisions, projectRevision, listDocuments, syncStatus, boardWorkflow, taskWorkflow };

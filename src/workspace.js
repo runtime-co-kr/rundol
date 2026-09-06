@@ -2,14 +2,45 @@
 
 const fs = require('fs');
 const path = require('path');
-const { runtimeWorkspace } = require('./runtime');
+const { runtimeHome, runtimeWorkspace } = require('./runtime');
 const { gitRoot } = require('./git');
+
+// runtimeWorkspace가 가리킬 수 있는 manifest는 $RUNDOL_HOME/workspaces/<id>/workspace.yaml
+// 하나의 모양뿐이고 <id>는 언제나 sha256 앞 16자리다.
+const RUNTIME_WORKSPACE_ID = /^[a-f0-9]{16}$/u;
+
+// 런타임 manifest가 하나라도 있는지 먼저 본다. 없으면 id를 계산할 이유가 없다.
+//
+// id를 알려면 저장소 신원을 물어야 하고 그것은 git 프로세스 둘이다 —
+// rev-parse --show-toplevel과 remote get-url. 그런데 workspaces/ 아래에
+// workspace.yaml이 하나도 없으면 어떤 저장소를 물어도 답은 null이다. 계산해 봐야
+// 없는 파일을 가리킨다.
+//
+// 이 확인이 없으면 findWorkspaceRoot가 위로 거슬러 오르며 못 찾은 층마다 그 왕복을
+// 한다. 깊이만큼 곱해져서, 실측으로 워크스페이스 루트에서 6ms인 workspaceLayout이
+// 프로젝트 worktree 안에서 2.0초, 문서 경로에서 4.2초였다(git 프로세스 각각 0·5·13개).
+// Windows에서 프로세스 생성이 비싼 탓이 크다 — 이 저장소의 시험 러너가 워커를 넷으로
+// 묶는 이유와 같다. 훅만의 문제가 아니라 하위 디렉터리에서 친 모든 rdl이 문다.
+//
+// 답은 한 글자도 달라지지 않는다. 없는 파일을 찾으러 가지 않을 뿐이고, 있으면
+// 예전 그대로 층마다 물어본다. "두 후보 파일이 다 실패한 뒤에만 런타임을 본다"로
+// 순서를 바꾸지 않은 이유가 여기 있다 — 런타임 manifest는 저장소마다 하나라 탐색의
+// 모든 층에서 같은 답을 내고, 그래서 지금 코드는 런타임으로 찾히는 저장소에서
+// 시작 디렉터리를 루트로 돌려준다. 순서를 바꾸면 두 가지가 다 있는 저장소에서
+// 돌려주는 루트가 달라진다. 여기서 고치는 것은 비용이지 답이 아니다.
+function anyRuntimeManifest() {
+  const directory = path.join(runtimeHome(), 'workspaces');
+  let entries;
+  try { entries = fs.readdirSync(directory); } catch (_) { return false; }
+  return entries.some((entry) => RUNTIME_WORKSPACE_ID.test(entry) && fs.existsSync(path.join(directory, entry, 'workspace.yaml')));
+}
 
 function manifestPath(root) {
   const workspace = path.join(root, 'projects', 'workspace', 'workspace.yaml');
   if (fs.existsSync(workspace)) return workspace;
   const legacy = path.join(root, '.rundol', 'workspace.yaml');
   if (fs.existsSync(legacy)) return legacy;
+  if (!anyRuntimeManifest()) return null;
   try {
     const runtime = runtimeWorkspace(root);
     return fs.existsSync(runtime.manifest) ? runtime.manifest : null;

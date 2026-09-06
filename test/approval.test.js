@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { normalizeApprovalEvent, foldApprovals, trustState, documentApprovals, documentStatus, submitDocument, approveDocument, rejectDocument, documentHistory, diffSinceApproval, diffSubmission } = require('../src/approval');
+const { normalizeApprovalEvent, approvalEnvelope, foldApprovals, trustState, projectedDocumentState, documentApprovals, documentStatus, submitDocument, approveDocument, rejectDocument, documentHistory, diffSinceApproval, diffSubmission } = require('../src/approval');
 
 const repository = path.resolve(__dirname, '..');
 const cli = path.join(repository, 'bin', 'rdl.js');
@@ -90,6 +90,90 @@ try {
   assert.strictEqual(stale.approvedRevision, REVISION_A);
   assert.strictEqual(stale.approvedBy, 'MEMBER-001');
 
+  // ── 리비전 계산 판 ────────────────────────────────────────────────────────
+  //
+  // 이 갈래에서 가장 위험한 자리다. 계산에서 rdl 소유 칸을 빼는 순간 그 칸을 적고 있는
+  // 모든 문서의 리비전이 달라지고, 이미 기록된 승인의 reviewedRevision이 전부 안 맞게
+  // 된다. 승인은 사람이 내린 판단이라 다시 만들 수 없다 — 깨뜨리면 되돌릴 방법이 없다.
+  // 그래서 사건이 자기가 어느 판으로 잰 리비전인지 함께 적고, 접을 때 그 판으로 문서를
+  // 다시 재어 견준다. 아래 다섯 단언이 그 되돌림이 실제로 서 있는지를 잰다.
+  const { documentRevisions } = require('../src/board-data');
+  const { DOCUMENT_STATE_KEYS, CURRENT_REVISION_FORMULA } = require('../src/vocabulary');
+  const formulaMetadata = { id: 'REQ-001', type: 'REQ', title: '판올림 대상', state: 'draft' };
+  const formulaTable = documentRevisions(formulaMetadata, '본문\n');
+  const formulaDocument = { id: 'REQ-001', revision: formulaTable[CURRENT_REVISION_FORMULA], revisions: formulaTable };
+
+  // 1. 판 1로 기록된 옛 승인이 판올림 뒤에도 유효하다. 여기가 무너지면 남의 저장소에
+  //    쌓인 마흔다섯 건이 아무 신호 없이 낡음이 되고, 그것은 되돌릴 수 없다.
+  const legacyFold = foldApprovals([approvalEvent({ reviewedRevision: formulaTable[1] })], { authority: LEDGER_AUTHORITY });
+  assert.strictEqual(legacyFold.approvals.get('REQ-001')[0].revisionFormula, 1, '판을 안 적은 사건은 판 1로 읽어야 합니다.');
+  assert.strictEqual(trustState(formulaDocument, legacyFold.approvals.get('REQ-001')).status, 'approved',
+    '판 1로 기록된 승인은 판올림 뒤에도 유효해야 합니다 — 승인은 다시 만들 수 없습니다.');
+  assert.strictEqual(trustState(formulaDocument, legacyFold.approvals.get('REQ-001')).approvedRevision, formulaTable[1],
+    '승인 리비전은 그 사건이 적은 값 그대로여야 합니다 — 지금 판의 값을 실으면 승인본을 담은 커밋을 영영 못 찾습니다.');
+
+  // 2. 판 2로 기록된 새 승인도 유효하다.
+  const currentFold = foldApprovals([approvalEvent({ reviewedRevision: formulaTable[2], revisionFormula: 2 })], { authority: LEDGER_AUTHORITY });
+  assert.strictEqual(currentFold.approvals.get('REQ-001')[0].revisionFormula, 2);
+  assert.strictEqual(trustState(formulaDocument, currentFold.approvals.get('REQ-001')).status, 'approved');
+
+  // 3. 판을 실제로 가리는지 본다. 판만 적고 값은 옛 판의 것을 결박한 사건은 안 맞아야
+  //    한다 — 이 단언이 없으면 "아무 판으로나 재서 하나라도 맞으면 승인"이 통과한다.
+  const mismatched = foldApprovals([approvalEvent({ reviewedRevision: formulaTable[1], revisionFormula: 2 })], { authority: LEDGER_AUTHORITY });
+  assert.strictEqual(trustState(formulaDocument, mismatched.approvals.get('REQ-001')).status, 'stale');
+
+  // 4. 승인이 자기를 무효화하지 않는다. 투영이 state를 고쳐도 판 2의 리비전은 그대로라
+  //    방금 한 승인이 그 자리에서 낡음이 되지 않는다.
+  const projectedMetadata = Object.assign({}, formulaMetadata, { state: 'approved' });
+  const projectedTable = documentRevisions(projectedMetadata, '본문\n');
+  const projectedDocument = { id: 'REQ-001', revision: projectedTable[CURRENT_REVISION_FORMULA], revisions: projectedTable };
+  assert.strictEqual(trustState(projectedDocument, currentFold.approvals.get('REQ-001')).status, 'approved',
+    'state를 쓴 것만으로 방금 한 승인이 낡으면 안 됩니다.');
+  // 같은 쓰기가 판 1의 리비전은 바꾼다. 그래서 판 1로 승인된 문서에는 투영을 쓰지
+  // 않는다 — 쓰는 순간 그 승인이 낡음이 되고, 이 단언이 그 이유를 값으로 남긴다.
+  assert.strictEqual(trustState(projectedDocument, legacyFold.approvals.get('REQ-001')).status, 'stale',
+    '판 1은 state를 재던 계산 그대로이므로, 옛 승인이 선 문서의 칸은 건드리면 안 됩니다.');
+
+  // 5. 표 없이 부르는 자리(훅·감시)는 들고 있는 한 값으로 답한다. 판을 가릴 수단이
+  //    없으므로 그 자리의 판정은 넘어온 리비전이 정한다.
+  assert.strictEqual(trustState({ id: 'REQ-001', revision: formulaTable[2] }, currentFold.approvals.get('REQ-001')).status, 'approved');
+  assert.strictEqual(trustState({ id: 'REQ-001', revision: formulaTable[1] }, legacyFold.approvals.get('REQ-001')).status, 'approved');
+
+  // 판은 canonical 안이라 다이제스트가 덮는다. 밖에 두면 판만 1로 바꿔치기해 판 2로 잰
+  // 승인을 판 1로 재게 만들 수 있고, 그것은 승인을 다른 문서에 옮겨 붙이는 것과 같다.
+  assert.notStrictEqual(
+    approvalEnvelope(approvalEvent({ recordedAt: '2025-01-01T00:00:00.000Z', revisionFormula: 2 })).canonicalDigest,
+    approvalEnvelope(approvalEvent({ recordedAt: '2025-01-01T00:00:00.000Z' })).canonicalDigest);
+  assert.throws(() => normalizeApprovalEvent(approvalEvent({ revisionFormula: 3 })), /리비전 계산 판/u, '어휘 밖의 판은 형태에서 거부되어야 합니다.');
+  assert.throws(() => normalizeApprovalEvent(approvalEvent({ revisionFormula: '2' })), /리비전 계산 판/u);
+
+  // 옛 사건의 봉투 다이제스트가 그대로다. 이 값들은 판올림 이전의 코드가 낸 것이고,
+  // 하나라도 달라지면 이미 공유된 원장의 모든 사건이 RDL-APPROVE-014로 울린다 —
+  // 그때 그 원장은 아무 상태도 만들지 못한다(fail-closed). 그래서 값으로 못박는다.
+  const frozenAt = '2025-01-01T00:00:00.000Z';
+  assert.strictEqual(approvalEnvelope(approvalEvent({ recordedAt: frozenAt })).canonicalDigest,
+    '829014f35ab03e7237ce82e14b8fea9f84eeafeb4d144727edc04ebcf5d4e4f2', '옛 승인의 다이제스트가 달라지면 안 됩니다.');
+
+  // ── 파일 칸으로 접는 값 ───────────────────────────────────────────────────
+  //
+  // 두 축(신뢰 × 제출)을 한 낱말로 접는다. 손실은 결함이 아니라 이 칸의 정의이며,
+  // 두 축이 다 필요한 자리는 파일이 아니라 원장을 묻는다.
+  const projections = [
+    [{ status: 'approved', submission: { state: 'settled' } }, 'approved'],
+    [{ status: 'approved', submission: { state: 'pending' } }, 'approved'],
+    [{ status: 'stale', submission: { state: 'rejected' } }, 'rejected'],
+    [{ status: 'stale', submission: { state: 'pending' } }, 'proposed'],
+    [{ status: 'stale', submission: { state: 'drifted' } }, 'proposed'],
+    [{ status: 'stale', submission: { state: 'none' } }, 'stale'],
+    [{ status: 'unapproved', submission: { state: 'none' } }, 'draft']
+  ];
+  for (const [state, expected] of projections) assert.strictEqual(projectedDocumentState(state), expected, JSON.stringify(state));
+  // 어휘 밖의 값을 쓰면 파일이 도구가 모르는 낱말을 말하게 된다. 반대로 어느 값도
+  // 나오지 않으면 그 칸은 죽고, 죽은 칸은 죽었다는 사실조차 신호를 내지 않는다.
+  const produced = new Set(projections.map(([, expected]) => expected));
+  assert.deepStrictEqual(Array.from(produced).sort(), DOCUMENT_STATE_KEYS.slice().sort(),
+    '투영은 DOCUMENT_STATE_KEYS 다섯을 빠짐없이, 그 밖은 하나도 내지 않아야 합니다.');
+
   // 실제 Workspace.
   command('git', ['init', '-b', 'main']);
   command('git', ['config', 'user.name', 'Rundol Test']);
@@ -107,6 +191,9 @@ try {
   const created = rdl(['doc', 'create', 'ADR', '승인 대상 결정', '--owner', 'MEMBER-001', '--scope', '승인 흐름 검증을 위한 결정 기록', '--exclude', '구현 절차', '--project', 'crm']);
   const documentFile = path.join(temporary, 'projects', 'crm', created.relativeFile.replace(/^projects\/crm\//u, ''));
   const projectRoot = path.join(temporary, 'projects', 'crm');
+  // 파일이 지금 무엇이라 말하는가. 투영이 실제로 파일에 닿았는지는 이 칸으로만 잰다 —
+  // 명령의 반환값만 보면 "썼다고 말했다"까지밖에 재지 못한다.
+  const fileState = (file) => require('../src/frontmatter').parseFrontmatter(fs.readFileSync(file, 'utf8')).data.state;
   // 승인 이전에 커밋해 두어야 승인된 리비전을 담은 커밋이 실제로 존재한다.
   command('git', ['add', '-A'], projectRoot);
   command('git', ['commit', '-m', 'add document'], projectRoot);
@@ -126,6 +213,11 @@ try {
   const approved = approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }], reason: '범위와 결정을 확인함' });
   assert.strictEqual(approved.document.status, 'approved');
   assert.strictEqual(approved.created, true);
+  // 원장에 적은 것을 문서에도 투영한다. 이 칸이 굴러가지 않던 동안 원장이 승인이라
+  // 말하는 문서가 파일에서는 초안으로 남았고, 화면은 같은 문서에 두 말을 했다.
+  assert.strictEqual(approved.projectedState, 'approved');
+  assert.strictEqual(approved.projectionError, undefined, '쓰기 실패는 값으로 나르고, 없을 때는 칸도 없어야 합니다.');
+  assert.strictEqual(fileState(documentFile), 'approved', '승인은 문서의 state를 함께 써야 합니다.');
   // 같은 리비전을 다시 승인해도 기록이 늘지 않는다.
   assert.strictEqual(approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: created.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] }).created, false);
   // 비활성 human도 지나지 못한다. 자격은 유형 하나가 아니라 셋(유형·상태·멤버십)이다.
@@ -134,9 +226,11 @@ try {
     /활성 human Client만 승인할 수 있습니다.*상태가 disabled/u, '비활성 human Client의 승인도 거절되어야 합니다.');
   rdl(['client', 'enable', 'desk-h']);
 
-  // 승인 결과를 파일에 쓰지 않으므로 리비전이 유지된다 — 썼다면 자기 승인을 무효화했을 것이다.
+  // 승인이 자기를 무효화하지 않는다. state를 쓰고도 리비전이 그대로인 것은 계산이 그
+  // 칸을 빼기 때문이다(판 2) — 빼지 않으면 그 쓰기가 리비전을 바꿔 방금 승인한 판이
+  // 더 이상 이 문서가 아니게 되고, 승인은 그 자리에서 낡음이 된다.
   const afterApproval = documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === created.id);
-  assert.strictEqual(afterApproval.status, 'approved');
+  assert.strictEqual(afterApproval.status, 'approved', '승인 직후의 문서가 낡음이면 안 됩니다.');
   assert.strictEqual(afterApproval.revision, target.revision, '승인이 문서 리비전을 바꾸면 안 됩니다.');
 
   // 한 글자만 고쳐도 승인이 낡는다.
@@ -145,10 +239,13 @@ try {
   assert.strictEqual(modified.status, 'stale', '수정하면 승인이 낡아야 합니다.');
   assert.strictEqual(modified.approvedRevision, target.revision);
 
-  // frontmatter를 active로 적어도 신뢰 상태는 바뀌지 않는다 — 원장이 정본이다.
+  // frontmatter를 손으로 적어도 신뢰 상태는 바뀌지 않는다 — 원장이 정본이다. 그리고
+  // 그 손질은 리비전도 바꾸지 못한다(판 2): 소유 칸이라 계산이 처음부터 재지 않는다.
   const source = fs.readFileSync(documentFile, 'utf8');
   fs.writeFileSync(documentFile, source.replace(/^state: .*$/mu, 'state: active'), 'utf8');
-  assert.strictEqual(documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === created.id).status, 'stale', 'frontmatter로 신뢰 상태를 위조할 수 없어야 합니다.');
+  const forgedState = documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === created.id);
+  assert.strictEqual(forgedState.status, 'stale', 'frontmatter로 신뢰 상태를 위조할 수 없어야 합니다.');
+  assert.strictEqual(forgedState.revision, modified.revision, 'state만 고친 문서의 리비전이 달라지면 안 됩니다 — 달라지면 그 문서의 모든 승인이 낡습니다.');
 
   // 이력은 승인 기록과 커밋을 함께 보여준다.
   const history = documentHistory(temporary, { project: 'crm', targetId: created.id });
@@ -198,6 +295,41 @@ try {
   assert.ok(snapshot.attention.some((item) => item.kind === 'document' && item.id === created.id),
     '낡은 문서는 attention에도 선다.');
 
+  // ── 옛 승인은 판올림을 넘어 산다 ───────────────────────────────────────────
+  //
+  // 단위 시험은 접기와 판정만 본다. 여기서 걸리는 것은 문서 목록이 판마다의 값을 싣지
+  // 않는 경우다 — 그 한 줄이 빠지면 원장은 멀쩡한데 화면과 게이트가 옛 승인을 전건
+  // 낡음이라 말하고, 사람은 다시 만들 수 없는 판단을 다시 내리라는 말을 듣는다.
+  const legacyCreated = rdl(['doc', 'create', 'ADR', '판올림 이전에 승인된 결정', '--owner', 'MEMBER-001', '--scope', '옛 판으로 기록된 승인의 생존 검증', '--exclude', '구현 절차', '--project', 'crm']);
+  const legacyFile = path.join(temporary, 'projects', 'crm', legacyCreated.relativeFile.replace(/^projects\/crm\//u, ''));
+  const legacyParsed = require('../src/frontmatter').parseFrontmatter(fs.readFileSync(legacyFile, 'utf8'));
+  const legacyRevisions = documentRevisions(legacyParsed.data, legacyParsed.body);
+  assert.notStrictEqual(legacyRevisions[1], legacyRevisions[2], '이 문서가 state를 적고 있어야 두 판이 갈리고, 그래야 이 시험이 무언가를 잽니다.');
+
+  // 판올림 이전의 rdl이 남겼을 사건 그대로다 — 판 칸이 없고, 결박한 값은 판 1로 잰 것이다.
+  const requestJournal = require('../src/request-journal');
+  const legacyRequestId = requestJournal.childRequestId('REQ-11111111111111111111', `approval:${legacyCreated.id}:${legacyRevisions[1]}`);
+  require('../src/approval').appendApprovalEvent(path.join(temporary, 'projects', 'workspace', 'events'), {
+    schemaVersion: 1, eventId: requestJournal.eventIdForRequest(legacyRequestId), type: 'approval.granted',
+    rootRequestId: 'REQ-11111111111111111111', requestId: legacyRequestId, clientId: 'desk-h', projectId: 'crm',
+    targetId: legacyCreated.id, reviewedRevision: legacyRevisions[1],
+    approvedBy: 'MEMBER-001', actorMemberId: 'MEMBER-001', basis: [{ kind: 'read' }], reason: '판올림 이전의 승인'
+  });
+  const legacyStatus = documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === legacyCreated.id);
+  assert.strictEqual(legacyStatus.status, 'approved', '판 1로 기록된 승인은 판올림 뒤에도 유효해야 합니다.');
+  assert.strictEqual(legacyStatus.approvedRevision, legacyRevisions[1], '승인 리비전은 그 사건이 적은 값 그대로여야 합니다.');
+
+  // 그 문서의 칸은 건드리지 않는다. 쓰는 순간 판 1의 리비전이 달라져 승인이 낡음이 되고,
+  // 사람이 내린 판단은 다시 만들 수 없다. 세 명령 모두 이미 승인된 판에서는 사건을
+  // 남기지 않으므로(승인·제출은 created:false, 반려는 거절) 투영도 거기 닿지 않는다.
+  const legacySource = fs.readFileSync(legacyFile, 'utf8');
+  assert.strictEqual(approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: legacyCreated.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }] }).created, false);
+  assert.strictEqual(submitDocument(temporary, { project: 'crm', clientId: 'agent-a', targetId: legacyCreated.id }).created, false);
+  assert.throws(() => rejectDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: legacyCreated.id, reason: '아니오' }), /이미 승인된 리비전/u);
+  assert.strictEqual(fs.readFileSync(legacyFile, 'utf8'), legacySource, '옛 판으로 승인된 문서의 파일은 한 바이트도 바뀌면 안 됩니다.');
+  assert.strictEqual(documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === legacyCreated.id).status, 'approved',
+    '세 명령을 지나고도 옛 승인이 그대로 서 있어야 합니다.');
+
   // ── 문서 제출 관문 ──────────────────────────────────────────────────────────
   //
   // 관문이 없었던 게 아니라 관문 앞에 줄 설 자리가 없었다. 문서는 정본에 바로
@@ -222,6 +354,10 @@ try {
     }, overrides || {});
   }
   assert.strictEqual(normalizeApprovalEvent(submissionEvent()).submittedBy, 'MEMBER-001');
+  // 판을 안 적은 옛 제출의 다이제스트도 그대로다. 판올림이 봉투를 건드리면 이미 공유된
+  // 원장 전체가 손상으로 잡히고, 그 원장은 아무 상태도 만들지 못한다.
+  assert.strictEqual(approvalEnvelope(submissionEvent({ recordedAt: frozenAt })).canonicalDigest,
+    '4cdc2e992ec89e36003d752241a2739b6372b6cd34994582c5da8883083f6229');
   assert.strictEqual(normalizeApprovalEvent(submissionEvent({ reason: '결정 반영분' })).reason, '결정 반영분');
   // 모르는 종류는 여전히 형태에서 거부된다. 한때 이 자리가 approval.rejected였는데,
   // 반려가 원장의 세 번째 종류가 되면서 그것은 더 이상 "모르는 종류"가 아니다 —
@@ -270,10 +406,15 @@ try {
   assert.strictEqual(submitted.document.status, 'stale', '제출이 신뢰 상태를 바꾸면 안 됩니다.');
   // 사람용 번호는 원장에서 계산해 값에 실을 뿐 저장하지 않는다.
   assert.strictEqual(submitted.document.versionLabel, '1.1');
+  // 제출도 같은 칸을 쓴다. 파일만 열어도 지금 남의 검토를 기다린다는 것을 알 수 있어야
+  // 하고, 그 한 낱말이 없으면 사람은 매번 원장을 따로 물어야 한다.
+  assert.strictEqual(submitted.projectedState, 'proposed');
+  assert.strictEqual(fileState(documentFile), 'proposed', '제출은 문서의 state를 함께 써야 합니다.');
   const submittedRevision = submitted.document.revision;
   // 같은 리비전을 다시 올려도 원장이 불어나지 않는다 — 줄을 두 번 서는 일일 뿐이다.
   assert.strictEqual(rdl(['doc', 'submit', created.id, '--client-id', 'agent-a', '--project', 'crm']).created, false);
-  // 문서에는 아무것도 쓰지 않는다. 썼다면 그 쓰기가 리비전을 바꿔 방금 한 제출을 무효화한다.
+  // 문서에 쓴 것은 소유 칸 하나뿐이고 그 칸은 리비전이 재지 않는다. 재는 칸을 썼다면
+  // 그 쓰기가 리비전을 바꿔 방금 한 제출을 무효화했을 것이다.
   assert.strictEqual(documentStatus(temporary, { project: 'crm' }).documents.find((document) => document.id === created.id).revision,
     submittedRevision, '제출이 문서 리비전을 바꾸면 안 됩니다.');
 
@@ -379,6 +520,8 @@ try {
     }, overrides || {});
   }
   assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).rejectedBy, 'MEMBER-001');
+  assert.strictEqual(approvalEnvelope(rejectionEvent({ recordedAt: frozenAt })).canonicalDigest,
+    '37197162a2afcadaffd14800c8bb08638eddd6899b236790a80cbf5c6a8662d0');
   assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).reason, '3장의 범위가 헌장과 어긋납니다.');
   // 사유는 형태에서 필수다. 승인에서 사유가 선택인 것은 근거가 따로 있어서이고, 반려는
   // 사유가 내용 전부다 — 없으면 작성자는 무엇을 고쳐야 할지 모르고 반려가 침묵이 된다.
@@ -455,10 +598,12 @@ try {
   assert.strictEqual(rejected.document.submission.state, 'rejected');
   assert.strictEqual(rejected.document.submission.rejection.reason, '결정 근거가 헌장과 어긋납니다.');
   assert.strictEqual(rejected.document.submission.rejection.rejectedBy, 'MEMBER-001');
+  assert.strictEqual(rejected.projectedState, 'rejected');
+  assert.strictEqual(fileState(documentFile), 'rejected', '반려는 문서의 state를 함께 써야 합니다.');
   // 같은 판을 두 번 반려해도 원장이 늘지 않는다 — 아무 사실도 더하지 않는 줄이다.
   assert.strictEqual(rdl(['doc', 'reject', created.id, '--client-id', 'desk-h', '--project', 'crm', '--reason', '한 번 더']).created, false);
-  // 문서에는 아무것도 쓰지 않는다. 썼다면 그 쓰기가 리비전을 바꿔 방금 한 반려가
-  // 다른 판의 반려가 된다.
+  // 쓴 것은 소유 칸 하나뿐이다. 리비전이 재는 칸을 썼다면 그 쓰기가 리비전을 바꿔
+  // 방금 한 반려가 다른 판의 반려가 된다.
   const afterReject = documentStatus(temporary, { project: 'crm', submission: 'rejected' });
   assert.strictEqual(afterReject.documents.length, 1, '제출 축으로 반려된 문서를 골라낼 수 있어야 합니다.');
   assert.strictEqual(afterReject.documents[0].revision, rejected.document.revision, '반려가 문서 리비전을 바꾸면 안 됩니다.');

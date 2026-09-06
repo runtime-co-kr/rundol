@@ -196,6 +196,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 | `rdl task identity` | 옛 26자 태스크 식별자를 8자로 이관하고 옛 식별자를 태스크에 보존 | 태스크 샤드와 태스크를 가리키는 문서 | 없음 |
 | `rdl task migrate` | 단일 `tasks.json`을 클라이언트 샤드로 전환 | settings와 프로젝트 브랜치 커밋 | 없음 |
 | `rdl doc create` | 등록 멤버와 실제 관련 문서로 표준 문서 생성 | 프로젝트 브랜치 작업 트리 | 없음 |
+| `rdl doc migrate` | 정본 문서를 표준 경로로 옮기고, 참조와 `state`·`lifecycle` 칸을 함께 이관 | 프로젝트 브랜치 작업 트리 | 없음 |
 | `rdl sync` | save, fetch, fast-forward/3-way 병합, 검증, push | 프로젝트 브랜치 커밋·병합 | fetch, 기본 push |
 | `rdl sync watch` | 지정 주기로 Sync 반복 | `rdl sync`와 같음 | fetch, 기본 push |
 | `rdl watch` | 프로젝트 진단을 안정된 스냅샷 단위로 관찰 | 무시되는 로컬 캐시와 프로세스 락만 변경 | 기본 없음; `--remote`일 때 tip 관계 확인용 fetch만 수행 |
@@ -378,6 +379,7 @@ rdl check --json
 - 3자리 문서 코드, 번호, 한글 중심 제목과 파일명
 - `rundol/`, `artifact/`, `domain/`, `feature/` 태그
 - 실제 Obsidian 파일명·heading·block을 대상으로 하는 Wiki link
+- `state`와 `lifecycle`의 값 어휘 (`RDL-DOC-018` 경고 · `RDL-DOC-017` 오류)
 - `project.md`의 미션, 목표, 범위, 역할, 멤버, 이해관계자, RACI, 의사결정, 위험, 협업 리듬, 완료 정의
 - ROLE·MEMBER·STAKEHOLDER block 필드
 - 프로젝트별 태스크 샤드 또는 기존 `tasks.json`의 필드, 상태, 할당, 의존성, blocker, 완료조건과 문서 연결
@@ -728,6 +730,42 @@ rdl contract trace --project memo --json
 ```
 
 `--implementation`은 기능별 구현 계약과 연결된 TST를 완료 게이트로 검사한다. 추적성은 frontmatter의 기능 ID와 직접 문서 링크에서 실행 시 계산한다. `contract trace`의 `persistedIndex`는 항상 `false`이며 별도 INDEX·목록·카탈로그·추적표 문서를 정본으로 만들지 않는다.
+
+## 문서 상태와 수명
+
+문서 frontmatter는 두 축을 따로 든다. `state`는 **작성이 어디까지 갔는가**이고 `lifecycle`은 **내용이 아직 서 있는가**다. 한 칸이 둘 다 말하던 시절에는 두 축이 서로를 덮었다 — ADR 15건이 `state: accepted`를 적고 있었는데 ADR에서 `accepted`는 "이 결정이 채택되어 효력이 있다"는 표준 어휘지 "이 문서를 누가 승인했다"가 아니다.
+
+`state`는 **rdl이 소유하고 원장에서 투영한다.** 사람이 손으로 적는 칸이 아니며, 손으로 고쳐도 다음 동기화에서 되돌아간다. 값은 `draft`, `proposed`, `approved`, `stale`, `rejected` 다섯이고 승인·제출·반려는 `rdl doc approve`, `rdl doc submit`, `rdl doc reject`가 원장에 사건을 적을 때 바뀐다. 정본은 언제나 원장이고 이 칸은 파생 캐시다.
+
+`lifecycle`은 **사람이 적는 선택 칸이다.** 원장이 모르는 축이라 아무것도 이 값을 굴리지 않는다. 값은 `active`, `accepted`, `superseded`, `deprecated`, `archived` 다섯이며 **비워 둘 수 있고, 비어 있는 것과 `active`는 다르다.** 대부분의 문서는 수명을 따로 말할 것이 없으므로 `rdl doc create`는 이 칸을 적지 않는다. 결정이 채택되었거나 다른 문서로 대체되었을 때 사람이 그 줄을 더한다.
+
+```yaml
+state: draft         # rdl이 원장에서 투영한다. 손으로 적지 않는다
+lifecycle: accepted  # 사람이 적는다. 없어도 된다
+```
+
+검사는 두 칸을 다른 심각도로 본다. 어휘 밖 `lifecycle`은 오류(`RDL-DOC-017`)다 — 사람이 소유한 칸이라 오타가 스스로 낫지 않고, 낫지 않는 오타는 그 문서를 수명 조회에서 영영 빼놓는다. 어휘 밖 `state`는 경고(`RDL-DOC-018`)다 — rdl이 소유하는 칸이라 사람은 그 값을 적는 자리에 있지 않고, 다음 투영이 덮어써 스스로 낫는다. 오류로 막으면 아직 이관하지 않은 저장소가 판올림만으로 전 문서에서 멈추고, 막힌 사람이 할 수 있는 일은 소유하지도 않은 칸을 손으로 고치는 것뿐이다. 심각도는 무엇이 잘못됐는가가 아니라 **누가 고칠 수 있는가**로 갈린다.
+
+### 두 축으로 가르는 이관
+
+옛 `state` 값을 두 축으로 나누는 일은 `rdl doc migrate`가 함께 한다. 별도 명령을 두지 않는 이유는 이 명령이 이미 "이름을 바꾸면 그 이름을 쓰는 모든 자리를 함께 옮긴다"를 하고 있고, 프로젝트 단위 rollback과 엄격 검증도 여기 붙어 있기 때문이다. 두 명령으로 나누면 rollback이 두 벌이 되고 사람이 순서를 지켜야 한다.
+
+```bash
+rdl doc migrate --project memo            # 계획만 낸다. 파일에 닿지 않는다
+rdl doc migrate --project memo --apply    # 계획대로 적용한다
+```
+
+규칙은 셋이다.
+
+- 값이 수명 어휘면 `lifecycle`로 **그대로** 옮기고 `state`는 `draft`로 내린다. 값을 고르지 않고 옮기는 것이 요점이다 — 옮기면 되돌릴 수 있고, "이건 굳이 안 적어도 되겠지" 하고 버리면 되돌릴 수 없다. 무엇을 비워 둘지는 적은 사람이 정할 일이다.
+- 값이 이미 상태 어휘면 한 바이트도 손대지 않는다. 진행 축의 값이고 다음 투영이 답한다.
+- 그 밖의 값은 옮기지 않고 `unmappedStates`로 **옮길 자리가 없다고 말한다.** 조용히 기본값으로 접으면 이관이 아무도 묻지 않은 질문을 대신 답해 버리고, 그 사실은 아무 신호도 내지 않는다.
+
+**이관은 `state`에 승인을 주장하는 값을 쓰지 않는다.** 쓸 수 있는 값은 `draft` 하나이고 그것은 제출도 승인도 말하지 않는다. 파일이 `accepted`라 적었다는 사실은 승인의 증거가 아니므로, 그것을 `approved`로 옮기면 원장에 없는 승인이 파일에서 태어난다. 낮게 적은 것은 다음 투영이 올려 주지만 높게 적은 것은 그때까지 거짓말을 한다.
+
+사람이 이미 적은 `lifecycle`은 덮지 않는다. `state`까지 수명 값이면 두 칸이 서로 다른 말을 할 수 있으므로 고르지 않고 `lifecycle-conflict`로 남긴다. `project.md`도 `state`를 가진 문서이므로 함께 옮긴다.
+
+`lifecycle`은 사람이 쓴 내용이라 문서 리비전에 들어간다(`state`는 `REVISION_OWNED_FIELDS`라 빠진다). 그래서 승인이 살아 있는 문서에 `lifecycle` 줄이 붙으면 그 문서는 낡음이 된다. 적용 전에 `rdl doc status --project <key> --json`으로 승인된 문서 중 `state`가 수명 값인 것을 먼저 확인한다.
 
 ## 그림 자산
 

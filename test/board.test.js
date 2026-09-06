@@ -122,6 +122,94 @@ async function testBoard() {
     const queueSource = boardSource.slice(boardSource.indexOf('function reviewQueue'), boardSource.indexOf('function attentionItems'));
     assert(/items\.push\(\{[^}]*kind: document\.kind/u.test(queueSource), '인박스 줄은 문서의 kind를 함께 실어야 한다.');
 
+    // ── 검토 줄의 순서와 길이 ──────────────────────────────────────────────
+    //
+    // 이 픽스처에는 승인 원장이 없어 서버를 통해서는 빈 줄만 나온다. 그래서 줄의 판정을
+    // 직접 묻는다 — 아니면 정렬도, 대기 시각도, 뒤쪽 유형에 닿는지도 어느 시험도 확인하지
+    // 못하고, 그 셋이 정확히 화면에서 깨져 있던 것들이다.
+    const { reviewQueue } = require('../src/board');
+    // 승인 상태 표는 approval.trustState가 내는 모양이다. 여기서 새로 짓는 것은 없고,
+    // 줄이 그 값을 어떻게 세우는지만 본다.
+    const trust = (status, submission) => ({
+      status,
+      approvedRevision: status === 'stale' ? 'b'.repeat(64) : null,
+      approvedBy: status === 'stale' ? 'MEMBER-001' : null,
+      approvals: status === 'stale' ? 1 : 0,
+      submission: Object.assign({ state: 'none', revision: null, recordedAt: null, rejection: null, rejections: 0, submissions: 0 }, submission || {})
+    });
+    function queueOf(entries) {
+      const states = {};
+      const documents = entries.map((entry) => {
+        states[entry.id] = entry.trust;
+        const value = { id: entry.id, kind: 'adr', type: 'document', title: entry.id, file: `docs/${entry.id}.md` };
+        // modifiedAt을 아예 안 주는 갈래가 있어야 한다. 값이 없는 문서가 어디에 서는지가
+        // 이 줄이 답해야 하는 물음 하나다.
+        if (entry.modifiedAt !== undefined) value.modifiedAt = entry.modifiedAt;
+        return value;
+      });
+      return reviewQueue(documents, { states, reason: null });
+    }
+
+    // 1) 줄이 길어져도 뒤쪽 유형에 닿을 수 있다. 예전에는 앞 50건에서 잘랐는데 절단면이
+    //    정렬 축과 겹쳐, 미승인이 50건을 넘으면 식별자가 뒤인 유형이 한 건도 실리지
+    //    않았다 — 이 저장소에서 검증(TST) 47건이 통째로 그랬다. 화면의 거르개는 실린
+    //    것을 거르므로 "미승인만"을 눌러도 그 뒤는 나타나지 않았다.
+    //
+    //    뒤 유형에 가장 늦은 대기 시각을 준다. 정렬로도 맨 뒤에 서는 줄이 실제로 실리는지를
+    //    봐야 "자르지 않는다"가 확인되기 때문이다.
+    {
+      const entries = [];
+      for (let index = 0; index < 60; index += 1) {
+        entries.push({ id: `ADR-${String(index).padStart(3, '0')}`, trust: trust('unapproved'), modifiedAt: `2026-01-${String((index % 28) + 1).padStart(2, '0')}T00:00:00.000Z` });
+      }
+      for (let index = 0; index < 47; index += 1) {
+        entries.push({ id: `TST-${String(index).padStart(3, '0')}`, trust: trust('unapproved'), modifiedAt: '2026-09-01T00:00:00.000Z' });
+      }
+      const queue = queueOf(entries);
+      assert.strictEqual(queue.items.length, queue.total, '줄은 통째로 실린다 — 셈과 목록이 같은 수여야 한다.');
+      assert.strictEqual(queue.items.length, 107, '107건이 모두 실린다.');
+      assert.strictEqual(queue.items.filter((item) => item.id.startsWith('TST')).length, 47,
+        '가장 늦게 온 유형도 한 건도 빠지지 않는다.');
+    }
+
+    // 2) 대기 시각을 못 구한 문서가 오래 기다린 것으로 보이면 안 된다. 없는 값을 0으로
+    //    읽으면 모르는 문서가 줄의 맨 앞에서 가장 급한 것 행세를 한다 — 없는 것과 오래된
+    //    것은 다르다.
+    {
+      const queue = queueOf([
+        { id: 'ADR-001', trust: trust('unapproved') },
+        { id: 'ADR-002', trust: trust('unapproved'), modifiedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'ADR-003', trust: trust('unapproved'), modifiedAt: '2026-09-01T00:00:00.000Z' }
+      ]);
+      assert.deepStrictEqual(queue.items.map((item) => item.id), ['ADR-002', 'ADR-003', 'ADR-001'],
+        '오래 기다린 것이 먼저이고, 못 구한 것은 맨 뒤다.');
+      assert.strictEqual(queue.items[2].waitingSince, null, '없는 값을 지어내지 않는다.');
+    }
+
+    // 3) 낡음 먼저는 대기 시간이 뒤집지 않는다. 낡음은 승인된 것이 흔들린 상태라 이미
+    //    하류가 근거로 삼았고, 미승인은 아직 아무도 근거로 삼지 않았다 — 반년 묵은 초안이
+    //    어제 흔들린 승인본을 앞지르면 그 뜻이 사라진다.
+    {
+      const queue = queueOf([
+        { id: 'ADR-001', trust: trust('unapproved'), modifiedAt: '2020-01-01T00:00:00.000Z' },
+        { id: 'ADR-002', trust: trust('stale'), modifiedAt: '2026-09-01T00:00:00.000Z' }
+      ]);
+      assert.deepStrictEqual(queue.items.map((item) => item.status), ['stale', 'unapproved'],
+        '대기 시간은 낡음 먼저라는 축을 뒤집지 않고 그 안에서만 적용된다.');
+    }
+
+    // 4) 제출 축이 서 있으면 제출 시각이 더 정확한 "차례가 넘어온 시각"이다. 다만 지금
+    //    파일이 제출한 판과 다르면(drifted) 그 시각은 이미 지나간 판의 것이라 쓰지 않는다 —
+    //    승인자가 볼 것은 언제나 지금 파일이다.
+    {
+      const queue = queueOf([
+        { id: 'ADR-001', trust: trust('unapproved', { state: 'pending', recordedAt: '2026-02-01T00:00:00.000Z' }), modifiedAt: '2026-08-01T00:00:00.000Z' },
+        { id: 'ADR-002', trust: trust('unapproved', { state: 'drifted', recordedAt: '2026-01-01T00:00:00.000Z' }), modifiedAt: '2026-08-02T00:00:00.000Z' }
+      ]);
+      assert.strictEqual(queue.items[0].waitingSince, '2026-02-01T00:00:00.000Z', '올린 판이 지금 판이면 제출 시각부터 센다.');
+      assert.strictEqual(queue.items[1].waitingSince, '2026-08-02T00:00:00.000Z', '지금 파일이 올린 판과 다르면 지금 판이 생긴 시각부터 센다.');
+    }
+
     // ── 스냅숏이 싣는 워크플로 ──────────────────────────────────────────────
     //
     // 이 픽스처에는 workflows.json이 없다. 설정을 안 쓴 저장소에서 답이 판올림 전과
@@ -246,6 +334,76 @@ async function testBoard() {
 
     const rejected = await request(port, '/api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': 'wrong' }, body: '{}' });
     assert.strictEqual(rejected.status, 403);
+
+    // ── 문서 이력과 임의 비교 ──────────────────────────────────────────────
+    //
+    // 승인 판은 정해진 두 축만 답한다. 검토하다 보면 "세 판 전과 견주면 어떤가"와
+    // "언제부터 이렇게 됐나"를 묻게 되는데, 앞엣것의 기준은 원장이 아니라 사람이 이력에서
+    // 고르고 뒤엣것의 답은 이력에만 있다 — 축을 늘려서는 둘 다 답하지 못한다.
+    const historyAnswer = await request(port, '/api/projects/tms/documents/ADR-001/history');
+    // 이력 자리가 문서 조회 경로에 삼켜지지 않는다. `/documents/:id` 정규식이 뒤 조각까지
+    // 먹으면 이 경로는 조용히 문서 하나를 돌려주고, 화면은 이력이 빈 채로 온 줄로 읽는다.
+    assert.strictEqual(historyAnswer.headers['content-type'], 'application/json; charset=utf-8');
+    // 이 픽스처는 schemaVersion 3이라 승인 원장 자체가 없다. 없는 것을 500으로 내면 화면은
+    // "보드가 죽었다"로 읽고 무엇을 고쳐야 하는지 알 수 없다 — 못 읽은 이유를 그대로 내는
+    // 것이 이 축의 규율이고, 차분 자리가 이미 지키는 선이다.
+    assert.strictEqual(historyAnswer.status, 400, `원장을 못 읽는 것은 서버 결함이 아닙니다: ${historyAnswer.body}`);
+    assert(/schemaVersion/u.test(JSON.parse(historyAnswer.body).error), `못 읽은 이유가 그대로 와야 합니다: ${historyAnswer.body}`);
+
+    const { runGit } = require('../src/git');
+    const tmsRoot = path.join(root, 'test', 'fixtures', 'workspace', 'projects', 'tms');
+    const recent = runGit(['log', '-n', '2', '--format=%H'], { cwd: tmsRoot, allowFailure: true });
+    const commits = (recent.status === 0 ? recent.stdout : '').split(/\r?\n/u).filter(Boolean);
+    assert(commits.length >= 1, '픽스처가 사는 저장소에 커밋이 있어야 이 축을 잴 수 있습니다.');
+    const rangeAt = (query) => request(port, `/api/projects/tms/documents/ADR-001/diff?axis=range&${query}`);
+
+    // 지점 값은 그대로 git 인자가 된다. 모양에서 막지 않으면 조회 경로가 곧 임의의
+    // 문자열을 git에 넘기는 경로가 되고, 그 사실은 넘어간 다음에야 드러난다.
+    for (const query of [`from=zzzzzzz&to=${commits[0]}`, `from=${commits[0]}&to=..%2F..%2Fpackage.json`, `from=--output%3Dx&to=${commits[0]}`]) {
+      const refused = await rangeAt(query);
+      assert.strictEqual(refused.status, 400, `모양이 아닌 지점은 거부되어야 합니다(${query}): ${refused.body}`);
+      assert.strictEqual(JSON.parse(refused.body).code, 'invalid-point');
+    }
+    // 지점이 하나만 오면 비교가 성립하지 않는다. 없는 쪽을 지금 리비전이나 HEAD로 메우면
+    // 사람이 고르지 않은 기준으로 견준 차분을 사람이 고른 것으로 믿게 된다.
+    for (const query of [`to=${commits[0]}`, `from=${commits[0]}`]) {
+      const half = await rangeAt(query);
+      assert.strictEqual(half.status, 400, `한 지점만으로는 비교가 성립하지 않습니다(${query}): ${half.body}`);
+      assert.strictEqual(JSON.parse(half.body).code, 'missing-point');
+    }
+
+    // 값의 종류는 길이가 가른다. 리비전은 sha256이라 64자리이고 커밋은 40자리가 최대라
+    // 두 집합이 겹치지 않는다 — 종류를 따로 받는 칸을 두면 화면이 그 칸을 틀리게 채우는
+    // 갈래가 생기는데, 길이는 값 자신이 이미 말하고 있어 틀릴 수 없다.
+    const unknownRevision = JSON.parse((await rangeAt(`from=${'a'.repeat(64)}&to=${commits[0]}`)).body);
+    assert.strictEqual(unknownRevision.from.kind, 'revision', '64자리는 원장의 주소로 읽혀야 합니다.');
+    assert.strictEqual(unknownRevision.to.kind, 'commit', '40자리는 git의 주소로 읽혀야 합니다.');
+    // 못 찾은 지점에 빈 차분을 지어내지 않는다. "비교 기준 없음"과 "바뀐 것 없음"은 다른
+    // 값이고, 앞엣것을 뒤엣것으로 그리면 사람은 아무것도 안 바뀐 줄 알고 승인한다.
+    assert.strictEqual(unknownRevision.diff, null, '못 찾은 지점으로 차분을 지어내면 안 됩니다.');
+    assert(/찾지 못했습니다/u.test(unknownRevision.reason), `못 찾았으면 이유가 있어야 합니다: ${JSON.stringify(unknownRevision.reason)}`);
+    const unknownCommit = JSON.parse((await rangeAt(`from=${'0'.repeat(40)}&to=${commits[0]}`)).body);
+    assert.strictEqual(unknownCommit.from.commit, null, '없는 커밋을 있는 것으로 답하면 안 됩니다.');
+    assert(/찾지 못했습니다/u.test(unknownCommit.reason));
+
+    // 같은 지점 둘은 사이가 없다. 이유 없이 빈 차분으로 그리면 "안 바뀌었다"로 읽힌다.
+    const identical = JSON.parse((await rangeAt(`from=${commits[0]}&to=${commits[0]}`)).body);
+    assert.strictEqual(identical.diff, '');
+    assert(/같은 커밋/u.test(identical.reason), `같은 지점이라는 사실을 말해야 합니다: ${identical.reason}`);
+
+    if (commits.length >= 2) {
+      const between = JSON.parse((await rangeAt(`from=${commits[1]}&to=${commits[0]}`)).body);
+      assert.strictEqual(between.axis, 'range');
+      assert.strictEqual(between.from.commit, commits[1]);
+      assert.strictEqual(between.to.commit, commits[0]);
+      assert.strictEqual(typeof between.diff, 'string', `두 커밋 사이는 차분이 나와야 합니다: ${JSON.stringify(between.reason)}`);
+    }
+
+    // 모르는 축은 가능한 축을 말한다. 늘어난 축이 그 문장에 없으면 화면은 서버가 아는
+    // 것보다 좁은 것만 물을 수 있는 줄로 읽는다.
+    const unknownAxis = await request(port, '/api/projects/tms/documents/ADR-001/diff?axis=nonsense');
+    assert.strictEqual(unknownAxis.status, 400);
+    assert(/range/u.test(JSON.parse(unknownAxis.body).error), `가능한 축에 range가 있어야 합니다: ${unknownAxis.body}`);
 
     // ── 프로젝트 자산 경로 ────────────────────────────────────────────────
     //

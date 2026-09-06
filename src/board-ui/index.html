@@ -76,7 +76,12 @@
       </section>
 
       <section id="document-view" class="view" hidden>
-        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><!-- 배지 줄의 상태 칩은 frontmatter가 주장하는 값이고, 이 블록은 승인 원장이 아는 사실이다.
+        <header class="reader-heading"><div id="document-breadcrumb" class="breadcrumb"></div>
+        <!-- 검토 인박스에서 온 사람은 한 건이 아니라 줄을 훑는 중이다. breadcrumb은 돌아가는
+             길만 말하고 줄의 어디쯤인지와 다음 차례는 말하지 못하므로, 그 둘은 이 띠가 갖는다.
+             인박스를 거치지 않고 온 사람에게는 서지 않는다 — 서 있지도 않은 줄의 순번을 읽게
+             되기 때문이다. 무엇을 담을지는 renderReviewNav 하나가 정한다. -->
+        <div id="document-review-nav" class="review-nav" hidden></div><h1 id="document-title"></h1><p id="document-description"></p><div id="document-badges" class="chip-row"></div><!-- 배지 줄의 상태 칩은 frontmatter가 주장하는 값이고, 이 블록은 승인 원장이 아는 사실이다.
              둘을 붙여 세워야 어느 것이 무엇인지 한 번에 읽힌다 — 검토 인박스에서 "낡음"이라 부른
              문서를 눌러 도착하는 자리가 여기라, 여기가 원장을 말하지 않으면 인박스가 거짓말한 것이 된다. -->
         <div id="document-approval" class="document-approval"></div><div class="reader-actions"><button id="edit-document">편집</button><button id="cancel-document-edit" hidden>취소</button><button id="save-document" class="primary" hidden>저장</button></div></header>
@@ -108,7 +113,7 @@
              바꾸며, 거르기는 그 안에서 줄이고, 보기는 줄이지 않고 늘어놓는 방식만 바꾼다.
              묶어서 사이를 끊어야 어느 것이 목록을 바꾸는 건지 눌러보기 전에 알 수 있다. -->
         <div class="toolbar">
-          <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">내 검토</button></div>
+          <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">검토 대기</button></div>
           <span class="toolbar-divider" aria-hidden="true"></span>
           <div class="toolbar-group">
             <select id="owner" class="filter-select" aria-label="담당자로 거르기"><option value="">담당자</option></select>

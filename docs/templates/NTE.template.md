@@ -5,7 +5,7 @@ kind: clipping
 title: <노트 제목>
 description: <나중에 이 노트를 다시 찾아야 하는 이유를 한 문장으로 작성>
 owner: "[[project#^MEMBER-001|노트 작성자]]"
-state: unread
+state: draft
 aliases:
   - NTE-000
 authors: []

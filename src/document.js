@@ -8,6 +8,7 @@ const { reserveDocumentId } = require('./document-sequence');
 const { newDocumentUid, insertUid } = require('./document-identity');
 const { CANONICAL_PATHS: TYPES } = require('./document-paths');
 const { assertDocumentCreationAllowed } = require('./document-contract');
+const { INITIAL_DOCUMENT_STATE } = require('./document-migration');
 const { assertBoundaryInput } = require('./document-boundary');
 const {
   IMPLEMENTATION_TYPES, GROUPING_POLICY, isIndexArtifact,
@@ -111,6 +112,23 @@ function createDocument(start, input) {
   const file = path.join(folder, `${id}-${title.filename}.md`);
   if (fs.existsSync(file)) throw new Error(`문서가 이미 존재합니다: ${file}`);
   let source = fs.readFileSync(path.join(TEMPLATE_ROOT, `${type}.template.md`), 'utf8');
+  // state는 rdl이 소유하고 원장에서 투영하는 칸이다. 방금 만든 문서는 원장에 사건이
+  // 하나도 없으므로 투영은 바닥값이고, 뼈대가 그보다 높은 값을 적으면 그 문서는
+  // 태어나는 순간부터 원장에 없는 사실을 말한다 — ADR 뼈대의 `proposed`가 정확히
+  // 그랬다. 제출은 rdl doc submit이 원장에 사건을 적을 때 일어나는 일이지 파일을
+  // 만들 때 정해지는 값이 아니다.
+  //
+  // 뼈대 파일 열세 벌을 이미 고쳤는데도 여기서 다시 쓰는 이유는, 그중 하나가 다시
+  // 갈리는 날 아무 신호도 나지 않기 때문이다. 만드는 자리는 한 곳이므로 판정도 한
+  // 곳에 둔다. 이관이 쓰는 바닥값과 같은 상수를 쓰는 것도 같은 이유다 — 값이 갈리면
+  // 만든 문서와 옮긴 문서가 서로 다른 바닥에 선다.
+  //
+  // lifecycle은 여기서 적지 않는다. 사람이 적는 선택 칸이고 비어 있는 것과 active는
+  // 다르다. 뼈대가 미리 적으면 모든 새 문서가 말한 적 없는 수명을 주장하게 되고,
+  // 그러면 "수명을 말한 문서"를 찾는 조회가 전 문서를 답한다.
+  // 줄 끝의 \r는 그대로 돌려준다. 한 줄만 LF로 바꾸면 나머지가 CRLF인 파일에 섞인
+  // 줄 끝이 하나 생기고, 그 파일을 다음에 손대는 도구마다 다르게 읽는다.
+  source = source.replace(/^state:[ \t]*.*?(\r?)$/mu, (whole, eol) => `state: ${INITIAL_DOCUMENT_STATE}${eol}`);
   if (type === 'PRD') source = source.replaceAll('<프로젝트명> 제품 요구사항', title.title);
   source = source.replace(new RegExp(`id: ${type}-\\d{3}`), `id: ${id}`)
     .replace(new RegExp(`  - ${type}-\\d{3}`), `  - ${id}`)

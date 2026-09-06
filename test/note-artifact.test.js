@@ -9,9 +9,21 @@ const repository = path.resolve(__dirname, '..');
 const templateRoot = path.join(repository, 'docs', 'templates');
 
 // every shipped template must close its frontmatter, or rdl doc create emits an unparseable document
+const { INITIAL_DOCUMENT_STATE } = require('../src/document-migration');
 for (const name of fs.readdirSync(templateRoot).filter((entry) => entry.endsWith('.template.md'))) {
   const source = fs.readFileSync(path.join(templateRoot, name), 'utf8');
-  assert.ok(parseFrontmatter(source), `${name}의 frontmatter가 닫히지 않았습니다.`);
+  const front = parseFrontmatter(source);
+  assert.ok(front, `${name}의 frontmatter가 닫히지 않았습니다.`);
+  if (!Object.prototype.hasOwnProperty.call(front.data, 'state')) continue;
+  // state는 rdl이 원장에서 투영하는 칸이다. 방금 만든 문서는 원장에 사건이 하나도
+  // 없으므로 투영은 바닥값이고, 뼈대가 그보다 높은 값을 적으면 그 문서는 태어나는
+  // 순간부터 원장에 없는 사실을 말한다 — ADR 뼈대의 proposed가 정확히 그랬다.
+  // 제출은 rdl doc submit이 원장에 사건을 적을 때 일어난다.
+  assert.strictEqual(front.data.state, INITIAL_DOCUMENT_STATE, `${name}의 state가 원장 없이 주장할 수 있는 값이 아닙니다.`);
+  // 수명은 사람이 적는 선택 칸이다. 비어 있는 것과 active는 다르므로 뼈대가 미리
+  // 적지 않는다 — 적으면 모든 새 문서가 말한 적 없는 수명을 주장하고, 그러면
+  // "수명을 말한 문서"를 찾는 조회가 전 문서를 답한다.
+  assert.ok(!Object.prototype.hasOwnProperty.call(front.data, 'lifecycle'), `${name}이 수명을 미리 적었습니다.`);
 }
 
 const note = fs.readFileSync(path.join(templateRoot, 'NTE.template.md'), 'utf8');

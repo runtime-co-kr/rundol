@@ -250,11 +250,13 @@ function staleDocumentOf(root, worktree, filePath) {
   try {
     const resolved = path.resolve(worktree, filePath);
     if (!/\.md$/iu.test(resolved) || !fs.existsSync(resolved)) return null;
-    // Workspace 탐색은 쓴 파일이 아니라 저장소 루트에서 시작한다. 찾기는 위로 거슬러
-    // 올라가며 층마다 manifestPath를 부르고, 못 찾은 층마다 runtimeWorkspace가 딸려
-    // 나온다 — 그 한 번이 git 프로세스 셋이다. 문서 파일에서 시작하면 그 왕복이 층수만큼
-    // 쌓여 실측 400ms대였고, 저장소 루트가 Workspace 루트인 흔한 경우에는 5ms대다.
-    // 훅은 저장마다 도는 자리라 그 차이가 곧 사람이 겪는 지연이 된다.
+    // Workspace 탐색은 쓴 파일이 아니라 저장소 루트에서 시작한다. 층수만큼 덜 훑는
+    // 것이 여전히 싸고, 훅은 저장마다 도는 자리라 그 차이가 곧 사람이 겪는 지연이 된다.
+    //
+    // 한때 이 자리가 훨씬 비쌌다. 찾기가 층마다 manifestPath를 부르고 못 찾은 층마다
+    // runtimeWorkspace가 딸려 나왔으며 그 한 번이 git 프로세스 셋이라, 문서 파일에서
+    // 시작하면 왕복이 층수만큼 쌓였다. 그 비용은 workspace.js가 없앴다 — 런타임 manifest가
+    // 하나도 없으면 어떤 저장소를 물어도 답이 null이므로 신원을 계산하지 않는다.
     const { workspaceLayout } = require('./workspace');
     const layout = workspaceLayout(root);
     // 승인 원장을 갖기 전 판에서는 낡음이라는 사실 자체가 없다.
@@ -271,7 +273,11 @@ function staleDocumentOf(root, worktree, filePath) {
       approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), project.key),
       { authority: authorityContext(layout.root, project.key, { now: Date.now() }) }
     );
-    const state = approval.trustState({ id: parsed.data.id, revision: documentRevision(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
+    // 리비전 표를 통째로 넘긴다. 판 2 값 하나만 주면 판 1로 기록된 옛 승인을 못 맞혀
+    // 낡음으로 읽고, 훅은 승인이 멀쩡한 문서에 "승인 후 개정"을 저장할 때마다 외친다.
+    // 그 헛울림은 막지도 않으면서 신뢰만 깎고, 한 번 그런 훅은 꺼진다.
+    const { documentRevisions } = require('./board-data');
+    const state = approval.trustState({ id: parsed.data.id, revisions: documentRevisions(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
     if (state.status !== 'stale') return null;
     return { project: project.key, id: parsed.data.id, approvedBy: state.approvedBy };
   } catch (_) { return null; }

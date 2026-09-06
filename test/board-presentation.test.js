@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  DEFAULT_PRESENTATION, PRESENTATION_GROUPS, readConfig, mergePresentation,
+  DEFAULT_PRESENTATION, PRESENTATION_GROUPS, SCAFFOLD_GROUPS, readConfig, mergePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig, policyDifferences
 } = require('../src/board-presentation');
 
@@ -18,8 +18,13 @@ assert.strictEqual(merged.documentTypes.prd.label, '프로젝트 제품 요구�
 assert.strictEqual(merged.documentTypes.prd.description, DEFAULT_PRESENTATION.documentTypes.prd.description);
 assert.strictEqual(merged.documentStates.draft.order, 99);
 // 그룹이 늘어날 때마다 이 목록을 손으로 고치면, 새 그룹을 빠뜨려도 테스트가 통과한다.
+// 다만 뼈대가 적는 것은 옛 판이 아는 그룹뿐이다 — 최상위 키가 하나 늘면 옛 판은
+// board.json을 통째로 거부하고, 그러면 아무도 값을 넣지 않은 빈 칸 하나 때문에 그
+// 사람의 저장소가 열리지 않는다. p15-compat이 그 계약을 실제 옛 판으로 확인한다.
 const emptyConfig = { schemaVersion: 1 };
-for (const group of Object.keys(PRESENTATION_GROUPS)) emptyConfig[group] = {};
+for (const group of SCAFFOLD_GROUPS) emptyConfig[group] = {};
+assert(SCAFFOLD_GROUPS.every((group) => Object.prototype.hasOwnProperty.call(PRESENTATION_GROUPS, group)), '뼈대가 없는 그룹을 적으면 안 됩니다');
+assert(!SCAFFOLD_GROUPS.includes('documentLifecycles'), '옛 판이 모르는 그룹은 빈 칸으로 깔지 않습니다');
 assert.deepStrictEqual(JSON.parse(renderProjectBoardConfig()), emptyConfig);
 // 새로 만드는 board.json은 덮어쓴 것만 갖는다. 기본값을 파일에 복사해두면 유형을 하나
 // 더할 때마다 공유 파일이 바뀌고, 같은 저장소를 보는 구버전이 모르는 키에서 멈춘다.
@@ -64,6 +69,31 @@ try {
   const both = path.join(temporary, 'both.json');
   fs.writeFileSync(both, JSON.stringify({ schemaVersion: 1, documentTypes: { api: { label: '옛 이름' }, interface: { label: '새 이름' } } }), 'utf8');
   assert.strictEqual(readConfig(both).documentTypes.interface.label, '새 이름');
+
+  // state 칸이 나눠 쓰던 두 축을 가르면서 수명 쪽 낱말이 그룹째 옮겨갔다. 이름은
+  // 그대로이고 사는 그룹만 바뀐 경우이며, 이관 경로를 내지 않으면 그 라벨을 적어 둔
+  // board.json이 "지원하지 않는 키"로 거부되어 기존 Workspace가 멈춘다.
+  const moved = path.join(temporary, 'moved.json');
+  fs.writeFileSync(moved, JSON.stringify({
+    schemaVersion: 1,
+    documentStates: { draft: { label: '쓰는 중' }, active: { label: '살아 있음' }, archived: { label: '창고' }, review: { label: '검토 중' }, unread: { label: '미확인' } }
+  }), 'utf8');
+  const movedRead = readConfig(moved);
+  assert.strictEqual(movedRead.documentStates.draft.label, '쓰는 중', '진행 축에 남은 낱말은 그 자리에 있습니다.');
+  assert.strictEqual(movedRead.documentStates.active, undefined, '옮겨간 낱말은 옛 그룹에 남지 않습니다.');
+  assert.strictEqual(movedRead.documentLifecycles.active.label, '살아 있음', '팀이 적은 말은 새 그룹으로 따라갑니다.');
+  assert.strictEqual(movedRead.documentLifecycles.archived.label, '창고');
+  // 어느 어휘에도 남지 않은 낱말은 가리킬 값이 없다. 거부하면 팀이 retire하지도 않은
+  // 낱말 하나 때문에 Workspace 전체가 열리지 않고, 대신 적을 값도 없다.
+  assert.strictEqual(movedRead.documentStates.review, undefined, '사라진 값의 라벨은 읽으면서 버립니다.');
+  assert.strictEqual(movedRead.documentStates.unread, undefined);
+  // 새 자리에 이미 값이 있으면 그것이 이긴다. 옛 자리를 지우지 않은 파일에서 지운
+  // 줄 알았던 값이 되살아나면 안 된다 — 이름 바꾸기와 같은 규칙이다.
+  const movedBoth = path.join(temporary, 'moved-both.json');
+  fs.writeFileSync(movedBoth, JSON.stringify({
+    schemaVersion: 1, documentStates: { active: { label: '옛 자리' } }, documentLifecycles: { active: { label: '새 자리' } }
+  }), 'utf8');
+  assert.strictEqual(readConfig(movedBoth).documentLifecycles.active.label, '새 자리');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }
