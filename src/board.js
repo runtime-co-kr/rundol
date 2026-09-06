@@ -321,6 +321,37 @@ function documentApprovals(root, projectKey, documents) {
   }
 }
 
+// 언제부터 검토자의 차례였나. 지금까지 줄에는 시각이 하나도 없어서 화면이 "며칠 기다렸나"를
+// 쓸 수 없었고, 그래서 정렬도 식별자 알파벳순이었다 — SCR-002는 대기 시간을 필수 표시로
+// 못박고 대기 시간이 긴 순을 정해 두었으므로, 이것은 새 축이 아니라 빠져 있던 자리다.
+//
+// 기준은 "지금 판이 검토자 앞에 놓인 시각"이다. 검토자가 볼 것은 언제나 지금 파일이고
+// 승인도 지금 리비전에 대해 내려지므로, 그 판이 생긴 시각부터가 기다린 시간이다.
+//
+//   제출이 지금 판으로 서 있으면(pending) 제출 시각을 쓴다. 원장이 기록한 사실이고
+//   "차례가 작성자에게서 검토자에게 넘어왔다"를 정확히 가리키는 유일한 값이다.
+//
+//   그 밖에는 파일이 마지막으로 바뀐 시각이다. 제출 축을 안 쓰는 저장소가 그렇고 —
+//   이 저장소에는 제출이 한 건도 없다 — drifted도 여기다. drifted의 제출 시각은 지금
+//   파일이 아닌 다른 판의 것이라, 그것을 쓰면 이미 지나간 판을 기다린 시간이 지금 판의
+//   것으로 적힌다. 반려는 줄에서 이미 빠졌으므로 이 함수가 볼 일이 없다.
+//
+//   마지막 승인 시각은 쓰지 않는다. 낡음은 승인 뒤 어느 시점에 바뀐 것인데 그 "어느
+//   시점"은 원장에 없고(형상 이력을 문서마다 거슬러야 나오는 값이라 폴링에 실을 수 없다),
+//   승인 시각부터 세면 승인 직후 한참 묵혀 두었다가 어제 고친 문서가 "1년 기다림"으로 뜬다.
+//
+// 못 구하면 null이다. 지어내지 않는다 — 없는 것과 오래된 것은 다르고, 0으로 채우면 값이
+// 없는 문서가 줄의 맨 앞에서 가장 급한 것 행세를 한다.
+//
+// mtime은 참고 값이라는 점을 알고 쓴다. 새로 클론한 저장소에서는 전 문서가 클론 시각을
+// 갖는다. 그래도 이 층에서 구할 수 있는 "지금 판이 언제 생겼나"는 이것뿐이고, 값이 거친
+// 것과 값이 없는 것은 다르다 — 거친 값은 순서를 주지만 없는 값은 아무것도 주지 않는다.
+function waitingSince(document, state) {
+  const submission = state.submission;
+  if (submission && submission.state === 'pending' && submission.recordedAt) return submission.recordedAt;
+  return document.modifiedAt || null;
+}
+
 // 검토를 기다리는 문서의 줄. attention과 가르는 이유는 성격이 달라서다 — attention은
 // "봐야 할 문제"이고 이것은 "사람이 처리해야 할 줄"이다. 섞으면 승인을 안 쓰는 프로젝트의
 // 문서 전건이 문제 목록으로 들어가 진짜 문제를 덮고, 반대로 승인을 쓰는 프로젝트에서는
@@ -329,9 +360,24 @@ function documentApprovals(root, projectKey, documents) {
 // 승인이 밀리는 실질 원인은 "무엇이 내 검토를 기다리는지" 볼 자리가 없는 것이다. 그 사이에
 // 승인 안 된 문서 위로 작업이 계속 쌓이고, 상류가 흔들릴 때마다 하류 전체를 다시 탄다.
 //
-// 셈은 전건으로 하고 목록만 자른다. 화면이 "133건 중 12건"을 말할 수 있어야 줄의 길이가
-// 보이고, 길이가 보여야 사람이 승인을 관문으로 쓸지 판단한다.
-const REVIEW_QUEUE_LIMIT = 50;
+// 줄은 통째로 싣는다. 오래 앞 50건에서 잘랐는데, 절단면이 정렬 축(낡음 먼저 · 그 안에서
+// 식별자 순)과 겹쳐 특정 유형이 통째로 사라졌다 — 이 저장소는 미승인이 149건이라 마지막에
+// 실리는 것이 REQ 대의 문서였고, SCR·STD·TST로 시작하는 문서는 한 건도 실리지 않았다.
+// 검증 문서만 47건이 그렇게 보이지 않았다. 게다가 화면의 거르개는 이미 잘린 50건을 거르므로
+// "미승인만"을 눌러도 잘린 뒤는 영영 나타나지 않았다 — 셈은 전건인데 고를 수 있는 것은
+// 앞 50건이라, 수를 보고 그 수를 만든 목록으로 갈 수 없었다.
+//
+// 상한을 올리는 것으로는 이 결함이 없어지지 않는다. 절단면이 어디에 있든 정렬 축과 겹쳐
+// 있는 한 같은 일이 더 큰 저장소에서 다시 일어나고, 그때 사라지는 유형이 무엇인지는
+// 아무 신호도 내지 않는다. 서버가 거르개를 받는 길도 접었다 — 거르는 것은 화면 안의 값이라
+// 스냅숏을 다시 묻지 않는다는 것이 이 화면의 계약인데(SCR-005), 그 계약을 깨면 거를 때마다
+// 목록이 잠깐 비고 폴링이 되돌린 값과 겹친다.
+//
+// 그리고 아낄 것이 없다. 줄 하나는 이미 실린 documents의 부분 사본이고(id·kind·type·
+// title·file은 그 문서에 그대로 있다) 그 documents는 본문까지 통째로 실린다 — 이 저장소에서
+// 스냅숏 1,072KB 중 documents가 707KB이고 줄 151건은 28KB다. 앞 50건에서 자르며 아낀 것은
+// 스냅숏의 1.8%였고, 대신 문서 유형 넷이 화면에서 통째로 사라졌다. 한 번에 몇 줄을 그릴지는
+// 화면이 정한다 — 화면이 접으면 거르개는 여전히 전건을 보지만, 서버가 자르면 못 본다.
 function reviewQueue(documents, approvals) {
   if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, rejected: 0, items: [] };
   const counts = { approved: 0, stale: 0, unapproved: 0 };
@@ -356,12 +402,27 @@ function reviewQueue(documents, approvals) {
     // 통째로 받아 kind를 갖고 있으므로, 두 화면이 같은 문서에 다른 유형을 적게 된다.
     items.push({
       status: state.status, id: document.id, kind: document.kind || null, type: document.type, title: document.title,
-      file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals
+      file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals,
+      waitingSince: waitingSince(document, state)
     });
   }
   // 낡음이 먼저다. 승인된 것이 흔들린 상태라 하류가 이미 그것을 근거로 삼았고,
-  // 미승인은 아직 아무도 근거로 삼지 않았다.
-  items.sort((left, right) => (left.status === right.status ? left.id.localeCompare(right.id) : left.status === 'stale' ? -1 : 1));
+  // 미승인은 아직 아무도 근거로 삼지 않았다. 대기 시간은 이 축을 뒤집지 않고 그 안에서만
+  // 적용한다 — 뒤집으면 어제 흔들린 승인본이 반년 묵은 초안 뒤로 밀리는데, 앞엣것은 이미
+  // 하류가 근거로 쓰고 있어 미룰수록 다시 타야 할 것이 늘어난다.
+  //
+  // 같은 갈래 안에서는 오래 기다린 것이 먼저다. 예전에는 식별자 오름차순이었는데 그것은
+  // 순서가 아니라 이름이라, 줄의 앞에 선 것이 "먼저 볼 것"이 아니라 "A로 시작하는 것"이었다.
+  // SCR-002가 대기 시간이 긴 순을 정해 둔 자리이기도 하다.
+  //
+  // 대기 시각을 못 구한 줄은 맨 뒤다. 없는 값을 0(=가장 오래)으로 읽으면 모르는 문서가 줄의
+  // 맨 앞에 서서 가장 급한 것 행세를 한다 — 없는 것과 오래된 것은 다르다. 시각까지 같으면
+  // 식별자로 가른다. 폴링마다 순서가 흔들리면 사람이 훑던 자리를 잃는다.
+  items.sort((left, right) => {
+    if (left.status !== right.status) return left.status === 'stale' ? -1 : 1;
+    if (Boolean(left.waitingSince) !== Boolean(right.waitingSince)) return left.waitingSince ? -1 : 1;
+    return (left.waitingSince ? left.waitingSince.localeCompare(right.waitingSince) : 0) || left.id.localeCompare(right.id);
+  });
   // 이 프로젝트가 승인 축을 쓰는가. 한 번도 승인하지 않은 프로젝트에서 전 문서가 미승인인
   // 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 검토 대기로 읽으면 인박스가 첫날부터
   // 문서 전건으로 찬다. 판단은 화면이 하되 근거는 여기서 준다.
@@ -369,7 +430,7 @@ function reviewQueue(documents, approvals) {
   // 반려도 그 축을 쓴다는 증거다. 승인 한 번 없이 반려만 한 프로젝트는 관문을 안 쓰는
   // 것이 아니라 아직 아무것도 통과시키지 않은 것이고, 그때 화면이 "쓰지 않습니다"라고
   // 말하면 방금 내린 판단이 화면에서 사라진다.
-  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items: items.slice(0, REVIEW_QUEUE_LIMIT) };
+  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items };
 }
 
 function attentionItems(tasks, documents, sync, approvals) {
@@ -1302,4 +1363,4 @@ function startBoard(start, options) {
   });
 }
 
-module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, composeDocumentFile, approveBoardDocument, boardDocumentDiff, createBoardServer, startBoard };
+module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, reviewQueue, composeDocumentFile, approveBoardDocument, boardDocumentDiff, createBoardServer, startBoard };

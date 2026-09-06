@@ -21,10 +21,47 @@ function remoteUrl(root, remote) {
   return result.status === 0 ? result.stdout.trim() : '';
 }
 
+// 저장소의 "신원"만 캐시한다. 위치는 캐시하지 않는다.
+//
+// 위치(저장소 루트)는 git.js가 이미 기억하고, worktree/init/clone처럼 레이아웃을
+// 바꾸는 호출에서 버린다. 그 무효화를 여기서 다시 구현하면 두 캐시가 서로 다른
+// 시점에 낡고, 그때 어느 쪽이 틀렸는지 아무도 답할 수 없다. 그래서 루트는 매번
+// git.js에 다시 묻고(캐시에 걸리므로 공짜다) 그 위에 원격 URL만 얹는다.
+//
+// 얹어야 하는 이유는 remoteUrl이 `git remote get-url`이라 git.js의 캐시 대상이
+// 아니기 때문이다. git.js는 rev-parse의 레이아웃 질의만 캐시하므로 이 호출은 부를
+// 때마다 프로세스를 띄운다. runtimeWorkspace를 부르는 자리는 한둘이 아니다 —
+// 사건을 적을 때마다, 잠금 디렉터리를 물을 때마다, 훅이 돌 때마다다. 한 명령이
+// 도는 동안 같은 저장소에 같은 질문을 수십 번 하고, Windows에서는 그 한 번이
+// 수백 ms다.
+//
+// 키는 방금 git이 답한 저장소 루트 + 원격 이름이다. 한 프로세스가 임시 저장소를
+// 여럿 보는 시험에서도 루트가 다르면 키가 다르므로 서로 섞이지 않는다.
+//
+// 틀리는 경우는 하나다: 이 프로세스가 사는 동안 그 저장소의 원격 URL이 바뀌는 것.
+// src/ 어디에도 remote add·set-url이 없으므로 그것은 밖에서 벌어지는 일이고, 한
+// rdl 명령이 도는 몇 초 사이에 그러면 그 명령은 캐시가 없어도 앞뒤가 다른 저장소를
+// 본다. git.js가 저장소 위치에 대해 이미 받아들인 것과 같은 전제다.
+//
+// 틀린 것 같으면 RUNDOL_NO_RUNTIME_CACHE=1로 끄고 다시 본다. 증상이 사라지면
+// 캐시가 원인이고 남으면 아니다 — 그 구분을 낼 수 없는 캐시는 진단할 수 없는 층이
+// 되고, 그러면 없는 것만 못하다.
+const identityCache = new Map();
+const IDENTITY_CACHE_DISABLED = process.env.RUNDOL_NO_RUNTIME_CACHE === '1';
+
 function workspaceId(root, remote) {
   const repository = repositoryRoot(root);
-  const identity = remoteUrl(repository, remote) || fs.realpathSync.native(repository).replace(/\\/g, '/').toLowerCase();
-  return crypto.createHash('sha256').update(identity).digest('hex').slice(0, 16);
+  const name = remote || 'origin';
+  const key = JSON.stringify([repository, name]);
+  if (identityCache.has(key)) return identityCache.get(key);
+  const identity = remoteUrl(repository, name) || fs.realpathSync.native(repository).replace(/\\/g, '/').toLowerCase();
+  const id = crypto.createHash('sha256').update(identity).digest('hex').slice(0, 16);
+  if (!IDENTITY_CACHE_DISABLED) identityCache.set(key, id);
+  return id;
+}
+
+function clearRuntimeCache() {
+  identityCache.clear();
 }
 
 function runtimeWorkspace(start, remote) {
@@ -244,6 +281,6 @@ function bindProcessLockSignals(lock, signals) {
 }
 
 module.exports = {
-  runtimeHome, repositoryRoot, remoteUrl, workspaceId, runtimeWorkspace, ensureRuntime,
+  runtimeHome, repositoryRoot, remoteUrl, workspaceId, runtimeWorkspace, ensureRuntime, clearRuntimeCache,
   processIsAlive, processLockName, readProcessLock, acquireProcessLock, withProcessLock, bindProcessLockSignals
 };
