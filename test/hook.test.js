@@ -55,6 +55,16 @@ try {
   assert.strictEqual(tool.command, 'git commit -m x');
   assert.strictEqual(normalizePayload({ tool_input: 'not-an-object' }).command, null, '객체가 아닌 tool_input은 무시한다');
 
+  // 바뀐 자리를 담는다. 쓰고 난 파일만 보면 지금 값이 무엇인지는 알아도 이 쓰기가
+  // 그 값을 만든 것인지 원래 있던 것인지 가를 수 없다.
+  const edited = normalizePayload({ tool_name: 'Edit', tool_input: { file_path: 'a.md', old_string: 'x', new_string: 'y' } });
+  assert.deepStrictEqual(edited.edits, [{ before: 'x', after: 'y' }]);
+  const multi = normalizePayload({ tool_name: 'MultiEdit', tool_input: { file_path: 'a.md', edits: [{ old_string: 'a', new_string: 'b' }, { old_string: 'c', new_string: 'd' }] } });
+  assert.deepStrictEqual(multi.edits, [{ before: 'a', after: 'b' }, { before: 'c', after: 'd' }]);
+  assert.deepStrictEqual(normalizePayload({ tool_name: 'Write', tool_input: { file_path: 'a.md', content: 'z' } }).edits, [],
+    'Write에는 견줄 이전 값이 없으므로 짝을 만들지 않는다');
+  assert.deepStrictEqual(normalizePayload({ tool_input: { edits: 'broken' } }).edits, [], '깨진 입력도 판정을 지어내지 않는다');
+
   // ── 저장소 밖 ─────────────────────────────────────────────────────────
 
   const outside = runHook(os.tmpdir(), { event: 'stop', payload: { cwd: path.join(os.tmpdir(), 'no-such-rundol-repo') } });
@@ -223,6 +233,68 @@ try {
   // 문서가 아닌 저장과 문서를 쓰지 않는 도구는 이 판정을 지나지 않는다.
   assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Edit', tool_input: { file_path: path.join(projectRoot, 'tasks.json') } }).context, [], 'md가 아니면 볼 것이 없다');
   assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Read', tool_input: { file_path: documentFile } }).context, [], '읽기는 저장이 아니다');
+
+  // ── post-tool-use: rdl이 소유한 state 칸을 손으로 고친 쓰기 ────────────
+  //
+  // 어휘 안의 값을 손으로 적으면 아무 진단도 나지 않는다(RDL-DOC-018은 어휘 밖만
+  // 잡는다). 아무도 승인하지 않은 문서가 파일에서 승인됨을 주장하고 그것을 읽는
+  // 화면이 전부 그 주장을 옮기는데, 그 사실을 말할 수 있는 자리는 이 저장뿐이다.
+  const currentState = /^state:[^\S\r\n]*([^\r\n]*)$/mu.exec(fs.readFileSync(documentFile, 'utf8'))[1].trim();
+  assert.strictEqual(currentState, 'approved', '승인 사건이 파일의 state 칸에 투영되어 있어야 이 시험이 성립한다');
+
+  const handEdited = hook('post-tool-use', {
+    cwd: projectRoot, tool_name: 'Edit',
+    tool_input: { file_path: documentFile, old_string: 'state: draft', new_string: 'state: approved' }
+  });
+  assert.strictEqual(handEdited.block, false, '되돌아가는 칸이므로 막지 않는다');
+  assert.ok(handEdited.context.some((line) => line.includes('state를 손으로 고쳤습니다') && line.includes('draft → approved')),
+    `무엇을 무엇으로 갈았는지 말한다: ${JSON.stringify(handEdited.context)}`);
+  assert.ok(handEdited.context.some((line) => line.includes('rdl doc submit')), '이 칸을 실제로 움직이는 명령을 함께 준다');
+  assert.ok(handEdited.context.some((line) => line.includes('lifecycle')), '수명을 말하려던 것이면 어느 칸인지 알려 준다');
+
+  // 값이 지금 frontmatter의 state와 다르면 본문에 우연히 걸린 줄이다. 말하지 않는다.
+  const bodyLooksLikeState = hook('post-tool-use', {
+    cwd: projectRoot, tool_name: 'Edit',
+    tool_input: { file_path: documentFile, old_string: 'state: draft', new_string: 'state: proposed' }
+  });
+  assert.ok(!bodyLooksLikeState.context.some((line) => line.includes('손으로 고쳤습니다')),
+    `지금 값과 묶이지 않는 매치는 오탐이므로 말하지 않는다: ${JSON.stringify(bodyLooksLikeState.context)}`);
+
+  // 짝이 없는 쓰기는 판정하지 않는다. Write는 통째로 덮어 이전 내용이 페이로드에 없다.
+  assert.ok(!hook('post-tool-use', { cwd: projectRoot, tool_name: 'Write', tool_input: { file_path: documentFile, content: 'state: approved' } })
+    .context.some((line) => line.includes('손으로 고쳤습니다')), 'Write에는 견줄 이전 값이 없다');
+
+  // state 줄을 지나지 않는 편집은 이 판정을 지나지 않는다.
+  assert.ok(!hook('post-tool-use', { cwd: projectRoot, tool_name: 'Edit', tool_input: { file_path: documentFile, old_string: '# 저장', new_string: '# 저장 시점' } })
+    .context.some((line) => line.includes('손으로 고쳤습니다')), 'state를 건드리지 않은 편집은 말할 것이 없다');
+
+  // MultiEdit도 같은 판정을 지난다. 도구가 하나 늘 때 이 통제가 조용히 새면 안 된다.
+  assert.ok(hook('post-tool-use', {
+    cwd: projectRoot, tool_name: 'MultiEdit',
+    tool_input: { file_path: documentFile, edits: [{ old_string: '# 저장', new_string: '# 저장 시점' }, { old_string: 'state: draft', new_string: 'state: approved' }] }
+  }).context.some((line) => line.includes('손으로 고쳤습니다')), 'MultiEdit의 여러 쌍을 모두 본다');
+
+  // rdl 자신의 투영은 이 갈래에 들어오지 않는다. 명령의 쓰기는 도구 이름이 Bash라
+  // DOCUMENT_WRITE_TOOLS를 지나지 않으므로, 자기 명령마다 우는 일이 구조적으로 없다.
+  assert.deepStrictEqual(hook('post-tool-use', { cwd: projectRoot, tool_name: 'Bash', tool_input: { command: 'rdl doc submit ADR-001' } }).context, [],
+    'rdl의 쓰기는 문서 쓰기 도구를 지나지 않는다');
+
+  // ── post-tool-use: 사람이 소유한 lifecycle 칸의 어휘 밖 값 ─────────────
+  //
+  // state와 심각도가 다르다. 아무것도 이 값을 굴리지 않아 오타가 스스로 낫지 않고,
+  // rdl check가 RDL-DOC-017 오류로 막는다. 사람이 방금 친 자리에서 말해야 한다.
+  const withLifecycle = fs.readFileSync(documentFile, 'utf8').replace(/^state:/mu, 'lifecycle: 채택됨\nstate:');
+  fs.writeFileSync(documentFile, withLifecycle, 'utf8');
+  const badLifecycle = hook('post-tool-use', { cwd: projectRoot, tool_name: 'Edit', tool_input: { file_path: documentFile } });
+  assert.strictEqual(badLifecycle.block, false, '알릴 뿐 막지 않는다');
+  assert.ok(badLifecycle.context.some((line) => line.includes('lifecycle') && line.includes('RDL-DOC-017')),
+    `어휘 밖 수명 값을 그 자리에서 말한다: ${JSON.stringify(badLifecycle.context)}`);
+  assert.ok(badLifecycle.context.some((line) => line.includes('superseded')), '가능한 값을 함께 싣는다');
+
+  // 어휘 안의 값은 사건이 아니다. 정상 값에 매번 울면 그 신호는 꺼진 신호가 된다.
+  fs.writeFileSync(documentFile, fs.readFileSync(documentFile, 'utf8').replace(/^lifecycle: .*$/mu, 'lifecycle: accepted'), 'utf8');
+  assert.ok(!hook('post-tool-use', { cwd: projectRoot, tool_name: 'Edit', tool_input: { file_path: documentFile } })
+    .context.some((line) => line.includes('RDL-DOC-017')), '어휘 안의 수명 값에는 말할 것이 없다');
 
   // ── session-end ───────────────────────────────────────────────────────
 

@@ -15,15 +15,19 @@ const workflow = require('./workflow');
 const { entityRevision, listDocuments, syncStatus, boardWorkflow, taskWorkflow } = require('./board-data');
 const { listClients, registerClient, setClientStatus, humanApproversFrom, projectHumanApprovers } = require('./collaboration-store');
 const { addComment, listComments } = require('./comment');
-const { addAsset } = require('./asset');
+const { addAsset, assetsDirectory } = require('./asset');
 const { loadDocumentContract, planDocumentContract, updateDocumentContract } = require('./document-contract');
-const { loadBoardPresentation, savePresentation } = require('./board-presentation');
+const { loadBoardPresentation, savePresentation, presentationSavePlan } = require('./board-presentation');
+const { loadWorkflows, workflowsSavePlan, saveWorkflows, readJson: readWorkflowLayer } = require('./workflow-config');
+const { requestPolicyDecision } = require('./policy-gate');
+const { listDecisions, answerDecision } = require('./decision');
 const { MODES: APPROVAL_MODES, DEFAULT_PROJECT_MODE, DEFAULT_WORKSPACE_FLOOR } = require('./approval-mode');
 const { CONSTRAINT_KINDS, EXEMPTABLE_GATES } = require('./item-type');
 const { runGit } = require('./git');
 const { pendingRuns } = require('./run-pending');
 const runLedger = require('./run-ledger');
 const { approveRun } = require('./run');
+const { searchWorkspace } = require('./search');
 
 // inheritance와 sources는 파일 경로와 원본을 담은 파생 정보라 revision 비교에서 뺀다.
 // 넣어 두면 경로가 같아도 값이 같은지 판단하는 데 방해만 된다.
@@ -255,16 +259,25 @@ function requestBody(request, limit) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let over = false;
     request.on('data', (chunk) => {
+      if (over) return;
       size += chunk.length;
       if (size > cap) {
-        reject(new Error(`요청 본문은 ${Math.round(cap / 1024)}KB를 넘을 수 없습니다.`));
-        request.destroy();
+        over = true;
+        const error = new Error(`요청 본문은 ${Math.round(cap / 1024)}KB를 넘을 수 없습니다.`);
+        error.statusCode = 413;
+        reject(error);
+        // 소켓을 끊지 않는다. 끊으면 브라우저는 응답 대신 네트워크 오류를 받고,
+        // 화면은 "Failed to fetch"만 남긴다 — 무엇이 한계를 넘었는지도, 어떻게
+        // 하면 되는지도 말하지 못한다. 남은 본문은 버리되 응답은 끝까지 내보낸다.
+        request.resume();
         return;
       }
       chunks.push(chunk);
     });
     request.on('end', () => {
+      if (over) return;
       try {
         resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
       } catch (error) {
@@ -379,8 +392,62 @@ function waitingSince(document, state) {
 // 스냅숏 1,072KB 중 documents가 707KB이고 줄 151건은 28KB다. 앞 50건에서 자르며 아낀 것은
 // 스냅숏의 1.8%였고, 대신 문서 유형 넷이 화면에서 통째로 사라졌다. 한 번에 몇 줄을 그릴지는
 // 화면이 정한다 — 화면이 접으면 거르개는 여전히 전건을 보지만, 서버가 자르면 못 본다.
+// 검토 줄 한 칸. 인박스의 줄과 「내 차례」의 줄이 같은 함수에서 나와야 두 화면이 같은
+// 문서에 같은 사실을 적는다 — 두 자리에 따로 적으면 칸이 하나 늘 때 한쪽만 늘고, 그때
+// 화면 둘은 같은 원장을 보고 다른 말을 한다.
+//
+// kind를 함께 싣는다. type은 'document'라는 저장 종류라 문서 전건이 같은 값이고, 화면의
+// 유형 칩은 kind를 먼저 본다(documentTypeLabel). 빼면 유형 칩이 전부 'document'로 떨어져
+// 무엇이 밀렸는지가 유형별로 읽히지 않는다.
+//
+// owner는 MEMBER-ID다. 파일에 적힌 위키링크가 아니라 board-data가 갈라 둔 식별자를 싣는
+// 이유는 이 칸이 표시가 아니라 판정 축이기 때문이다 — 「내가 고칠 것」이 이 값으로 갈린다.
+//
+// submission은 통째로 싣지 않고 이 줄이 쓰는 칸만 옮긴다. 원장의 제출 객체에는 리비전과
+// 클라이언트 식별자까지 들어 있는데, 그것은 이 줄이 답하는 물음("누가 언제 넘겼나")이
+// 아니라 승인 판이 답하는 물음이다.
+function reviewSubmission(submission) {
+  const rejection = (submission && submission.rejection) || null;
+  return {
+    state: (submission && submission.state) || 'none',
+    submittedBy: (submission && submission.submittedBy) || null,
+    submittedAt: (submission && submission.recordedAt) || null,
+    rejectedBy: rejection ? rejection.rejectedBy || null : null,
+    rejectedAt: rejection ? rejection.recordedAt || null : null,
+    rejectedReason: rejection ? rejection.reason || null : null
+  };
+}
+
+function reviewRow(document, state) {
+  return {
+    status: state.status, id: document.id, kind: document.kind || null, type: document.type, title: document.title,
+    file: document.file, owner: document.ownerMember || null,
+    approvedBy: state.approvedBy || null, approvals: state.approvals,
+    submission: reviewSubmission(state.submission),
+    waitingSince: waitingSince(document, state)
+  };
+}
+
+// 낡음이 먼저다. 승인된 것이 흔들린 상태라 하류가 이미 그것을 근거로 삼았고, 미승인은 아직
+// 아무도 근거로 삼지 않았다. 대기 시간은 이 축을 뒤집지 않고 그 안에서만 적용한다 —
+// 뒤집으면 어제 흔들린 승인본이 반년 묵은 초안 뒤로 밀리는데, 앞엣것은 이미 하류가 근거로
+// 쓰고 있어 미룰수록 다시 타야 할 것이 늘어난다.
+//
+// 같은 갈래 안에서는 오래 기다린 것이 먼저다. 예전에는 식별자 오름차순이었는데 그것은
+// 순서가 아니라 이름이라, 줄의 앞에 선 것이 "먼저 볼 것"이 아니라 "A로 시작하는 것"이었다.
+// SCR-002가 대기 시간이 긴 순을 정해 둔 자리이기도 하다.
+//
+// 대기 시각을 못 구한 줄은 맨 뒤다. 없는 값을 0(=가장 오래)으로 읽으면 모르는 문서가 줄의
+// 맨 앞에 서서 가장 급한 것 행세를 한다 — 없는 것과 오래된 것은 다르다. 시각까지 같으면
+// 식별자로 가른다. 폴링마다 순서가 흔들리면 사람이 훑던 자리를 잃는다.
+function byReviewUrgency(left, right) {
+  if (left.status !== right.status) return left.status === 'stale' ? -1 : 1;
+  if (Boolean(left.waitingSince) !== Boolean(right.waitingSince)) return left.waitingSince ? -1 : 1;
+  return (left.waitingSince ? left.waitingSince.localeCompare(right.waitingSince) : 0) || left.id.localeCompare(right.id);
+}
+
 function reviewQueue(documents, approvals) {
-  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, rejected: 0, items: [] };
+  if (!approvals.states) return { used: false, unknown: approvals.reason, counts: null, total: 0, rejected: 0, items: [], rejectedItems: [] };
   const counts = { approved: 0, stale: 0, unapproved: 0 };
   const items = [];
   // 반려한 문서는 이 줄에서 뺀다. 반려는 「내 차례」를 「작성자 차례」로 옮기는
@@ -390,40 +457,24 @@ function reviewQueue(documents, approvals) {
   // 다만 몇 건을 뺐는지는 값으로 낸다. 조용히 사라지면 반려한 문서는 어느 화면에도
   // 서지 않게 되고, 그것은 승인 옆에 반려가 없던 때와 같은 자리다 — 판단이 어디에도
   // 안 보이는 자리. 셈은 신뢰 상태 셋과 별개 축이라 counts에 섞지 않는다.
-  let rejected = 0;
+  const rejected = [];
   for (const document of documents) {
     const state = approvals.states[document.id];
     if (!state) continue;
     counts[state.status] = (counts[state.status] || 0) + 1;
     if (state.status === 'approved') continue;
-    if (state.submission && state.submission.state === 'rejected') { rejected += 1; continue; }
-    // kind를 함께 싣는다. type은 'document'라는 저장 종류라 문서 130건이 모두 같은 값이고,
-    // 화면의 유형 칩은 kind를 먼저 본다(documentTypeLabel). 빼면 인박스의 유형 칩이 전부
-    // 'document'로 떨어져 무엇이 밀렸는지가 유형별로 읽히지 않는다 — 문서 목록은 문서를
-    // 통째로 받아 kind를 갖고 있으므로, 두 화면이 같은 문서에 다른 유형을 적게 된다.
-    items.push({
-      status: state.status, id: document.id, kind: document.kind || null, type: document.type, title: document.title,
-      file: document.file, approvedBy: state.approvedBy || null, approvals: state.approvals,
-      waitingSince: waitingSince(document, state)
-    });
+    const row = reviewRow(document, state);
+    // 반려한 줄도 값으로는 만든다. 예전에는 수만 세고 버렸는데, 그러면 "차례가 작성자에게
+    // 넘어갔다"는 사실이 셈 하나로만 남아 그 작성자에게 무엇이 넘어왔는지 아무 화면도
+    // 말할 수 없다 — 「내가 고칠 것」이 서는 자리가 여기다. 셈은 이 줄에서 파생시킨다.
+    // 따로 세면 언젠가 둘이 갈리고, 갈렸다는 사실은 아무 신호도 내지 않는다.
+    if (state.submission && state.submission.state === 'rejected') { rejected.push(row); continue; }
+    items.push(row);
   }
-  // 낡음이 먼저다. 승인된 것이 흔들린 상태라 하류가 이미 그것을 근거로 삼았고,
-  // 미승인은 아직 아무도 근거로 삼지 않았다. 대기 시간은 이 축을 뒤집지 않고 그 안에서만
-  // 적용한다 — 뒤집으면 어제 흔들린 승인본이 반년 묵은 초안 뒤로 밀리는데, 앞엣것은 이미
-  // 하류가 근거로 쓰고 있어 미룰수록 다시 타야 할 것이 늘어난다.
-  //
-  // 같은 갈래 안에서는 오래 기다린 것이 먼저다. 예전에는 식별자 오름차순이었는데 그것은
-  // 순서가 아니라 이름이라, 줄의 앞에 선 것이 "먼저 볼 것"이 아니라 "A로 시작하는 것"이었다.
-  // SCR-002가 대기 시간이 긴 순을 정해 둔 자리이기도 하다.
-  //
-  // 대기 시각을 못 구한 줄은 맨 뒤다. 없는 값을 0(=가장 오래)으로 읽으면 모르는 문서가 줄의
-  // 맨 앞에 서서 가장 급한 것 행세를 한다 — 없는 것과 오래된 것은 다르다. 시각까지 같으면
-  // 식별자로 가른다. 폴링마다 순서가 흔들리면 사람이 훑던 자리를 잃는다.
-  items.sort((left, right) => {
-    if (left.status !== right.status) return left.status === 'stale' ? -1 : 1;
-    if (Boolean(left.waitingSince) !== Boolean(right.waitingSince)) return left.waitingSince ? -1 : 1;
-    return (left.waitingSince ? left.waitingSince.localeCompare(right.waitingSince) : 0) || left.id.localeCompare(right.id);
-  });
+  items.sort(byReviewUrgency);
+  // 반려 줄도 같은 자로 정렬한다. 다른 자로 재면 같은 문서가 화면 둘에서 다른 순서로 서고,
+  // 그때 "먼저 볼 것"이라는 말은 어느 쪽에서도 근거를 잃는다.
+  rejected.sort(byReviewUrgency);
   // 이 프로젝트가 승인 축을 쓰는가. 한 번도 승인하지 않은 프로젝트에서 전 문서가 미승인인
   // 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 검토 대기로 읽으면 인박스가 첫날부터
   // 문서 전건으로 찬다. 판단은 화면이 하되 근거는 여기서 준다.
@@ -431,7 +482,124 @@ function reviewQueue(documents, approvals) {
   // 반려도 그 축을 쓴다는 증거다. 승인 한 번 없이 반려만 한 프로젝트는 관문을 안 쓰는
   // 것이 아니라 아직 아무것도 통과시키지 않은 것이고, 그때 화면이 "쓰지 않습니다"라고
   // 말하면 방금 내린 판단이 화면에서 사라진다.
-  return { used: counts.approved + counts.stale > 0 || rejected > 0, unknown: null, counts, total: items.length, rejected, items };
+  return { used: counts.approved + counts.stale > 0 || rejected.length > 0, unknown: null, counts, total: items.length, rejected: rejected.length, items, rejectedItems: rejected };
+}
+
+// ── 문서의 「내 차례」 ───────────────────────────────────────────────────────
+//
+// 태스크는 오래전부터 사람 축으로 좁혀졌다(owner·reviewers). 문서에는 그 칸이 없어서
+// 검토 인박스는 프로젝트 전체를 셌고, 그래서 이 저장소에서 인박스를 열면 159건이 한
+// 벽으로 선다 — 그중 지금 이 사람이 손댈 것이 무엇인지는 아무 데도 적혀 있지 않다.
+// 사람의 병목이 작성이 아니라 검토인데, 검토할 사람 앞에 놓인 것이 남의 줄과 섞여 있다.
+//
+// 문서에 reviewers 칸을 새로 파지 않는다. 그 칸은 사람이 또 적어야 하는 값이고, 적지
+// 않은 문서는 아무의 줄에도 서지 않게 되어 지금과 같은 자리로 돌아온다. 대신 이미
+// 원장에 있는 사실 셋으로 가른다 — 누가 승인 자격자인가, 누가 소유자인가, 누가
+// 승인했는가. 셋 다 저장된 사실이라 새로 적을 것이 없다.
+//
+// 갈래가 셋인 이유는 시키는 행동이 셋이기 때문이다. 한 줄로 합치면 "읽고 승인하라"와
+// "고쳐서 다시 올리라"가 같은 목록에 서고, 그 목록은 무엇을 하라는 것인지 말하지 못한다.
+//
+// 순서는 되돌리는 비용이 큰 것부터다 — document-analysis의 nextPipelineStep과
+// reviewQueue의 정렬이 이미 그은 선이고, 여기서도 같은 선을 긋는다.
+//
+//   나를 기다리는 것   남이 나에게 넘기고 멈춰 서 있다. 원장에 제출로 기록된 사실이라
+//                      "차례가 넘어왔다"가 추측이 아니고, 지금 멈춰 있는 것은 사람이다.
+//   내 승인이 쓰인 것   내 판단이 이미 하류에 소비됐는데 그 판단이 가리키던 판이 아니다.
+//                      아무도 멈춰 있지 않지만 하류는 더 이상 참이 아닌 것 위에서 돈다 —
+//                      낡음이 미승인보다 먼저인 것과 같은 이유이고, 미룰수록 다시 타야
+//                      할 것이 는다.
+//   내가 고칠 것        차례가 나에게 돌아온 내 문서다. 반려는 아직 아무도 근거로 삼지
+//                      않았고, 낡음이라도 재승인은 남의 몫이라 여기서는 마지막이다.
+//
+// 한 문서는 한 사람에게 한 갈래에만 선다. 두 갈래에 세우면 셈이 실제 일의 양보다 크게
+// 나오고, 그 사람은 같은 문서를 두 번 지나친다 — 이 저장소가 그 경우다. ADR-020·021은
+// MEMBER-001이 소유자이면서 승인자라 「내 승인이 쓰인 것」과 「내가 고칠 것」 양쪽에
+// 걸리는데, 낡음에서 다음에 눌러야 할 단추는 재승인이므로 앞엣것이 가져간다. 뒤엣
+// 사실은 사라지지 않고 줄 안의 컨텍스트로 남는다(소유자도 나라는 것).
+//
+// 갈래 목록을 여기서 값으로 내는 이유는 화면이 그 목록을 적으면 안 되기 때문이다.
+// 화면은 브라우저에서 돌아 require를 쓸 수 없고, 적어 둔 목록은 갈래가 늘 때 한쪽만
+// 는다 — approvalCatalog·itemTypeCatalog가 같은 자리에서 같은 이유로 실린다.
+const DOCUMENT_TURN_LANES = Object.freeze([
+  Object.freeze({
+    key: 'awaiting',
+    label: '나를 기다리는 것',
+    hint: '내가 이 프로젝트의 문서 승인자이고, 올라온 판이 아직 답을 못 받았습니다. 읽고 승인하거나 반려하면 올린 사람이 다시 움직입니다.',
+    empty: '나에게 올라와 답을 기다리는 문서가 없습니다.',
+    // 자격이 없는 사람에게 0건은 거짓이다. "볼 것이 없다"와 "이 프로젝트에서 승인할 수
+    // 없다"는 다른 사실이고, 앞엣것으로 그리면 자격이 없다는 것을 영영 모른 채 기다린다.
+    requiresApprover: true
+  }),
+  Object.freeze({
+    key: 'restake',
+    label: '내 승인이 쓰인 것',
+    hint: '내가 승인한 뒤 본문이 바뀌었습니다. 하류는 아직 내 승인을 근거로 삼고 있으므로, 무엇이 바뀌었는지 보고 다시 승인할지 정해야 합니다.',
+    empty: '내가 승인한 문서 중 그 뒤에 바뀐 것이 없습니다.',
+    requiresApprover: false
+  }),
+  Object.freeze({
+    key: 'fix',
+    label: '내가 고칠 것',
+    hint: '내가 소유자인데 반려됐거나 승인 뒤 바뀐 문서입니다. 차례가 나에게 돌아와 있습니다.',
+    empty: '내 차례로 돌아온 내 문서가 없습니다.',
+    requiresApprover: false
+  })
+]);
+
+// 이 줄이 이 사람의 어느 갈래인가. 위에서부터 처음 걸리는 하나가 답이고, 그 순서가 곧
+// 우선순위다 — 갈래를 고르는 규칙이 한 자리에 있어야 화면이 자기 규칙을 짓지 않는다.
+function turnLaneOf(row, member, approving) {
+  const submission = row.submission.state;
+  if (approving.has(member) && (submission === 'pending' || submission === 'drifted')) return 'awaiting';
+  if (row.status === 'stale' && row.approvedBy === member) return 'restake';
+  if (row.owner === member && (submission === 'rejected' || row.status === 'stale')) return 'fix';
+  return null;
+}
+
+/**
+ * 사람마다의 「내 차례」. 줄은 한 번만 싣고 사람별 갈래를 그 줄에 붙인다.
+ *
+ * 사람마다 줄을 복제하지 않는 이유는 승인자가 여럿인 저장소에서 같은 문서가 사람 수만큼
+ * 스냅숏에 실리기 때문이다. 폴링마다 오가는 값이라 그 곱은 그대로 대역폭이 된다.
+ *
+ * 화면이 아니라 여기서 가르는 이유는 이것이 표시가 아니라 판정이어서다. 자격(승인자인가)과
+ * 명의(내가 승인했는가)가 들어가는 판정이고, 화면이 그것을 지으면 자격 판정의 표면이 하나
+ * 더 생기는데 그 표면은 아무도 시험하지 않는다 — approvers를 화면이 직접 만들지 않는 것과
+ * 같은 선이다. 화면은 state.currentMember로 자기 줄을 고르기만 한다.
+ *
+ * 사람 후보는 이 줄에 실제로 이름이 걸린 사람뿐이다(승인 자격자 · 소유자 · 승인자).
+ * 그 밖의 멤버는 어느 갈래에도 걸릴 수 없으므로 도는 것이 낭비이고, 넣으면 빈 칸만 는다.
+ *
+ * used와 unknown은 reviewQueue의 것을 그대로 물려받는다. 여기서 다시 판정하면 인박스가
+ * "승인 축을 안 씁니다"라고 말하는 프로젝트에서 이 화면만 줄을 세우게 된다.
+ */
+function documentTurns(queue, approvers) {
+  const lanes = DOCUMENT_TURN_LANES;
+  // 승인 자격은 이미 조립된 목록에서 온다. 여기서 clients와 members를 다시 뒤지면 그것이
+  // 자격 판정의 또 다른 표면이 되고, 두 표면은 언젠가 갈린다.
+  const approverMembers = Array.from(new Set((approvers || []).map((item) => item.owner).filter(Boolean))).sort();
+  const approving = new Set(approverMembers);
+  if (!queue.counts) return { used: false, unknown: queue.unknown, lanes, approverMembers, rows: [] };
+  const rows = [];
+  for (const row of queue.items.concat(queue.rejectedItems)) {
+    const candidates = new Set(approverMembers);
+    if (row.owner) candidates.add(row.owner);
+    if (row.approvedBy) candidates.add(row.approvedBy);
+    const laneOf = {};
+    for (const member of candidates) {
+      const lane = turnLaneOf(row, member, approving);
+      if (lane) laneOf[member] = lane;
+    }
+    // 아무의 갈래에도 안 서는 줄은 싣지 않는다. 이 저장소에서는 미승인 157건이 그렇고,
+    // 그것을 다 실으면 「내 차례」가 다시 프로젝트 전체가 된다 — 좁히려고 만든 값이
+    // 좁히지 못하면 화면 둘이 같은 벽을 두 번 세운다.
+    if (Object.keys(laneOf).length) rows.push(Object.assign({}, row, { lanes: laneOf }));
+  }
+  // 인박스와 같은 자로 다시 한 번 정렬한다. 위에서 반려 줄을 뒤에 이어 붙였으므로 그대로
+  // 두면 순서가 "어느 배열에서 왔나"가 되는데, 그것은 급한 순이 아니다.
+  rows.sort(byReviewUrgency);
+  return { used: queue.used, unknown: null, lanes, approverMembers, rows };
 }
 
 function attentionItems(tasks, documents, sync, approvals) {
@@ -551,9 +719,13 @@ function workspaceSnapshot(root, projectKey, search) {
   // 상태를 다시 물어야 하고, 그 사이에 목록과 상태가 서로 다른 시점을 가리킨다.
   const approvals = documentApprovals(root, project.key, documents);
   for (const document of documents) document.approval = approvals.states ? approvals.states[document.id] : null;
+  const queue = reviewQueue(documents, approvals);
   const collaboration = readCollaboration(root, project.key);
   const sync = syncStatus(project);
   const clients = layout.schemaVersion >= 6 ? listClients(root).clients : [];
+  // 승인 자격자는 한 번만 조립한다. approvers와 documentTurns가 같은 목록을 봐야
+  // "이 사람이 승인자인가"에 두 값이 다른 답을 내지 않는다.
+  const approverList = humanApproversFrom(clients, collaboration.members);
   const contract = loadDocumentContract(root, project.key);
   const presentation = loadBoardPresentation(root, project.key);
   // 댓글은 태스크와 다른 원장에 산다. 스냅숏에 함께 실어야 화면이 두 번 묻지 않고,
@@ -562,6 +734,10 @@ function workspaceSnapshot(root, projectKey, search) {
   const workspaceRevision = boardRevision(config);
   return {
     project: project.key,
+    // 자산이 사는 자리. `![[이름]]`이 가리키는 곳을 화면이 알아야 그림을 주소로
+    // 옮길 수 있고, 그 자리는 프로젝트 매니페스트가 정한다 — 화면이 `docs/assets`를
+    // 사본으로 적으면 문서 뿌리를 옮긴 날 그림만 조용히 깨진다.
+    assets: { directory: path.relative(project.root, assetsDirectory(layout, project)).split(path.sep).join('/') },
     client: boardClient(root, project, clients),
     diagnostics: projectDiagnostics(root, project.key, `${workspaceRevision}:${entityRevision(documents)}`),
     revision: { workspace: workspaceRevision, tasks: entityRevision(tasksResult.tasks), documents: entityRevision(documents), people: entityRevision(collaboration), clients: entityRevision(clients), sync: entityRevision(sync), contract: entityRevision(contract), presentation: entityRevision(stripSources(presentation)), comments: entityRevision(comments) },
@@ -581,7 +757,11 @@ function workspaceSnapshot(root, projectKey, search) {
     attention: attentionItems(tasksResult.tasks, documents, sync, approvals),
     // 사람-에이전트 협업에서 사람의 병목은 작성이 아니라 검토다. 그 줄이 값으로 실려야
     // 화면이 그것을 첫 자리에 그릴 수 있다.
-    reviewQueue: reviewQueue(documents, approvals),
+    reviewQueue: queue,
+    // 같은 줄을 사람 축으로 좁힌 값. reviewQueue가 만든 줄을 그대로 받으므로 두 화면의
+    // 수가 갈릴 수 없다 — 다시 세면 홈과 인박스와 이 화면이 같은 문서를 두고 서로 다른
+    // 수를 말하는 날이 온다.
+    documentTurns: documentTurns(queue, approverList),
     people: collaboration,
     clients,
     sync,
@@ -593,7 +773,7 @@ function workspaceSnapshot(root, projectKey, search) {
     // 승인 자격자. 화면이 clients와 people로 이 목록을 직접 만들면 그것이 자격 판정의
     // 네 번째 표면이 되고, 화면의 판정은 아무도 시험하지 않는다. 값은 이미 읽어 둔
     // 둘에서 고르므로 스냅숏이 파일을 더 읽지 않는다.
-    approvers: humanApproversFrom(clients, collaboration.members),
+    approvers: approverList,
     // 제약 카탈로그도 화면이 다시 적지 않는다. 다섯 종류가 무엇인지는 코드가 알고,
     // 화면은 그것을 그린다 — 화면이 목록을 따로 들면 종류가 늘어날 때 한쪽만 는다.
     itemTypeCatalog: { kinds: CONSTRAINT_KINDS, exemptable: EXEMPTABLE_GATES },
@@ -1017,6 +1197,39 @@ function approveBoardDocument(root, projectKey, documentId, body) {
  * 자격 판정은 rejectDocument가 한다. 여기서 다시 하면 표면이 하나 더 생기고, 그중
  * 느슨한 쪽이 게이트의 실제 높이가 된다.
  */
+/**
+ * 수명 축은 승인 옆에 서지만 같은 관문을 지나지 않는다.
+ *
+ * `refuseHarnessApproval`을 부르지 않는 이유가 그것이다. 그 거절은 **사람 게이트**를
+ * 지키는 자리이고(승인·반려), 수명은 그 게이트에 걸린 축이 아니다 — 판정 하나 읽지 않는
+ * 칸에 하네스 거절을 걸면 거절 문장이 "사람 게이트"라고 말하는데 실제로는 아무 게이트도
+ * 없는 상태가 된다. 판정과 그 근거는 document.js의 setDocumentLifecycle 한 곳에 있다.
+ *
+ * 빈 값은 지우기다. 화면의 고르개가 「수명 없음」을 첫 항목으로 두므로 그것이 그대로
+ * 지우는 갈래가 된다 — 지우는 손잡이를 따로 두면 고르개와 손잡이가 서로 다른 축이 되고,
+ * 사람은 「수명 없음」을 골라 놓고 왜 안 지워지는지 묻게 된다.
+ */
+function setBoardDocumentLifecycle(root, projectKey, documentId, body) {
+  const raw = body && body.lifecycle;
+  const clearing = raw === null || raw === undefined || String(raw).trim() === '';
+  try {
+    return require('./document').setDocumentLifecycle(root, {
+      project: projectKey, targetId: documentId,
+      lifecycle: clearing ? undefined : String(raw).trim(),
+      clear: clearing,
+      reason: (body && body.reason) || '',
+      // 화면이 판에 그린 경고를 사람이 보고 눌렀다는 표시다. 서버가 기본값으로 참을
+      // 지어내면 그 경고는 그리기만 하고 아무것도 막지 않는 장식이 된다.
+      ackStale: Boolean(body && body.ackStale)
+    });
+  } catch (error) {
+    // 거절은 서버 결함이 아니라 "이 요청은 지금 받아들여질 수 없다"는 답이다. 승인이
+    // 같은 판단을 하는 자리와 같은 모양으로 내보낸다.
+    if (!error.statusCode) { error.statusCode = 400; error.code = error.code || 'lifecycle-refused'; }
+    throw error;
+  }
+}
+
 function rejectBoardDocument(root, projectKey, documentId, body) {
   refuseHarnessApproval();
   const reviewer = String((body && body.clientId) || '').trim().toLowerCase();
@@ -1057,15 +1270,155 @@ function approverOwner(root, clientId) {
  * 읽는 자리가 생기고, 두 읽기는 서로 다른 시점을 볼 수 있다 — 그때 화면이 말하는
  * "언제부터 이렇게 됐나"는 명령줄의 답과 갈린다.
  */
+/**
+ * 원장 사건과 커밋을 한 시간축에 세운다.
+ *
+ * 따로 세우면 사람이 머리로 합쳐야 하고, 그 합치기는 두 목록의 시각을 눈으로 번갈아 훑는
+ * 일이라 줄이 늘면 곧 실패한다 — 실패하면 "승인 뒤에 저 커밋이 왔나 앞에 왔나"를 알 수
+ * 없고, 이력을 여는 이유가 바로 그 물음이라 거기서 값이 통째로 사라진다.
+ *
+ * 접는 자리는 여기 하나다. 두 목록을 받은 쪽이 각자 순서를 지으면 그 순서는 화면 수만큼
+ * 생기고, 그중 하나만 시간대를 틀려도 같은 이력이 자리마다 다르게 읽힌다 — 실제로 그
+ * 갈래가 ADR-020·ADR-021을 아홉 시간 어긋난 자리에 세웠다.
+ *
+ * 순서의 규칙 셋을 여기서 못박는다.
+ *
+ *   1. 순간으로 견준다. 문자열이 아니다. 원장은 UTC(Z)를 쓰고 git은 오프셋을 달고 오므로
+ *      문자열 비교는 표기가 다른 같은 순간을 다른 자리에 놓는다.
+ *   2. 시각을 못 읽는 줄은 맨 뒤로 보낸다. 맨 앞은 "가장 최근에 일어난 일"이라는 자리인데
+ *      읽을 수 없는 시각으로는 그 주장을 뒷받침할 수 없고, 던지면 줄 하나 때문에 이력
+ *      전체가 사라진다. 뒤는 "여기 있으나 시간축에 세울 수 없다"를 그대로 말하는 자리다.
+ *   3. 같은 순간이면 원장이 위다. 원장 사건은 자기가 판정한 리비전을 말하고 그 리비전은
+ *      커밋된 뒤에야 지목할 수 있으므로, 커밋이 원인이고 원장이 결과다 — 최근이 위인
+ *      목록에서 결과는 원인 위에 온다. git의 커밋 시각은 초 단위이고 원장은 밀리초까지
+ *      적으므로 이 동률은 실제로 생긴다.
+ *
+ * 그래도 갈리지 않으면 들어온 차례를 지킨다. 안정 정렬이라야 같은 이력이 요청마다 같은
+ * 목록으로 온다 — 흔들리면 사람은 자기가 방금 본 줄을 다시 찾지 못한다.
+ *
+ * 원장 줄은 누가·왜를 알고(승인자·사유·근거) 커밋 줄은 무엇이·언제를 안다. 둘을 나란히
+ * 두는 것이 이 목록의 값이므로 종류를 지우지 않고 kind로 갈라 둔다. 지목할 주소도 종류마다
+ * 달라서(원장은 리비전, git은 커밋 해시) pointKind를 함께 싣는다. who도 종류마다 다르다 —
+ * 원장은 MEMBER-ID이고 커밋은 git이 아는 이름이라, 이름을 찾아 주는 자리는 kind를 보고
+ * 갈라야 한다.
+ */
+function documentTimeline(history) {
+  const rows = [];
+  for (const item of (history && history.approvals) || []) {
+    rows.push({ kind: 'approval', at: item.recordedAt, who: item.approvedBy, point: item.reviewedRevision, pointKind: 'revision', detail: item.reason || '', basis: item.basis || [] });
+  }
+  for (const item of (history && history.submissions) || []) {
+    rows.push({ kind: 'submission', at: item.recordedAt, who: item.submittedBy, point: item.submittedRevision, pointKind: 'revision', detail: item.reason || '', basis: [] });
+  }
+  for (const item of (history && history.rejections) || []) {
+    rows.push({ kind: 'rejection', at: item.recordedAt, who: item.rejectedBy, point: item.rejectedRevision, pointKind: 'revision', detail: item.reason || '', basis: [] });
+  }
+  for (const item of (history && history.commits) || []) {
+    rows.push({ kind: 'commit', at: item.at, who: item.author || '', point: item.commit, pointKind: 'commit', detail: item.subject || '', basis: [] });
+  }
+  return rows
+    .map((row, index) => ({ row, index, instant: Date.parse(row.at || ''), ledger: row.kind !== 'commit' }))
+    .sort((left, right) => {
+      const leftUnplaceable = Number.isNaN(left.instant);
+      const rightUnplaceable = Number.isNaN(right.instant);
+      if (leftUnplaceable !== rightUnplaceable) return leftUnplaceable ? 1 : -1;
+      if (!leftUnplaceable && left.instant !== right.instant) return right.instant - left.instant;
+      if (left.ledger !== right.ledger) return left.ledger ? -1 : 1;
+      return left.index - right.index;
+    })
+    .map((entry) => entry.row);
+}
+
+// 정책 층 저장이 결정을 만나는 자리. 두 표면(board.json · workflows.json)이 같은
+// 게이트를 지나므로 이 흐름도 한 자리에 둔다 — 표면마다 다시 적으면 한쪽만 고쳐지는
+// 날이 오고, 그때 결정 없이 정책이 바뀌는 구멍이 하나 생긴다.
+//
+// null을 돌려주면 그대로 저장해도 된다는 뜻이다. 값이 있으면 저장하지 않고 그 값을
+// 화면에 올린다 — SCR-003의 6단계가 "사유를 적을 자리가 없으므로 결정 화면으로
+// 넘어간다"고 적은 그 자리다.
+// 화면이 고치는 것은 병합 결과가 아니라 그 층의 원본이다. 병합 결과는 정규화를
+// 거쳐 나오므로(executionUnits가 units가 된다) 그것을 그대로 돌려보내면 저장이
+// "알 수 없는 키"로 거절한다 — 화면이 자기가 방금 받은 값을 못 되돌려주는 상태다.
+//
+// 그래서 층별 원본을 함께 싣는다. 표시 설정이 sources와 inheritance를 함께 내는 것과
+// 같은 이유이고, baseRevision도 병합 결과가 아니라 그 원본들에 건다 — 겨루는 대상이
+// 파일이므로 값도 파일의 것이라야 남이 먼저 고친 것을 정확히 잡는다.
+function boardWorkflows(root, projectKey) {
+  const loaded = loadWorkflows(root, projectKey);
+  const layers = (loaded.sources || []).map((source) => ({
+    scope: source.scope, file: source.file, content: readWorkflowLayer(source.file)
+  }));
+  return Object.assign({}, loaded, { layers, baseRevision: entityRevision(layers) });
+}
+
+// 저장 계획은 보내온 내용을 검증하는 일이라, 여기서 나는 오류는 전부 그 내용의
+// 문제다. 분류하지 않으면 "알 수 없는 키입니다" 같은 사람이 고칠 수 있는 말이
+// 500으로 나가고, 화면은 그것을 서버 장애로 그린다.
+function planOrReject(compute) {
+  try {
+    return compute();
+  } catch (error) {
+    if (!error.statusCode) error.statusCode = 400;
+    throw error;
+  }
+}
+
+function policyDecisionGate(root, projectKey, scope, plan, body) {
+  if (!plan.required) return null;
+  // 사람이 답한 결정을 들고 왔으면 여기서 판정하지 않는다. 그 결박은 게이트가 갖고,
+  // 여기서 한 번 더 보면 "결정 ID가 있는가"만 보는 두 번째 문이 생긴다.
+  if (body && body.decisionId) return null;
+  const project = selectProject(workspaceLayout(root), projectKey, true);
+  const identity = boardClient(root, project, listClients(root).clients);
+  if (!identity.id) inputError('이 기기의 Client ID가 없습니다. rdl git init으로 프로젝트를 준비하세요.');
+  if (!identity.registered) inputError(`등록되지 않은 Client입니다: ${identity.id}. 설정 → Clients에서 이 기기를 등록하세요.`, 'unknown-client');
+  const opened = requestPolicyDecision(root, {
+    project: projectKey, surface: plan.surface, scope,
+    previous: plan.previous, next: plan.next, clientId: identity.id
+  });
+  // 위임으로 이미 답이 나 있으면 결정 화면을 거칠 이유가 없다. 그 판단은 원장이
+  // 이미 내렸고, 여기서 다시 물으면 답한 사람에게 같은 것을 두 번 묻는 화면이 된다.
+  if (opened.decision && opened.decision.status === 'answered') return null;
+  return { reason: 'decision-required', decisionId: opened.decisionId, decision: opened.decision, changes: plan.changes };
+}
+
 function boardDocumentHistory(root, projectKey, documentId) {
   try {
-    return require('./approval').documentHistory(root, { project: projectKey, targetId: documentId });
+    const history = require('./approval').documentHistory(root, { project: projectKey, targetId: documentId });
+    // 두 목록은 그대로 둔다. 명령줄과 검토 리포트가 그것을 읽고, 종류별로 묻는 물음이
+    // 따로 있다. timeline은 그 위에 얹는 순서이지 대신하는 값이 아니다.
+    return Object.assign({}, history, { timeline: documentTimeline(history) });
   } catch (error) {
     // 차분 자리와 같은 선을 긋는다. 없는 문서와 원장을 못 읽는 저장소는 서버 결함이
     // 아니고, 500으로 내면 화면은 그 둘을 "보드가 죽었다"로 뭉뚱그린다.
     if (!error.statusCode) error.statusCode = /찾지 못했습니다/u.test(error.message || '') ? 404 : 400;
     throw error;
   }
+}
+
+/**
+ * 문서·태스크·원장을 한 질의로 찾는 자리.
+ *
+ * 스냅숏에 싣지 않는다. 검색 결과는 질의마다 다른 값이라 폴링에 실을 수 없고, 실으면
+ * 폴링 한 번이 검색 한 번이 되어 아무도 검색하지 않는 동안에도 문서 전건을 훑는다.
+ * 이 저장소는 이미 그 선을 그어 두었다 — 문서 차분과 이력이 요청 시 계산이고, 이유도
+ * 같다(문서마다 git을 도는 값이라 폴링에 실으면 보드가 선다). 검색도 같은 규칙을 쓴다.
+ *
+ * 판정은 여기 없다. 무엇을 대상에 넣고 어떻게 순서를 매기는지는 search.js가 소유하며,
+ * 이 함수가 하는 일은 주소창의 값을 엔진의 입력으로 옮기는 것뿐이다. 여기서 거르기를
+ * 한 줄이라도 다시 적으면 같은 질의가 보드와 엔진에서 다른 답을 낸다.
+ *
+ * 질의 문자열은 파일 경로가 되지도, 정규식이 되지도 않는다. 엔진 안에서 indexOf의
+ * 인자로만 쓰이고 그 밖으로 나가지 않는다 — 프로젝트 키를 경로 정규식으로 좁히고
+ * 비교 지점을 16진수로 끊는 것과 같은 선이며, 값이 아니라 쓰임에서 막는다는 점이 같다.
+ */
+function boardSearch(root, projectKey, search) {
+  return searchWorkspace(root, {
+    project: projectKey,
+    query: search.get('q'),
+    limit: search.get('limit'),
+    source: search.get('source')
+  });
 }
 
 /**
@@ -1091,13 +1444,13 @@ function boardDocumentHistory(root, projectKey, documentId) {
 const REVISION_POINT = /^[a-f0-9]{64}$/u;
 const COMMIT_POINT = /^[a-f0-9]{7,40}$/u;
 
-function resolveDiffPoint(projectRoot, file, raw, label, candidates) {
+function resolveDiffPoint(projectRoot, file, raw, label, candidates, paths) {
   const value = String(raw === undefined || raw === null ? '' : raw).trim().toLowerCase();
   if (!value) inputError(`${label} 지점이 없습니다. 이력에서 견줄 두 지점을 골라야 비교가 성립합니다.`, 'missing-point');
   if (REVISION_POINT.test(value)) {
     // 리비전은 커밋을 되짚어야 한다. 그 되짚기는 approval.js가 소유한다 — 여기서 다시
     // 짜면 같은 물음에 두 답이 생기고, 그중 느슨한 쪽이 화면이 믿는 답이 된다.
-    return { kind: 'revision', value, commit: require('./approval').commitForRevision(projectRoot, file, value, candidates) };
+    return { kind: 'revision', value, commit: require('./approval').commitForRevision(projectRoot, file, value, candidates, paths) };
   }
   if (COMMIT_POINT.test(value)) {
     // 없는 커밋을 지어내지 않는다. 확인 없이 git diff로 넘기면 git이 자기 말로 죽고,
@@ -1129,9 +1482,13 @@ function boardDocumentRangeDiff(root, projectKey, documentId, search) {
   // 목록을 여기서 다시 만들지 않는다. 같은 git log를 두 곳에 적으면 한쪽만 고쳐지는 날이
   // 오고, 그때 두 자리가 서로 다른 커밋 집합을 후보로 삼는다 — 같은 지점이 화면에 따라
   // 찾아지기도 하고 안 찾아지기도 한다.
-  const candidates = require('./approval').revisionCandidates(project.root, document.file);
-  const from = resolveDiffPoint(project.root, document.file, search && search.get('from'), '기준', candidates);
-  const to = resolveDiffPoint(project.root, document.file, search && search.get('to'), '비교', candidates);
+  const approval = require('./approval');
+  const candidates = approval.revisionCandidates(project.root, document.file);
+  // 경로 이력도 같은 이유로 한 번만 만든다. 이력이 --follow로 이름 변경을 넘어 커밋을
+  // 모으므로 사람은 이름이 바뀌기 전 커밋도 고를 수 있고, 그 지점에는 지금 경로가 없다.
+  const paths = approval.documentPathHistory(project.root, document.file);
+  const from = resolveDiffPoint(project.root, document.file, search && search.get('from'), '기준', candidates, paths);
+  const to = resolveDiffPoint(project.root, document.file, search && search.get('to'), '비교', candidates, paths);
   const base = { project: project.key, targetId: document.id, from, to };
   if (!from.commit || !to.commit) {
     const missing = !from.commit && !to.commit ? '두 지점' : !from.commit ? '기준 지점' : '비교 지점';
@@ -1143,11 +1500,10 @@ function boardDocumentRangeDiff(root, projectKey, documentId, search) {
   if (from.commit === to.commit) {
     return Object.assign(base, { diff: '', reason: '두 지점이 같은 커밋을 가리킵니다. 서로 다른 두 지점이라야 사이가 생깁니다.' });
   }
-  // core.quotepath=false를 준다. 이 저장소의 정본 파일명은 한글이고, git은 기본으로
-  // 비ASCII 바이트를 8진수로 이스케이프해 diff 머리 네 줄을 사람이 못 읽는 문자열로
-  // 만든다. 세 자리(승인본↔작업본·승인본↔제출본·임의 두 지점)가 같은 문제를 갖고,
-  // 한 곳만 고치면 같은 문서의 차분이 축마다 다르게 보인다.
-  const diff = runGit(['-c', 'core.quotepath=false', 'diff', from.commit, to.commit, '--', document.file], { cwd: project.root, allowFailure: true });
+  // git 인자는 approval.js가 짓는다. 한글 파일명 이스케이프도 이름 변경 추적도 세 축이
+  // 똑같이 필요한 것이라, 축마다 따로 적으면 한 곳만 고쳐지는 날이 오고 그때 같은 문서의
+  // 차분이 축마다 다르게 보인다 — 이 저장소가 이스케이프를 고칠 때 셋을 함께 고친 이유다.
+  const diff = runGit(approval.documentDiffArgs(project.root, document.file, from.commit, to.commit, paths), { cwd: project.root, allowFailure: true });
   return Object.assign(base, { diff: diff.status === 0 ? diff.stdout : null });
 }
 
@@ -1228,20 +1584,29 @@ function createBoardServer(start, options) {
       // 문서 ID만 보고 누르는 자리가 된다.
       const projectDocumentApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/approve$/u);
       const projectDocumentRejectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/reject$/u);
+      // 수명은 승인·반려와 나란한 자리다. 축은 다르지만 사람이 이 문서를 놓고 내리는
+      // 판단이 그 셋이고, 화면에서도 한 판에 함께 선다.
+      const projectDocumentLifecycleMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/lifecycle$/u);
       const projectDocumentDiffMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/diff$/u);
       // 이력은 차분과 나란한 짝이다. 차분이 "무엇이 달라졌나"에 답하면 이력은 "언제
       // 그리고 왜 그렇게 됐나"에 답하고, 뒤엣것 없이는 앞엣것의 기준을 사람이 고를 수 없다.
       const projectDocumentHistoryMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/documents\/([^/]+)\/history$/u);
+      // 검색은 스냅숏 밖의 자리다. 질의마다 다른 값이라 폴링에 실을 수 없다 —
+      // 차분·이력과 같은 규칙이고, 그래서 같은 줄에 나란히 둔다.
+      const projectSearchMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/search$/u);
       const projectSyncMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/sync$/u);
       const projectRefreshMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/refresh$/u);
       const projectSnapshotMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/board-snapshot$/u);
       const projectContractMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract$/u);
       const projectContractPlanMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/contract\/plan$/u);
       const projectPresentationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/presentation$/u);
+      const projectWorkflowsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/workflows$/u);
+      const projectDecisionsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/decisions$/u);
+      const projectDecisionAnswerMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/decisions\/(DEC-[A-Za-z0-9-]+)\/answer$/u);
       const projectRunsMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs$/u);
       const projectRunApproveMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs\/(RUN-[A-Za-z0-9]+)\/approve$/u);
       const projectRunMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/runs\/(RUN-[A-Za-z0-9]+)$/u);
-      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectTaskTransitionsMatch, projectDocumentsMatch, projectDocumentCheckMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch].find(Boolean);
+      const requestedProject = [projectMatch, projectTasksMatch, projectTaskMatch, projectTaskTransitionsMatch, projectDocumentsMatch, projectDocumentCheckMatch, projectDocumentMatch, projectSyncMatch, projectRefreshMatch, projectSnapshotMatch, projectContractMatch, projectContractPlanMatch, projectPresentationMatch, projectWorkflowsMatch, projectDecisionsMatch, projectDecisionAnswerMatch].find(Boolean);
       const requestedConfig = requestedProject ? boardConfig(config.root, requestedProject[1]) : config;
       if (request.method === 'GET' && projectMatch) {
         const summary = overview(config.root).projects.find((item) => item.key === projectMatch[1]);
@@ -1271,6 +1636,9 @@ function createBoardServer(start, options) {
       // 실으면 문서 수에 비례해 보드가 선다.
       if (request.method === 'GET' && projectDocumentHistoryMatch) {
         return json(response, 200, boardDocumentHistory(config.root, projectDocumentHistoryMatch[1], decodeURIComponent(projectDocumentHistoryMatch[2])));
+      }
+      if (request.method === 'GET' && projectSearchMatch) {
+        return json(response, 200, boardSearch(config.root, projectSearchMatch[1], url.searchParams));
       }
       if (request.method === 'GET' && projectSyncMatch) return json(response, 200, syncStatus(selectProject(workspaceLayout(config.root), projectSyncMatch[1], true)));
       if (request.method === 'GET' && projectRunsMatch) return json(response, 200, boardRuns(config.root, projectRunsMatch[1]));
@@ -1332,6 +1700,10 @@ function createBoardServer(start, options) {
         const body = await requestBody(request);
         return json(response, 200, rejectBoardDocument(config.root, projectDocumentRejectMatch[1], decodeURIComponent(projectDocumentRejectMatch[2]), body));
       }
+      if (request.method === 'POST' && projectDocumentLifecycleMatch) {
+        const body = await requestBody(request);
+        return json(response, 200, setBoardDocumentLifecycle(config.root, projectDocumentLifecycleMatch[1], decodeURIComponent(projectDocumentLifecycleMatch[2]), body));
+      }
       if (request.method === 'POST' && projectDocumentMatch) {
         const body = await requestBody(request);
         return json(response, 200, updateDocumentBody(config.root, projectDocumentMatch[1], decodeURIComponent(projectDocumentMatch[2]), body));
@@ -1357,10 +1729,57 @@ function createBoardServer(start, options) {
         const projectKey = projectPresentationMatch[1];
         const current = loadBoardPresentation(config.root, projectKey);
         if (!body.baseRevision || body.baseRevision !== entityRevision(stripSources(current))) {
-          return json(response, 409, { error: '표시 설정이 외부에서 변경되었습니다. 최신 값을 확인하세요.', current });
+          // 두 409를 이름으로 가른다. 하나는 "남이 먼저 고쳤다"이고 다른 하나는 "결정이
+          // 먼저다"인데, 화면이 코드만 보고 갈라야 하면 두 안내가 언젠가 섞인다.
+          return json(response, 409, { reason: 'stale-revision', error: '표시 설정이 외부에서 변경되었습니다. 최신 값을 확인하세요.', current });
         }
-        savePresentation(config.root, projectKey, scope, body);
+        const presentationPlan = planOrReject(() => presentationSavePlan(config.root, projectKey, scope, body));
+        const presentationGate = policyDecisionGate(config.root, projectKey, scope, presentationPlan, body);
+        if (presentationGate) return json(response, 409, Object.assign({ error: '정책 층 변경은 계약 변경 결정을 함께 남겨야 저장됩니다.' }, presentationGate));
+        savePresentation(config.root, projectKey, scope, body, { decisionId: body.decisionId });
         return json(response, 200, loadBoardPresentation(config.root, projectKey));
+      }
+      // 워크플로도 같은 문을 지난다. 대상 종류로 게이트를 가르지 않는 이유는 ADR-027이
+      // 적은 그대로다 — 표면마다 문을 따로 두면 한쪽만 고쳐지는 날이 온다.
+      if (request.method === 'GET' && projectWorkflowsMatch) return json(response, 200, boardWorkflows(config.root, projectWorkflowsMatch[1]));
+      if (request.method === 'POST' && projectWorkflowsMatch) {
+        const body = await requestBody(request);
+        const scope = body && body.scope;
+        if (!['workspace', 'project'].includes(scope)) return json(response, 400, { error: 'scope는 workspace 또는 project여야 합니다.' });
+        const projectKey = projectWorkflowsMatch[1];
+        const current = boardWorkflows(config.root, projectKey);
+        if (!body.baseRevision || body.baseRevision !== current.baseRevision) {
+          return json(response, 409, { reason: 'stale-revision', error: '워크플로 정의가 외부에서 변경되었습니다. 최신 값을 확인하세요.', current });
+        }
+        const workflowPlan = planOrReject(() => workflowsSavePlan(config.root, projectKey, scope, body));
+        const workflowGate = policyDecisionGate(config.root, projectKey, scope, workflowPlan, body);
+        if (workflowGate) return json(response, 409, Object.assign({ error: '워크플로는 전부 정책 층이라 계약 변경 결정을 함께 남겨야 저장됩니다.' }, workflowGate));
+        saveWorkflows(config.root, projectKey, scope, body, { decisionId: body.decisionId });
+        return json(response, 200, boardWorkflows(config.root, projectKey));
+      }
+      // 결정을 읽는 자리. 화면이 이것을 못 읽으면 저장이 막힌 이유를 보여 줄 수는 있어도
+      // 그것을 푸는 길은 언제나 명령줄이 되고, 그 왕복이 정책 변경을 미루는 자리가 된다.
+      if (request.method === 'GET' && projectDecisionsMatch) {
+        return json(response, 200, listDecisions(config.root, { project: projectDecisionsMatch[1], open: url.searchParams.get('open') !== null }));
+      }
+      if (request.method === 'POST' && projectDecisionAnswerMatch) {
+        const body = await requestBody(request);
+        const projectKey = projectDecisionAnswerMatch[1];
+        const project = selectProject(workspaceLayout(config.root), projectKey, true);
+        const clients = listClients(config.root).clients;
+        const identity = boardClient(config.root, project, clients);
+        if (!identity.id) inputError('이 기기의 Client ID가 없습니다. rdl git init으로 프로젝트를 준비하세요.');
+        if (!identity.registered) inputError(`등록되지 않은 Client입니다: ${identity.id}. 설정 → Clients에서 이 기기를 등록하세요.`, 'unknown-client');
+        // 사람만 답한다. 답을 쓰고 나서 저장에서 막히면 원장에는 아무것도 열지 못하는
+        // 답변만 남고 그 답변은 지울 수 없다 — 막을 자리는 쓰기 전이다. 위임은 이
+        // 화면이 다루지 않으므로 여기서는 사람 자격만 본다. 판정은 문서 승인과 같은
+        // 함수가 하고, 그 사유 문장을 그대로 화면에 올린다.
+        require('./collaboration-store').assertProjectHumanApprover(
+          config.root, project.key, clients.find((item) => item.id === identity.id) || null, '결정에 답');
+        return json(response, 200, answerDecision(config.root, {
+          project: projectKey, clientId: identity.id, decisionId: projectDecisionAnswerMatch[2],
+          selectedOption: body && body.selectedOption, answeredBy: body && body.answeredBy, reason: body && body.reason
+        }));
       }
       if (request.method === 'POST' && projectRefreshMatch) return json(response, 200, refreshState(config.root, { project: projectRefreshMatch[1] }));
       if (request.method === 'POST' && projectSyncMatch) {
@@ -1445,7 +1864,9 @@ function createBoardServer(start, options) {
       if (request.method === 'POST' && url.pathname === '/api/sync') return json(response, 200, syncState(activeConfig.root, { project: activeConfig.project, remote: 'origin', push: true }));
       return json(response, 404, { error: '경로를 찾지 못했습니다.' });
     } catch (error) {
-      return json(response, error.statusCode || 500, { error: error.message, code: error.code || undefined, current: error.current || undefined });
+      // 낡을 승인은 목록으로도 내보낸다. 문장에 이름이 들어 있지만 그 문장은 사람이
+      // 읽는 것이고, 여러 건이 걸리는 날 화면이 그것을 줄로 세울 자리가 필요하다.
+      return json(response, error.statusCode || 500, { error: error.message, code: error.code || undefined, current: error.current || undefined, approvalsAtRisk: error.approvalsAtRisk || undefined });
     }
   });
   return { server, token, root: config.root };
@@ -1483,4 +1904,4 @@ function startBoard(start, options) {
   });
 }
 
-module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, reviewQueue, composeDocumentFile, approveBoardDocument, boardDocumentDiff, createBoardServer, startBoard };
+module.exports = { STATUSES, boardConfig, queryTasks, boardRevision, overview, workspaceSnapshot, taskTransitions, attentionItems, reviewQueue, documentTurns, composeDocumentFile, approveBoardDocument, setBoardDocumentLifecycle, boardDocumentDiff, documentTimeline, boardSearch, createBoardServer, startBoard };

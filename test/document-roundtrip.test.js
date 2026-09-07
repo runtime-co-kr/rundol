@@ -108,4 +108,57 @@ assert.strictEqual(
   'CRLF 문서가 저장을 지나며 LF로 바뀝니다'
 );
 
-process.stdout.write(`document roundtrip tests passed (정본 문서 ${checked}개)\n`);
+// ── 수명 칸을 옮기는 쓰기도 같은 보장을 진다 ────────────────────────────────
+//
+// 이 쓰기는 저장 경로와 다른 자리에 있지만 지켜야 하는 것은 같다. 수명은 리비전 해시
+// 안에 있어서(판 2가 빼는 것은 state 하나다) 이 쓰기가 다른 줄을 한 글자라도 건드리면
+// 그 문서에 걸린 승인이 수명과 무관한 이유로 낡는다. 그리고 그 낡음은 아무 신호도
+// 내지 않는다 — 화면은 "수명을 바꿨다"고만 말한다.
+//
+// 그래서 왕복으로 잰다. 넣었다 빼면 바이트가 그대로여야 하고, 있던 값을 같은 값으로
+// 다시 적어도 그대로여야 한다.
+const { withDocumentLifecycle } = require('../src/document');
+const lifecycleFailures = [];
+let lifecycleChecked = 0;
+for (const file of corpus) {
+  const original = fs.readFileSync(file, 'utf8');
+  const parsed = parseFrontmatter(original);
+  if (!parsed || !parsed.data.id) continue;
+  const had = typeof parsed.data.lifecycle === 'string' && parsed.data.lifecycle.trim() ? parsed.data.lifecycle.trim() : null;
+  lifecycleChecked += 1;
+  const written = withDocumentLifecycle(original, 'archived');
+  if (written === null) { lifecycleFailures.push(`  ${path.relative(root, file)}\n    frontmatter를 찾지 못했습니다`); continue; }
+  // 넣은 뒤 되돌린다. 없던 문서는 지워서, 있던 문서는 옛 값을 다시 적어서.
+  const restored = withDocumentLifecycle(written, had);
+  if (restored !== original) lifecycleFailures.push(`  ${path.relative(root, file)}\n    ${firstDifference(original, restored)}`);
+  // 줄 수는 딱 하나만 늘거나 그대로여야 한다. 두 줄이 늘면 어딘가에 빈 줄을 남긴 것이다.
+  const delta = written.split('\n').length - original.split('\n').length;
+  if (delta !== (had ? 0 : 1)) lifecycleFailures.push(`  ${path.relative(root, file)}\n    줄 수가 ${delta} 만큼 달라졌습니다 (기대 ${had ? 0 : 1})`);
+}
+assert.ok(lifecycleChecked > 0, '수명 왕복을 잴 정본 문서를 찾지 못했습니다.');
+assert.strictEqual(lifecycleFailures.length, 0,
+  `수명을 넣었다 되돌리면 바이트가 달라지는 문서 ${lifecycleFailures.length}개 (정본 ${lifecycleChecked}개 중):\n${lifecycleFailures.join('\n')}`);
+
+// 어휘 밖 값이 아니라 **자리**를 고정한다. 이관(document-migration)이 state 바로 아래에
+// 넣으므로 여기서도 같은 자리여야 하고, 갈리면 옮겨 온 문서와 여기서 적은 문서의
+// frontmatter 모양이 달라진다.
+{
+  const withState = '---\nid: REQ-999\nstate: draft\ntype: document\n---\n\n본문\n';
+  assert.strictEqual(withDocumentLifecycle(withState, 'accepted'),
+    '---\nid: REQ-999\nstate: draft\nlifecycle: accepted\ntype: document\n---\n\n본문\n',
+    '수명 줄은 state 바로 아래에 선다');
+  const crlfState = withState.replace(/\n/g, '\r\n');
+  assert.strictEqual(withDocumentLifecycle(crlfState, 'accepted'),
+    '---\r\nid: REQ-999\r\nstate: draft\r\nlifecycle: accepted\r\ntype: document\r\n---\r\n\r\n본문\r\n',
+    'CRLF 문서에 섞인 줄 끝을 만들면 안 됩니다');
+  // 지우는 길이 고르는 길과 나란히 있어야 한다. 비어 있는 것과 active는 다른 값이라,
+  // 지우는 길이 없으면 잘못 적은 수명을 되돌릴 방법이 손편집뿐이 된다.
+  assert.strictEqual(withDocumentLifecycle(withDocumentLifecycle(withState, 'accepted'), null), withState);
+  // 값이 없는 `lifecycle:` 한 줄을 남기지 않는다. 파서가 그것을 빈 배열로 읽어
+  // RDL-DOC-017이 어휘 밖 값으로 잡는다.
+  assert(!/lifecycle:/u.test(withDocumentLifecycle(withDocumentLifecycle(withState, 'accepted'), null)));
+  assert.strictEqual(withDocumentLifecycle(withState, null), withState, '없는 칸을 지우면 원본 그대로여야 합니다');
+  assert.strictEqual(withDocumentLifecycle('frontmatter 없는 글\n', 'active'), null);
+}
+
+process.stdout.write(`document roundtrip tests passed (정본 문서 ${checked}개 · 수명 왕복 ${lifecycleChecked}개)\n`);

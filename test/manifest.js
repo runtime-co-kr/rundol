@@ -24,14 +24,17 @@ const PARALLEL = Object.freeze([
   'vocabulary', 'surface-leak', 'human-intervention', 'task-link', 'asset',
   'comment', 'assignment', 'approval-mode', 'item-type', 'item-type-migration',
   'diagnostic-rules', 'run-driver', 'manifest-coverage', 'commit-boundary', 'rule-telemetry',
+  'migration-map',
   'workflow',
-  'workflow-config'
+  'workflow-config',
+  'policy-gate',
+  'search'
 ]);
 
 // remark(ESM 전용)를 동적 import로 읽어 promise를 내보내는 시험. 서로 얹지 않는
 // 이유는 순서가 아니라 격리다 — 사슬에 얹으면 앞이 넘어질 때 뒤가 아예 돌지 않고,
 // 돌지 않은 시험은 통과한 시험과 구분되지 않는다.
-const ASYNC = Object.freeze(['editor-roundtrip', 'editor-block-move', 'editor-live']);
+const ASYNC = Object.freeze(['editor-roundtrip', 'editor-block-move', 'editor-live', 'editor-embed-preview']);
 
 // 순서가 필요한 사슬. 프로세스를 띄우고 포트를 잡고 잠금을 다투는 시험들이라
 // 동시에 돌리면 서로의 실패 원인이 된다. 한 워커 안에서 이 순서 그대로 돈다.
@@ -41,7 +44,7 @@ const CHAIN = Object.freeze([
 ]);
 
 // 사슬이 끝난 뒤 함께 도는 시험. 원래도 Promise.all로 함께 돌던 묶음이다.
-const CHAIN_TAIL = Object.freeze(['board', 'board-workspace', 'board-run', 'event-store']);
+const CHAIN_TAIL = Object.freeze(['board', 'board-workspace', 'board-run', 'board-policy', 'event-store']);
 
 // npm test가 돌리지 않는 시험. tarball을 만들어 설치하므로 npm run test:install이
 // 따로 돈다. 목록에 적어 두는 이유는 빠진 것과 일부러 뺀 것을 가르기 위해서다 —

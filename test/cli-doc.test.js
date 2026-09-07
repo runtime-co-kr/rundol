@@ -200,6 +200,100 @@ for (const line of ['rdl sync --client-id <id>', 'rdl sync watch --client-id <id
       assert(spoken.includes('approvalNote:') && spoken.includes(live.id), spoken);
     }
 
+    // ── rdl doc lifecycle ─────────────────────────────────────────────────
+    //
+    // 수명은 사람이 소유한 축인데 옮기는 길이 하나도 없었다. 명령도 화면도 없어서
+    // 「이 결정은 대체됐다」를 말하는 유일한 길이 frontmatter를 손으로 고치는 것이었고,
+    // 그래서 **왜** 대체했는지가 어디에도 남지 않았다(ADR-026의 실측).
+    //
+    // 시험이 보는 것은 값이 옮겨졌는가가 아니라 그 셋이다 — 사유가 남았는가, 낡을
+    // 승인을 누르기 전에 이름으로 말했는가, 지우는 길이 고르는 길과 나란한가.
+    {
+      const target = rdlJson(['doc', 'create', 'ADR', '대체될 결정', '--owner', 'MEMBER-001', '--scope', '수명 축을 재는 결정', '--exclude', '구현 절차', '--project', 'crm']);
+      git(['add', '-A']);
+      git(['commit', '-m', 'add lifecycle target']);
+      const file = path.join(temporary, target.relativeFile);
+      const axis = (key) => (new RegExp(`^${key}:[ \\t]*(.*)$`, 'mu').exec(fs.readFileSync(file, 'utf8')) || [])[1] || null;
+      const trust = () => rdlJson(['doc', 'status', '--project', 'crm']).documents.find((item) => item.id === target.id);
+      const lastCommit = () => {
+        const done = spawnSync('git', ['log', '-1', '--pretty=%B'], { cwd: projectRoot, encoding: 'utf8', env });
+        assert.strictEqual(done.status, 0, done.stderr);
+        return done.stdout;
+      };
+
+      assert.strictEqual(axis('lifecycle'), null, '만든 문서는 수명을 말하지 않습니다. 비어 있는 것과 active는 다릅니다.');
+      const first = rdlJson(['doc', 'lifecycle', target.id, 'accepted', '--reason', '이 결정이 채택되어 섰다', '--project', 'crm']);
+      assert.strictEqual(first.applied, true);
+      assert.strictEqual(first.from, null);
+      assert.strictEqual(first.to, 'accepted');
+      assert.strictEqual(axis('lifecycle'), 'accepted');
+      // state는 건드리지 않는다. 그 칸은 rdl이 원장에서 투영하는 자리이고 수명은 다른 축이다.
+      assert.strictEqual(axis('state'), 'draft', '수명을 옮기는 명령이 state를 건드리면 안 됩니다.');
+      // 사유는 커밋 메시지가 나른다. 수명 값이 내용 안에 있어 그 값이 바뀐 커밋이 곧
+      // 그 전환의 주소이고, 주소와 사유가 같은 자리에 선다.
+      assert(lastCommit().includes('이 결정이 채택되어 섰다'), `사유가 커밋에 남아야 합니다: ${lastCommit()}`);
+      assert(lastCommit().includes(`Rundol-Lifecycle: ${target.id} none -> accepted`), lastCommit());
+
+      // 승인이 서면 수명을 옮기는 값이 달라진다. 이 변경은 그 승인을 쓰는 일이다.
+      rdlJson(['doc', 'submit', target.id, '--client-id', 'agent-a', '--project', 'crm']);
+      rdlJson(['doc', 'approve', target.id, '--member', 'MEMBER-001', '--basis', 'read', '--client-id', 'desk-h', '--reason', '범위를 확인함', '--project', 'crm']);
+      assert.strictEqual(trust().status, 'approved');
+
+      // 계획은 파일에 닿지 않는다. 그리고 건수가 아니라 **누구의** 승인인지를 말한다 —
+      // 이름 없이는 "그것을 지금 다시 승인할 수 있나"를 판단할 수 없다.
+      const plan = rdlJson(['doc', 'lifecycle', target.id, 'superseded', '--reason', 'ADR-026이 대체함', '--plan', '--project', 'crm']);
+      assert.strictEqual(plan.applied, false);
+      assert.deepStrictEqual(plan.approvalsAtRisk.map((item) => [item.id, item.approvedBy]), [[target.id, 'MEMBER-001']]);
+      assert(/승인 1건이 낡습니다/u.test(plan.approvalNote), plan.approvalNote);
+      assert.strictEqual(axis('lifecycle'), 'accepted', '계획이 파일을 고치면 안 됩니다.');
+
+      // 확인 없이는 거절한다. 관문이 아니라 "누르기 전에 말하는" 자리이므로 거절
+      // 문장이 누구의 승인이 낡는지를 담고, 거절 뒤 파일과 신뢰 상태는 그대로다.
+      const refused = spawnSync(process.execPath,
+        [cli, 'doc', 'lifecycle', target.id, 'superseded', '--reason', 'ADR-026이 대체함', '--project', 'crm', '--root', temporary],
+        { cwd: root, encoding: 'utf8', env });
+      assert.notStrictEqual(refused.status, 0, `살아 있는 승인이 걸린 수명 변경은 확인 없이 지나면 안 됩니다: ${refused.stdout}`);
+      assert(refused.stderr.includes('MEMBER-001'), `누구의 승인이 낡는지 말해야 합니다: ${refused.stderr}`);
+      assert(refused.stderr.includes('--ack-stale'), `빠져나갈 길을 말해야 합니다: ${refused.stderr}`);
+      assert.strictEqual(axis('lifecycle'), 'accepted');
+      assert.strictEqual(trust().status, 'approved');
+
+      // 알고 바꾸면 지나간다. 그리고 실제로 낡는다 — 이것은 결함이 아니라 축이다.
+      const moved = rdlJson(['doc', 'lifecycle', target.id, 'superseded', '--reason', 'ADR-026이 이 결정을 대체함', '--ack-stale', '--project', 'crm']);
+      assert.strictEqual(moved.applied, true);
+      assert.strictEqual(axis('lifecycle'), 'superseded');
+      assert.strictEqual(trust().status, 'stale', '수명이 리비전 해시 안에 있으므로 승인이 낡아야 합니다.');
+      assert(lastCommit().includes('ADR-026이 이 결정을 대체함'), lastCommit());
+
+      // 지우는 길이 고르는 길과 나란히 있다.
+      const cleared = rdlJson(['doc', 'lifecycle', target.id, '--clear', '--reason', '수명을 말할 것이 없는 문서였다', '--ack-stale', '--project', 'crm']);
+      assert.strictEqual(cleared.to, null);
+      assert.strictEqual(cleared.applied, true);
+      assert.strictEqual(axis('lifecycle'), null);
+      // 같은 값을 다시 적으면 쓰지도 커밋하지도 않는다. 빈 커밋은 이력을 흐린다.
+      const again = rdlJson(['doc', 'lifecycle', target.id, '--clear', '--reason', '한 번 더', '--project', 'crm']);
+      assert.strictEqual(again.changed, false);
+      assert.strictEqual(again.applied, false);
+      assert.strictEqual(again.commit, null);
+
+      // 어휘 밖 값·사유 없음·두 갈래 동시 지정·없는 문서는 전부 거절한다.
+      for (const args of [
+        ['doc', 'lifecycle', target.id, 'retired', '--reason', 'x', '--project', 'crm'],
+        ['doc', 'lifecycle', target.id, 'accepted', '--project', 'crm'],
+        ['doc', 'lifecycle', target.id, 'accepted', '--clear', '--reason', 'x', '--project', 'crm'],
+        ['doc', 'lifecycle', 'ADR-999', 'accepted', '--reason', 'x', '--project', 'crm'],
+        ['doc', 'lifecycle', '--reason', 'x', '--project', 'crm']
+      ]) {
+        const denied = spawnSync(process.execPath, [cli].concat(args, ['--root', temporary]), { cwd: root, encoding: 'utf8', env });
+        assert.strictEqual(denied.status, 2, `거부해야 합니다: rdl ${args.join(' ')}\n${denied.stdout}${denied.stderr}`);
+      }
+      // 사람 게이트를 걸지 않는다. 이 축을 입력으로 읽는 판정이 하나도 없고 칸 자체가
+      // frontmatter 한 줄이라, 명령에만 관문을 세우면 옆에 열린 문을 둔 울타리가 된다.
+      // 그래서 이 명령은 --client-id를 아예 받지 않는다 — 자격을 묻는 척도 하지 않는다.
+      assert(!help.includes('rdl doc lifecycle') || !/rdl doc lifecycle[^\n]*--client-id/u.test(help),
+        '수명 명령이 사람 자격을 묻는 것처럼 보이면 안 됩니다.');
+    }
+
     for (const args of [['doc', 'review', '--project', 'crm', '--status', 'approved'], ['doc', 'review', '--project', 'crm', 'ADR-001'], ['doc', 'review', '--project', 'crm', '--max-items', '0']]) {
       const refused = spawnSync(process.execPath, [cli].concat(args, ['--root', temporary]), { cwd: root, encoding: 'utf8', env });
       assert.strictEqual(refused.status, 2, `거부해야 합니다: rdl ${args.join(' ')}\n${refused.stdout}${refused.stderr}`);
@@ -220,10 +314,20 @@ assert(advancedUsage, 'rdl advanced Usage 블록을 찾지 못했습니다.');
 const advancedDocumented = /<!-- rdl-advanced:start -->\n```text\n([\s\S]*?)\n```\n<!-- rdl-advanced:end -->/.exec(document);
 assert(advancedDocumented, 'docs/CLI.md 고급 명령 동기화 블록을 찾지 못했습니다.');
 
-for (const hidden of ['rdl run ', 'rdl adapter ', 'rdl verify ', 'rdl decision ', 'rdl delegation ', 'rdl client ', 'rdl action ', 'rdl debug ', 'rdl workset ', 'rdl assignment ']) {
+for (const hidden of ['rdl run ', 'rdl adapter ', 'rdl verify ', 'rdl decision request', 'rdl decision kinds', 'rdl delegation ', 'rdl client ', 'rdl action ', 'rdl debug ', 'rdl workset ', 'rdl assignment ']) {
   assert(!help.includes(`  ${hidden}`), `사람 표면에 내부 개념 명령이 남았습니다: ${hidden.trim()}`);
   assert(advanced.includes(`  ${hidden}`), `고급 표면에서 사라졌습니다: ${hidden.trim()}`);
 }
+// 결정 명령군은 반이 갈린다. 정책 저장 게이트가 "계약 변경 결정이 필요하다"며 저장을
+// 거절하는데 그 결정을 보고 답하는 명령이 사람 표면에 없으면, 막힌 사람은 rdl help를
+// 봐도 빠져나갈 길이 없다 — 게이트가 탈출구 없는 문이 된다.
+for (const shown of ['rdl decision list ', 'rdl decision answer ']) {
+  assert(help.includes(`  ${shown}`), `사람이 답해야 하는 명령이 사람 표면에 없습니다: ${shown.trim()}`);
+  assert(!advanced.includes(`  ${shown}`), `한 명령이 두 표면에 실리면 어느 쪽이 정본인지 물을 자리가 없습니다: ${shown.trim()}`);
+}
+// dispatch가 받는데 usage 어디에도 없던 자리. usage가 정본이므로 여기 없으면 그
+// 명령은 도움말에도 docs/CLI.md에도 없고, 오직 오류 문구에만 존재한다.
+assert(help.includes('rdl contract migrate --project <key> [--write] [--json]'), 'contract migrate가 usage에 없습니다.');
 assert(advanced.includes('rdl run drive --run <RUN-ID> --project <key> --client-id <id> [--scheduled]'));
 assert(advanced.includes('rdl run operation resolve --run <RUN-ID> --project <key> --operation <operation-id>'));
 
