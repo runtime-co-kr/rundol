@@ -66,6 +66,9 @@ function readDocuments(project) {
       id: frontmatter.data.id === undefined ? null : String(frontmatter.data.id),
       kind: frontmatter.data.kind === undefined ? null : String(frontmatter.data.kind),
       state: frontmatter.data.state === undefined ? null : String(frontmatter.data.state),
+      // 수명은 0.45.0이 state에서 갈라낸 두 번째 칸이다. 읽지 않으면 이관 검사가
+      // 문서를 절반만 재게 되고, 그 절반이 정확히 완료 쪽이다.
+      lifecycle: frontmatter.data.lifecycle === undefined ? null : String(frontmatter.data.lifecycle),
       // 정본 문서인가. 11절 표가 세는 125는 이 축이 참인 것들이고, inbox의 클리핑과
       // 헌장이 그 밖에 있다.
       canonical: entry.origin === 'scanned' && !relative.startsWith('inbox/')
@@ -96,17 +99,24 @@ function stepLabel(classified) {
 }
 
 // 쉬운 절반. 값 하나가 스텝 하나로 떨어지는 것들이며, 표의 모양은 11절 그대로다.
-function mapItems(items, classify, valueOf) {
+//
+// optional은 "이 칸은 비어 있어도 된다"이다. 값이 없는 것과 값의 자리가 없는 것은
+// 다르고, 그 차이를 여기서 접으면 수명 칸을 적지 않은 문서가 — 이 저장소에서는 절반이
+// 넘는다 — 전부 "옮길 자리가 없는 항목"이 되어 나온다. 그러면 이 검사기의 종료 코드가
+// 언제나 1이 되고, 언제나 떨어지는 검사는 언제나 0으로 끝나는 검사와 똑같이 무시된다.
+// 어휘가 "없는 것과 active는 다르다"고 정해 둔 자리를 여기서 지우지 않는다.
+function mapItems(items, classify, valueOf, options) {
+  const optional = Boolean(options && options.optional);
   const rows = new Map();
   const unplaced = [];
   for (const item of items) {
     const classified = classify(valueOf(item));
-    const key = classified.value === null ? '(값 없음)' : classified.value;
+    const key = classified.value === null ? (optional ? '(칸 없음)' : '(값 없음)') : classified.value;
     if (!rows.has(key)) {
       rows.set(key, { value: key, count: 0, step: classified.step, validity: classified.validity, mapped: classified.mapped, declared: classified.declared, source: classified.source });
     }
     rows.get(key).count += 1;
-    if (!classified.mapped) unplaced.push({ item, classified });
+    if (!classified.mapped && !(optional && classified.value === null)) unplaced.push({ item, classified });
   }
   return { rows: Array.from(rows.values()).sort((left, right) => right.count - left.count), unplaced };
 }
@@ -224,11 +234,18 @@ function audit(start, options) {
   const documents = readDocuments(project);
 
   const taskMapping = mapItems(tasks, map.classifyTaskStatus, (task) => task.status);
+  // 문서는 두 칸으로 잰다. 한 칸으로 재는 동안 완료 쪽이 통째로 빠져 있었고, 그
+  // 사실은 아무 신호도 내지 않았다 — 검사기는 답을 냈고 그 답에 완료가 없었을 뿐이다.
+  // ADR-026의 후속 작업이 이 자리를 지목한다: "이관 검사기가 문서를 두 칸으로 재게 한다".
   const documentMapping = mapItems(documents, map.classifyDocumentState, (doc) => doc.state);
+  const lifecycleMapping = mapItems(documents, map.classifyDocumentLifecycle, (doc) => doc.lifecycle, { optional: true });
 
+  // 자리를 못 찾은 항목에 어느 칸을 재다 못 찾았는지를 함께 싣는다. 축이 하나일 때는
+  // 물을 필요가 없던 것이고, 셋이 된 지금 값이 없으면 읽는 사람이 되짚어야 한다.
   const unplaced = []
-    .concat(taskMapping.unplaced.map((entry) => ({ kind: 'task', id: entry.item.id, value: entry.classified.value, declared: entry.classified.declared, title: entry.item.title || null })))
-    .concat(documentMapping.unplaced.map((entry) => ({ kind: 'document', id: entry.item.id, value: entry.classified.value, declared: entry.classified.declared, file: entry.item.file })));
+    .concat(taskMapping.unplaced.map((entry) => ({ kind: 'task', field: 'status', id: entry.item.id, value: entry.classified.value, declared: entry.classified.declared, title: entry.item.title || null })))
+    .concat(documentMapping.unplaced.map((entry) => ({ kind: 'document', field: 'state', id: entry.item.id, value: entry.classified.value, declared: entry.classified.declared, file: entry.item.file })))
+    .concat(lifecycleMapping.unplaced.map((entry) => ({ kind: 'document', field: 'lifecycle', id: entry.item.id, value: entry.classified.value, declared: entry.classified.declared, file: entry.item.file })));
 
   const hard = {
     kindless: kindlessTasks(tasks),
@@ -251,6 +268,7 @@ function audit(start, options) {
     },
     tasks: taskMapping.rows,
     documents: documentMapping.rows,
+    documentLifecycles: lifecycleMapping.rows,
     unplaced,
     vocabularyHoles: map.unmappedVocabulary(),
     undeclaredMappings: map.undeclaredMappings(),
@@ -280,10 +298,18 @@ function render(result) {
     lines.push(`  ${pad(row.value, 14)}${pad(row.count, 5)}→ ${pad(row.mapped ? stepLabelOf(row) : '(자리 없음)', 22)}${row.source || ''}`);
   }
   lines.push('');
-  lines.push('쉬운 절반 — 문서');
+  lines.push('쉬운 절반 — 문서 (승인 축: state)');
   for (const row of result.documents) {
     const note = row.mapped && !row.declared ? '  어휘 밖 값이 여기서 정식이 된다' : '';
     lines.push(`  ${pad(row.value, 14)}${pad(row.count, 5)}→ ${pad(row.mapped ? stepLabelOf(row) : '(자리 없음)', 22)}${row.source || ''}${note}`);
+  }
+  lines.push('');
+  lines.push('쉬운 절반 — 문서 (수명 축: lifecycle)');
+  for (const row of result.documentLifecycles) {
+    // 칸이 없는 것은 자리를 못 찾은 것이 아니라 이 축에 대해 아무 말도 하지 않은 것이다.
+    const label = row.value === '(칸 없음)' ? '(이 축에 말 없음)' : row.mapped ? stepLabelOf(row) : '(자리 없음)';
+    const note = row.mapped && !row.declared ? '  어휘 밖 값이 여기서 정식이 된다' : '';
+    lines.push(`  ${pad(row.value, 14)}${pad(row.count, 5)}→ ${pad(label, 22)}${row.source || ''}${note}`);
   }
   lines.push('');
 
@@ -291,13 +317,14 @@ function render(result) {
   if (!result.unplaced.length) lines.push('  없음');
   for (const entry of result.unplaced) {
     const where = entry.kind === 'task' ? `${entry.id} ${entry.title || ''}` : `${entry.file}${entry.id ? ` (${entry.id})` : ''}`;
-    lines.push(`  ${pad(entry.kind, 9)}state=${pad(entry.value === null ? '(없음)' : entry.value, 10)}${entry.declared ? '어휘 안' : '어휘 밖'}  ${where}`);
+    lines.push(`  ${pad(entry.kind, 9)}${pad(`${entry.field}=${entry.value === null ? '(없음)' : entry.value}`, 26)}${entry.declared ? '어휘 안' : '어휘 밖'}  ${where}`);
   }
   lines.push('');
 
   lines.push('어휘가 선언했으나 지도에 없는 값 — 모델의 구멍');
   lines.push(`  태스크 상태: ${result.vocabularyHoles.taskStatuses.join(' · ') || '없음'}`);
   lines.push(`  문서 상태:   ${result.vocabularyHoles.documentStates.join(' · ') || '없음'}`);
+  lines.push(`  문서 수명:   ${result.vocabularyHoles.documentLifecycles.join(' · ') || '없음'}`);
   lines.push('');
 
   const hard = result.hard;
