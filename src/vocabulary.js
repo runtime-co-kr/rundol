@@ -584,6 +584,21 @@ const FIELD_TYPES = Object.freeze(['string', 'integer']);
 /** 표시 필드. 화면에 보이는 말은 전부 여기 있고, 저장값은 식별자뿐이다. */
 const DISPLAY_FIELDS = Object.freeze(['label', 'description', 'order', 'disabled']);
 
+/**
+ * 정책 층 값을 담은 설정 표면. 저장 게이트가 "어느 표면인가"로 받는 값이다.
+ *
+ * 표면이 여럿인데 게이트가 하나여야 하므로(REQ-058) 이 값이 필요하다. 표면마다
+ * 게이트를 따로 세우면 언젠가 한쪽만 고쳐지고, 그때 결정 없이 정책이 바뀌는 구멍이
+ * 하나 생긴다. 표면을 값으로 만들어 하나의 게이트에 넘기면 그 구멍이 열리지 않는다.
+ *
+ * JUDGMENT_SURFACES와 글자가 겹치는 board는 다른 필드의 값이다. 한쪽은 "누가
+ * 물었나"이고 여기는 "어느 설정 파일을 저장하는가"다.
+ *
+ * 각 표면이 어떤 필드를 정책으로 보는지는 여기 없다. 그것은 값이 아니라 필드
+ * 이름이고, 이 파일은 값만 갖는다 — src/policy-gate.js의 SURFACES가 갖는다.
+ */
+const POLICY_SURFACES = Object.freeze(['board', 'workflows']);
+
 // ── 저장소와 협업 ───────────────────────────────────────────────────────
 
 const WORKSPACE_BRANCHES = Object.freeze(['rundol/workspace', 'rundol/settings']);
@@ -828,6 +843,7 @@ module.exports = Object.freeze({
   EXEMPTABLE_GATES,
   FIELD_TYPES,
   DISPLAY_FIELDS,
+  POLICY_SURFACES,
   WORKSPACE_BRANCHES,
   SETTINGS_BRANCH,
   WORKSPACE_BRANCH,

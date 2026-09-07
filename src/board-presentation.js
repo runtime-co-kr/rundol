@@ -35,26 +35,26 @@ const BOUNDARY_KEYS = Object.freeze([
   'approvalRequired', 'humanGate', 'gateBypass', 'delegationGrant',
   'forceTakeover', 'forceResolve', 'publish', 'prMerge', 'approvalRevisionBinding'
 ]);
-// 정책 필드는 그룹마다 다르고 코드가 갖는다. 파일이 자기 허용 목록을 선언할 수
-// 있으면 아무 필드나 허용된다고 적으면 그만이다.
+// 어떤 필드가 정책이고 어떤 것이 표시인지는 이 파일이 정하지 않는다. 정책 층을 담은
+// 설정 표면이 board.json 하나가 아니고, 표면마다 판정을 따로 두면 언젠가 한쪽만
+// 고쳐져 결정 없이 정책이 바뀌는 구멍이 하나 생긴다. 선언과 판정은 policy-gate.js가
+// 하나로 갖고, 여기서는 그 선언을 읽어 쓴다.
 //
-// 프로필의 policy와 sections는 이름을 얻기 전부터 정책 필드였다. 표시 항목 안에
-// 동작을 정하는 값이 형제로 앉는 형태가 이 파일에서 이미 쓰이고 있었다는 뜻이고,
-// 새 정책 필드도 같은 자리에 온다.
-const POLICY_FIELDS = Object.freeze({ profiles: ['policy', 'sections'] });
-// 판수 1 시절부터 저장되던 정책 필드. 이름을 뒤늦게 붙였다고 이미 있는 파일을
-// 거부할 수는 없다. 판수 요구는 이 집합 밖의 새 정책 필드에만 건다.
-const GRANDFATHERED_POLICY_FIELDS = new Set(['profiles.policy', 'profiles.sections']);
+// 아래 두 이름은 그 선언에서 파생된 별칭이다. 파생시키지 않고 다시 적으면 두 목록이
+// 갈리는 날 어느 쪽이 맞는지 알 수 없다.
+const policyGate = require('./policy-gate');
+const BOARD_SURFACE = 'board';
+const BOARD_LAYERS = policyGate.SURFACES[BOARD_SURFACE];
 
 // 범위 전체에 하나뿐인 정책 값은 최상위 키에 둔다. 항목에 붙지 않는 값을 억지로
 // 항목 안에 넣으면 어느 항목에 넣을지가 임의가 되고, 임의로 정한 자리는 다음 사람이
 // 다른 자리에 넣는다. 그룹 이름과 겹치지 않아야 두 모양이 섞이지 않는다.
-const SCALAR_KEYS = Object.freeze(['approval']);
+const SCALAR_KEYS = BOARD_LAYERS.scalar;
 
 // 최상위 맵. 키가 열려 있어 표시 그룹의 고정 키 검증에 넣을 수 없고, 항목의 모양도
 // 라벨·설명·순서가 아니다. 검증은 유형 모듈이 이미 갖고 있으므로 위임한다 — 같은
 // 판정을 여기서 다시 쓰면 두 곳이 갈라지는 날 어느 쪽이 맞는지 알 수 없다.
-const MAP_KEYS = Object.freeze(['itemTypes']);
+const MAP_KEYS = BOARD_LAYERS.whole;
 
 // 승인 모드는 이름 하나가 조합 전체를 정한다. 조합의 일부를 여기서 적을 수 있으면
 // 이름이 뜻을 잃고 "AI 우선인데 검증자가 하나"인 프로젝트가 생긴다. 그래서 이 자리는
@@ -302,13 +302,10 @@ function readConfig(file) {
   // 이름을 붙였다고 이미 저장된 팀 프리셋을 거부하면, 이름 하나 바꾼 것만으로
   // 남의 파일이 열리지 않는다. 이름은 새로 붙이되 판정은 그날 이후 것에만 건다.
   if (value.schemaVersion === 1) {
-    for (const [group, fields] of Object.entries(POLICY_FIELDS)) {
+    for (const group of Object.keys(PRESENTATION_GROUPS)) {
       for (const [key, entry] of Object.entries(value[group] || {})) {
-        for (const field of fields) {
-          if (GRANDFATHERED_POLICY_FIELDS.has(`${group}.${field}`)) continue;
-          if (entry && Object.prototype.hasOwnProperty.call(entry, field)) {
-            throw new Error(`${file}: ${group}.${key}.${field}는 정책 필드입니다. schemaVersion을 2로 올리세요.`);
-          }
+        for (const field of policyGate.versionedPolicyFields(BOARD_SURFACE, entry)) {
+          throw new Error(`${file}: ${group}.${key}.${field}는 정책 필드입니다. schemaVersion을 2로 올리세요.`);
         }
       }
     }
@@ -444,81 +441,43 @@ function presentationFile(start, projectKey, scope) {
   throw new Error(`알 수 없는 설정 범위입니다: ${scope}`);
 }
 
-// 화면에서 고친 표시 규칙을 그 범위의 board.json에 쓴다. 쓰기 전에 읽을 때와 같은
-// 검증을 통과시킨다. 통과하지 못하면 파일을 건드리지 않는다. 반쯤 적용된 설정은
-// 잘못된 설정보다 나쁘다.
-// 키 순서와 공백은 변경이 아니다. 그대로 견주면 아무것도 바꾸지 않은 저장이
-// 결정을 요구하고, 그런 요구가 몇 번 반복되면 사람은 내용을 보지 않고 누른다.
-function stableJson(value) {
-  if (value === undefined) return ' ';
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
-}
-
 // 정책 차이만 결정을 요구한다. 표시 문구까지 결정을 요구하면 라벨의 오타를 고치는
 // 데도 결정이 필요해지고, 형식이 된 결정은 그 안에 담긴 정책 변경까지 함께 가린다.
 // 층을 나눈 이유가 여기서 쓰인다 — 표시 층은 판정에 쓰이지 않으므로 기록을 요구할
 // 근거가 없다.
 //
-// 조이는 변경과 푸는 변경을 가리지 않는다. 무엇이 조이는 것인지는 값의 의미를
-// 알아야 정하고, 그 판정을 기록 요구의 조건으로 삼으면 판정이 틀리는 순간 기록이
-// 조용히 사라진다.
+// 판정 자체는 policy-gate.js가 표면 이름 하나를 더 받아 수행한다. board.json 전용
+// 판정을 여기 남겨 두면 workflows.json 쪽 판정과 갈리고, 갈리는 날 느슨한 쪽이
+// 게이트의 실제 높이가 된다. 이 이름은 그 함수를 board 표면에 고정한 별칭이다.
 function policyDifferences(previous, next) {
-  const differences = [];
-  // 최상위 값도 정책이다. 그룹만 훑으면 승인 모드를 사람만에서 AI만로 바꾸는 저장이
-  // 아무 기록도 남기지 않는다 — 가장 크게 푸는 변경이 가장 조용히 지나간다.
-  for (const key of SCALAR_KEYS) {
-    const from = previous ? previous[key] : undefined;
-    const to = next ? next[key] : undefined;
-    if (stableJson(from) !== stableJson(to)) differences.push({ group: key, key: '(범위 전체)', field: key, from, to });
-  }
-  // 최상위 맵은 키 단위로 견준다. 통째로 견주면 유형 하나를 고쳤는지 전부 갈아엎었는지
-  // 구분할 수 없고, 기록에 "무엇이 바뀌었나"가 남지 않는다.
-  for (const mapKey of MAP_KEYS) {
-    const before = (previous && previous[mapKey]) || {};
-    const after = (next && next[mapKey]) || {};
-    for (const key of Array.from(new Set(Object.keys(before).concat(Object.keys(after)))).sort()) {
-      if (stableJson(before[key]) !== stableJson(after[key])) {
-        differences.push({ group: mapKey, key, field: '(정의 전체)', from: before[key], to: after[key] });
-      }
-    }
-  }
-  for (const group of Object.keys(PRESENTATION_GROUPS)) {
-    const before = (previous && previous[group]) || {};
-    const after = (next && next[group]) || {};
-    const fields = POLICY_FIELDS[group] || [];
-    for (const key of Array.from(new Set(Object.keys(before).concat(Object.keys(after)))).sort()) {
-      for (const field of fields) {
-        const from = before[key] ? before[key][field] : undefined;
-        const to = after[key] ? after[key][field] : undefined;
-        if (stableJson(from) !== stableJson(to)) differences.push({ group, key, field, from, to });
-      }
-      // 사용 안 함은 어느 그룹에서나 정책이다. 항목을 없애는 것은 표기가 아니라
-      // 그 항목을 쓸 수 있는지를 바꾸므로, 표시 층으로 새면 되돌릴 수 없는 값이
-      // 기록 없이 사라진다.
-      const fromDisabled = Boolean(before[key] && before[key].disabled);
-      const toDisabled = Boolean(after[key] && after[key].disabled);
-      if (fromDisabled !== toDisabled) differences.push({ group, key, field: 'disabled', from: fromDisabled, to: toDisabled });
-    }
-  }
-  return differences;
+  return policyGate.policyDifferences(BOARD_SURFACE, previous, next);
 }
 
 // 판수는 담긴 것이 정한다. 정책 필드가 없으면 1로 남겨 구버전이 계속 읽는다.
+// 무엇이 새 정책 필드인지도 층 선언에서 파생시킨다 — 목록을 따로 두면 "게이트는
+// 정책으로 보는데 판수 판정은 표시로 보는" 어긋남이 생기고, 그 어긋남은 신호를 내지 않는다.
 function schemaVersionFor(next) {
-  for (const [group, fields] of Object.entries(POLICY_FIELDS)) {
+  for (const group of Object.keys(PRESENTATION_GROUPS)) {
     for (const entry of Object.values(next[group] || {})) {
-      for (const field of fields) {
-        if (GRANDFATHERED_POLICY_FIELDS.has(`${group}.${field}`)) continue;
-        if (entry && Object.prototype.hasOwnProperty.call(entry, field)) return 2;
-      }
+      if (policyGate.versionedPolicyFields(BOARD_SURFACE, entry).length) return 2;
     }
   }
   return 1;
 }
 
-function savePresentation(start, projectKey, scope, input, options) {
+// 화면에서 고친 표시 규칙을 그 범위의 board.json에 쓴다. 쓰기 전에 읽을 때와 같은
+// 검증을 통과시킨다. 통과하지 못하면 파일을 건드리지 않는다. 반쯤 적용된 설정은
+// 잘못된 설정보다 나쁘다.
+//
+//   savePresentation(start, projectKey, scope, input, { decisionId })
+//
+// decisionId는 이 저장이 요구하는 계약 변경 결정이다. 정책 층 값이 하나도 바뀌지
+// 않으면 없어도 되고, 바뀌면 그 결정이 답변되어 있어야 한다.
+// 저장이 무엇을 쓸 것인지를 쓰기 전에 계산한다. 게이트가 요구하는 결정을 열려면
+// 이전 내용과 새 내용이 둘 다 필요하고, 그 둘은 저장 안에서만 만들어졌었다 —
+// 부르는 쪽이 새 내용을 자기 나름으로 다시 조립하면 두 조립이 갈리는 날 결정은
+// 이 저장이 아닌 다른 저장을 가리킨다.
+function presentationSavePlan(start, projectKey, scope, input) {
   const file = presentationFile(start, projectKey, scope);
   const previous = readConfig(file);
   const next = { schemaVersion: 1 };
@@ -559,20 +518,27 @@ function savePresentation(start, projectKey, scope, input, options) {
     }
   }
   next.schemaVersion = schemaVersionFor(next);
-  // 정책이 바뀌는데 결정이 없으면 저장하지 않는다. 어떤 필드가 결정을 요구하는지
-  // 함께 알린다 — 이름만 알리면 무엇을 되돌려야 하는지 알 수 없다.
-  const policyChanges = policyDifferences(previous, next);
-  if (policyChanges.length && !(options && options.decisionId)) {
-    const where = policyChanges.map((item) => `${item.group}.${item.key}.${item.field}`).join(', ');
-    throw new Error(`정책 층 변경은 계약 변경 결정이 필요합니다: ${where}`);
-  }
-  const temporary = `${file}.${process.pid}.tmp`;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-  fs.renameSync(temporary, file);
-  // 무엇이 바뀌었는지를 돌려준다. 부르는 쪽이 이것을 결정 원장에 싣는다 — 이전
-  // 값과 새 값이 함께 남아야 복원할 수 있고, 복원할 수 없는 기록은 기록이 아니다.
-  return { file, scope, policyChanges };
+  return Object.assign({ file, scope, surface: BOARD_SURFACE, previous, next },
+    policyGate.policyDecisionPlan(projectKey, { surface: BOARD_SURFACE, scope, previous, next }));
+}
+
+function savePresentation(start, projectKey, scope, input, options) {
+  const plan = presentationSavePlan(start, projectKey, scope, input);
+  // 정책이 바뀌는데 답변된 결정이 이 저장을 가리키지 않으면 저장하지 않는다. 판정도
+  // 결박도 게이트가 하나로 갖는다 — 여기서 "결정 ID가 있는가"만 보면 아무 문자열이나
+  // 통과하고, 그러면 게이트가 있는 것처럼 보이는 자리만 남는다.
+  const verdict = policyGate.assertPolicyDecision(start, {
+    project: projectKey, surface: BOARD_SURFACE, scope, previous: plan.previous, next: plan.next,
+    decisionId: options && options.decisionId
+  });
+  const temporary = `${plan.file}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(plan.file), { recursive: true });
+  fs.writeFileSync(temporary, `${JSON.stringify(plan.next, null, 2)}\n`, 'utf8');
+  fs.renameSync(temporary, plan.file);
+  // 무엇이 바뀌었는지를 돌려준다. 이전 값과 새 값이 함께 남아야 복원할 수 있고,
+  // 복원할 수 없는 기록은 기록이 아니다. 그 값은 이미 결정에 실려 있고, 여기서는
+  // 화면이 무엇이 바뀌었는지 보여 줄 수 있도록 자른 곳 없는 목록을 함께 돌려준다.
+  return { file: plan.file, scope, policyChanges: verdict.changes, decisionId: verdict.decisionId, decision: verdict.decision };
 }
 
 // board.json은 덮어쓴 것만 갖는다. 기본값을 파일에 복사해두면 유형을 하나 더할 때마다
@@ -595,8 +561,9 @@ function renderProjectBoardConfig() {
 module.exports = {
   DOCUMENT_TYPE_KEYS, DOCUMENT_STATE_KEYS, DOCUMENT_LIFECYCLE_KEYS, POLICY_STATE_KEYS, ENFORCEMENT_KEYS,
   TASK_STATUS_KEYS, PRIORITY_KEYS, PRESENTATION_GROUPS, SCAFFOLD_GROUPS, DEFAULT_PRESENTATION,
-  BOUNDARY_KEYS, POLICY_FIELDS, SCALAR_KEYS, MAP_KEYS, APPROVAL_MODE_NAMES,
+  BOUNDARY_KEYS, SCALAR_KEYS, MAP_KEYS, APPROVAL_MODE_NAMES,
   readConfig, mergePresentation, loadBoardPresentation, computeOrigins, policyDifferences,
-  resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile, savePresentation,
+  resolveProfilePresets, resolveProfileSections, profileChoices, presentationFile,
+  presentationSavePlan, savePresentation,
   renderWorkspaceBoardConfig, renderProjectBoardConfig
 };

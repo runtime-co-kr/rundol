@@ -20,6 +20,8 @@ const { normalizeWorkflows, mergeWorkflows, createWorkflow, TASK_NODES } = requi
 const { TARGET_KINDS } = require('./vocabulary');
 
 const FILE_NAME = 'workflows.json';
+// 저장 게이트가 이 파일을 부르는 이름. 표면 이름은 값이므로 vocabulary가 갖는다.
+const SURFACE = 'workflows';
 const ROOT_KEYS = Object.freeze(['schemaVersion', 'workflows', 'bindings']);
 // 유형을 하나씩 적지 않고 기본을 하나 두는 자리. 문서 유형 열하나 중 열이 같은
 // 흐름을 쓰는 것이 지금 실측이고, 그 열을 열 줄로 적으면 하나를 고칠 때 열 곳을
@@ -130,4 +132,81 @@ function workflowFor(config, targetKind, typeId) {
   return createWorkflow(definition);
 }
 
-module.exports = { FILE_NAME, BINDING_FALLBACK, readJson, normalizeBindings, loadWorkflows, workflowFor };
+// ── 쓰기 ────────────────────────────────────────────────────────────────
+//
+// 이 파일은 그래프 전체가 정책이다. 표시 문구가 한 칸도 없으므로 어떤 저장도 계약
+// 변경 결정을 요구하며, 그 판정은 board.json과 같은 게이트가 한다 — 표면마다
+// 게이트를 따로 세우면 언젠가 한쪽만 고쳐지고, 그때 결정 없이 정책이 바뀌는 구멍이
+// 하나 생긴다.
+
+function workflowsFile(start, projectKey, scope) {
+  const layout = workspaceLayout(start);
+  if (scope === 'workspace') return path.join(layout.root, 'projects', 'workspace', FILE_NAME);
+  if (scope === 'project') return path.join(selectProject(layout, projectKey, true).root, FILE_NAME);
+  throw new Error(`알 수 없는 설정 범위입니다: ${scope}`);
+}
+
+/**
+ * 고친 워크플로 정의를 그 범위의 workflows.json에 쓴다.
+ *
+ *   saveWorkflows(start, projectKey, scope, { workflows, bindings }, { decisionId })
+ *
+ * 쓰기 전에 읽을 때와 같은 검증을 통과시킨다. 통과하지 못하면 파일을 건드리지
+ * 않는다 — 반쯤 쓰인 workflows.json은 loadWorkflows가 던지게 만들고, 그러면 그
+ * 프로젝트가 통째로 열리지 않는다.
+ *
+ * 바인딩은 이 파일의 워크플로만이 아니라 상속을 태운 결과에 대고 검증한다. 자기
+ * 층만 보면 작업공간이 정의한 흐름을 프로젝트가 가리키는 정상 배정이 거부된다.
+ */
+function workflowsSavePlan(start, projectKey, scope, input) {
+  const file = workflowsFile(start, projectKey, scope);
+  const previous = readJson(file);
+  const supplied = input || {};
+  const next = { schemaVersion: 1 };
+  // 저장 요청이 담지 않은 칸은 지우지 않는다. 바인딩만 고치는 저장이 그래프를
+  // 통째로 없애면, 없어진 것을 아무도 알아채지 못한 채 모든 항목이 내장 흐름을 탄다.
+  const workflows = supplied.workflows !== undefined ? supplied.workflows : (previous ? previous.workflows : undefined);
+  const bindings = supplied.bindings !== undefined ? supplied.bindings : (previous ? previous.bindings : undefined);
+  if (workflows !== undefined) next.workflows = workflows;
+  if (bindings !== undefined) next.bindings = bindings;
+
+  // 읽을 때와 같은 판정. 여기서 통과하지 못한 내용은 파일에 닿지 않는다.
+  //
+  // 바인딩은 이 층만이 아니라 상속을 태운 결과에 대고 본다. 자기 층만 보면 작업공간이
+  // 정의한 흐름을 프로젝트가 가리키는 정상 배정이 "없는 워크플로"로 거부된다.
+  const layers = [];
+  for (const layer of layerFiles(start, projectKey)) {
+    const parsed = layer.file === file ? next : readJson(layer.file);
+    if (!parsed) continue;
+    layers.push(normalizeWorkflows(parsed.workflows, { file: layer.file }));
+  }
+  const merged = mergeWorkflows(layers);
+  if (next.bindings !== undefined) normalizeBindings(next.bindings, merged, file);
+
+  const policyGate = require('./policy-gate');
+  return Object.assign({ file, scope, surface: SURFACE, previous, next },
+    policyGate.policyDecisionPlan(projectKey, { surface: SURFACE, scope, previous, next }));
+}
+
+function saveWorkflows(start, projectKey, scope, input, options) {
+  const policyGate = require('./policy-gate');
+  const plan = workflowsSavePlan(start, projectKey, scope, input);
+  // 그래프는 전부 정책이다. 답변된 계약 변경 결정이 이 저장을 가리키지 않으면 쓰지 않는다.
+  const verdict = policyGate.assertPolicyDecision(start, {
+    project: projectKey, surface: SURFACE, scope, previous: plan.previous, next: plan.next,
+    decisionId: options && options.decisionId
+  });
+  // 원자적으로 쓴다. 반쯤 쓰인 파일은 잘못된 파일보다 나쁘다 — 잘못된 값은 고칠
+  // 자리를 알려 주지만, 깨진 JSON은 loadWorkflows를 던지게 만들어 프로젝트를 통째로
+  // 열 수 없게 한다.
+  const temporary = `${plan.file}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(plan.file), { recursive: true });
+  fs.writeFileSync(temporary, `${JSON.stringify(plan.next, null, 2)}\n`, 'utf8');
+  fs.renameSync(temporary, plan.file);
+  return { file: plan.file, scope, policyChanges: verdict.changes, decisionId: verdict.decisionId, decision: verdict.decision };
+}
+
+module.exports = {
+  FILE_NAME, SURFACE, BINDING_FALLBACK, readJson, normalizeBindings, loadWorkflows, workflowFor,
+  workflowsFile, workflowsSavePlan, saveWorkflows
+};
