@@ -432,6 +432,22 @@ function taskFlow(root, projectKey, kind) {
   }
 }
 
+// 이 프로젝트가 쓸 수 있는 업무 유형의 목록. 흐름과 같은 규율로 읽는다 — 설정이
+// 없거나 읽히지 않으면 null을 주고 저장 계층이 내장 둘로 떨어진다.
+//
+// 사용 안 함으로 표시된 유형도 목록에 남긴다. 빼면 그 유형의 옛 태스크는 상태 하나
+// 옮기는 것조차 "지원하지 않는 종류"로 막혀, 없앤 유형의 태스크를 정리할 길이
+// 사라진다. 그 유형을 쓰면 안 된다는 사실은 rdl check가 RDL-ITEM-006으로 말한다.
+function taskKinds(root, projectKey) {
+  try {
+    const presentation = require('./board-presentation').loadBoardPresentation(root, projectKey);
+    const ids = Object.keys((presentation && presentation.itemTypes) || {});
+    return ids.length ? ids : null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function taskUpdate(start, taskIdValue, changes, projectKey) {
   const config = workspaceStateConfig(start, projectKey);
   if (!refExists(config.root, config.ref)) initState(config.root, { project: config.project });
@@ -447,7 +463,7 @@ function taskUpdate(start, taskIdValue, changes, projectKey) {
   // 나머지 둘은 판정되지 않고, 부르는 쪽은 고치고 다시 부르기를 되풀이한다.
   assertNodeConsistency(task, changes, taskFlow(config.root, config.project, (changes && changes.kind) || task.kind));
   assertExemptionConsistency(task, changes);
-  assertKindConsistency(task, changes);
+  assertKindConsistency(task, changes, taskKinds(config.root, config.project));
   assertRoundUniqueness(parsed.tasks, taskIdValue, Object.assign({}, task, changes));
   const before = {};
   const changedFields = Object.keys(changes).filter((field) => JSON.stringify(task[field]) !== JSON.stringify(changes[field]));
@@ -514,7 +530,7 @@ function taskCreate(start, input) {
   // 요구가 이것이다. 판정이 필요할 때 링크를 보고 계산한다.
   assertNodeConsistency(null, task);
   assertExemptionConsistency(null, task);
-  assertKindConsistency(null, task);
+  assertKindConsistency(null, task, taskKinds(config.root, config.project));
   assertRoundUniqueness(parsed.tasks, id, task);
   parsed.tasks[id] = task;
   const commit = persistTaskChange(config, {

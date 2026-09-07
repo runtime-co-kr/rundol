@@ -664,9 +664,58 @@ try {
   fs.writeFileSync(rejectionShard, rejectionOriginal, 'utf8');
   assert.strictEqual(rdl(['check']).summary.errors, 0, '되돌린 원장은 다시 깨끗해야 합니다.');
 
+  // ── 이름이 바뀐 문서의 차분 ─────────────────────────────────────────────────
+  //
+  // 이력은 --follow로 이름 변경을 넘어 커밋을 모으는데 차분은 오랫동안 지금 경로 하나로만
+  // git에게 물었다. 그래서 이름이 바뀌기 전 지점을 기준으로 고르면 그 커밋에 그 경로가
+  // 없어 차분이 「문서 전체가 새로 생겼다」가 되었다 — 이력이 고르라고 내놓은 지점을
+  // 차분이 다루지 못한다는 뜻이고, 그것은 화면이 자기가 준 선택지에 답하지 못하는 상태다.
+  //
+  // 이름 변경은 리비전을 바꾸지 않는다(경로는 리비전 계산에서 빠진다). 그래서 승인은 그
+  // 경계를 넘어 살아 있고, 살아 있는 승인은 지목할 수 있어야 한다 — 지목하지 못하면 차분이
+  // 통째로 「승인된 리비전을 담은 커밋을 찾지 못했습니다」가 되어 사라진다.
+  const moved = rdl(['doc', 'create', 'ADR', '이름이 바뀌는 결정', '--owner', 'MEMBER-001', '--scope', '이름 변경을 넘는 차분을 검증한다', '--exclude', '구현 절차', '--project', 'crm']);
+  const movedBefore = moved.relativeFile.replace(/^projects\/crm\//u, '');
+  const movedAfter = movedBefore.replace(/(ADR-\d+)-.*\.md$/u, '$1-이름을-바꾼-결정.md');
+  assert.notStrictEqual(movedAfter, movedBefore, '이름이 실제로 바뀌어야 이 축을 잴 수 있습니다.');
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'add moved document'], projectRoot);
+  approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: moved.id, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }], reason: '이름을 바꾸기 전에 승인함' });
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'project approved state'], projectRoot);
+  const approvedAtOldPath = command('git', ['rev-parse', 'HEAD'], projectRoot);
+
+  // 이름을 바꾸면서 내용도 함께 고친다. 순수 이름 변경만으로는 리비전이 그대로라 승인본이
+  // 새 경로의 커밋에서도 찾아지고, 그러면 경계를 넘는 비교가 시험에서 한 번도 일어나지 않는다.
+  command('git', ['mv', movedBefore, movedAfter], projectRoot);
+  const movedPath = path.join(projectRoot, movedAfter);
+  fs.writeFileSync(movedPath, `${fs.readFileSync(movedPath, 'utf8').replace(/^title: .*$/mu, 'title: 이름을 바꾼 결정')}\n이름이 바뀐 뒤에 추가한 문장입니다.\n`, 'utf8');
+  command('git', ['add', '-A'], projectRoot);
+  command('git', ['commit', '-m', 'rename and edit'], projectRoot);
+  const editedAtNewPath = command('git', ['rev-parse', 'HEAD'], projectRoot);
+
+  // 승인본 ↔ 작업본. 승인본은 옛 경로의 커밋에 있다 — 지금 경로로만 읽으면 그 커밋의
+  // git show가 언제나 비어 후보를 다 훑고도 못 찾은 것이 된다.
+  const movedDiff = diffSinceApproval(temporary, { project: 'crm', targetId: moved.id });
+  assert.strictEqual(movedDiff.baseCommit, approvedAtOldPath, `옛 경로에서 승인된 리비전도 지목할 수 있어야 합니다: ${movedDiff.reason || '(사유 없음)'}`);
+  assert(/rename from /u.test(movedDiff.diff || ''), `승인본↔작업본이 이름 변경을 넘어야 합니다: ${String(movedDiff.diff).slice(0, 400)}`);
+  assert(String(movedDiff.diff).includes('이름이 바뀐 뒤에 추가한 문장'), '이름 변경 너머의 실제 변경이 차분에 있어야 합니다.');
+  // 「새 파일 전체」로 그려지지 않는다. 전체로 그리면 사람은 무엇이 바뀌었는지 못 읽고,
+  // 못 읽으면 읽지 않고 승인한다 — 차분이 있는 이유가 거기서 사라진다.
+  const movedAdded = (String(movedDiff.diff).match(/^\+/gmu) || []).length;
+  assert(movedAdded < 10, `이름이 바뀌었다고 문서 전체가 추가로 보이면 안 됩니다: +${movedAdded}줄`);
+
+  // 승인본 ↔ 제출본. 축이 다르다고 이름 변경을 따라가는 방식이 달라지면, 같은 문서의
+  // 차분이 축마다 다르게 보인다 — 한 문서에 두 사실이 생기는 자리가 그것이다.
+  assert.strictEqual(rdl(['doc', 'submit', moved.id, '--client-id', 'agent-a', '--project', 'crm']).created, true);
+  const movedSubmission = diffSubmission(temporary, { project: 'crm', targetId: moved.id });
+  assert.strictEqual(movedSubmission.approvedCommit, approvedAtOldPath, `제출 축도 옛 경로의 승인본을 지목해야 합니다: ${movedSubmission.reason || '(사유 없음)'}`);
+  assert.strictEqual(movedSubmission.submittedCommit, editedAtNewPath);
+  assert(/rename from /u.test(movedSubmission.diff || ''), `승인본↔제출본이 이름 변경을 넘어야 합니다: ${String(movedSubmission.diff).slice(0, 400)}`);
+
   // 화면이 쓰는 자리도 여기서 지난다. 명령줄만 시험하면 보드가 자기 판정을 따로 갖게
   // 되고, 표면마다 판정이 갈리면 그중 느슨한 쪽이 게이트의 실제 높이가 된다.
-  module.exports = boardApprovalSurface(created.id, documentFile)
+  module.exports = boardApprovalSurface(created.id, documentFile, { documentId: moved.id, from: approvedAtOldPath, to: editedAtNewPath })
     .then(() => { process.stdout.write('approval tests passed\n'); })
     .finally(cleanup);
 } catch (error) {
@@ -686,7 +735,7 @@ function cleanup() {
 // 왕복이 승인을 맨 뒤로 미루는 자리였다.
 // 대상은 인자로 받는다. 시험 본문의 const는 try 블록의 것이라 이 함수에서 보이지
 // 않고, 보이게 하려고 밖으로 올리면 어느 값이 언제 채워지는지가 흐려진다.
-async function boardApprovalSurface(documentId, documentFile) {
+async function boardApprovalSurface(documentId, documentFile, renamed) {
   const board = require('../src/board').createBoardServer(temporary, { token: 'test-session-token', project: 'crm' });
   await new Promise((resolve, reject) => {
     board.server.once('error', reject);
@@ -817,6 +866,40 @@ async function boardApprovalSurface(documentId, documentFile) {
 
     // 이미 승인된 판은 다시 승인해도 원장이 늘지 않는다.
     assert.strictEqual((await post(approvePath, { clientId: 'desk-h', basis: [{ kind: 'read' }], reason: '한 번 더' })).body.created, false);
+
+    // ── 한 시간축 ─────────────────────────────────────────────────────────
+    //
+    // 원장 사건과 커밋을 따로 내면 합치는 일은 그것을 받은 쪽마다 다시 일어나고, 그중
+    // 하나만 시간대를 틀려도 같은 이력이 자리마다 다르게 읽힌다. 실제로 문자열 비교가
+    // 원장의 UTC(Z)와 git의 +09:00을 아홉 시간 어긋난 자리에 세웠다 — 그래서 순서는
+    // 서버가 짓고, 여기서 그 순서를 값으로 잰다.
+    const history = (await request(port, `/api/projects/crm/documents/${documentId}/history`)).body;
+    assert(Array.isArray(history.timeline), '이력은 세워진 시간축을 함께 내야 합니다.');
+    assert.strictEqual(
+      history.timeline.length,
+      history.approvals.length + history.submissions.length + history.rejections.length + history.commits.length,
+      '시간축에서 줄이 사라지거나 늘면 안 됩니다.'
+    );
+    // 두 축이 같은 표기로 온다. 표기가 갈리면 이 값을 문자열로 견주는 자리가 다시 틀린다.
+    for (const row of history.timeline) {
+      assert(/Z$/u.test(String(row.at)), `시간축의 시각은 한 시간대로 와야 합니다: ${row.kind} ${row.at}`);
+    }
+    // 최근이 위다. 순간으로 견주므로 표기가 어떻든 이 부등식이 성립해야 한다.
+    const instants = history.timeline.map((row) => Date.parse(row.at));
+    for (let index = 1; index < instants.length; index += 1) {
+      assert(
+        instants[index - 1] >= instants[index],
+        `시간축이 순간 순서가 아닙니다: ${index}번째 ${history.timeline[index - 1].at} < ${history.timeline[index].at}`
+      );
+    }
+
+    // 임의 두 지점 축도 이름 변경을 넘는다. 세 축 중 하나만 못 넘으면 같은 문서의 차분이
+    // 축마다 다르게 보이고, 그때 사람은 어느 쪽이 사실인지 화면만 보고는 가릴 수 없다.
+    const range = await request(port, `/api/projects/crm/documents/${renamed.documentId}/diff?axis=range&from=${renamed.from}&to=${renamed.to}`);
+    assert.strictEqual(range.status, 200, `임의 두 지점 비교가 되어야 합니다: ${JSON.stringify(range.body)}`);
+    assert(/rename from /u.test(range.body.diff || ''), `임의 두 지점도 이름 변경을 넘어야 합니다: ${String(range.body.diff).slice(0, 400)}`);
+    const rangeAdded = (String(range.body.diff).match(/^\+/gmu) || []).length;
+    assert(rangeAdded < 10, `이름이 바뀌었다고 문서 전체가 추가로 보이면 안 됩니다: +${rangeAdded}줄`);
   } finally {
     await new Promise((resolve) => board.server.close(resolve));
   }

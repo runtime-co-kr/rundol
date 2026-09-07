@@ -133,10 +133,24 @@ function taskKind(task) {
   return (task && task.kind) || 'normal';
 }
 
-function assertKindConsistency(current, changes) {
+/**
+ * 종류와 그에 딸린 값들의 짝을 본다. 쓸 수 있는 종류의 목록은 부르는 쪽이 준다.
+ *
+ * 목록을 이 파일이 갖고 있으면 board.json에 유형을 정의한 프로젝트가 그 유형을
+ * 저장할 수 없다. 판정 계층(item-type.js)은 이미 파일이 정의한 유형으로 판정하는데
+ * 저장 계층만 내장 둘에 묶여 있어서, 유형을 열어 둔 채로 쓸 수가 없었다 — 그래서
+ * 이 프로젝트의 업무 유형 축이 태스크 제목의 대괄호로 샜다.
+ *
+ * 그래도 목록 자체를 없애지는 않는다. 없애면 오타로 적은 종류가 조용히 저장되고
+ * rdl check가 RDL-ITEM-006을 낼 때까지 아무도 모른다. 넘겨받지 못했을 때 내장
+ * 둘로 떨어지는 이유도 같다 — 설정을 읽지 못한다는 사실이 저장을 여는 근거가 되면
+ * 설정 파일 하나가 깨질 때마다 어휘가 통째로 열린다.
+ */
+function assertKindConsistency(current, changes, allowedKinds) {
   const next = Object.assign({}, current || {}, changes || {});
   const kind = taskKind(next);
-  if (!TASK_KINDS.includes(kind)) throw inputError(`지원하지 않는 태스크 종류입니다: ${kind} (${TASK_KINDS.join(', ')})`);
+  const allowed = Array.isArray(allowedKinds) && allowedKinds.length ? allowedKinds : TASK_KINDS;
+  if (!allowed.includes(kind)) throw inputError(`지원하지 않는 태스크 종류입니다: ${kind} (${allowed.join(', ')})`);
   const result = next.result === undefined ? null : next.result;
   if (result !== null) {
     if (kind !== 'test') throw inputError('테스트 태스크가 아니면 판정을 둘 수 없습니다.');

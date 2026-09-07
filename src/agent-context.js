@@ -153,11 +153,35 @@ function diagnosticSummary(root, projectKey) {
   }
 }
 
+// 문서 승인 축의 지금 상태. 판정을 여기서 다시 만들지 않고 doc pipeline이 이미 계산한
+// 것을 접는다 — 같은 물음에 답하는 코드가 둘이 되면 갈리고, 갈린 뒤에는 어느 쪽이
+// 맞는지 물을 자리가 없다. 그 계산은 check가 쓰는 upstreamTrustIssues와 같은 규칙이다.
+//
+// 프로젝트가 정해지지 않으면 답하지 않는다. 문서는 프로젝트가 소유하고, 작업공간
+// 범위에는 어느 문서를 말할지 정할 근거가 없다.
+function documentSummary(root, projectKey) {
+  if (!projectKey) return null;
+  try {
+    const pipeline = require('./document-analysis').documentPipeline(root, { project: projectKey });
+    return { used: pipeline.used, counts: pipeline.counts, next: pipeline.next || null };
+  } catch (error) {
+    return { used: null, counts: null, next: null, error: error.message };
+  }
+}
+
 // 다음 행동은 상태에서 결정적으로 계산한다. 무엇부터 볼지 스스로 추측하는 대신
 // 같은 상태면 같은 안내를 받는다.
 function nextActions(context) {
   const actions = [];
   if (context.diagnostics.errors) actions.push(`검사 오류 ${context.diagnostics.errors}건을 먼저 해소하세요: rdl check --json`);
+  // 문서 축은 태스크 목록보다 앞에 선다. 이 줄은 열린 태스크가 몇이든 하나뿐인데,
+  // 태스크 줄 뒤에 두면 활성 태스크가 스물일 때 스물한 번째가 되어 읽히지 않는다.
+  // 승인은 사람이 내린 판단이고 낡은 승인은 그 판단이 이미 쓰였다는 뜻이라, 그
+  // 사실이 목록 아래로 밀리면 아무도 안 보는 자리에 놓인다.
+  //
+  // 축을 안 쓰는 프로젝트에서는 말하지 않는다. 그곳에서 전 문서가 미승인인 것은
+  // 상태가 아니라 이 축을 안 굴린다는 뜻이고, 그 안내는 시킬 행동이 없다.
+  if (context.documents && context.documents.used && context.documents.next) actions.push(context.documents.next);
   // 안내는 스텝으로 가른다. 상태 이름 셋을 늘어놓던 자리인데, 그러면 이름이
   // 하나 늘 때 그 상태의 태스크만 아무 안내도 받지 못하고 그 사실은 신호를
   // 내지 않는다. 막혀 있는가는 스텝이 아니라 blocker가 답한다 — 대기와 진행은
@@ -203,6 +227,7 @@ function agentContext(start, options) {
       todo: open.filter((task) => workflow.isUnclaimed(task.status))
     }
   };
+  context.documents = documentSummary(layout.root, settings.project || null);
   context.next = nextActions(context);
   // 에이전트가 이 컨텍스트 다음에 바로 쓰는 명령만 싣는다. 전체 목록은 rdl help가
   // usage 정본에서 파생해 제공한다.
@@ -212,6 +237,7 @@ function agentContext(start, options) {
     acceptance: 'rdl task acceptance <TASK-ID> <AC-ID> --done --json',
     check: 'rdl check --json [--strict] [--implementation]',
     contract: 'rdl contract next --project <key> --json',
+    documents: 'rdl doc status --project <key> --json',
     help: 'rdl help --json',
     sync: 'rdl sync --project <key> --json'
   };
