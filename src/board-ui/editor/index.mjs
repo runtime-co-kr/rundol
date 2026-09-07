@@ -26,6 +26,8 @@ import { ListItemView } from './list-item-view.mjs';
 import { tableControls } from './table-controls.mjs';
 import { imageDrop } from './image-drop.mjs';
 import { CodeBlockView } from './code-block-view.mjs';
+import { WikiLinkView } from './wiki-link-view.mjs';
+import { assetUrl as defaultAssetUrl } from './asset-url.mjs';
 
 function hardBreak(state, dispatch) {
   if (dispatch) dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
@@ -86,6 +88,11 @@ export function openEditor(mount, markdown, options = {}) {
   // "고친 것"이 되어 원문 보존이 사라진다.
   const { doc, sources, unknown } = fromMarkdown(markdown);
 
+  // 자산 주소는 밖에서 받는다. 보드 화면은 스냅숏으로 자산 디렉터리를 이미 알고 있고,
+  // 그것을 넘겨받는 편이 편집기가 다시 묻는 것보다 정확하다. 넘어오지 않으면 편집기가
+  // 스스로 스냅숏에 묻는다 — 그림이 안 보이는 것이 화면 배선의 문제여서는 안 된다.
+  const assetUrl = options.assetUrl || defaultAssetUrl;
+
   const view = new EditorView(mount, {
     state: EditorState.create({
       doc,
@@ -114,7 +121,10 @@ export function openEditor(mount, markdown, options = {}) {
     nodeViews: {
       list_item: (node, editorView, getPos) => new ListItemView(node, editorView, getPos),
       // 코드 블록은 언어를 고르고 mermaid면 그린 것을 함께 본다.
-      code_block: (node, editorView, getPos) => new CodeBlockView(node, editorView, getPos)
+      code_block: (node, editorView, getPos) => new CodeBlockView(node, editorView, getPos),
+      // 자산 embed는 그림으로 보인다. 붙여넣은 사람이 저장하기 전에 무엇을 넣었는지
+      // 볼 수 없으면, 잘못 넣은 것을 아는 자리가 읽기 화면으로 밀린다.
+      wiki_link: (node) => new WikiLinkView(node, assetUrl)
     },
     dispatchTransaction(transaction) {
       view.updateState(view.state.apply(transaction));

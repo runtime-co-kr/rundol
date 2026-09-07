@@ -40,6 +40,17 @@ function canonicalName(value, extension) {
   return `${base || 'asset'}${extension}`;
 }
 
+/**
+ * 자산이 사는 자리. 절대 경로다.
+ *
+ * `![[이름]]`은 이 디렉터리 안의 이름이다. 그 자리를 아는 곳이 여기뿐이면 문서
+ * 뿌리를 옮겨도 넣기·목록·화면이 함께 따라온다 — 화면이 `docs/assets`를 자기
+ * 사본으로 적으면 옮긴 날 그림만 조용히 사라지고, 아무도 그것을 시험하지 않는다.
+ */
+function assetsDirectory(layout, project) {
+  return path.join(documentsRoot(layout, project), ASSETS_DIRECTORY);
+}
+
 function uniqueName(directory, name) {
   if (!fs.existsSync(path.join(directory, name))) return name;
   const dot = name.lastIndexOf('.');
@@ -77,7 +88,7 @@ function addAsset(start, source, options) {
 
   const shrunk = shrinkImage(original, { maxEdge });
   const extension = EXTENSION_BY_FORMAT[shrunk.format] || path.extname(resolved).toLowerCase();
-  const directory = path.join(documentsRoot(layout, project), ASSETS_DIRECTORY);
+  const directory = assetsDirectory(layout, project);
   fs.mkdirSync(directory, { recursive: true });
   const name = uniqueName(directory, canonicalName(settings.as || path.basename(resolved), extension));
   fs.writeFileSync(path.join(directory, name), shrunk.buffer);
@@ -114,7 +125,7 @@ function listAssets(start, options) {
   const settings = options || {};
   const layout = workspaceLayout(start);
   const project = selectProject(layout, settings.project, true);
-  const directory = path.join(documentsRoot(layout, project), ASSETS_DIRECTORY);
+  const directory = assetsDirectory(layout, project);
   const assets = [];
   if (fs.existsSync(directory)) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
@@ -140,4 +151,4 @@ function listAssets(start, options) {
   };
 }
 
-module.exports = { ASSETS_DIRECTORY, addAsset, listAssets, canonicalName, ShrinkError };
+module.exports = { ASSETS_DIRECTORY, addAsset, listAssets, assetsDirectory, canonicalName, ShrinkError };

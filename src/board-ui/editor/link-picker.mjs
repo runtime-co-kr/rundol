@@ -179,6 +179,11 @@ export function linkPicker(options = {}) {
         const found = [];
         state.doc.descendants((node, pos) => {
           if (node.type !== schema.nodes.wiki_link) return;
+          // 자산 embed는 후보 목록에 없다. 후보는 문서와 구성원이고 그림은 둘 다
+          // 아니므로, 여기서 가르지 않으면 올바르게 넣은 그림까지 전부 빨간 물결이
+          // 된다 — 실측에서 embed 3건이 모두 그랬다. 그림이 왔는지 못 왔는지는
+          // 미리보기가 실제로 받아 보고 말한다.
+          if (node.attrs.embed) return;
           if (known.has(node.attrs.target)) return;
           found.push(Decoration.node(pos, pos + node.nodeSize, { class: 'is-unresolved' }));
         });
