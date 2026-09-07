@@ -19,6 +19,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl contract show|next|check|trace --project <key> [--json]
   rdl contract diagram --project <key> [--write] [--json]
   rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--task-enforcement <advisory|checkpoint>] [--json]
+  rdl contract migrate --project <key> [--write] [--json]
   rdl check [ARTIFACT-ID] [--root <path>] [--project <key>] [--json] [--strict] [--implementation]
   rdl check --links [--root <path>]
   rdl check --tasks [--root <path>]
@@ -39,14 +40,15 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl watch --project <key> [--remote] [--once] [--json]
   rdl task add <제목> --acceptance <완료조건> [--project <key>] [--summary <설명>] [--owner <MEMBER-ID>]
                    [--reviewer <MEMBER-ID>] [--stakeholder <STAKEHOLDER-ID>]
-                   [--priority <high|mid|low>] [--kind <normal|test>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
+                   [--priority <high|mid|low>] [--kind <유형>] [--round <n>] [--link <ARTIFACT-ID>] [--json]
   rdl task set <TASK-ID> [--project <key>] [--status <state>] [--owner <MEMBER-ID|null>]
-                 [--result <pass|fail|blocked|skipped|none>]
+                 [--title <제목>]
+                 [--kind <유형>] [--result <pass|fail|blocked|skipped|none>]
                  [--link <ARTIFACT-ID>] [--unlink <ARTIFACT-ID>]
                  [--external-ref <branch|pr|issue>=<값>] [--json]
                  반려는 --status cancelled --reason <사유> [--decided-by <MEMBER-ID>]
                  완료 게이트 면제는 --status done --exempt <게이트> --reason <사유> [--decided-by <MEMBER-ID>]
-  rdl task list [--project <key>] [--kind <normal|test>] [--round <n>] [--status <state>] [--open] [--json]
+  rdl task list [--project <key>] [--kind <유형>] [--round <n>] [--status <state>] [--open] [--json]
   rdl test rounds [--round <n>] [--project <key>] [--json]
   rdl task acceptance <TASK-ID> <AC-ID> (--done|--undone) [--project <key>] [--json]
   rdl task commits [TASK-ID] [--project <key>] [--branch <name>] [--max-items <n>] [--json]
@@ -66,11 +68,17 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl doc approve <ARTIFACT-ID> --member <MEMBER-ID> --basis <read|verdict|check|delegated>[=<상세>]
                   --client-id <human-client-id> [--reason <사유>] [--project <key>] [--json]
   rdl doc reject <ARTIFACT-ID> --client-id <human-client-id> --reason <사유> [--member <MEMBER-ID>] [--project <key>] [--json]
+  rdl doc lifecycle <ARTIFACT-ID> (<active|accepted|superseded|deprecated|archived> | --clear) --reason <사유>
+                    [--ack-stale] [--plan] [--project <key>] [--json]
   rdl doc history <ARTIFACT-ID> [--project <key>] [--json]
   rdl doc analyze [--project <key>] [--orphans] [--unexplained] [--json]
   rdl doc pipeline [--project <key>] [--json]
   rdl doc diff <ARTIFACT-ID> (--since-approval | --proposed) [--project <key>] [--json]
   rdl doc review [--project <key>] [--status <stale|unapproved>] [--diff] [--max-items <n>] [--write] [--json]
+  rdl decision list [--project <key>] [--open] [--json]
+  rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
+                      --client-id <id> [--supersedes <EVENT-ID>] [--delegation <DLG-ID>]
+                      [--project <key>] [--json]
   rdl sync --client-id <id> [--root <path>] [--project <key>] [--remote <name>] [--no-push] [--share-unverified <사유> --approved-by <human-client-id>] [--request-id <REQ-ID>] [--json]
   rdl sync watch --client-id <id> [--interval <seconds>] [--project <key>] [--no-push] [--once] [--request-id <REQ-ID>] [--json]
   rdl conflict list [--project <key>] [--json]
@@ -120,14 +128,10 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
   rdl verify <ARTIFACT-ID> --project <key> --client-id <id> [--adapter <name>] [--adapters <name>]... [--lens <registry-id>]... [--run <RUN-ID>] [--request-id <REQ-ID>] [--json]
   rdl workset list [--project <key>] [--branch <name>] [--json]
-  rdl decision list [--project <key>] [--open] [--json]
   rdl decision request --kind <종류> --subject <대상> --question <질문> --option <id=설명>
                        [--supersedes <EVENT-ID>]
                        --recommend <id> --because <근거> --blast <영향 범위> [--irreversible]
                        [--evidence <근거>] --client-id <id> [--project <key>] [--json]
-  rdl decision answer <DEC-ID> --select <option-id> --member <MEMBER-ID> --reason <사유>
-                      --client-id <id> [--supersedes <EVENT-ID>] [--delegation <DLG-ID>]
-                      [--project <key>] [--json]
   rdl decision kinds [--json]
   rdl delegation list [--project <key>] [--active] [--json]
   rdl delegation grant --kind <종류> --delegate <client-id> --member <MEMBER-ID> --reason <사유>
@@ -527,7 +531,9 @@ rdl task add "검색 구현" \
 
 #### 태스크 종류
 
-`--kind`는 `normal`과 `test` 중 하나이며 기본값은 `normal`이다. 값이 없는 옛 태스크도 `normal`로 읽는다.
+`--kind`는 그 프로젝트가 쓸 수 있는 업무 유형 중 하나이며 기본값은 `normal`이다. 값이 없는 옛 태스크도 `normal`로 읽는다. 내장은 `normal`과 `test` 둘이고, `board.json`의 `itemTypes`가 유형을 더하면 명령줄도 그 유형을 받는다 — 어휘를 명령줄이 따로 들고 있으면 설정으로 연 유형을 명령으로 쓸 수 없고, 쓸 수 없는 분류 축은 결국 제목 같은 다른 칸으로 샌다.
+
+이미 있는 태스크의 종류는 `rdl task set <TASK-ID> --kind <유형>`으로 옮긴다. 유형을 나중에 정의한 프로젝트가 옛 태스크를 그 유형으로 들여올 길이 이것뿐이다.
 
 ```bash
 rdl task add "검색 회귀 실행" --project memo --owner MEMBER-001 --kind test \n  --link TST-004 --acceptance "TST-004의 시나리오를 수행한다."
@@ -737,7 +743,28 @@ rdl contract trace --project memo --json
 
 `state`는 **rdl이 소유하고 원장에서 투영한다.** 사람이 손으로 적는 칸이 아니며, 손으로 고쳐도 다음 동기화에서 되돌아간다. 값은 `draft`, `proposed`, `approved`, `stale`, `rejected` 다섯이고 승인·제출·반려는 `rdl doc approve`, `rdl doc submit`, `rdl doc reject`가 원장에 사건을 적을 때 바뀐다. 정본은 언제나 원장이고 이 칸은 파생 캐시다.
 
-`lifecycle`은 **사람이 적는 선택 칸이다.** 원장이 모르는 축이라 아무것도 이 값을 굴리지 않는다. 값은 `active`, `accepted`, `superseded`, `deprecated`, `archived` 다섯이며 **비워 둘 수 있고, 비어 있는 것과 `active`는 다르다.** 대부분의 문서는 수명을 따로 말할 것이 없으므로 `rdl doc create`는 이 칸을 적지 않는다. 결정이 채택되었거나 다른 문서로 대체되었을 때 사람이 그 줄을 더한다.
+`lifecycle`은 **사람이 적는 선택 칸이다.** 원장이 모르는 축이라 아무것도 이 값을 굴리지 않는다. 값은 `active`, `accepted`, `superseded`, `deprecated`, `archived` 다섯이며 **비워 둘 수 있고, 비어 있는 것과 `active`는 다르다.** 대부분의 문서는 수명을 따로 말할 것이 없으므로 `rdl doc create`는 이 칸을 적지 않는다. 결정이 채택되었거나 다른 문서로 대체되었을 때 그 줄을 더한다.
+
+### 수명을 옮긴다
+
+```bash
+rdl doc lifecycle ADR-020 superseded --reason "ADR-026이 이 결정을 대체함" --project rundol
+rdl doc lifecycle ADR-020 superseded --reason "..." --plan     # 쓰지 않고 무엇이 달라지는지만 본다
+rdl doc lifecycle NTE-004 --clear --reason "수명을 말할 것이 없는 노트였음"
+```
+
+`--reason`이 필수인 이유는 이 명령이 사는 이유가 그것이기 때문이다. 「이 결정은 대체됐다」는 사실은 값 하나로 남지만 **왜 대체했는지**는 값이 담지 못하고, 그 자리가 없어서 지금까지 대체의 사유가 어디에도 남지 않았다. 사유는 그 변경을 담은 **커밋 메시지**가 나른다 — 수명 값이 내용 안에 있으므로 그 값이 바뀐 커밋이 곧 그 전환의 주소이고, 주소와 사유가 같은 자리에 선다. 커밋에는 `Rundol-Lifecycle: <ID> <from> -> <to>` 줄이 함께 붙어 되짚을 수 있다. 커밋에 실패하면 쓰기는 되돌아간다 — 사유 없이 값만 남는 것이 이 명령이 없애려는 상태다.
+
+값을 지우는 길이 값을 고르는 길과 나란히 있다(`--clear`). 비어 있는 것과 `active`는 다른 값이므로, 지우는 길이 없으면 잘못 적은 수명을 되돌릴 방법이 손편집뿐이 된다.
+
+**수명을 바꾸면 그 문서의 승인이 낡는다.** `lifecycle`은 리비전 해시 안에 있고 계산 판 2가 빼는 것은 `state` 하나뿐이라, 이 칸이 움직이면 리비전이 움직이고 그 리비전에 결박된 승인이 낡음이 된다. 결함이 아니라 축이다 — 내용이 바뀌면 다시 봐야 한다. 그래서 살아 있는 승인이 걸린 문서는 `--ack-stale` 없이 거절하고, 거절 문장이 **누구의 승인이 낡는지를 이름으로** 말한다. 건수만으로는 "그것을 지금 다시 승인할 수 있나"를 판단할 수 없다.
+
+```
+rdl: 이 변경으로 ADR-020의 승인 1건이 낡습니다(MEMBER-001). 낡은 승인은 사람이 다시
+     눌러야 합니다. … 알고 바꾸려면 이 변경에 낡음 확인을 함께 주십시오(명령줄은 --ack-stale).
+```
+
+이 명령은 **사람 자격을 묻지 않는다.** 승인·반려와 다른 자리다. 수명 축을 입력으로 읽는 판정이 지금 하나도 없고(어휘 검사 `RDL-DOC-017`뿐이다), 이 칸은 frontmatter 한 줄이라 아무 편집기나 닿는다 — 명령에만 관문을 세우면 옆에 열린 문을 둔 울타리가 된다. 사람이 치러야 하는 값은 자격이 아니라 낡는 승인이고, 그 값은 위의 `--ack-stale`이 받는다.
 
 ```yaml
 state: draft         # rdl이 원장에서 투영한다. 손으로 적지 않는다

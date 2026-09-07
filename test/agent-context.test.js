@@ -116,6 +116,21 @@ try {
   assert.strictEqual(contextCli.root, temporary);
   assert(Array.isArray(contextCli.next) && contextCli.next.length > 0);
 
+  // 문서 승인 축이 컨텍스트에 함께 접힌다. 스킬은 이 한 번의 호출이 «지금 누구를
+  // 기다리는가»에 답한다고 적어 놓았는데, 검토를 기다리는 문서가 여기 없으면 그
+  // 물음의 절반이 다른 명령에만 있고 그것을 아는 사람만 찾게 된다.
+  assert(idle.documents, '프로젝트를 지정하면 문서 축이 실려야 합니다');
+  assert.strictEqual(idle.documents.used, false, '승인이 하나도 없는 프로젝트는 이 축을 굴리지 않는 것입니다');
+  // 축을 안 굴리면 안내도 없다. 그곳에서 전 문서가 미승인인 것은 상태가 아니라 축을
+  // 안 쓴다는 뜻이고, 그 안내는 시킬 행동이 없는 줄이 된다.
+  assert(idle.next[0].includes('--status doing'), `축을 안 쓰면 문서 줄이 앞에 서면 안 됩니다: ${idle.next[0]}`);
+
+  // 프로젝트가 정해지지 않으면 답하지 않는다. 문서는 프로젝트가 소유하므로 작업공간
+  // 범위에서 어느 문서를 말할지 정할 근거가 없고, 없는 근거로 답하면 그것은 추측이다.
+  assert.strictEqual(agentContext(temporary, {}).documents, null, '프로젝트 없이 문서 축을 지어내면 안 됩니다');
+
+  assert.strictEqual(contextCli.commands.documents, 'rdl doc status --project <key> --json');
+
   process.stdout.write('agent context tests passed\n');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

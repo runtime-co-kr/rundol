@@ -18,7 +18,10 @@ const { runGit } = require('./git');
 const { readCommitBindings } = require('./task-commits');
 const { runtimeWorkspace } = require('./runtime');
 
-const { HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES, CODE_PATH_PREFIXES, DOCUMENT_WRITE_TOOLS } = require('./vocabulary');
+const {
+  HOOK_EVENTS: EVENTS, HOOK_CLIENTS: CLIENTS, WORKTREE_IGNORE_RULES, CODE_PATH_PREFIXES, DOCUMENT_WRITE_TOOLS,
+  DOCUMENT_LIFECYCLE_KEYS
+} = require('./vocabulary');
 // 한 턴이 만드는 커밋 수의 상한이 아니라, 커서를 잃었을 때 거슬러 볼 창이다.
 const NEW_COMMIT_WINDOW = 50;
 
@@ -48,8 +51,32 @@ function normalizePayload(raw) {
     toolName: input.tool_name || null,
     command: typeof tool.command === 'string' ? tool.command : null,
     filePath: typeof tool.file_path === 'string' ? tool.file_path : null,
+    edits: normalizeEdits(tool),
     source: input.source || input.trigger || null
   };
+}
+
+// 이 쓰기가 무엇을 무엇으로 갈았는가. Edit는 한 쌍, MultiEdit는 여러 쌍을 든다.
+//
+// 여기 담기는 것이 파일 내용이 아니라 **바뀐 자리**라는 것이 요점이다. 쓰고 난 파일만
+// 보면 지금 값이 무엇인지는 알아도 이 쓰기가 그 값을 만든 것인지 원래 있던 것인지
+// 가를 수 없고, 그 구분 없이 말하면 훅은 같은 파일을 고칠 때마다 같은 말을 한다.
+//
+// Write에는 짝이 없다. 통째로 덮는 도구라 이전 내용이 페이로드에 없고, 그래서 이
+// 함수는 빈 목록을 돌려준다 — 판정하지 못하는 것은 판정하지 않는다.
+function normalizeEdits(tool) {
+  const pairs = [];
+  const push = (before, after) => {
+    if (typeof before !== 'string' && typeof after !== 'string') return;
+    pairs.push({ before: typeof before === 'string' ? before : '', after: typeof after === 'string' ? after : '' });
+  };
+  push(tool.old_string, tool.new_string);
+  if (Array.isArray(tool.edits)) {
+    for (const edit of tool.edits) {
+      if (edit && typeof edit === 'object') push(edit.old_string, edit.new_string);
+    }
+  }
+  return pairs;
 }
 
 // runGit은 cwd가 없거나 git을 찾지 못하면 예외를 던진다. 훅은 그런 상황에서도 답해야
@@ -231,7 +258,47 @@ function contains(root, file) {
   return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-// 방금 쓴 파일이 승인 대비 바뀌었는가. 낡음이 아니면 null이다.
+// 문서 frontmatter의 state 줄. 값만 뽑는다.
+const STATE_LINE = /^state:[^\S\r\n]*([^\r\n]*)$/mu;
+
+/**
+ * 이 쓰기가 문서의 `state` 칸을 손으로 갈았는가. 아니면 null이다.
+ *
+ * 이 칸은 0.45에서 rdl 소유가 됐다. 승인·제출·반려가 원장에 사건을 적으면서 함께
+ * 쓰고, 손으로 적은 값은 다음 사건에서 되돌아간다. 문제는 되돌아가기 전까지다 —
+ * 어휘 안의 값을 손으로 적으면(`state: approved`) **아무 진단도 나지 않는다.**
+ * RDL-DOC-018은 어휘 밖 값만 잡으므로, 아무도 승인하지 않은 문서가 파일에서 승인됨을
+ * 주장하고 그 주장을 읽는 모든 화면이 그것을 옮긴다. 지금 그 사실을 말할 수 있는
+ * 자리는 여기뿐이다.
+ *
+ * **rdl 자신의 쓰기와 갈린다.** 이 갈래는 payload.toolName이 DOCUMENT_WRITE_TOOLS일
+ * 때만 들어오고, rdl의 투영은 CLI 프로세스 안의 fs 쓰기라 그 도구를 지나지 않는다
+ * (도구 이름이 Bash다). 그래서 자기 명령마다 우는 일이 구조적으로 없다.
+ *
+ * 짝이 없는 쓰기는 판정하지 않는다. Write는 통째로 덮어 이전 내용이 페이로드에 없고,
+ * 지금 값만으로는 이 쓰기가 그것을 만들었는지 원래 있던 것인지 가를 수 없다.
+ *
+ * 값을 지금 frontmatter의 state와 묶는 것은 본문 오탐을 막기 위해서다. 본문 코드
+ * 블록의 `state: ...` 한 줄이 우연히 이 정규식에 걸려도, 그 값이 이 문서의 지금
+ * state와 같지 않으면 말하지 않는다.
+ */
+function handEditedState(payload, current) {
+  for (const edit of payload.edits || []) {
+    const before = STATE_LINE.exec(edit.before);
+    const after = STATE_LINE.exec(edit.after);
+    if (!before && !after) continue;
+    const from = before ? before[1].trim() : null;
+    const to = after ? after[1].trim() : null;
+    if (from === to) continue;
+    // 새로 적힌 값이 지금 이 문서의 state여야 한다. 지운 경우(to가 null)는 지금 칸이
+    // 없다는 것으로 같은 대조를 한다.
+    if (to === null ? current === null : to !== current) continue;
+    return { from, to };
+  }
+  return null;
+}
+
+// 방금 쓴 문서에 대해 이 자리에서 말할 수 있는 것. 말할 것이 없으면 null이다.
 //
 // 낡음만 본다. 미승인은 아직 아무도 근거로 삼지 않은 줄이지 사건이 아니고, 승인 축을
 // 쓰지 않는 프로젝트에서는 문서가 전건 미승인이라 저장할 때마다 같은 말이 나온다 —
@@ -244,9 +311,13 @@ function contains(root, file) {
 // 문서 200건 기준 listDocuments가 120ms대인 반면 파일 하나 파싱은 1.5ms대였다. 훅은
 // 저장마다 도는 자리라 문서 수에 비례해 자라는 비용을 여기 둘 수 없다.
 //
+// 세 판정이 한 파싱을 나눠 쓴다. 수명과 state는 이미 손에 든 frontmatter만 보므로
+// 원장을 접는 비용이 붙지 않고, 승인 축을 갖기 전 판(schemaVersion 6 미만)에서도
+// 답할 수 있다 — 두 칸은 원장이 아니라 파일의 사실이다.
+//
 // 어느 단계에서 못 읽어도 통과다. 훅이 판정을 지어내면 막지 말아야 할 것을 막고,
 // 그렇게 한 번 겪은 훅은 꺼진다.
-function staleDocumentOf(root, worktree, filePath) {
+function documentWriteNotice(root, worktree, filePath, payload) {
   try {
     const resolved = path.resolve(worktree, filePath);
     if (!/\.md$/iu.test(resolved) || !fs.existsSync(resolved)) return null;
@@ -259,27 +330,38 @@ function staleDocumentOf(root, worktree, filePath) {
     // 하나도 없으면 어떤 저장소를 물어도 답이 null이므로 신원을 계산하지 않는다.
     const { workspaceLayout } = require('./workspace');
     const layout = workspaceLayout(root);
-    // 승인 원장을 갖기 전 판에서는 낡음이라는 사실 자체가 없다.
-    if (layout.schemaVersion < 6) return null;
     const project = (layout.projects || []).find((item) => item.root && contains(item.root, resolved));
     if (!project) return null;
     const { parseFrontmatter } = require('./frontmatter');
-    const { documentRevision } = require('./board-data');
     const parsed = parseFrontmatter(fs.readFileSync(resolved, 'utf8'));
     if (!parsed || !parsed.data || !parsed.data.id) return null;
-    const approval = require('./approval');
-    const { authorityContext } = require('./authority');
-    const folded = approval.foldApprovals(
-      approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), project.key),
-      { authority: authorityContext(layout.root, project.key, { now: Date.now() }) }
-    );
-    // 리비전 표를 통째로 넘긴다. 판 2 값 하나만 주면 판 1로 기록된 옛 승인을 못 맞혀
-    // 낡음으로 읽고, 훅은 승인이 멀쩡한 문서에 "승인 후 개정"을 저장할 때마다 외친다.
-    // 그 헛울림은 막지도 않으면서 신뢰만 깎고, 한 번 그런 훅은 꺼진다.
-    const { documentRevisions } = require('./board-data');
-    const state = approval.trustState({ id: parsed.data.id, revisions: documentRevisions(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
-    if (state.status !== 'stale') return null;
-    return { project: project.key, id: parsed.data.id, approvedBy: state.approvedBy };
+    const notice = { project: project.key, id: parsed.data.id, stale: null, lifecycle: null, state: null };
+
+    // 값 없는 `lifecycle:` 한 줄을 파서가 빈 배열로 읽는다. board-data.js와 같은 규칙으로
+    // 문자열만 값으로 받는다.
+    const lifecycle = typeof parsed.data.lifecycle === 'string' && parsed.data.lifecycle.trim() ? parsed.data.lifecycle.trim() : null;
+    if (lifecycle !== null && !DOCUMENT_LIFECYCLE_KEYS.includes(lifecycle)) notice.lifecycle = lifecycle;
+
+    const state = typeof parsed.data.state === 'string' && parsed.data.state.trim() ? parsed.data.state.trim() : null;
+    notice.state = handEditedState(payload, state);
+
+    // 승인 원장을 갖기 전 판에서는 낡음이라는 사실 자체가 없다.
+    if (layout.schemaVersion >= 6) {
+      const approval = require('./approval');
+      const { authorityContext } = require('./authority');
+      const folded = approval.foldApprovals(
+        approval.readApprovalEvents(path.join(layout.root, 'projects', 'workspace', 'events'), project.key),
+        { authority: authorityContext(layout.root, project.key, { now: Date.now() }) }
+      );
+      // 리비전 표를 통째로 넘긴다. 판 2 값 하나만 주면 판 1로 기록된 옛 승인을 못 맞혀
+      // 낡음으로 읽고, 훅은 승인이 멀쩡한 문서에 "승인 후 개정"을 저장할 때마다 외친다.
+      // 그 헛울림은 막지도 않으면서 신뢰만 깎고, 한 번 그런 훅은 꺼진다.
+      const { documentRevisions } = require('./board-data');
+      const trust = approval.trustState({ id: parsed.data.id, revisions: documentRevisions(parsed.data, parsed.body) }, folded.approvals.get(parsed.data.id));
+      if (trust.status === 'stale') notice.stale = { approvedBy: trust.approvedBy };
+    }
+    if (!notice.stale && !notice.lifecycle && !notice.state) return null;
+    return notice;
   } catch (_) { return null; }
 }
 
@@ -294,17 +376,28 @@ function postToolUse(start, payload) {
   if (!root) return { block: false, context: [], record: null };
   const worktree = payload.cwd || root;
   if (DOCUMENT_WRITE_TOOLS.includes(payload.toolName) && payload.filePath) {
-    const stale = staleDocumentOf(root, worktree, payload.filePath);
-    if (!stale) return { block: false, context: [], record: null };
-    return {
-      block: false,
-      record: null,
-      context: [
-        `${stale.id}이(가) 승인 대비 바뀌었습니다 — 검토 필요 (승인: ${stale.approvedBy || '(미상)'}).`,
-        `  차이: rdl doc diff ${stale.id} --since-approval --project ${stale.project}`,
-        `  재승인: rdl doc approve ${stale.id} --member <MEMBER-ID> --basis read --client-id <id> --project ${stale.project}`
-      ]
-    };
+    const notice = documentWriteNotice(root, worktree, payload.filePath, payload);
+    if (!notice) return { block: false, context: [], record: null };
+    const context = [];
+    if (notice.stale) {
+      context.push(`${notice.id}이(가) 승인 대비 바뀌었습니다 — 검토 필요 (승인: ${notice.stale.approvedBy || '(미상)'}).`);
+      context.push(`  차이: rdl doc diff ${notice.id} --since-approval --project ${notice.project}`);
+      context.push(`  재승인: rdl doc approve ${notice.id} --member <MEMBER-ID> --basis read --client-id <id> --project ${notice.project}`);
+    }
+    // state는 rdl이 원장에서 투영하는 칸이다. 어휘 안의 값을 손으로 적으면 아무 진단도
+    // 나지 않으므로, 그 사실을 말할 수 있는 자리가 이 한 번뿐이다.
+    if (notice.state) {
+      context.push(`${notice.id}의 state를 손으로 고쳤습니다: ${notice.state.from || '(없음)'} → ${notice.state.to || '(없음)'}. 이 칸은 rdl이 승인 원장에서 투영합니다.`);
+      context.push(`  올리려면: rdl doc submit ${notice.id} --client-id <id> --project ${notice.project}`);
+      context.push('  내용의 수명을 말하려던 것이면 lifecycle 칸입니다.');
+    }
+    // 수명은 사람이 소유한다. 아무것도 이 값을 굴리지 않으므로 오타가 스스로 낫지
+    // 않고, rdl check가 RDL-DOC-017 오류로 막는다 — state의 경고와 심각도가 다른 이유다.
+    if (notice.lifecycle) {
+      context.push(`${notice.id}의 lifecycle 값이 어휘 밖입니다: ${notice.lifecycle} (rdl check가 RDL-DOC-017 오류로 막습니다).`);
+      context.push(`  가능한 값: ${DOCUMENT_LIFECYCLE_KEYS.join(' · ')} (또는 칸 자체를 두지 않습니다)`);
+    }
+    return { block: false, record: null, context };
   }
   const isCommit = payload.toolName === 'Bash' && typeof payload.command === 'string' && /\bgit\b[\s\S]*\bcommit\b/u.test(payload.command);
   if (!isCommit) return { block: false, context: [], record: null };

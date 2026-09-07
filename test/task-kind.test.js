@@ -130,6 +130,21 @@ function testEndToEndThroughTheCli() {
     const rejected = run(workspace, ['task', 'set', normal.json.taskId, '--result', 'pass']);
     assert(!rejected.ok && /테스트 태스크가 아니면/u.test(rejected.err), rejected.err);
 
+    // 제목 고치기가 이 파일에 있는 이유는 두 축이 같은 사건에서 나왔기 때문이다.
+    // 종류를 나중에 못 바꾸던 동안 사람들은 분류를 제목의 대괄호에 적었고, --kind로
+    // 축을 연 뒤에도 그 접두어를 지울 명령이 없어 같은 것을 말하는 자리가 둘로 남았다.
+    const renamed = run(workspace, ['task', 'set', normal.json.taskId, '--title', '  대괄호를 뗀 제목  ']);
+    assert(renamed.ok, renamed.err);
+    assert.strictEqual(renamed.json.after.title, '대괄호를 뗀 제목', '앞뒤 공백은 저장 전에 떼야 합니다');
+    assert.strictEqual(renamed.json.before.title, '일반 작업');
+
+    // 제목만 준 저장이 요약을 지우면 안 된다. --summary의 기본값이 빈 문자열이라
+    // 두 옵션을 같은 방식으로 열면 정확히 그 일이 난다 — 그래서 title만 열었다.
+    assert.strictEqual(renamed.json.after.summary, undefined, '제목 저장이 요약을 건드리면 안 됩니다');
+
+    const blankTitle = run(workspace, ['task', 'set', normal.json.taskId, '--title', '   ']);
+    assert(!blankTitle.ok && /제목이 필요/u.test(blankTitle.err), blankTitle.err);
+
     assert(run(workspace, ['task', 'acceptance', id, 'AC-001', '--done']).ok);
     const withoutVerdict = run(workspace, ['task', 'set', id, '--status', 'done']);
     assert(!withoutVerdict.ok && /판정이 필요/u.test(withoutVerdict.err), withoutVerdict.err);

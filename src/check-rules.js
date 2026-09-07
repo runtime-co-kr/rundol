@@ -350,6 +350,58 @@ function checkReference(list, fileRegistry, artifactRegistry, sourceDoc, rawValu
   }
 }
 
+// ── 기능 ID가 가리키는 부모 ─────────────────────────────────────────────────
+//
+// 기능 ID는 부모를 단 참조다 — REQ-033#FN-001. related는 실재를 확인받고 없는 대상을
+// 가리키면 거절당하는데, 이 값은 아무 확인도 받지 않았다. 없는 REQ를 가리켜도, 있는
+// REQ이지만 그 REQ가 선언한 적 없는 기능을 가리켜도 문서가 만들어지고 검사는 0건을
+// 냈다. 그러면 그 기능은 원천 계약 없이 존재하고, 추적성은 그것을 "TST가 없는 기능"이
+// 아니라 "REQ가 없는 기능"으로 세는데 아무도 그 수를 보지 않는다.
+//
+// 구현 계약 계층이 아니라 링크 계층에 두는 이유. 없앤 RDL-IMPL-011이 남긴 물음이
+// 정확히 이것이고, 그 물음은 "원천이 없다"가 아니라 "가리킨 것이 해결되지 않는다"이다 —
+// 참조 해결은 링크 계층이 답한다(implementation-contract.js의 머리말이 그렇게 적어 두었다).
+//
+// 코드도 새로 파지 않는다. 부모 문서가 없는 것은 related가 없는 문서를 가리킬 때와 같은
+// 사건이고(RDL-LINK-002), 부모는 있는데 그 기능을 선언하지 않은 것은 문서는 있는데 그
+// 안의 자리가 없는 것과 같은 사건이다(RDL-LINK-003). 두 사건 다 frontmatter의 값 하나를
+// 고치라고 시키고, 시키는 일이 같으면 코드도 같다.
+function checkFunctionParents(list, artifactRegistry, sourceDoc, values) {
+  const { IMPLEMENTATION_TYPES, FUNCTION_SOURCE_TYPE, qualifiedFunctionIds, subParent } = require('./implementation-contract');
+  const type = documentTypeCode(sourceDoc.id);
+  // 기능 ID를 나르지 않는 유형(PRD·ADR·ARC…)에는 이 물음이 없다. REQ도 아니다 —
+  // REQ는 기능의 원천이라 자기 기능을 선언하는 것이지 남을 가리키는 것이 아니고,
+  // 그 갈래를 여기서 막으면 원천이 자기 자신을 못 찾는다.
+  if (!type || type === FUNCTION_SOURCE_TYPE || !IMPLEMENTATION_TYPES.includes(type)) return;
+  const meta = (sourceDoc.frontmatter && sourceDoc.frontmatter.data) || {};
+  // 표기가 어긋난 값은 여기서 말하지 않는다. qualifiedFunctionIds가 부모를 단 표기만
+  // 돌려주고, 표기 자체는 RDL-IMPL-003이 이미 같은 값을 보고 답한다.
+  for (const functionId of qualifiedFunctionIds(type, sourceDoc.id, meta)) {
+    const parent = subParent(functionId);
+    const parentDoc = parent ? artifactRegistry.get(parent) : null;
+    if (!parentDoc) {
+      diagnostic(list, Object.assign({
+        code: 'RDL-LINK-002', category: 'link', file: sourceDoc.relativeFile,
+        line: lineOf(sourceDoc.source, functionId), artifactId: sourceDoc.id, target: parent,
+        message: `기능 ID의 원천 문서가 없습니다: ${functionId} (${parent}을(를) 찾지 못했습니다)`
+      }, values));
+      continue;
+    }
+    const parentMeta = (parentDoc.frontmatter && parentDoc.frontmatter.data) || {};
+    const declared = qualifiedFunctionIds(documentTypeCode(parent), parent, parentMeta);
+    if (declared.includes(functionId)) continue;
+    diagnostic(list, Object.assign({
+      code: 'RDL-LINK-003', category: 'link', file: sourceDoc.relativeFile,
+      line: lineOf(sourceDoc.source, functionId), artifactId: sourceDoc.id, target: functionId,
+      // 그 문서가 선언한 기능을 함께 싣는다. 없는 자리를 가리켰다는 말만 하면 사람은
+      // 무엇으로 고쳐야 하는지를 다시 조사해야 하고, 답은 이미 여기 있다.
+      message: declared.length
+        ? `${parent}이(가) 선언하지 않은 기능을 가리킵니다: ${functionId} (${parent}의 기능: ${declared.join(', ')})`
+        : `${parent}이(가) 선언하지 않은 기능을 가리킵니다: ${functionId} (${parent}은(는) 기능을 하나도 선언하지 않았습니다)`
+    }, values));
+  }
+}
+
 // ── 하류가 상류 확정보다 앞서 있다 ──────────────────────────────────────────
 //
 // related는 방향이 없는 연결이다. 무엇이 상류이고 무엇이 하류인지는 유형이 정하고,
@@ -402,6 +454,10 @@ const { UPSTREAM_CLOSURE, DOCUMENT_LAYERS } = (() => {
  */
 const UPSTREAM_TRUST_CODES = Object.freeze({ stale: 'RDL-APPROVE-030', unapproved: 'RDL-APPROVE-031' });
 
+// 한 줄에 실을 하류 이름의 수. 41건을 늘어놓은 줄은 읽히지 않고, 읽히지 않는 줄은
+// 없는 줄과 같다. 전부는 dependents가 값으로 나르므로 사람이 볼 것만 여기서 줄인다.
+const UPSTREAM_DEPENDENT_SAMPLE = 4;
+
 function documentTypeCode(id) {
   const value = String(id || '');
   return ID_PATTERN.test(value) ? value.slice(0, 3) : null;
@@ -444,39 +500,82 @@ function trustStatusOf(trust, id) {
  * 공짜로 이것을 보고, 명령이면 따로 불러야 하는 통제가 되어 며칠 뒤 아무도 안 부른다.
  *
  * used는 이 프로젝트가 승인 축을 쓰는지다. 한 번도 승인하지 않은 프로젝트에서 전
- * 문서가 미승인인 것은 상태가 아니라 그 축을 안 쓴다는 뜻이고, 그것을 "하류가 앞섰다"로
- * 읽으면 첫날부터 문서 전건이 경고로 쏟아져 진짜 신호를 덮는다.
- * 판정은 표면이 하되 근거는 여기서 준다.
+ * 문서가 미승인인 것은 상태가 아니라 그 축을 안 쓴다는 뜻이라, 화면은 "0건"과 "해당
+ * 없음"을 이 값으로 가른다(doc pipeline의 used). 이 규칙의 문턱은 아니다 — 문턱은
+ * 아래처럼 줄마다 선다.
  *
- * 기준은 "지금 승인이 살아 있는 문서가 하나라도 있는가"(approved > 0)다. 낡음을 세지
- * 않는다 — 낡음은 "예전에 승인했지만 지금은 아니다"이고, 그것만 남은 프로젝트는 승인을
- * 관문으로 굴리는 중이 아니라 전면 개정 중이거나 축을 놓은 것이다.
+ * ── 미승인 상류의 문턱은 프로젝트가 아니라 줄에 있다 ────────────────────────
  *
- * 이 선을 실측으로 옮겼다. 처음에는 board.js의 reviewQueue와 같이 approved + stale > 0을
- * 썼는데, 런돌 자신의 프로젝트(승인 0 · 낡음 2 · 미승인 131)가 그 문턱을 넘어 rdl check의
- * 경고가 2건에서 121건이 됐고 그중 119건이 같은 문장이었다. 막으려던 그림이 그대로 나왔다.
+ * 한때 문턱이 전역이었다. 승인이 하나라도 살아 있으면(approved > 0) 미승인 상류를 전부
+ * 냈고, 처음에는 그보다 넓게 approved + stale > 0이었다 — 런돌 자신의 프로젝트(승인 0 ·
+ * 낡음 2 · 미승인 131)가 그 넓은 문턱을 넘어 경고가 2건에서 121건이 됐고 그중 119줄이
+ * 같은 문장이었다. 좁힌 뒤에도 같은 그림이 남았다: 승인 1건(REQ-064)이 59줄을 열었는데
+ * 137쌍 · 하류 118건 중 승인이나 낡음인 하류를 가진 줄은 0건이었다. 즉 59줄 전부가
+ * "미승인이 미승인 위에 섰다"였고, 그 줄들이 시키는 일은 "이 59건을 승인하라" —
+ * 진단이 아니라 백로그 덤프다.
  *
- * 낡은 상류는 이 문턱 밖이다. 그것은 누군가 실제로 승인한 것이 흔들린 사건이라, 프로젝트가
- * 축을 굴리든 놓았든 일어난 일이다. 문턱은 미승인 상류에만 건다.
+ * 그래서 문턱을 줄로 옮겼다. 그 상류를 근거로 삼은 하류 중 하나라도 승인 또는 낡음일
+ * 때만 그 줄을 낸다. 그러면 이 규칙이 말하는 사건이 하나로 좁혀진다 — 누군가 굳힌 것이
+ * 아직 굳지 않은 것 위에 서 있다. 둘 다 아직 굳지 않은 자리는 앞선 것이 아니라 그냥
+ * 아직 안 굳은 것이고, 그것은 목록이지 사건이 아니다.
+ *
+ * 전역 문턱은 이 문턱이 삼킨다. 승인이 하나도 없는 프로젝트에는 승인된 하류가 없어 줄이
+ * 서지 않고, 낡은 하류가 있다면 그것은 누군가 실제로 승인했던 문서다. 문턱을 둘 겹치면
+ * 그 자리에서 둘이 다른 답을 하므로 하나만 둔다.
+ *
+ * ── 낡은 상류는 줄 문턱도 유형 폐포도 지나지 않는다 ─────────────────────────
+ *
+ * 낡음은 "누군가 승인한 것이 흔들렸다"는 사건 자체다. 그 위에 선 하류가 굳었든 아니든
+ * 이미 일어난 일이라 줄 문턱을 걸지 않는다.
+ *
+ * 유형 폐포도 걸지 않는다. 상류로 지목될 수 있는 유형은 작성 순서 표의 값 집합인
+ * PRD · REQ · ARC 셋뿐인데, 실측에서 ADR-020이 승인 후 개정되어 낡았고 related로 12건이
+ * 그것을 인용하며 그중 하나가 이 저장소의 유일한 승인 문서(REQ-064)인데도 진단이 0건이었다.
+ * ADR은 REQ · SCR이 인용하므로 "상류" 방향이 애초에 맞지 않는다 — 낡음은 하류 유형과
+ * 무관하게 낡은 문서 자신에게 걸려야 한다.
+ *
+ * 미승인에는 폐포를 그대로 둔다. 미승인은 문서 대부분의 기본 상태라, 폐포를 풀면 전
+ * 문서가 서로를 지목한다. 두 축의 성격이 다른 것이 요점이다.
  *
  * 입력은 값뿐이다. documents는 { id, file, related }면 되고 trust는 id마다
  * approved·stale·unapproved를 답하는 Map 또는 객체다 — 승인 판정은 approval.js의
  * trustState가 이미 하므로 여기서 다시 세지 않는다.
+ *
+ * ── 세는 단위는 (하류, 상류) 짝이 아니라 상류다 ─────────────────────────────
+ *
+ * 짝으로 세면 같은 사실이 하류 수만큼 곱해진다. 런돌 자신의 프로젝트가 그 모양이었다:
+ * 미승인 상류 59건을 하류 117건이 참조해 경고가 136줄이었고, 그중 77줄은 앞선 줄의
+ * 사본이었다. 하류로 말아 올려도 소용이 없다 — 하류 117건 중 105건은 미승인 상류가
+ * 하나뿐이라 136줄이 117줄이 될 뿐이다.
+ *
+ * 축을 상류로 잡은 근거는 수가 아니라 행동이다. 이 경고가 시키는 일은 언제나 "그
+ * 상류를 승인하라" 하나이고, 그 일은 상류마다 하나 있다. PRD-001 한 건을 승인하면
+ * 41줄이 함께 그친다 — 짝으로 세면 그 한 번의 행동이 41줄에 41번 적힌다.
+ *
+ * 문서 하나를 지목하는 갈래(rdl check REQ-064)는 이 판정을 다시 부르지 않는다.
+ * bin/rdl.js의 filterDiagnostics가 같은 진단 목록에서 artifactId 또는 target이 그
+ * ID와 같은 줄만 거를 뿐이라, 두 갈래는 한 규칙의 한 결과를 나눠 본다. 갈래마다 축을
+ * 달리 잡을 자리가 없으므로 한 축이 둘을 다 서야 하고, 그 축은 행동이 있는 쪽이다.
+ * 대신 그 갈래에서 하류를 지목하면 자기 상류 줄이 잡히지 않는다 — 그 ID는 이제
+ * dependents에만 있고 거르개는 그 칸을 보지 않는다. 상류를 지목한 쪽(rdl check
+ * PRD-001)은 그대로 남는다.
  */
 function upstreamTrustIssues(input) {
   const documents = (input && input.documents) || [];
   const trust = input && input.trust;
-  const known = new Set(documents.map((document) => String(document.id)));
+  // 집합이 아니라 지도로 든다. 경고가 지목하는 문서가 하류에서 상류로 바뀌었으므로
+  // 부르는 쪽이 여는 파일도 상류의 것이고, 그 파일은 문서 값에만 있다.
+  const known = new Map(documents.map((document) => [String(document.id), document]));
   const counts = { approved: 0, stale: 0, unapproved: 0 };
   for (const document of documents) {
     const status = trustStatusOf(trust, String(document.id));
     if (status) counts[status] = (counts[status] || 0) + 1;
   }
-  const issues = [];
+  // 상류마다 한 칸. 짝을 그대로 담으면 이 규칙이 다시 교차곱이 된다.
+  const rolled = new Map();
   for (const document of documents) {
     const type = documentTypeCode(document.id);
-    const upstream = type ? UPSTREAM_CLOSURE[type] : null;
-    if (!upstream || upstream.size === 0) continue;
+    const upstream = (type && UPSTREAM_CLOSURE[type]) || null;
     const seen = new Set();
     for (const value of Array.isArray(document.related) ? document.related : []) {
       const target = relatedTargetId(value);
@@ -484,31 +583,65 @@ function upstreamTrustIssues(input) {
       // 이미 같은 값을 보고 답한다 — 없는 문서는 미승인 상류가 아니다.
       if (!target || !known.has(target) || target === document.id || seen.has(target)) continue;
       const targetType = documentTypeCode(target);
-      if (!targetType || !upstream.has(targetType)) continue;
+      if (!targetType) continue;
       seen.add(target);
       const status = trustStatusOf(trust, target);
       if (status !== 'stale' && status !== 'unapproved') continue;
-      // 미승인 상류는 승인이 살아 있는 프로젝트에서만 신호다. 아무것도 승인되지 않은
-      // 곳에서는 전 문서가 미승인이라 이 줄이 문서 수만큼 곱해져 나오고, 그 더미는
-      // 신호가 아니라 소음이다. 낡은 상류는 이 문턱을 지나지 않는다.
-      if (status === 'unapproved' && counts.approved === 0) continue;
-      issues.push({
-        code: UPSTREAM_TRUST_CODES[status],
-        severity: 'warning',
-        status,
-        artifactId: String(document.id),
-        type,
-        file: document.file || null,
-        target,
-        targetType,
-        message: status === 'stale'
-          ? `상류 ${target}이(가) 승인 후 개정되어 낡았습니다. 이 문서가 근거로 삼은 내용이 바뀌었으므로, 상류를 재승인하거나(rdl doc diff ${target} --since-approval) 이 문서를 다시 맞추세요.`
-          : `상류 ${target}이(가) 아직 승인되지 않았습니다. 확정되지 않은 것 위에 하류가 서 있습니다 — 상류를 먼저 승인하면 여기부터는 다시 타지 않습니다.`
-      });
+      // 폐포는 미승인에만 건다. 미승인은 문서 대부분의 기본 상태라 방향을 유형이
+      // 잡아 주지 않으면 전 문서가 서로를 지목하고, 낡음은 방향과 무관하게 낡은
+      // 문서 자신의 사건이다 — ADR은 아무의 상류도 아니지만 낡을 수 있다.
+      if (status === 'unapproved' && !(upstream && upstream.has(targetType))) continue;
+      if (!rolled.has(target)) rolled.set(target, { status, targetType, dependents: [] });
+      rolled.get(target).dependents.push(String(document.id));
     }
   }
-  issues.sort((left, right) => left.artifactId.localeCompare(right.artifactId) || left.target.localeCompare(right.target) || left.code.localeCompare(right.code));
-  // 승인이 살아 있는 문서가 하나도 없으면 이 프로젝트는 승인을 관문으로 굴리고 있지 않다.
+  // 굳은 하류. 승인 또는 낡음이면 누군가 이 문서를 근거로 삼겠다고 한 번 결정한 것이고,
+  // 낡음이 여기 드는 것은 그것이 "승인했다가 흔들렸다"이기 때문이다.
+  const settledDependents = (dependents) => dependents.filter((id) => {
+    const status = trustStatusOf(trust, id);
+    return status === 'approved' || status === 'stale';
+  });
+  const issues = Array.from(rolled.entries())
+    // 미승인 상류의 문턱은 줄에 있다. 그 위에 선 하류가 전부 미승인이면 그것은 아직
+    // 아무도 굳지 않은 자리이고, 그 줄이 시키는 일은 진단이 아니라 백로그다.
+    .filter(([, group]) => group.status !== 'unapproved' || settledDependents(group.dependents).length > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([target, group]) => {
+      const dependents = group.dependents.slice().sort((left, right) => left.localeCompare(right));
+      const count = dependents.length;
+      const upstreamDocument = known.get(target);
+      const sample = dependents.slice(0, UPSTREAM_DEPENDENT_SAMPLE).join(' · ')
+        + (count > UPSTREAM_DEPENDENT_SAMPLE ? ` 외 ${count - UPSTREAM_DEPENDENT_SAMPLE}건` : '');
+      // 이 줄이 선 까닭. 굳은 하류가 없으면 미승인 줄은 서지 않으므로 그 줄은 언제나
+      // 이 값을 갖는다. 줄이 그 이름을 들지 않으면 사람은 "왜 지금 이것을 승인해야
+      // 하나"를 하류 목록에서 다시 찾아야 하고, 그 조사가 이 진단의 비용이 된다.
+      const settled = settledDependents(dependents);
+      const settledSample = settled.slice(0, UPSTREAM_DEPENDENT_SAMPLE).join(' · ')
+        + (settled.length > UPSTREAM_DEPENDENT_SAMPLE ? ` 외 ${settled.length - UPSTREAM_DEPENDENT_SAMPLE}건` : '');
+      return {
+        code: UPSTREAM_TRUST_CODES[group.status],
+        severity: 'warning',
+        status: group.status,
+        // artifactId와 file은 이제 상류의 것이다. 이 경고가 사람에게 시키는 하나의
+        // 행동이 그 문서를 승인하는 일이고, 그러려면 열 파일도 그 문서의 것이어야 한다.
+        artifactId: target,
+        type: group.targetType,
+        file: (upstreamDocument && upstreamDocument.file) || null,
+        target,
+        targetType: group.targetType,
+        // 이 상류를 근거로 삼은 하류 전부. 줄에는 몇 개만 실리므로, 세거나 되짚는 쪽은
+        // 메시지가 아니라 이 값을 본다.
+        dependents,
+        // 낡음 쪽은 "하류"라 부르지 않는다. 이 갈래는 유형 폐포를 지나지 않으므로
+        // 인용한 쪽이 하류라는 보장이 없다 — ADR-020을 인용한 12건 중에는 ADR도 REQ도
+        // 있고, 그 둘의 방향은 표가 정하지 않는다. 참인 것은 "근거로 삼았다" 하나다.
+        message: group.status === 'stale'
+          ? `${target}이(가) 승인 후 개정되어 낡았습니다. 이 문서를 근거로 삼은 문서 ${count}건(${sample})이 바뀐 내용 위에 서 있습니다 — rdl doc diff ${target} --since-approval로 바뀐 곳만 보고 재승인하면 ${count}건이 함께 그칩니다.`
+          : `${target}이(가) 아직 승인되지 않았는데 이미 굳은 하류 ${settled.length}건(${settledSample})이 그 위에 서 있습니다. ${target}을(를) 승인하면 이를 상류로 삼은 하류 ${count}건(${sample})이 함께 그칩니다.`
+      };
+    });
+  // used는 이 판정의 문턱이 아니라 화면이 "0건"과 "해당 없음"을 가르는 값이다. 승인이
+  // 살아 있는 문서가 하나도 없으면 이 프로젝트는 승인을 관문으로 굴리고 있지 않다 —
   // 낡음만 남은 상태는 축을 쓴다는 증거가 아니라 축을 놓았거나 전면 개정 중이라는 뜻이다.
   return { used: counts.approved > 0, counts, issues };
 }
@@ -704,13 +837,32 @@ function checkTaskEntries(list, tasks, context) {
     // 이 게이트는 유형 해석기 밖에 있다. 발화를 여기서 적지 않으면 이력에는 한 번도
     // 불리지 않은 것으로 남고, 그 침묵은 죽은 규칙과 구분되지 않는다 — 실제로 이력을
     // 처음 켰을 때 이 게이트가 죽은 규칙으로 나왔다.
-    if (completedNode && implementationReady && exempted(task, 'implementation-readiness') && Array.isArray(firings)) {
+    //
+    // 유형이 선언한 면제도 여기서 읽는다. 게이트 표를 타는 done-requires-test-link와
+    // 달리 이 게이트는 해석기 밖에서 판정하므로, 태스크가 든 면제만 보면
+    // constraints.exempt에 적은 implementation-readiness가 아무 일도 하지 않는다.
+    // 면제 가능 목록에 이 게이트를 넣은 이유가 "규칙을 지우지 않고 유형으로 푸는 것"인데
+    // 그 길이 막혀 있었던 셈이다. 내장 test가 조용했던 것은 위의 kind !== 'test'가
+    // 같은 일을 손으로 하고 있었기 때문이고, 그래서 이 구멍은 세 번째 유형이 서기
+    // 전까지 드러날 수 없었다. 손으로 한 쪽은 남겨 둔다 — 지우면 test의 면제 선언을
+    // 덮어쓴 프로젝트에서 검증 실행 태스크가 갑자기 요구 문서를 끌고 다닌다.
+    const typeExemptions = (((itemTypes || NORMALIZED_BUILTIN)[kind] || {}).constraints || {}).exempt || [];
+    const readinessExempted = exempted(task, READINESS_GATE) || typeExemptions.includes(READINESS_GATE);
+    if (completedNode && implementationReady && readinessExempted && Array.isArray(firings)) {
+      // 사유와 결정자는 사람이 낸 면제에만 있다. 유형이 선언한 면제는 설정이 미리
+      // 면제한 것이라 결정자가 없고, 없는 것을 태스크에서 지어내면 이력이 사람의
+      // 결정과 설정의 결정을 구분하지 못한다 — 해석기가 같은 자리에서 같은 규율을 쓴다.
+      const byTask = exempted(task, READINESS_GATE);
       firings.push({
         target: taskId, origin: 'item-type', from: null, to: null, evaluated: [], blocked: [],
-        exempted: [{ ruleId: READINESS_GATE, gate: READINESS_GATE, reason: task.exemption.reason || null, decidedBy: task.exemption.decidedBy || null }]
+        exempted: [{
+          ruleId: READINESS_GATE, gate: READINESS_GATE,
+          reason: byTask ? (task.exemption.reason || null) : null,
+          decidedBy: byTask ? (task.exemption.decidedBy || null) : null
+        }]
       });
     }
-    if (completedNode && implementationReady && !exempted(task, 'implementation-readiness')) {
+    if (completedNode && implementationReady && !readinessExempted) {
       const linked = uniqueDocuments((task.links || []).map((link) => registry.get(String(link).split('#')[0])).filter(Boolean));
       const declaresAtomic = linked.some((doc) => doc.frontmatter && doc.frontmatter.data && doc.frontmatter.data.implementationContract === 'atomic-v1');
       const mark = list.length;
@@ -798,5 +950,5 @@ module.exports = {
   governanceBlocks, checkProjectGovernance, checkDocumentMetadata, checkCharterMetadata, checkStateVocabulary,
   checkContractViolations, checkTaskEntries, checkReference, referenceFromTask,
   checkAssetReference, checkAssetInventory,
-  UPSTREAM_TRUST_CODES, upstreamTypes, documentLayer, documentTypeCode, relatedTargetId, upstreamTrustIssues
+  UPSTREAM_TRUST_CODES, upstreamTypes, documentLayer, documentTypeCode, relatedTargetId, upstreamTrustIssues, checkFunctionParents
 };

@@ -928,7 +928,19 @@ function documentHistory(start, input) {
   const log = runGit(['log', '--follow', '--format=%H%an%aI%s', '--', document.file], { cwd: context.project.root, allowFailure: true });
   const commits = (log.status === 0 ? log.stdout : '').split(/\r?\n/u).filter(Boolean).map((line) => {
     const [commit, author, at, subject] = line.split('');
-    return { commit, author, at, subject };
+    // 커밋 시각을 UTC 표기로 맞춰서 낸다. 원장의 recordedAt은 언제나 Z이고 git의 %aI는
+    // 커밋한 사람의 오프셋(+09:00)을 달고 오는데, 두 축을 한 시간축에 세우는 자리에서는
+    // 같은 순간이 두 표기로 오는 것 자체가 결함이다 — 문자열로 견주면 아홉 시간 어긋난
+    // 자리에 놓이고(ADR-020·ADR-021에서 실제로 그랬다), 표기가 갈린 채로는 "3번째가
+    // 4번째보다 나중인가"를 화면이 자기 힘으로 답할 수 없다.
+    //
+    // 잃는 것은 오프셋뿐이고 순간은 그대로다. 이 값을 읽는 자리는 어느 곳도 커밋한
+    // 사람의 지역 시간을 묻지 않는다 — 묻는 것은 "원장 사건과 이 커밋 중 무엇이
+    // 먼저인가"이고, 그 물음은 시간대가 하나일 때만 답이 있다.
+    //
+    // 못 읽는 값은 지어내지 않고 그대로 둔다. 여기서 지금 시각이나 0으로 메우면 읽을 수
+    // 없다는 사실이 사라지고, 시간축은 그 줄을 있지도 않은 순간에 세운다.
+    return { commit, author, at: utcInstant(at) || at, subject };
   });
   // git은 무엇이 언제, 원장은 왜와 누구 책임을 안다. 이력의 값은 둘을 붙이는 데
   // 있고, 특히 어느 쪽도 답하지 않는 변경 — 태스크도 승인도 없이 바뀐 정본 —을
@@ -950,6 +962,99 @@ function documentHistory(start, input) {
     commits,
     ...(unexplained ? { warning: '이 문서의 현재 리비전은 승인도 연결된 태스크도 없습니다. 왜 바뀌었는지 답할 기록이 없습니다.' } : {})
   };
+}
+
+// 시각 하나를 UTC 표기로 옮긴다. 못 읽으면 null이고, null은 부르는 쪽이 "읽을 수 없다"를
+// 그대로 나를 수 있게 하려는 값이다 — 여기서 지금 시각으로 메우면 읽을 수 없다는 사실이
+// 사라진다.
+function utcInstant(value) {
+  const stamp = Date.parse(value || '');
+  return Number.isNaN(stamp) ? null : new Date(stamp).toISOString();
+}
+
+/**
+ * 커밋마다 "그 시점의 문서 경로".
+ *
+ * 이력은 --follow로 이름 변경을 넘어 커밋을 모으는데 차분은 오랫동안 지금 경로 하나로만
+ * git에게 물었다. 그래서 이름이 바뀌기 전 커밋을 기준으로 고르면 그 커밋에 그 경로가 없어
+ * 차분이 「새 파일 141줄 추가」가 되었다 — IFC-002(순수 이름 변경)에서 실제로 그랬다.
+ * 이력이 고르라고 내놓은 지점을 차분이 다루지 못하는 상태였고, 그것은 화면이 자기가 준
+ * 선택지에 답하지 못한다는 뜻이다.
+ *
+ * --find-renames만으로는 부족하다. 이름 변경을 묶으려면 삭제와 생성이 둘 다 차분에 남아
+ * 있어야 하는데, 경로 하나로 좁히면 짝이 되는 쪽이 애초에 걸러져 나오지 않는다. 그래서
+ * 지점마다 그 시점 경로를 알아야 하고, 그 앎이 이 표다.
+ *
+ * --name-status는 이름이 바뀐 커밋에서 R100<TAB>옛경로<TAB>새경로를 내므로 줄 하나가
+ * 경계의 양쪽을 다 말한다. 커밋 목록 자체는 revisionCandidates와 같은 --follow 순회라
+ * 두 표의 커밋 집합이 갈리지 않는다.
+ */
+function documentPathHistory(root, file) {
+  const log = runGit(['-c', 'core.quotepath=false', 'log', '--follow', '--name-status', '--format=%x01%H', '--', file], { cwd: root, allowFailure: true });
+  const entries = [];
+  let commit = null;
+  for (const line of (log.status === 0 ? log.stdout : '').split(/\r?\n/u)) {
+    if (line.startsWith('')) { commit = line.slice(1).trim(); continue; }
+    if (!commit || !line.trim()) continue;
+    const parts = line.split('\t');
+    // R###은 옛 경로와 새 경로를 함께 낸다. 그 커밋에서의 경로는 새 경로이고, 옛 경로는
+    // 그 앞 커밋들의 것이다 — 앞 커밋들은 자기 줄에서 스스로 말하므로 여기서는 되짚기의
+    // 후보로만 남겨 둔다.
+    const renamed = parts[0].startsWith('R');
+    const at = renamed ? parts[2] : parts[1];
+    if (at) entries.push({ commit, path: at, previous: renamed ? parts[1] : null });
+    commit = null;
+  }
+  return entries;
+}
+
+/**
+ * 한 지점에서의 문서 경로.
+ *
+ * 이력이 내놓은 커밋이면 표에 그대로 있다. 사람이 손으로 적은 커밋은 그 표에 없을 수 있고
+ * (이력에 뜨지 않는 병합 커밋도 그렇다), 그때는 그 커밋의 트리에 실제로 있는 경로를 고른다
+ * — 지어내면 그 지점의 차분이 통째로 「새 파일」이 되어, 고치려던 결함이 그 갈래로만 남는다.
+ *
+ * 아무 경로도 없으면 지금 경로를 돌려준다. 그 커밋에 문서가 없다는 뜻이고, 그때 git이
+ * "이 지점에는 없었다"라고 답하는 것이 맞다.
+ */
+function documentPathAt(root, file, commit, paths) {
+  if (!commit) return file;
+  const entries = paths || documentPathHistory(root, file);
+  const exact = entries.find((entry) => entry.commit === commit);
+  if (exact) return exact.path;
+  const seen = new Set();
+  for (const candidate of [file, ...entries.map((entry) => entry.path), ...entries.map((entry) => entry.previous)]) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (runGit(['cat-file', '-e', `${commit}:${candidate}`], { cwd: root, allowFailure: true }).status === 0) return candidate;
+  }
+  return file;
+}
+
+/**
+ * 문서 차분의 git 인자. 세 자리가 모두 이 함수를 지난다.
+ *
+ * core.quotepath=false를 준다. 이 저장소의 정본 파일명은 한글이고, git은 기본으로
+ * 비ASCII 바이트를 8진수로 이스케이프해 diff 머리 네 줄을 사람이 못 읽는 문자열로 만든다.
+ *
+ * 경로는 지점마다 다르다. 이름이 바뀐 경계를 사이에 두면 왼쪽과 오른쪽의 경로가 다르고,
+ * 둘 다 줘야 --find-renames가 한쪽의 삭제와 다른 쪽의 생성을 한 이름 변경으로 묶는다.
+ *
+ * 승인본↔작업본·승인본↔제출본·임의 두 지점 셋이 같은 문제를 갖는다. 이름 변경은 리비전을
+ * 바꾸지 않으므로(경로는 리비전 계산에서 빠진다) 승인은 이름 변경을 넘어 살아 있고, 그래서
+ * 세 축 모두 이름이 바뀐 경계를 기준으로 삼을 수 있다. 한 곳만 고치면 같은 문서의 차분이
+ * 축마다 다르게 보인다 — 한글 파일명 이스케이프를 고칠 때 셋을 함께 고친 것과 같은 이유이고,
+ * 이번에는 아예 한 자리로 모아 두 번째 갈림이 생기지 않게 한다.
+ *
+ * to가 없으면 오른쪽은 작업본이다. 작업본의 경로는 언제나 지금 경로다.
+ */
+function documentDiffArgs(root, file, from, to, paths) {
+  const history = paths || documentPathHistory(root, file);
+  const fromPath = documentPathAt(root, file, from, history);
+  const toPath = to ? documentPathAt(root, file, to, history) : file;
+  const pathspec = fromPath === toPath ? [fromPath] : [fromPath, toPath];
+  return ['-c', 'core.quotepath=false', 'diff', '--find-renames', from, ...(to ? [to] : []), '--', ...pathspec];
 }
 
 // 승인 이후 바뀐 부분만 보여준다. 이것이 없으면 한 글자를 고칠 때마다 문서
@@ -975,15 +1080,22 @@ function revisionCandidates(root, file) {
 // 소유 칸만 다른 커밋 여럿이 판 2에서 같은 값을 낼 수 있다. 그때는 가장 최근 것이
 // 잡히고, 그것이 옳다 — 차분의 기준은 내용이 같은 것 중 가장 가까운 커밋이어야
 // state 투영이 만든 커밋이 차분에 섞이지 않는다.
-function commitForRevision(root, file, revision, candidates) {
+//
+// 커밋마다 그 시점의 경로로 읽는다. 지금 경로 하나로 읽으면 이름이 바뀌기 전 커밋에서는
+// git show가 언제나 비고, 그러면 옛 경로에서 승인된 리비전은 후보를 다 훑고도 못 찾은
+// 것이 된다 — 차분이 "승인된 리비전을 담은 커밋을 찾지 못했습니다"로 통째로 사라지는
+// 갈래가 그것이다. 이름 변경은 리비전을 바꾸지 않으므로(경로는 리비전 계산에서 빠진다)
+// 그 승인은 여전히 살아 있고, 살아 있는 승인은 지목할 수 있어야 한다.
+function commitForRevision(root, file, revision, candidates, paths) {
   if (!revision) return null;
   const { documentRevisions } = require('./board-data');
   const { parseFrontmatter } = require('./frontmatter');
+  const history = paths || documentPathHistory(root, file);
   for (const commit of candidates || revisionCandidates(root, file)) {
     // runGit은 stdout을 trim한다. 파일 내용을 그렇게 읽으면 후행 개행이 잘려
     // 리비전이 달라지고, 그 리비전을 담은 커밋이 있어도 영영 못 찾는다 —
     // 내용은 바이트 그대로 읽어야 한다.
-    const shown = showFileAtCommit(root, commit, file);
+    const shown = showFileAtCommit(root, commit, documentPathAt(root, file, commit, history));
     if (shown === null) continue;
     const parsed = parseFrontmatter(shown);
     if (!parsed || !Object.values(documentRevisions(parsed.data, parsed.body)).includes(revision)) continue;
@@ -1001,13 +1113,12 @@ function diffSinceApproval(start, input) {
   if (state.status === 'unapproved') return { project: context.project.key, targetId: document.id, status: state.status, diff: null, reason: '승인 기록이 없어 비교 기준이 없습니다.' };
   if (state.status === 'approved') return { project: context.project.key, targetId: document.id, status: state.status, diff: '', reason: '현재 리비전이 승인되어 있습니다.' };
   const approvedRevision = state.approvedRevision;
-  const commit = commitForRevision(context.project.root, document.file, approvedRevision);
+  const paths = documentPathHistory(context.project.root, document.file);
+  const commit = commitForRevision(context.project.root, document.file, approvedRevision, undefined, paths);
   if (!commit) return { project: context.project.key, targetId: document.id, status: state.status, approvedRevision, approvedBy: state.approvedBy, baseCommit: null, diff: null, reason: '승인된 리비전을 담은 커밋을 찾지 못했습니다. 승인 이후 커밋되지 않았을 수 있습니다.' };
-  // core.quotepath=false를 준다. 이 저장소의 정본 파일명은 한글이고, git은 기본으로
-  // 비ASCII 바이트를 8진수로 이스케이프해 diff 머리 네 줄을 사람이 못 읽는 문자열로
-  // 만든다. 세 자리(승인본↔작업본·승인본↔제출본·임의 두 지점)가 같은 문제를 갖고,
-  // 한 곳만 고치면 같은 문서의 차분이 축마다 다르게 보인다.
-  const diff = runGit(['-c', 'core.quotepath=false', 'diff', `${commit}`, '--', document.file], { cwd: context.project.root, allowFailure: true });
+  // 이 축도 이름 변경을 넘는다. 승인 이후 문서 이름이 바뀌었으면 승인본의 경로와 작업본의
+  // 경로가 다르고, 지금 경로 하나로만 물으면 "승인 이후 문서 전체가 새로 생겼다"가 나온다.
+  const diff = runGit(documentDiffArgs(context.project.root, document.file, commit, null, paths), { cwd: context.project.root, allowFailure: true });
   return { project: context.project.key, targetId: document.id, status: state.status, approvedRevision, approvedBy: state.approvedBy, baseCommit: commit, diff: diff.status === 0 ? diff.stdout : null };
 }
 
@@ -1041,8 +1152,11 @@ function diffSubmission(start, input) {
     return Object.assign(shared, { approvedCommit: null, submittedCommit: null, diff: '', reason: '제출된 리비전이 이미 승인되어 있습니다.' });
   }
   const candidates = revisionCandidates(context.project.root, document.file);
-  const approvedCommit = commitForRevision(context.project.root, document.file, approvedRevision, candidates);
-  const submittedCommit = commitForRevision(context.project.root, document.file, submittedRevision, candidates);
+  // 경로 이력도 한 번만 만들어 두 지점이 나눠 쓴다 — 후보 커밋 목록을 나눠 쓰는 것과
+  // 같은 이유이고, 두 번 만들면 같은 --follow 순회가 두 번 돈다.
+  const paths = documentPathHistory(context.project.root, document.file);
+  const approvedCommit = commitForRevision(context.project.root, document.file, approvedRevision, candidates, paths);
+  const submittedCommit = commitForRevision(context.project.root, document.file, submittedRevision, candidates, paths);
   if (!approvedCommit || !submittedCommit) {
     const missing = !approvedCommit && !submittedCommit ? '승인본과 제출본' : approvedCommit ? '제출본' : '승인본';
     return Object.assign(shared, {
@@ -1050,7 +1164,7 @@ function diffSubmission(start, input) {
       reason: `${missing}의 리비전을 담은 커밋을 찾지 못했습니다. 비교는 커밋된 리비전 사이에서만 성립합니다 — 아직 커밋하지 않은 작업본은 다음 순간 달라질 수 있어 승인자가 본 것과 결박되지 않습니다.`
     });
   }
-  const diff = runGit(['-c', 'core.quotepath=false', 'diff', approvedCommit, submittedCommit, '--', document.file], { cwd: context.project.root, allowFailure: true });
+  const diff = runGit(documentDiffArgs(context.project.root, document.file, approvedCommit, submittedCommit, paths), { cwd: context.project.root, allowFailure: true });
   return Object.assign(shared, { approvedCommit, submittedCommit, diff: diff.status === 0 ? diff.stdout : null });
 }
 
@@ -1058,6 +1172,7 @@ module.exports = {
   BASIS_KINDS, SUBMISSION_STATES, SUBMISSION_TYPE, APPROVAL_TYPE, REJECTION_TYPE,
   normalizeApprovalEvent, approvalEnvelope, appendApprovalEvent, readApprovalEvents,
   foldApprovals, trustState, commitForRevision, revisionCandidates, projectedDocumentState, withProjectedState,
+  documentPathHistory, documentPathAt, documentDiffArgs,
   documentApprovals, documentStatus, submitDocument, approveDocument, rejectDocument, documentHistory,
   diffSinceApproval, diffSubmission
 };

@@ -241,8 +241,8 @@ function testUpstreamTrustJudgment() {
     documents, trust: { 'PRD-001': 'stale', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
   });
   assert.strictEqual(retired.used, false, '낡음은 예전에 승인했다는 뜻이지 지금 굴린다는 뜻이 아닙니다.');
-  assert.deepStrictEqual(retired.issues.map((issue) => [issue.artifactId, issue.target, issue.code]),
-    [['REQ-001', 'PRD-001', 'RDL-APPROVE-030']], '낡은 상류는 문턱 밖이라 그대로 웁니다.');
+  assert.deepStrictEqual(retired.issues.map((issue) => [issue.target, issue.dependents, issue.code]),
+    [['PRD-001', ['REQ-001'], 'RDL-APPROVE-030']], '낡은 상류는 문턱 밖이라 그대로 웁니다.');
 
   // ② 낡음과 미승인은 다른 코드로 운다. 앞엣것은 "근거로 삼은 것이 바뀌었다"이고
   // 뒤엣것은 "아직 확정되지 않은 것 위에 섰다"라 사람이 볼 순서가 다르다.
@@ -250,15 +250,42 @@ function testUpstreamTrustJudgment() {
     documents, trust: { 'PRD-001': 'stale', 'REQ-001': 'approved', 'SCR-001': 'unapproved' }
   });
   assert.strictEqual(mixed.used, true);
-  assert.deepStrictEqual(mixed.issues.map((issue) => [issue.artifactId, issue.target, issue.code]),
-    [['REQ-001', 'PRD-001', 'RDL-APPROVE-030']], '낡은 상류를 가리키는 하류만 걸립니다.');
+  assert.deepStrictEqual(mixed.issues.map((issue) => [issue.target, issue.dependents, issue.code]),
+    [['PRD-001', ['REQ-001'], 'RDL-APPROVE-030']], '낡은 상류를 가리키는 하류만 걸립니다.');
 
-  const pending = upstreamTrustIssues({
+  // ②-2 미승인 상류의 문턱은 줄에 있다. 그 위에 선 하류가 굳었을 때만 운다.
+  //
+  // 문턱이 전역이던 시절에는 승인 한 건이 저장소의 미승인 상류를 전부 열었다. 런돌
+  // 자신의 프로젝트에서 승인 1건이 59줄을 열었고, 그 59줄 전부가 "미승인이 미승인 위에
+  // 섰다"였다 — 시키는 일이 "이 59건을 승인하라"인 줄은 진단이 아니라 백로그다.
+  const unsettled = upstreamTrustIssues({
     documents, trust: { 'PRD-001': 'approved', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
   });
-  assert.deepStrictEqual(pending.issues.map((issue) => [issue.artifactId, issue.target, issue.code]),
-    [['SCR-001', 'REQ-001', 'RDL-APPROVE-031']], '미승인 상류는 다른 코드로 웁니다.');
+  assert.deepStrictEqual(unsettled.issues, [],
+    '아직 아무도 굳지 않은 자리는 앞선 것이 아니라 그냥 안 굳은 것입니다.');
+  assert.strictEqual(unsettled.used, true, '문턱이 줄로 내려가도 used는 프로젝트의 값입니다.');
+
+  const pending = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'approved', 'REQ-001': 'unapproved', 'SCR-001': 'approved' }
+  });
+  assert.deepStrictEqual(pending.issues.map((issue) => [issue.target, issue.dependents, issue.code]),
+    [['REQ-001', ['SCR-001'], 'RDL-APPROVE-031']], '미승인 상류는 다른 코드로 웁니다.');
   assert(pending.issues.every((issue) => issue.severity === 'warning'), '이 규칙은 언제나 권고입니다.');
+  assert(pending.issues[0].message.includes('SCR-001'),
+    `줄이 왜 지금 서는지를 말해야 합니다 — 굳은 하류의 이름: ${pending.issues[0].message}`);
+
+  // 낡은 하류도 굳은 것이다. 낡음은 "승인했다가 흔들렸다"이지 "승인한 적 없다"가 아니다.
+  const staleBelow = upstreamTrustIssues({
+    documents, trust: { 'PRD-001': 'approved', 'REQ-001': 'unapproved', 'SCR-001': 'stale' }
+  });
+  assert.deepStrictEqual(staleBelow.issues.map((issue) => [issue.target, issue.code]),
+    [['REQ-001', 'RDL-APPROVE-031']], '낡은 하류도 미승인 상류 위에 굳어 서 있습니다.');
+
+  // 경고가 지목하는 문서는 상류다. 사람에게 시키는 하나의 행동이 그 문서를 승인하는
+  // 일이므로, 열 파일도 그 문서의 것이어야 한다 — 하류의 파일을 실으면 여는 곳과
+  // 고치는 곳이 갈린다.
+  assert.strictEqual(pending.issues[0].artifactId, 'REQ-001', '경고의 주어는 승인할 상류입니다.');
+  assert.strictEqual(pending.issues[0].file, 'docs/REQ-001.md', '여는 파일도 상류의 것입니다.');
 
   // ③ 상류가 다시 승인되면 그친다.
   const settled = upstreamTrustIssues({
@@ -279,6 +306,105 @@ function testUpstreamTrustJudgment() {
     trust: { 'PRD-001': 'approved', 'SCR-001': 'unapproved' }
   });
   assert.deepStrictEqual(dangling.issues, [], '없는 대상은 미승인 상류가 아닙니다.');
+
+  // ④ 낡음은 유형 폐포 밖에서도 운다.
+  //
+  // 상류로 지목될 수 있는 유형은 작성 순서 표의 값 집합뿐이라 PRD·REQ·ARC 셋이다.
+  // ADR은 그 집합에 없고 REQ·SCR이 ADR을 인용하므로 "상류" 방향이 애초에 맞지 않는데,
+  // 실측에서 ADR-020이 승인 후 개정되어 낡았고 related로 12건이 그것을 인용하며 그중
+  // 하나가 저장소의 유일한 승인 문서였는데도 진단이 0건이었다. 낡음은 하류 유형과
+  // 무관하게 낡은 문서 자신의 사건이다.
+  const decided = [
+    { id: 'ADR-001', file: 'docs/ADR-001.md', related: [] },
+    { id: 'REQ-001', file: 'docs/REQ-001.md', related: ['[[ADR-001-결정-하나|ADR-001]]'] },
+    { id: 'SCR-001', file: 'docs/SCR-001.md', related: ['[[ADR-001]]'] }
+  ];
+  assert(!upstreamTypes('REQ').includes('ADR'), 'ADR은 어느 유형의 상류도 아닙니다.');
+  const cited = upstreamTrustIssues({
+    documents: decided, trust: { 'ADR-001': 'stale', 'REQ-001': 'unapproved', 'SCR-001': 'unapproved' }
+  });
+  assert.deepStrictEqual(cited.issues.map((issue) => [issue.target, issue.dependents, issue.code]),
+    [['ADR-001', ['REQ-001', 'SCR-001'], 'RDL-APPROVE-030']], '낡은 문서는 아무의 상류가 아니어도 웁니다.');
+  assert.strictEqual(cited.issues[0].file, 'docs/ADR-001.md', '여는 파일은 낡은 문서의 것입니다.');
+
+  // 미승인에는 폐포가 그대로 남는다. 미승인은 문서 대부분의 기본 상태라, 폐포를 풀면
+  // 전 문서가 서로를 지목한다 — 두 축의 성격이 다른 것이 요점이다.
+  const citedPending = upstreamTrustIssues({
+    documents: decided, trust: { 'ADR-001': 'unapproved', 'REQ-001': 'approved', 'SCR-001': 'approved' }
+  });
+  assert.deepStrictEqual(citedPending.issues, [], '미승인은 유형 폐포 안에서만 방향을 갖습니다.');
+
+  // 세는 단위는 (하류, 상류) 짝이 아니라 상류다. 짝으로 세면 같은 사실이 하류 수만큼
+  // 곱해지고, 그 곱은 런돌 자신의 프로젝트에서 상류 59건을 경고 136줄로 부풀렸다.
+  // 여기서 재는 것은 줄 수가 아니라 그 성질이다 — 하류가 몇이든 상류마다 한 줄이고,
+  // 하류가 늘어도 줄은 늘지 않는다.
+  const shared = [
+    { id: 'PRD-001', file: 'docs/PRD-001.md', related: [] },
+    { id: 'REQ-001', file: 'docs/REQ-001.md', related: ['[[PRD-001]]'] },
+    { id: 'REQ-002', file: 'docs/REQ-002.md', related: ['[[PRD-001]]'] },
+    { id: 'REQ-003', file: 'docs/REQ-003.md', related: ['[[PRD-001]]'] }
+  ];
+  const crossed = upstreamTrustIssues({
+    documents: shared, trust: { 'PRD-001': 'stale', 'REQ-001': 'approved', 'REQ-002': 'unapproved', 'REQ-003': 'unapproved' }
+  });
+  assert.strictEqual(crossed.issues.length, 1, '상류 하나는 하류가 셋이어도 한 줄입니다.');
+  assert.deepStrictEqual(crossed.issues[0].dependents, ['REQ-001', 'REQ-002', 'REQ-003'],
+    '되풀이하지 않은 하류는 값으로 남아야 합니다 — 줄에서 지운 것이지 없앤 것이 아닙니다.');
+  assert(crossed.issues[0].message.includes('문서 3건'), `줄이 그 문서를 근거로 삼은 수를 말해야 합니다: ${crossed.issues[0].message}`);
+
+  // 같은 하류가 한 상류를 두 번 적어도 한 번만 센다. 표시 링크와 맨 식별자가 같은
+  // 대상을 가리키는 일이 실제로 있고, 그것을 두 번 세면 하류 수가 문서 수를 넘는다.
+  const twice = upstreamTrustIssues({
+    documents: [
+      { id: 'PRD-001', file: 'docs/PRD-001.md', related: [] },
+      { id: 'REQ-001', file: 'docs/REQ-001.md', related: ['[[PRD-001-제품-요구|PRD-001]]', 'PRD-001'] }
+    ],
+    trust: { 'PRD-001': 'stale', 'REQ-001': 'approved' }
+  });
+  assert.deepStrictEqual(twice.issues.map((issue) => issue.dependents), [['REQ-001']], '같은 짝은 한 번만 셉니다.');
+}
+
+// 기능 ID가 가리키는 부모. related가 실재를 확인받는 동안 이 값은 아무 확인도 받지
+// 않았고, 없는 REQ를 가리켜도 그 REQ가 선언한 적 없는 기능을 가리켜도 검사가 0건을 냈다.
+function testFunctionParentResolution() {
+  const { checkFunctionParents } = require('../src/check-rules');
+  const doc = (id, functionIds) => ({
+    id, relativeFile: `docs/${id}.md`, source: `id: ${id}\nfunctionIds:\n${functionIds.map((value) => `  - ${value}`).join('\n')}\n`,
+    frontmatter: { data: { id, functionIds } }
+  });
+  const requirement = doc('REQ-001', ['FN-001', 'FN-002']);
+  const judge = (source, others) => {
+    const list = [];
+    const registry = new Map([[requirement.id, requirement]].concat((others || []).map((item) => [item.id, item])));
+    registry.set(source.id, source);
+    checkFunctionParents(list, registry, source, { category: 'link', artifactId: source.id });
+    return list.map((item) => [item.code, item.target, item.severity]);
+  };
+
+  assert.deepStrictEqual(judge(doc('TST-001', ['REQ-001#FN-001'])), [], '선언된 기능을 가리키면 아무 말도 하지 않습니다.');
+
+  // 없는 부모는 related가 없는 문서를 가리킬 때와 같은 사건이다.
+  assert.deepStrictEqual(judge(doc('TST-002', ['REQ-999#FN-001'])), [['RDL-LINK-002', 'REQ-999', 'error']],
+    '부모 문서가 없으면 참조가 해결되지 않습니다.');
+
+  // 부모는 있는데 그 기능이 없는 것은 문서는 있는데 그 안의 자리가 없는 것과 같다.
+  const missing = judge(doc('SCR-001', ['REQ-001#FN-099']));
+  assert.deepStrictEqual(missing, [['RDL-LINK-003', 'REQ-001#FN-099', 'error']],
+    '부모가 선언하지 않은 기능은 해결되지 않는 참조입니다.');
+
+  // REQ는 기능의 원천이라 자기 기능을 선언하는 것이지 남을 가리키는 것이 아니다.
+  assert.deepStrictEqual(judge(requirement), [], '원천이 자기 기능을 선언하는 갈래를 막으면 안 됩니다.');
+
+  // 기능 ID를 나르지 않는 유형에는 이 물음이 없다. 표기가 어긋난 값도 여기서 말하지
+  // 않는다 — RDL-IMPL-003이 이미 같은 값을 보고 답한다.
+  assert.deepStrictEqual(judge(doc('ADR-001', ['REQ-999#FN-001'])), [], 'ADR은 기능 ID를 나르지 않습니다.');
+  assert.deepStrictEqual(judge(doc('TST-003', ['FN-001'])), [], '표기 판정은 구현 계약 계층의 몫입니다.');
+
+  // 줄이 무엇으로 고쳐야 하는지를 말해야 한다. 답은 이미 부모 문서 안에 있다.
+  const list = [];
+  checkFunctionParents(list, new Map([['REQ-001', requirement]]), doc('SCR-002', ['REQ-001#FN-099']), { artifactId: 'SCR-002' });
+  assert(list[0].message.includes('REQ-001#FN-001') && list[0].message.includes('REQ-001#FN-002'),
+    `줄이 그 문서가 선언한 기능을 말해야 합니다: ${list[0].message}`);
 }
 
 // state 칸이 나눠 쓰던 두 축을 가른 뒤의 값 판정.
@@ -335,6 +461,7 @@ function testStateAndLifecycleVocabulary() {
 
 testStateAndLifecycleVocabulary();
 testUpstreamTrustJudgment();
+testFunctionParentResolution();
 testTmsFixture();
 testMissingReference();
 testLegacySpecIsRejectedInStrictMode();

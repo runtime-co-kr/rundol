@@ -17,7 +17,10 @@
 // 표를 고칠 때 "누가 정했는지 모르지만 원래 이랬다"가 되지 않는다. 11절이 정한 것과
 // 4절이 정한 것은 근거의 무게가 다르고, 아무도 정하지 않은 것은 여기 없다.
 
-const { WORKFLOW_STEPS, OPEN_WORKFLOW_STEPS, COMPLETION_VALIDITIES, TASK_STATES, DOCUMENT_STATE_KEYS } = require('./vocabulary');
+const {
+  WORKFLOW_STEPS, OPEN_WORKFLOW_STEPS, COMPLETION_VALIDITIES,
+  TASK_STATES, DOCUMENT_STATE_KEYS, DOCUMENT_LIFECYCLE_KEYS
+} = require('./vocabulary');
 
 // ── 태스크 상태 → 스텝 ──────────────────────────────────────────────────
 //
@@ -32,20 +35,57 @@ const TASK_STATUS_STEPS = Object.freeze({
   cancelled: Object.freeze({ step: 'dropped', validity: null, source: '11절' })
 });
 
-// ── 문서 상태 → 스텝 ────────────────────────────────────────────────────
+// ── 문서: 축이 둘이므로 지도도 둘이다 ──────────────────────────────────
 //
-// accepted는 어휘 밖 값인데 12건 살아 있다. 11절이 그것을 완료·유효로 정식화했으므로
-// 여기서는 어휘에 없다는 이유로 미매핑이 아니다 — 오히려 이 줄이 그 값을 정식으로
-// 만드는 자리다. declared 축이 그 사실(어휘에는 없음)을 따로 들고 있다.
+// 0.45.0이 문서의 상태 칸을 둘로 갈랐다. state는 rdl이 원장에서 투영하는 진행 축이고,
+// lifecycle은 원장이 모르는 내용 수명 축이라 사람이 적는다.
 //
-// deprecated는 11절 표에 없지만 4절이 명시적으로 정했다: "안 하기로 함"이 아니라
-// "했지만 이제 안 씀"이므로 dropped가 아니라 completed에 속하고 유효성 축이 유효와
-// 폐기를 가른다. 실측 0건이지만 근거가 있는 매핑이라 넣는다.
+// 그 전까지 이 지도는 한 칸을 보고 다섯 줄을 답했다. 그런데 완료 쪽 세 줄
+// (active · accepted · deprecated)의 값이 lifecycle로 옮겨 가면서 그 세 줄은 어떤
+// 문서로도 닿지 않게 되었다 — 지도의 절반이 죽었고, 죽었다는 사실은 아무 신호도 내지
+// 않았다. classifyDocumentState는 계속 답을 냈고 그 답에 그 세 줄이 없었을 뿐이다.
 //
-// review · approved · archived · unread 넷은 어느 절도 정하지 않았다. 넣지 않는다.
+// ADR-026이 그 어긋남을 실측으로 적고 고칠 자리로 들었다 — "승인 축의 지도와 수명
+// 축의 지도를 갈라 세운다". 같은 문서가 이유도 적었다: **완료 쪽 세 줄은 처음부터
+// 수명 값이었다.** valid와 retired는 수명 축의 롤업이었고, 한 칸에 섞여 있는 동안에는
+// 그렇게 보이지 않았을 뿐이다.
+//
+// 그래서 갈라 세우되 줄은 **옮기기만** 한다. 11절이 active · accepted에 대해 정한
+// 것과 4절이 deprecated에 대해 정한 것은 그 값이 어느 칸에 사는지와 무관하게 그대로
+// 서 있다. source도 그대로 둔다 — 축이 갈렸다는 이유로 남의 결정에 새 출처를 달면
+// 그것은 옮긴 것이 아니라 새로 정한 것이 된다.
+//
+// 두 지도를 하나로 접지 않는다. 접으려면 "승인된 문서가 폐기됐다" 또는 "초안이
+// 채택됐다"에서 어느 축이 이기는지를 정해야 하는데, ADR-026이 그것을 자기가 답하지
+// 않은 것으로 명시했다("롤업 하나만 낼 수 있는 자리에서 어느 축이 이기는지를 재는
+// 실측이 아직 없다"). 여기서 대신 답하면 이 파일이 결정 문서가 된다.
+
+// 승인 축. state 칸이 답하는 진행이다.
+//
+// 두 줄뿐이다. approved · stale · rejected 셋의 스텝은 어느 절도 ADR-026도 정하지
+// 않았다. 실측 0건이지만 곧 나올 값이다 — 이 저장소의 승인 원장은 이미 승인 1건과
+// 낡음 2건을 알고 있고, 투영이 그 사실을 파일에 쓰는 날 세 값이 파일에 나타난다.
+// 그날 unmappedVocabulary()가 그 셋을 들고, 자리를 못 찾은 문서가 이관 검사를
+// 떨어뜨린다. 그것이 이 지도가 하는 일의 절반이다.
 const DOCUMENT_STATE_STEPS = Object.freeze({
   draft: Object.freeze({ step: 'in-progress', validity: null, source: '11절' }),
-  proposed: Object.freeze({ step: 'in-approval', validity: null, source: '11절' }),
+  proposed: Object.freeze({ step: 'in-approval', validity: null, source: '11절' })
+});
+
+// 수명 축. lifecycle 칸이 답하는, 끝난 뒤의 유효성이다.
+//
+// 세 줄은 옛 지도에서 그대로 옮겨 온 것이고 source가 그 사실을 나른다.
+//
+// superseded와 archived는 옛 지도에도 없었고 지금도 정한 절이 없다. deprecated 옆에
+// 두면 셋 다 completed · retired로 보이지만, 그렇게 보이는 것과 누가 정한 것은 다르다 —
+// 4절이 deprecated에 대해 적은 근거("안 하기로 함이 아니라 했지만 이제 안 씀")를
+// 옆 값에 옮겨 적는 일은 4절이 아니라 이 파일이 하는 판단이다.
+//
+// 이 칸은 비어 있을 수 있다. 어휘가 그렇게 정했고("없는 것과 active는 다르다"),
+// 그래서 값이 없는 문서는 자리를 못 찾은 것이 아니라 이 축에 대해 아무 말도 하지
+// 않은 것이다. 그 구분은 이 지도가 아니라 부르는 쪽이 한다 — 지도는 값 하나를 받아
+// 답할 뿐이고, 칸이 선택인지 필수인지는 칸의 성질이지 지도의 성질이 아니다.
+const DOCUMENT_LIFECYCLE_STEPS = Object.freeze({
   active: Object.freeze({ step: 'completed', validity: 'valid', source: '11절' }),
   accepted: Object.freeze({ step: 'completed', validity: 'valid', source: '11절' }),
   deprecated: Object.freeze({ step: 'completed', validity: 'retired', source: '4절' })
@@ -53,10 +93,13 @@ const DOCUMENT_STATE_STEPS = Object.freeze({
 
 // 지도가 어휘를 벗어나지 않는다는 것을 적재 시점에 못박는다.
 //
-// 이 갈래는 새 파일만 만들 수 있어 test/manifest.js에 시험을 등록할 수 없다.
-// 등록하지 못한 시험 파일은 manifest-coverage가 잡아내고, 잡히지 않더라도 돌지 않는
-// 시험은 통과한 시험과 구분되지 않는다. 그래서 검증을 시험이 아니라 모듈 자신에게
-// 둔다 — 어휘가 갈리면 이 파일을 require하는 모든 실행이 그 자리에서 넘어진다.
+// 시험이 없어서가 아니다 — test/migration-map.test.js가 아래 판단을 따로 덮는다.
+// 적재 시점에 두는 이유는 보호가 걸리는 범위다. 시험만 가진 보호는 시험이 도는
+// 순간에만 서 있고 목록에서 빠지는 날 조용히 없어지지만, 여기 두면 이 파일을
+// require하는 모든 실행이 어휘가 갈린 그 자리에서 넘어진다.
+//
+// 지도가 둘로 갈린 뒤에도 같은 보호를 받아야 한다. 새 지도가 이 단언을 지나지 않으면
+// 갈라 세운 쪽만 검사를 잃고, 잃었다는 사실은 아무 신호도 내지 않는다.
 function assertWithinVocabulary(table, label) {
   for (const [value, target] of Object.entries(table)) {
     if (!WORKFLOW_STEPS.includes(target.step)) {
@@ -73,7 +116,8 @@ function assertWithinVocabulary(table, label) {
   }
 }
 assertWithinVocabulary(TASK_STATUS_STEPS, '태스크');
-assertWithinVocabulary(DOCUMENT_STATE_STEPS, '문서');
+assertWithinVocabulary(DOCUMENT_STATE_STEPS, '문서 상태');
+assertWithinVocabulary(DOCUMENT_LIFECYCLE_STEPS, '문서 수명');
 
 // 하나를 옮긴 결과. mapped가 거짓이면 그것이 이 검사기가 찾는 것이다.
 function classify(table, declaredValues, value) {
@@ -84,8 +128,11 @@ function classify(table, declaredValues, value) {
     step: target ? target.step : null,
     validity: target ? target.validity : null,
     mapped: Boolean(target),
-    // 어휘가 선언했는가. 매핑 여부와 독립이다 — accepted는 선언 밖인데 매핑되고,
-    // unread는 선언 안인데 매핑되지 않는다. 두 축을 겹치면 그 둘이 같아 보인다.
+    // 어휘가 선언했는가. 매핑 여부와 독립이다 — approved는 선언 안인데 매핑되지
+    // 않고(스텝을 정한 절이 없다), 반대로 지도가 어휘를 앞질러 가면 선언 밖인데
+    // 매핑되는 값이 생긴다. 축이 갈리기 전 accepted가 그 자리에 있었고, 어휘가
+    // 따라오면서 지금은 비었다. 두 축을 겹치면 그 둘이 같아 보이고, 같아 보이면
+    // "어휘에 없다"와 "옮길 자리가 없다"를 한 신호로 읽게 된다.
     declared: key !== null && declaredValues.includes(key),
     source: target ? target.source : null
   };
@@ -95,8 +142,16 @@ function classifyTaskStatus(status) {
   return classify(TASK_STATUS_STEPS, TASK_STATES, status);
 }
 
+// 문서는 두 번 묻는다. 한 번에 두 칸을 받는 함수를 두지 않는 이유는 서명이 아니라
+// 답이다 — 두 칸을 함께 받으면 답도 하나여야 하고, 그러려면 두 축이 다른 말을 할 때
+// 어느 쪽이 이기는지를 이 함수가 정해야 한다. 그 판단은 ADR-026이 미뤄 둔 것이다.
+// 그래서 축마다 자기 물음에만 답하고, 접는 일은 접을 근거가 생기는 날 생긴다.
 function classifyDocumentState(state) {
   return classify(DOCUMENT_STATE_STEPS, DOCUMENT_STATE_KEYS, state);
+}
+
+function classifyDocumentLifecycle(lifecycle) {
+  return classify(DOCUMENT_LIFECYCLE_STEPS, DOCUMENT_LIFECYCLE_KEYS, lifecycle);
 }
 
 // 어휘가 선언했는데 지도에 없는 값. 실측 0건이어도 모델의 구멍이므로 값으로 내보낸다.
@@ -104,16 +159,25 @@ function classifyDocumentState(state) {
 function unmappedVocabulary() {
   return Object.freeze({
     taskStatuses: Object.freeze(TASK_STATES.filter((state) => !TASK_STATUS_STEPS[state])),
-    documentStates: Object.freeze(DOCUMENT_STATE_KEYS.filter((state) => !DOCUMENT_STATE_STEPS[state]))
+    documentStates: Object.freeze(DOCUMENT_STATE_KEYS.filter((state) => !DOCUMENT_STATE_STEPS[state])),
+    documentLifecycles: Object.freeze(DOCUMENT_LIFECYCLE_KEYS.filter((value) => !DOCUMENT_LIFECYCLE_STEPS[value]))
   });
 }
 
-// 지도에는 있는데 어휘가 선언하지 않은 값. accepted 하나가 여기 있고, 그것이 11절이
-// "어휘 밖 값이 여기서 정식이 된다"고 적은 줄의 실체다.
+// 지도에는 있는데 어휘가 선언하지 않은 값. 지금은 세 축 모두 비어 있다.
+//
+// 예전에는 accepted 하나가 여기 있었고, 그것이 11절이 "어휘 밖 값이 여기서 정식이
+// 된다"고 적은 줄의 실체였다. 그 문장은 이제 참이 아니다 — 0.45.0이 축을 가르면서
+// accepted가 DOCUMENT_LIFECYCLE_KEYS로 들어갔고, 그래서 그 값은 어휘 안이다.
+// 지도가 어휘를 앞질러 가던 자리를 어휘가 따라와 메웠다.
+//
+// 비었다고 함수를 지우지 않는다. 이것이 재는 것은 "지금 몇 건인가"가 아니라 "지도와
+// 어휘가 갈렸는가"이고, 갈리는 날 값이 나와야 한다.
 function undeclaredMappings() {
   return Object.freeze({
     taskStatuses: Object.freeze(Object.keys(TASK_STATUS_STEPS).filter((state) => !TASK_STATES.includes(state))),
-    documentStates: Object.freeze(Object.keys(DOCUMENT_STATE_STEPS).filter((state) => !DOCUMENT_STATE_KEYS.includes(state)))
+    documentStates: Object.freeze(Object.keys(DOCUMENT_STATE_STEPS).filter((state) => !DOCUMENT_STATE_KEYS.includes(state))),
+    documentLifecycles: Object.freeze(Object.keys(DOCUMENT_LIFECYCLE_STEPS).filter((value) => !DOCUMENT_LIFECYCLE_KEYS.includes(value)))
   });
 }
 
@@ -163,8 +227,10 @@ function completionGateFindings(task) {
 module.exports = Object.freeze({
   TASK_STATUS_STEPS,
   DOCUMENT_STATE_STEPS,
+  DOCUMENT_LIFECYCLE_STEPS,
   classifyTaskStatus,
   classifyDocumentState,
+  classifyDocumentLifecycle,
   unmappedVocabulary,
   undeclaredMappings,
   rollupStep,

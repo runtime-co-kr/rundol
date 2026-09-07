@@ -121,6 +121,20 @@ function markdownFiles(root) {
   return files;
 }
 
+// 소유자 칸의 MEMBER-ID. 파일에 적히는 값은 사람이 읽는 위키링크(`[[project#^MEMBER-001|강영준]]`)라
+// 표시와 식별자가 한 문자열에 섞여 있고, 판정이 필요한 것은 뒤엣것뿐이다. 여기서 한 번 갈라
+// 두 값을 다 실으면 화면이 문자열을 뒤져 ID를 되짚지 않는다 — 실제로 사람 화면이
+// String(owner).includes(id)로 그 일을 하고 있는데, 그 판정은 MEMBER-1이 MEMBER-10에도
+// 걸리고 이름에 ID를 적어 둔 문서에도 걸린다. 「내 차례」처럼 사람을 가르는 축이 그 위에
+// 서면 남의 줄이 내 줄로 들어오고, 틀렸다는 신호는 어디에도 나지 않는다.
+//
+// 못 찾으면 null이다. 지어내지 않는다 — 소유자를 모르는 문서와 내가 소유자가 아닌 문서는
+// 다르고, 아무 값으로나 메우면 앞엣것이 누군가의 줄에 조용히 선다.
+function ownerMemberId(value) {
+  const found = /(MEMBER-[A-Z0-9]+)/u.exec(String(value || ''));
+  return found ? found[1] : null;
+}
+
 function listDocuments(project) {
   const documents = [];
   for (const file of markdownFiles(project.root)) {
@@ -137,7 +151,18 @@ function listDocuments(project) {
       title: parsed.data.title || path.basename(file, '.md'),
       description: parsed.data.description || '',
       owner: parsed.data.owner || null,
+      ownerMember: ownerMemberId(parsed.data.owner),
       state: parsed.data.state || null,
+      // 수명은 상태와 다른 축이다. state는 rdl이 승인 원장에서 투영하는 칸이고 lifecycle은
+      // 사람이 적는 "이 내용이 지금 효력이 있나"다. 싣지 않으면 화면은 그 축을 아예 모르고,
+      // 실제로 lifecycle: accepted를 든 ADR 15건이 화면에서는 「초안」으로만 보였다.
+      //
+      // 값이 없는 것과 active는 다르므로 없는 것은 null로 남긴다 — 여기서 active로 메우면
+      // 대부분의 문서가 적지도 않은 수명을 주장하게 되고, 화면은 그것을 사실로 그린다.
+      // 값 없는 `lifecycle:` 한 줄을 파서가 빈 배열로 읽으므로 문자열만 값으로 받는다.
+      // 어휘 밖 값을 여기서 거르지는 않는다 — 그 판정은 rdl check(RDL-DOC-017)의 몫이고,
+      // 여기서 조용히 지우면 오타 난 문서가 화면에서는 정상으로 보인다.
+      lifecycle: typeof parsed.data.lifecycle === 'string' && parsed.data.lifecycle.trim() ? parsed.data.lifecycle.trim() : null,
       tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
       related: Array.isArray(parsed.data.related) ? parsed.data.related : [],
       file: path.relative(project.root, file).replace(/\\/g, '/'),

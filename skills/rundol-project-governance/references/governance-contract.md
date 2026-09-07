@@ -2,11 +2,13 @@
 
 ## Canonical document metadata
 
-Every canonical Markdown artifact keeps these fields: `id`, `type`, `kind`, `title`, `description`, `owner`, `state`, `tags`, `aliases`, and `related`.
+Every canonical Markdown artifact keeps these fields: `id`, `type`, `kind`, `title`, `description`, `owner`, `state`, `tags`, `aliases`, and `related`. `lifecycle` may join them and is the only optional one.
 
 - `project.md` uses `project:<project-key>`; ordinary artifacts use a three-letter document code and numeric sequence.
 - `title` and the file title are Korean-centered and the file name includes the functional name.
 - `owner` resolves to a `MEMBER-*` block.
+- `state` is not authored. `rdl` projects the approval ledger into it, and its five values are `draft`, `proposed`, `approved`, `stale`, and `rejected`.
+- `lifecycle` is the state a person does write — `active`, `accepted`, `superseded`, `deprecated`, or `archived` — and it is absent when the document has no lifespan to state, which is not the same as `active`.
 - `tags` include `rundol/`, `artifact/`, `domain/`, and `feature/` namespaces.
 - `aliases` starts with the document ID.
 - `related` uses actual file names, not aliases as link targets.
@@ -15,7 +17,19 @@ Each project is registered by `projects/project-<project-key>.yaml` in the `rund
 
 The repository root's current code branch owns application code and release assets. Its default branch name is discovered from the remote's `origin/HEAD`, so `main`, `master`, and custom repository standards are all valid. The `rundol/workspace` branch owns only cross-project registry and collaboration state. Each `rundol/<project-key>` branch owns only that project's charter, canonical documents, Board presentation, and tasks. `rdl git init` installs a managed pre-push boundary across all linked worktrees; `rdl git boundary` must be valid before persistence or synchronization. A local ref must push only to the identically named remote ref.
 
-New canonical documents also carry the CLI-authored boundary contract: `granularity: bounded-v1`, one concrete `scope`, and one or more `excludes`. The scope states one independently reviewable responsibility. Split same-type material when owner or approver, acceptance criteria, lifecycle or review cadence, or primary consumers differ. Contract type presence is inventory state, not evidence that the subject area is complete.
+New canonical documents also carry the CLI-authored boundary contract: `granularity: bounded-v1`, one concrete `scope`, and one or more `excludes`. The scope states one independently reviewable responsibility. Split same-type material when owner or approver, acceptance criteria, retirement or review cadence, or primary consumers differ. Contract type presence is inventory state, not evidence that the subject area is complete.
+
+## Approval ledger and the two state axes
+
+Approval lives in an append-only ledger under `rundol/workspace`, and every read folds it again. `rdl doc submit`, `rdl doc approve`, and `rdl doc reject` append the events; `rdl doc status`, `rdl doc history`, `rdl doc diff`, and `rdl doc review` read them back. The ledger is canonical and the `state` field is a cache of it, kept so that a document opened in a Vault or copied to another machine still says where it stands. The cache is lossy by design: the file has one word where the ledger has two axes, and no decision anywhere reads the file value, because a gate that read it could be passed by editing a line.
+
+The trust axis answers whether the revision someone reviewed is the one on disk: `approved`, `stale`, or `unapproved`. The submission axis answers whose turn it is: `none`, `pending`, `drifted`, `settled`, or `rejected`. `state` folds the two by a fixed priority — approved first, then rejected, then proposed for anything waiting on a reviewer, then stale, then draft — so a question that needs both axes is asked of the ledger and not of the file.
+
+`rdl doc approve` and `rdl doc reject` accept only an active `human` Client whose owner is an active member of the project. `rdl doc submit` deliberately does not, because an agent drafting and a person taking responsibility are the two halves of this tool's collaboration model, and requiring a person to queue their own review would make the gate a bottleneck. One function in `collaboration-store` decides that eligibility, and the policy-layer gate, the sync sharing gate, and the Board's approver list all ask the same one — a check copied per surface makes the loosest copy the real height of the gate.
+
+An approval binds one revision, and a revision is a content hash of the frontmatter and body, so any edit invalidates it. That collides with projecting `state` into the file, because the projection write would change the hash and stale the approval in the same breath that recorded it. Revisions therefore carry a formula number: formula 1 hashes the whole frontmatter, formula 2 excludes the fields `rdl` owns, and every event records which formula measured the revision it bound. An event written without one is read as formula 1, which is how approvals recorded before the split stayed valid — an approval is a person's judgment and cannot be regenerated, so changing the calculation without a fallback would have destroyed them. For authoring the consequence is short: a `lifecycle` line is content and spends an approval, while a projection into `state` does not spend any approval recorded since the split.
+
+`rdl doc pipeline` folds the same ledger along the document dependency order and warns when a document stands on unsettled ground: `RDL-APPROVE-030` for a stale upstream, `RDL-APPROVE-031` for an unapproved one, kept apart because "what you relied on changed" and "what you relied on was never settled" ask for different work. Both stay silent in a project with no live approval at all, since a project that has not adopted the axis should not be told it is failing at it.
 
 ## Project charter sections
 

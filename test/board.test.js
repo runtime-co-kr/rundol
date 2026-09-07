@@ -113,14 +113,6 @@ async function testBoard() {
     // 문서 전건이 문제 목록으로 쏟아져 진짜 문제를 덮는다.
     assert.strictEqual(snapshotValue.attention.filter((item) => item.reason === '검토 대기').length, 0,
       '검토 대기는 attention이 아니라 인박스가 든다.');
-    // 인박스 행의 유형 칩은 kind를 본다(화면의 documentTypeLabel이 kind || type을 쓴다).
-    // type은 'document'라는 저장 종류라 문서 130건이 모두 같은 값이고, kind를 안 실으면
-    // 인박스의 유형 칩이 전부 'document'로 떨어져 무엇이 밀렸는지가 유형별로 읽히지 않는다 —
-    // 문서 목록은 문서를 통째로 받아 kind를 갖고 있으므로 두 화면이 같은 문서에 다른 유형을
-    // 적게 된다. 이 픽스처에는 승인 원장이 없어 줄이 비어 오므로, 싣는 자리를 원본에서 못박는다.
-    const boardSource = fs.readFileSync(path.join(root, 'src', 'board.js'), 'utf8');
-    const queueSource = boardSource.slice(boardSource.indexOf('function reviewQueue'), boardSource.indexOf('function attentionItems'));
-    assert(/items\.push\(\{[^}]*kind: document\.kind/u.test(queueSource), '인박스 줄은 문서의 kind를 함께 실어야 한다.');
 
     // ── 검토 줄의 순서와 길이 ──────────────────────────────────────────────
     //
@@ -210,6 +202,97 @@ async function testBoard() {
       assert.strictEqual(queue.items[1].waitingSince, '2026-08-02T00:00:00.000Z', '지금 파일이 올린 판과 다르면 지금 판이 생긴 시각부터 센다.');
     }
 
+    // 5) 줄은 문서의 kind를 함께 실는다. 화면의 유형 칩이 kind를 먼저 보기 때문이고
+    //    (documentTypeLabel은 kind || type이다), type은 'document'라는 저장 종류라 문서
+    //    전건이 같은 값이다 — 안 실으면 인박스의 칩이 전부 'document'로 떨어져 무엇이
+    //    밀렸는지가 유형별로 읽히지 않고, 문서 목록과 인박스가 같은 문서에 다른 유형을 적는다.
+    {
+      const queue = queueOf([{ id: 'ADR-001', trust: trust('unapproved'), modifiedAt: '2026-01-01T00:00:00.000Z' }]);
+      assert.strictEqual(queue.items[0].kind, 'adr', '인박스 줄은 문서의 kind를 함께 실는다.');
+    }
+
+    // 6) 반려된 문서는 줄에서 빠지되, 사라지지는 않는다. 빠지는 이유는 차례가
+    //    작성자에게 넘어갔기 때문이고, 남기는 이유는 그 작성자에게는 그것이 할 일이기
+    //    때문이다 — 수만 세고 버리면 「내가 고칠 것」이 설 자리가 없어진다. 셀은 그 줄에서
+    //    파생해야 한다 — 따로 세면 언젠가 둘이 갈리고, 갈렸다는 사실은 아무 신호도 내지 않는다.
+    {
+      const queue = queueOf([
+        { id: 'ADR-001', trust: trust('unapproved'), modifiedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'ADR-002', trust: trust('unapproved', { state: 'rejected', rejection: { rejectedBy: 'MEMBER-002', reason: '근거 부족', recordedAt: '2026-03-01T00:00:00.000Z' } }), modifiedAt: '2026-02-01T00:00:00.000Z' }
+      ]);
+      assert.deepStrictEqual(queue.items.map((item) => item.id), ['ADR-001'], '반려된 문서는 검토 줄에 서지 않는다.');
+      assert.deepStrictEqual(queue.rejectedItems.map((item) => item.id), ['ADR-002'], '반려된 문서도 줄로는 남는다.');
+      assert.strictEqual(queue.rejected, queue.rejectedItems.length, '반려 셀은 그 줄에서 파생한다.');
+      assert.strictEqual(queue.rejectedItems[0].submission.rejectedBy, 'MEMBER-002', '누가 반려했는지가 줄에 실린다.');
+      assert.strictEqual(queue.rejectedItems[0].submission.rejectedReason, '근거 부족', '왜 아닌지가 줄에 실린다.');
+    }
+
+    // ── 문서의 「내 차례」 ──────────────────────────────────
+    //
+    // 같은 줄을 사람 축으로 좁힌 값이다. 갈래를 가르는 규칙이 화면에 있으면 자격
+    // 판정의 표면이 하나 더 생기고 그 표면은 아무도 시험하지 않으므로, 규칙은 여기 있고
+    // 여기서 재다.
+    const { documentTurns } = require('../src/board');
+    const approverOf = (member) => [{ id: 'client-1', name: '개발용', owner: member }];
+    function turnsOf(entries, approvers) {
+      const states = {};
+      const documents = entries.map((entry) => {
+        states[entry.id] = entry.trust;
+        return { id: entry.id, kind: 'adr', type: 'document', title: entry.id, file: `docs/${entry.id}.md`, ownerMember: entry.owner || null, modifiedAt: entry.modifiedAt || '2026-01-01T00:00:00.000Z' };
+      });
+      return documentTurns(reviewQueue(documents, { states, reason: null }), approvers);
+    }
+
+    // 7) 갈래 셋이 서로 다른 사실을 세고, 한 문서는 한 사람에게 한 갈래에만 선다.
+    //    두 갈래에 세우면 셀이 실제 일의 양보다 크게 나오고 같은 문서를 두 번 지나친다.
+    {
+      const turns = turnsOf([
+        // 내게 올라와 답을 기다리는 것
+        { id: 'ADR-001', owner: 'MEMBER-002', trust: trust('unapproved', { state: 'pending', recordedAt: '2026-02-01T00:00:00.000Z' }) },
+        // 내가 승인한 뒤 바뀐 것 — 소유자도 나라 「내가 고칠 것」에도 걸리지만,
+        // 낡음에서 다음에 눌러야 할 단추는 재승인이므로 앞엎것이 가져간다.
+        { id: 'ADR-002', owner: 'MEMBER-001', trust: trust('stale') },
+        // 내 문서인데 반려됐다
+        { id: 'ADR-003', owner: 'MEMBER-001', trust: trust('unapproved', { state: 'rejected', rejection: { rejectedBy: 'MEMBER-002', reason: '근거 부족', recordedAt: '2026-03-01T00:00:00.000Z' } }) },
+        // 아무에게도 넘어가지 않은 미승인 — 어느 갈래에도 서지 않는다
+        { id: 'ADR-004', owner: 'MEMBER-002', trust: trust('unapproved') }
+      ], approverOf('MEMBER-001'));
+      const laneOf = (id) => (turns.rows.find((row) => row.id === id) || { lanes: {} }).lanes['MEMBER-001'] || null;
+      assert.deepStrictEqual(turns.approverMembers, ['MEMBER-001'], '승인 자격은 이미 조립된 목록에서 온다.');
+      assert.strictEqual(laneOf('ADR-001'), 'awaiting', '올라온 판은 승인자의 차례다.');
+      assert.strictEqual(laneOf('ADR-002'), 'restake', '내 승인이 낡은 것은 재승인 갈래가 가져간다.');
+      assert.strictEqual(laneOf('ADR-003'), 'fix', '반려된 내 문서는 내가 고칠 것이다.');
+      assert.strictEqual(laneOf('ADR-004'), null, '아무에게도 넘어가지 않은 미승인은 누구의 차례도 아니다.');
+      const mine = turns.rows.filter((row) => row.lanes['MEMBER-001']);
+      assert.strictEqual(mine.length, 3, '한 문서는 한 갈래에만 서므로 줄이 중복되지 않는다.');
+      // 미승인 157건이 따라들어오면 「내 차례」가 다시 프로젝트 전체가 된다.
+      assert.strictEqual(turns.rows.length, 3, '아무의 갈래에도 안 서는 줄은 싣지 않는다.');
+    }
+
+    // 8) 승인자가 아닌 사람에게는 「나를 기다리는 것」이 서지 않는다. 0건과 "자격이
+    //    없다"는 다른 사실이므로 화면이 그 둘을 가를 근거가 값으로 있어야 한다.
+    {
+      const turns = turnsOf([
+        { id: 'ADR-001', owner: 'MEMBER-002', trust: trust('unapproved', { state: 'pending', recordedAt: '2026-02-01T00:00:00.000Z' }) }
+      ], approverOf('MEMBER-001'));
+      assert.strictEqual((turns.rows[0].lanes || {})['MEMBER-002'], undefined, '올린 사람은 자기가 기다리는 중이지 차례가 아니다.');
+      assert(!turns.approverMembers.includes('MEMBER-002'), '자격자 목록이 그 판정의 근거다.');
+      // 갈래 목록은 서버가 준다. 화면은 require를 쓸 수 없어 적어 둔 목록은 갈래가
+      // 늘 때 한쪽만 늘고, 그때 화면은 없는 갈래를 모르는 채 돌아간다.
+      assert.deepStrictEqual(turns.lanes.map((lane) => lane.key), ['awaiting', 'restake', 'fix'],
+        '갈래의 목록과 순서를 서버가 싣는다.');
+      assert.strictEqual(turns.lanes[0].requiresApprover, true, '어느 갈래가 자격을 요구하는지도 서버가 말한다.');
+    }
+
+    // 9) 원장을 못 읽은 저장소에서는 「내 차례」도 줄을 세우지 않고 이유를 그대로 든다.
+    //    여기서 0건으로 답하면 모르는 것이 "내 차례가 없다"로 읽힌다.
+    {
+      const turns = documentTurns(reviewQueue([], { states: null, reason: '이 작업공간은 승인 원장을 갖기 전 판입니다.' }), approverOf('MEMBER-001'));
+      assert.strictEqual(turns.used, false);
+      assert.strictEqual(typeof turns.unknown, 'string', '모르는 이유가 값으로 실린다.');
+      assert.deepStrictEqual(turns.rows, []);
+    }
+
     // ── 스냅숏이 싣는 워크플로 ──────────────────────────────────────────────
     //
     // 이 픽스처에는 workflows.json이 없다. 설정을 안 쓴 저장소에서 답이 판올림 전과
@@ -271,6 +354,48 @@ async function testBoard() {
     const documents = await request(port, '/api/projects/tms/documents');
     assert.strictEqual(documents.status, 200);
     assert(JSON.parse(documents.body).documents.some((document) => document.id === 'project:tms'));
+
+    // ── 통합 검색 자리 ──────────────────────────────────────────────────────
+    //
+    // 검색은 스냅숏 밖이다. 질의마다 다른 값이라 폴링에 실을 수 없고, 실으면 폴링 한
+    // 번이 검색 한 번이 되어 아무도 검색하지 않는 동안에도 문서 전건을 훑는다 —
+    // 문서 차분·이력이 요청 시 계산인 것과 같은 규칙이다.
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(snapshotValue, 'search'), false,
+      '검색 결과가 스냅숏에 실리면 안 된다.');
+
+    const searched = await request(port, `/api/projects/tms/search?q=${encodeURIComponent('태스크')}`);
+    assert.strictEqual(searched.status, 200);
+    const searchValue = JSON.parse(searched.body);
+    assert.strictEqual(searchValue.status, 'ok');
+    assert(searchValue.total > 0, '검색이 이 픽스처에서 한 건도 못 찾으면 안 된다.');
+    // 결과마다 어디서 왔는지와 무엇에 붙은 것인지가 함께 와야 한다. 원장 줄은 붙은
+    // 대상 없이는 읽을 수 없고, 문서·태스크와 모양이 갈리면 화면이 출처 줄을 두 벌 그린다.
+    for (const hit of searchValue.results) {
+      assert(hit.origin && typeof hit.origin.label === 'string', `출처가 없다: ${hit.id}`);
+      assert(hit.attachedTo && typeof hit.attachedTo.kind === 'string', `붙은 대상 자리가 없다: ${hit.id}`);
+      assert(hit.matches.length > 0 && hit.matches[0].excerpts.length > 0, `발췌가 없다: ${hit.id}`);
+    }
+    // 이 픽스처는 승인 원장을 갖기 전 판이다. 원장을 못 읽어도 문서·태스크는 나와야
+    // 하고, 못 읽은 이유는 값에 실려야 한다 — 원장이 깨진 저장소와 원장을 안 쓰는
+    // 저장소가 화면에서 같아 보이면 앞엣것을 아무도 모른다.
+    assert.strictEqual(searchValue.counts.ledger, 0);
+    assert.strictEqual(searchValue.scanned.ledger.read, false);
+    assert.strictEqual(typeof searchValue.scanned.ledger.reason, 'string');
+
+    // 한 글자에 전건이 나오면 그것은 검색이 아니라 목록이다. 다만 오류도 아니다 —
+    // 두 글자를 치는 도중에 반드시 지나는 상태다.
+    const tooShort = await request(port, '/api/projects/tms/search?q=a');
+    assert.strictEqual(tooShort.status, 200);
+    assert.strictEqual(JSON.parse(tooShort.body).status, 'too-short');
+    assert.strictEqual(JSON.parse(tooShort.body).total, 0);
+    const emptyQuery = await request(port, '/api/projects/tms/search');
+    assert.strictEqual(emptyQuery.status, 200);
+    assert.strictEqual(JSON.parse(emptyQuery.body).status, 'empty');
+    // 모르는 갈래는 빈 결과가 아니라 거절이다. 빈 결과로 답하면 "그 갈래에 아무것도
+    // 없다"로 읽힌다 — 없는 노드를 400으로 끊는 전환 판정과 같은 자리다.
+    const unknownSource = await request(port, '/api/projects/tms/search?q=%ED%83%9C%EC%8A%A4%ED%81%AC&source=nope');
+    assert.strictEqual(unknownSource.status, 400);
+    assert.strictEqual(JSON.parse(unknownSource.body).code, 'unknown-source');
 
     const revision = await request(port, '/api/revision');
     assert.strictEqual(revision.status, 200);
@@ -340,6 +465,34 @@ async function testBoard() {
     // 승인 판은 정해진 두 축만 답한다. 검토하다 보면 "세 판 전과 견주면 어떤가"와
     // "언제부터 이렇게 됐나"를 묻게 되는데, 앞엣것의 기준은 원장이 아니라 사람이 이력에서
     // 고르고 뒤엣것의 답은 이력에만 있다 — 축을 늘려서는 둘 다 답하지 못한다.
+
+    // 시간축의 규칙 셋. 실제 원장으로는 같은 밀리초도 못 읽는 시각도 만들기 어렵고,
+    // 만들 수 없는 것은 시험되지 않는다 — 시험되지 않는 규칙은 다음 사람이 지운다.
+    {
+      const { documentTimeline } = require('../src/board');
+      const timeline = documentTimeline({
+        approvals: [{ recordedAt: '2026-08-20T15:15:53.000Z', approvedBy: 'MEMBER-001', reviewedRevision: 'a'.repeat(64), reason: '승인', basis: [] }],
+        submissions: [{ recordedAt: '2026-08-20T15:15:53.000Z', submittedBy: 'MEMBER-002', submittedRevision: 'b'.repeat(64), reason: '제출' }],
+        rejections: [{ recordedAt: null, rejectedBy: 'MEMBER-003', rejectedRevision: 'c'.repeat(64), reason: '시각을 잃은 줄' }],
+        commits: [
+          { commit: 'f'.repeat(40), author: '지은이', at: '2026-08-20T15:15:53.000Z', subject: '같은 순간의 커밋' },
+          { commit: 'e'.repeat(40), author: '지은이', at: '2026-09-06T21:21:42.000Z', subject: '가장 최근 커밋' }
+        ]
+      });
+      // 시각을 못 읽는 줄은 맨 뒤다. 맨 앞은 "가장 최근에 일어난 일"이라는 자리인데
+      // 읽을 수 없는 시각으로는 그 주장을 받칠 수 없고, 던지면 줄 하나가 이력 전체를 지운다.
+      assert.deepStrictEqual(timeline.map((row) => row.kind), ['commit', 'approval', 'submission', 'commit', 'rejection'],
+        `시간축의 순서가 규칙과 다릅니다: ${JSON.stringify(timeline.map((row) => `${row.kind}@${row.at}`))}`);
+      // 같은 순간이면 원장이 커밋 위다. 원장 사건은 커밋된 리비전을 지목하므로 커밋이
+      // 원인이고 원장이 결과이며, 최근이 위인 목록에서 결과는 원인 위에 온다.
+      assert.strictEqual(timeline[3].kind, 'commit', '같은 순간의 커밋은 원장 줄 아래여야 합니다.');
+      // 같은 순간의 원장 줄끼리는 들어온 차례를 지킨다 — 안정 정렬이라야 같은 이력이
+      // 요청마다 같은 목록으로 온다. 흔들리면 사람은 방금 본 줄을 다시 찾지 못한다.
+      assert.deepStrictEqual([timeline[1].who, timeline[2].who], ['MEMBER-001', 'MEMBER-002']);
+      // 지목할 주소의 종류는 줄마다 다르다. 하나로 뭉개면 화면이 원장 줄을 커밋으로
+      // 지목하려 들고, 그 지목은 어느 축에서도 답을 찾지 못한다.
+      assert.deepStrictEqual(timeline.map((row) => row.pointKind), ['commit', 'revision', 'revision', 'commit', 'revision']);
+    }
     const historyAnswer = await request(port, '/api/projects/tms/documents/ADR-001/history');
     // 이력 자리가 문서 조회 경로에 삼켜지지 않는다. `/documents/:id` 정규식이 뒤 조각까지
     // 먹으면 이 경로는 조용히 문서 하나를 돌려주고, 화면은 이력이 빈 채로 온 줄로 읽는다.
@@ -441,6 +594,54 @@ async function testBoard() {
     // 없는 파일은 404이고, 그것이 경로 존재 여부를 알려 주는 유일한 신호다.
     const missing = await request(port, '/api/projects/tms/assets/docs/none.png');
     assert.strictEqual(missing.status, 404);
+
+    // ── 넣은 그림을 다시 볼 수 있는가 ────────────────────────────────────
+    //
+    // 넣기와 보기가 같은 이름 공간을 쓰는지가 이 두 경로의 유일한 계약이다. 실측에서
+    // 화면은 `![[이름]]`을 문서 참조로 옮겨 `#document=이름`을 src에 넣었고, 넣기는
+    // 200인데 보기는 404였다 — 사람에게는 그것이 "업로드가 안 되는 것"이다.
+    //
+    // 그래서 화면이 주소를 만드는 데 쓰는 값을 여기서 그대로 쓴다: 스냅숏이 말하는
+    // 자산 디렉터리에 돌려받은 이름을 붙인 주소가 그 그림이어야 한다.
+    {
+      // 1x1 PNG. 여기서 재는 것은 그림의 내용이 아니라 넣기와 보기가 같은 이름을
+      // 쓰는지이므로, 헤더 판별을 지나는 가장 작은 그림이면 된다.
+      const png = Buffer.from(
+        '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de'
+        + '0000000c49444154789c6338a1a1010002d4011905508fa40000000049454e44ae426082',
+        'hex'
+      );
+      const added = await request(port, '/api/projects/tms/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-rundol-token': 'test-session-token' },
+        body: JSON.stringify({ name: '한글 갈무리.png', data: png.toString('base64') })
+      });
+      assert.strictEqual(added.status, 200, `그림을 넣지 못했습니다: ${added.body}`);
+      const result = JSON.parse(added.body);
+      // 한글 이름은 흔하다. 깨지면 검사와 화면이 서로 다른 이름을 보게 된다.
+      assert.strictEqual(result.name, '한글-갈무리.png', `이름 규칙이 달라졌습니다: ${result.name}`);
+      assert.strictEqual(result.embed, '![[한글-갈무리.png]]');
+      try {
+        const state = JSON.parse((await request(port, '/api/projects/tms/board-snapshot')).body);
+        assert(state.assets && state.assets.directory, '스냅숏이 자산이 사는 자리를 말해야 화면이 주소를 만들 수 있습니다');
+        const url = `/api/projects/tms/assets/${`${state.assets.directory}/${result.name}`.split('/').map(encodeURIComponent).join('/')}`;
+        const served = await request(port, url);
+        assert.strictEqual(served.status, 200, `넣은 그림을 그 주소에서 받지 못했습니다(${url}): ${served.status}`);
+        assert.strictEqual(served.headers['content-type'], 'image/png');
+      } finally {
+        fs.rmSync(path.join(root, 'test', 'fixtures', 'workspace', 'projects', 'tms', 'docs', 'assets', result.name), { force: true });
+      }
+    }
+
+    // 본문 한계를 넘으면 소켓을 끊는 대신 이유를 말한다. 끊으면 브라우저는 응답 대신
+    // 네트워크 오류를 받고, 화면에는 "Failed to fetch"만 남는다.
+    const oversize = await request(port, '/api/projects/tms/assets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-rundol-token': 'test-session-token' },
+      body: JSON.stringify({ name: 'huge.png', data: 'A'.repeat(34 * 1024 * 1024) })
+    });
+    assert.strictEqual(oversize.status, 413, `본문 한계 초과가 413이 아닙니다: ${oversize.status}`);
+    assert(/KB를 넘을 수 없습니다/u.test(JSON.parse(oversize.body).error), `한계를 말해야 합니다: ${oversize.body}`);
 
     // 심링크로 밖을 가리키는 경우. 위의 문자열 검사(..)로는 잡히지 않으므로, 링크를
     // 따라간 뒤 다시 확인하는 가드만이 이것을 막는다. 그 가드를 껐을 때 이 시험이

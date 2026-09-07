@@ -161,12 +161,19 @@ function loadDocumentContract(start, projectKey) {
   const presets = resolveProfilePresets(presentation);
   const validation = validateDocumentProfile(source, presets);
   const catalog = Object.assign(documentContractCatalog(), { profiles: Object.keys(presets), profileChoices: profileChoices(presentation) });
-  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, taskEnforcement: 'advisory', evaluation: null, catalog };
-  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, taskEnforcement: (validation.profile && validation.profile.taskEnforcement) || 'advisory', errors: validation.errors, evaluation: null, catalog };
-  const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
   const artifacts = projectArtifacts(project);
-  const evaluation = evaluateDocumentContract(profile, artifacts);
+  // 기능 ID 축은 프로필을 보지 않는다. 값이 문서가 선언한 기능 ID에서만 나오므로
+  // 계약을 아직 세우지 않았거나 계약이 어긋난 프로젝트에서도 그대로 계산된다.
+  //
+  // 예전에는 valid 경로에서만 실었다. 그래서 계약을 세우지 않은 프로젝트에서
+  // rdl contract trace가 {root, project} 둘만 답했고 — Object.assign이 없는 칸을
+  // 붙일 수 없으므로 — 읽는 쪽은 "기능 0건"과 "축을 계산하지 않았다"를 가를 수 없었다.
+  // 축이 없는 것이 아니라 계산해 놓고 버린 것이었고, 버리는 조건이 그 축과 무관했다.
   const traceability = implementationTrace(artifacts);
+  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, taskEnforcement: 'advisory', evaluation: null, traceability, catalog };
+  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, taskEnforcement: (validation.profile && validation.profile.taskEnforcement) || 'advisory', errors: validation.errors, evaluation: null, traceability, catalog };
+  const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
+  const evaluation = evaluateDocumentContract(profile, artifacts);
   return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, taskEnforcement: profile.taskEnforcement || 'advisory', evaluation, traceability, catalog };
 }
 

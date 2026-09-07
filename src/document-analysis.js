@@ -19,6 +19,10 @@ const WIKI_LINK = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/gu;
 const ARTIFACT_ID = /^[A-Z]{3}-\d{3,}$/u;
 
 function referencedIds(document, knownIds) {
+  // 코드 구역 안의 `[[...]]`는 참조가 아니라 예시다. 링크 판정부가 이미 그것을 덮고
+  // 있으므로 여기서도 같은 것을 부른다 — 규칙을 두 번째로 적으면 같은 본문을 두
+  // 자리가 다르게 읽고, 링크 문법을 설명하는 문서가 자기 예시로 남을 참조해 준다.
+  const { maskCode } = require('./check-rules');
   const found = new Set();
   const scan = (text) => {
     for (const match of String(text || '').matchAll(WIKI_LINK)) {
@@ -27,7 +31,9 @@ function referencedIds(document, knownIds) {
       if (direct && knownIds.has(direct) && direct !== document.id) found.add(direct);
     }
   };
-  scan(document.body);
+  scan(maskCode(document.body));
+  // related는 frontmatter의 값이라 코드 구역이 없다. 덮으면 백틱을 담은 표시 이름이
+  // 통째로 지워져 정상 참조가 사라진다.
   for (const related of document.related || []) scan(related);
   return Array.from(found).sort();
 }
@@ -226,16 +232,33 @@ function documentPipeline(start, options) {
   for (const entry of analysis.documents.filter((item) => item.orphan)) broken.push({ id: entry.id, reason: 'orphan', target: null });
   broken.sort((left, right) => left.id.localeCompare(right.id) || left.reason.localeCompare(right.reason) || String(left.target).localeCompare(String(right.target)));
 
+  // 추적성 요약에 "왜 미완인가"를 함께 싣는다. incomplete 하나만 보면 원천 계약이 없는
+  // 기능과 검증이 없는 기능이 한 숫자에 접히고, 접힌 숫자를 읽는 쪽은 둘 중 하나를 골라
+  // 말할 수밖에 없다 — 실제로 다음 한 걸음이 원천이 없는 기능에도 "TST가 없습니다"라고
+  // 답했다. 무엇이 없는지는 항목마다 이미 계산되어 있으므로 세기만 하면 된다.
+  //
+  // 기존 칸(functions·ready·incomplete)은 그대로 둔다. 읽는 쪽이 이미 그 이름으로 본다.
   let traceability = null;
   try {
     const contract = require('./document-contract').loadDocumentContract(start, project.key);
-    traceability = contract.traceability ? contract.traceability.summary : null;
+    if (contract.traceability) {
+      const entries = contract.traceability.entries || [];
+      traceability = Object.assign({}, contract.traceability.summary, {
+        missingSource: entries.filter((entry) => (entry.missing || []).includes('REQ')).length,
+        missingTest: entries.filter((entry) => (entry.missing || []).includes('TST') && !(entry.missing || []).includes('REQ')).length
+      });
+    }
   } catch (error) {
     traceability = null;
   }
 
+  // 줄이 상류 축으로 말려 올라간 뒤로 issue.artifactId는 상류의 것이다. 그것을
+  // downstream에 담으면 상류가 자기를 하류로 가리키는 값이 나온다. 하류는 하나가
+  // 아니라 여럿이므로 칸 이름도 복수로 바꾼다 — 한 칸에 하나만 담을 수 있는 모양이
+  // 남아 있으면 언젠가 다시 첫 번째 하나만 실린다.
   const ahead = evaluated.issues.map((issue) => ({
-    code: issue.code, status: issue.status, downstream: issue.artifactId, upstream: issue.target, message: issue.message
+    code: issue.code, status: issue.status, upstream: issue.target,
+    dependents: Array.isArray(issue.dependents) ? issue.dependents.slice() : [], message: issue.message
   }));
   return {
     project: project.key,
@@ -270,7 +293,10 @@ function nextPipelineStep(input) {
   const dependents = new Map();
   for (const issue of input.issues) {
     if (!dependents.has(issue.target)) dependents.set(issue.target, { target: issue.target, status: issue.status, count: 0 });
-    dependents.get(issue.target).count += 1;
+    // 줄 수가 아니라 그 줄이 든 하류 수를 센다. 규칙이 상류 축으로 말려 올라간 뒤
+    // 상류 하나에 줄도 하나라, 줄을 세면 41건을 근거로 삼는 문서도 "하류 1건"이 된다.
+    // dependents가 없는 줄(옛 모양)은 그 줄 자신이 하류 하나였다.
+    dependents.get(issue.target).count += Array.isArray(issue.dependents) ? issue.dependents.length : 1;
   }
   const pick = (status) => Array.from(dependents.values()).filter((entry) => entry.status === status)
     .sort((left, right) => right.count - left.count
@@ -304,7 +330,15 @@ function nextPipelineStep(input) {
     const front = pending.filter((entry) => entry.layer === pending[0].layer);
     return `승인 ${front[0].id}${front.length > 1 ? ` 외 ${front.length - 1}건` : ''} — 층 ${pending[0].layer}에 아직 확정되지 않은 문서가 있습니다. 이 층을 닫으면 하류는 다시 타지 않습니다.`;
   }
-  if (input.traceability && input.traceability.incomplete > 0) return `검증 연결 — 기능 ${input.traceability.incomplete}건에 TST가 없습니다. rdl contract trace로 어느 기능인지 보세요.`;
+  // 미완의 이유가 둘이므로 말도 둘이다. 원천 계약이 없는 기능이 먼저인 이유는 끊긴
+  // 연결을 승인보다 먼저 보는 것과 같다 — 가리키는 원천이 없는 기능 ID는 할 일이
+  // 아니라 어긋난 값이고, 그것을 "TST를 쓰세요"로 읽으면 없는 요구를 검증하러 간다.
+  if (input.traceability && input.traceability.missingSource > 0) {
+    return `원천 확인 — 기능 ${input.traceability.missingSource}건이 가리키는 REQ 원천 계약을 찾지 못합니다. rdl contract trace로 어느 기능인지 보세요.`;
+  }
+  if (input.traceability && input.traceability.missingTest > 0) {
+    return `검증 연결 — 기능 ${input.traceability.missingTest}건에 TST가 없습니다. rdl contract trace로 어느 기능인지 보세요.`;
+  }
   const orphan = input.broken.find((entry) => entry.reason === 'orphan');
   if (orphan) return `연결 확인 ${orphan.id} — 아무도 가리키지 않고 연결된 태스크도 없습니다.`;
   return '하류가 상류를 앞선 곳이 없습니다. 다음 국면으로 갑니다.';

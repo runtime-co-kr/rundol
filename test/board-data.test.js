@@ -67,6 +67,40 @@ assert.strictEqual(sync.project, 'tms');
 assert(/^[a-f0-9]{40}$/u.test(sync.head));
 assert(['clean', 'modified', 'ahead', 'behind', 'diverged', 'conflict'].includes(sync.state));
 
+// ── 수명은 스냅숏이 실어야 화면에 실린다 ────────────────────────────────────
+//
+// `state`는 rdl이 승인 원장에서 투영하는 칸이고 `lifecycle`은 사람이 적는 칸이다.
+// 이관으로 72건에 값이 들어갔는데 목록이 그 칸을 싣지 않아, 화면은 그 축을 아예 몰랐다 —
+// lifecycle: accepted를 든 ADR 15건이 화면에서는 「초안」으로만 보였다.
+//
+// 여기서 못박는 것은 넷이다. 값을 그대로 싣는가, 없는 것을 active로 메우지 않는가,
+// 값 없는 한 줄을 값으로 세지 않는가, 그리고 어휘 밖 값을 조용히 지우지 않는가 —
+// 지우면 오타 난 문서가 화면에서는 정상으로 보이고, 그 판정은 rdl check(RDL-DOC-017)의 몫이다.
+{
+  const lifecycleRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-board-lifecycle-'));
+  try {
+    const write = (name, lines) => fs.writeFileSync(path.join(lifecycleRoot, name), ['---'].concat(lines, ['---', '', '본문', '']).join('\n'), 'utf8');
+    const head = (id, title) => ['id: ' + id, 'type: document', 'kind: adr', 'title: ' + title, 'state: draft'];
+    write('a.md', head('ADR-900', '수명 있는 결정').concat(['lifecycle: accepted']));
+    write('b.md', head('ADR-901', '수명 없는 결정'));
+    // 값 없는 `lifecycle:` 한 줄은 파서가 빈 배열로 읽는다. 그것을 값으로 실으면 화면이
+    // 빈 칩을 그리게 되므로 문자열만 값으로 받는다.
+    write('c.md', head('ADR-902', '적다 만 결정').concat(['lifecycle:']));
+    write('d.md', head('ADR-903', '오타 난 결정').concat(['lifecycle: acepted']));
+    const byId = Object.fromEntries(listDocuments({ root: lifecycleRoot, key: 'demo' }).map((item) => [item.id, item]));
+    assert.strictEqual(byId['ADR-900'].lifecycle, 'accepted', '적힌 수명은 그대로 실려야 합니다');
+    assert.strictEqual(byId['ADR-901'].lifecycle, null, '없는 것과 active는 다릅니다');
+    assert.strictEqual(byId['ADR-902'].lifecycle, null, '값 없는 한 줄은 값이 아닙니다');
+    assert.strictEqual(byId['ADR-903'].lifecycle, 'acepted', '어휘 밖 값을 여기서 지우면 오타가 화면에서 정상으로 보입니다');
+    // 수명은 사람이 쓴 내용이라 리비전이 재는 칸이다. 목록이 그 값을 실었다고 리비전
+    // 계산이 달라지면 이미 기록된 승인이 전부 어긋난다.
+    const parsed = require('../src/frontmatter').parseFrontmatter(fs.readFileSync(path.join(lifecycleRoot, 'a.md'), 'utf8'));
+    assert.strictEqual(byId['ADR-900'].revision, documentRevision({ metadata: parsed.data, body: parsed.body }), '수명을 실어도 리비전은 파일에서 그대로 나와야 합니다');
+  } finally {
+    fs.rmSync(lifecycleRoot, { recursive: true, force: true });
+  }
+}
+
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-board-performance-'));
 try {
   const tasks = {};

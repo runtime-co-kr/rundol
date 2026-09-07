@@ -17,7 +17,14 @@
        가운데 칸이 소유한다. -->
   <div class="workspace-shell">
     <header class="app-header">
-      <label class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="global-search" type="search" placeholder="문서와 태스크 검색"></label>
+      <!-- 검색은 자리가 둘이다. 여기 드롭다운은 타자 도중에 답하는 빠른 자리이고, 전용
+           화면(#view=search)은 결과 전부를 출처별로 펴는 자리다. 둘은 같은 엔진에 같은
+           질의를 보내고 자르는 폭만 다르다. 드롭다운은 입력의 형제로 두고 껍데기가 자리를
+           잡는다 — label 안에 넣으면 결과를 누르는 것이 곧 입력을 누르는 것이 된다. -->
+      <div class="search-shell">
+        <label class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="global-search" type="search" placeholder="문서·태스크·원장 검색" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="search-dropdown-list" aria-label="문서·태스크·원장 검색"></label>
+        <div id="search-dropdown" class="search-dropdown" hidden></div>
+      </div>
       <div class="app-header-right">
         <button id="sync-status" class="sync-status"><span class="when-syncable" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg></span><span class="when-conflict" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span><span id="sync-label">동기화 상태</span></button>
         <button id="health" class="health" data-focus-attention="1"><span class="health-dot"></span><span id="health-label">상태 확인</span><span id="operation-count" class="badge"></span></button>
@@ -64,7 +71,7 @@
       </section>
 
       <section id="documents-view" class="view" hidden>
-        <header class="page-heading"><div><p class="eyebrow">DOCUMENTS</p><h1>프로젝트 문서</h1><p>Markdown 정본을 유형과 관계를 따라 탐색합니다.</p></div><div class="document-controls"><div class="segmented" id="document-scope"><button data-document-scope="name" class="active">문서명</button><button data-document-scope="body">본문 전체</button></div><div class="segmented" id="document-sort"><button data-document-sort="id" class="active">ID순</button><button data-document-sort="modified">최근 수정순</button></div></div></header>
+        <header class="page-heading"><div><p class="eyebrow">DOCUMENTS</p><h1>프로젝트 문서</h1><p>Markdown 정본을 유형과 관계를 따라 탐색합니다.</p></div><div class="document-controls"><!-- 헤더의 칸은 작업공간 전체를 찾는 자리가 되었다. 이 목록을 줄이는 입력은 이 화면이 갖는다 — 한 칸이 겸하면 타자 한 번이 목록을 줄이면서 동시에 드롭다운을 열어, 서로를 방해하는 두 일을 한다. --><label class="search list-filter"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="documents-filter" type="search" placeholder="이 목록에서 거르기" autocomplete="off" aria-label="문서 목록에서 거르기"></label><div class="segmented" id="document-scope"><button data-document-scope="name" class="active">문서명</button><button data-document-scope="body">본문 전체</button></div><div class="segmented" id="document-sort"><button data-document-sort="id" class="active">ID순</button><button data-document-sort="modified">최근 수정순</button></div></div></header>
         <!-- 승인 축은 유형·검색과 직교한다. 목록 바로 위에 두는 이유는 이것이 "어떻게 볼지"가
              아니라 "무엇이 남을지"를 바꾸는 조작이라서다 — 머리글의 범위·정렬과 한 줄에 세우면
              셋이 같은 무게로 읽혀, 어느 것이 목록을 줄이는 건지 눌러 보기 전에 알 수 없다.
@@ -102,7 +109,7 @@
            갈래마다 정하며, 갈래를 HTML에 미리 박아 두면 서버가 못 읽은 경우와 승인을 안
            쓰는 경우가 같은 자리표시자를 쓰게 된다. -->
       <section id="review-inbox-view" class="view" hidden>
-        <header class="page-heading"><div><p class="eyebrow">REVIEW INBOX</p><h1>검토 인박스</h1><p>승인 원장과 어긋난 문서를 모아 봅니다. 판정과 순서는 <code>rdl doc status</code>와 같은 값이며, 이 화면은 그 값을 옮겨 그립니다.</p></div><div class="segmented" id="review-inbox-filter" aria-label="검토 상태"></div></header>
+        <header class="page-heading"><div><p class="eyebrow">REVIEW INBOX</p><h1 id="review-inbox-heading">검토 인박스</h1><p id="review-inbox-description">승인 원장과 어긋난 문서를 모아 봅니다. 판정과 순서는 <code>rdl doc status</code>와 같은 값이며, 이 화면은 그 값을 옮겨 그립니다.</p></div><div class="page-actions"><!-- 범위와 상태는 다른 축이다. 범위는 "누구의 줄인가"이고 상태는 "무엇이 어긋났나"라, 한 묶음으로 붙이면 「내 차례」와 「낡음」이 서로 배타인 것처럼 읽힌다. 태스크 화면이 범위 단추를 따로 세우는 것과 같은 자리다. --><div class="segmented" id="review-inbox-scope" aria-label="검토 범위"><button type="button" data-review-scope="all" class="active">프로젝트 전체</button><button type="button" data-review-scope="mine">내 차례</button></div><div class="segmented" id="review-inbox-filter" aria-label="검토 상태"></div></div></header>
         <div id="review-inbox-summary"></div>
         <div id="review-inbox-list" class="document-list"></div>
       </section>
@@ -114,19 +121,36 @@
              묶어서 사이를 끊어야 어느 것이 목록을 바꾸는 건지 눌러보기 전에 알 수 있다. -->
         <div class="toolbar">
           <div class="segmented task-scope" aria-label="태스크 범위"><button data-task-scope="all" class="active">전체</button><button data-task-scope="mine">내 작업</button><button data-task-scope="review">검토 대기</button></div>
-          <span class="toolbar-divider" aria-hidden="true"></span>
+          <label class="search list-filter"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="tasks-filter" type="search" placeholder="이 목록에서 거르기" autocomplete="off" aria-label="태스크 목록에서 거르기"></label>
+          <span id="filter-divider" class="toolbar-divider" aria-hidden="true"></span>
+          <!-- 선택지를 HTML에 박지 않는다. 거르개가 서는지, 무엇을 고를 수 있는지, 각
+               값이 몇 건인지는 전부 스냅숏이 실어 준 태스크가 정하고 그 판단은
+               renderTaskFilters 하나가 갖는다. 여기에 높음·중간·낮음을 적어 두면 낮음이
+               한 건도 없는 프로젝트에서도 고를 수 있는 것처럼 보이고, 업무 유형이 늘어도
+               종류 칸은 옛 둘만 계속 보여 준다 — 실제로 여기 적힌 「테스트」는 프로젝트가
+               정한 이름(검증)과 이미 달랐다. -->
           <div class="toolbar-group">
-            <select id="owner" class="filter-select" aria-label="담당자로 거르기"><option value="">담당자</option></select>
-            <select id="priority" class="filter-select" aria-label="우선순위로 거르기"><option value="">우선순위</option><option value="high">높음</option><option value="mid">중간</option><option value="low">낮음</option></select>
-            <select id="task-kind" class="filter-select" aria-label="종류로 거르기"><option value="">종류</option><option value="normal">일반</option><option value="test">테스트</option></select>
+            <select id="owner" class="filter-select" aria-label="담당자로 거르기" hidden><option value="">담당자</option></select>
+            <select id="priority" class="filter-select" aria-label="우선순위로 거르기" hidden><option value="">우선순위</option></select>
+            <select id="task-kind" class="filter-select" aria-label="종류로 거르기" hidden><option value="">종류</option></select>
             <select id="task-round" class="filter-select" aria-label="차수로 거르기" hidden><option value="">차수</option></select>
           </div>
+          <!-- 접힌 거르개를 말하는 자리. 값이 하나뿐이라 접은 축만 여기 적힌다 —
+               조용히 사라지면 "있었는데 없어졌다"로 읽히고, 값이 아예 없던 축은 알릴
+               사실 자체가 없다. 거르개 묶음 밖에 두는 이유는 묶음이 줄바꿈을 안 해서다.
+               안에 넣으면 폭이 모자랄 때 이 문장이 칸을 밀어내고 잘린다. -->
+          <span id="filter-note" class="filter-note" hidden></span>
           <div class="toolbar-spacer"></div>
           <div class="toolbar-group toolbar-display">
-            <select id="group-by" aria-label="묶는 기준"><option value="status">상태별</option><option value="owner">담당자별</option><option value="priority">우선순위별</option><option value="round">차수별</option></select>
+            <select id="group-by" aria-label="묶는 기준"><option value="status">상태별</option><option value="next">다음 차례별</option><option value="owner">담당자별</option><option value="priority">우선순위별</option><option value="round">차수별</option></select>
             <label class="toolbar-toggle"><input type="checkbox" id="hide-done"><span>완료 숨기기</span></label>
           </div>
         </div>
+        <!-- 열린 태스크가 쉰 건인데 묶음마다 여섯 줄만 보인다. 그 여섯을 가를 근거가
+             화면에 없으면 목록은 "무엇이 있다"까지만 말하고 「다음에 뭘 하지」에는
+             답하지 못한다. 한 건을 고르고 고른 이유를 함께 적는 자리이며, 무엇을
+             고를지는 renderTaskNext가 스냅숏의 값만으로 정한다. -->
+        <div id="task-next" class="task-next" hidden></div>
         <div id="task-list" class="task-table"></div><div id="board" hidden></div><div id="task-graph" class="task-graph" hidden></div>
       </section>
 
@@ -141,6 +165,19 @@
       <section id="runs-view" class="view" hidden>
         <header class="page-heading"><div><p class="eyebrow">RUNS</p><h1>런</h1><p>사람을 기다리는 런을 여기서 지납니다. 승인은 활성 human Client 자격으로만 기록되고, 구동·재개·소유권은 명령줄이 담당합니다.</p></div><div class="page-actions"><button id="refresh-runs">다시 읽기</button></div></header>
         <div id="runs-body"></div>
+      </section>
+
+      <!-- 전용 검색 화면. 머리 드롭다운과 같은 질의를 같은 엔진에 물어 놓고, 자르지 않고
+           출처별로 편다. 주소가 곧 질의라(#project=…&view=search&q=…&source=…) 본 것을
+           그대로 남에게 줄 수 있다. 빈 자리는 renderSearchPage가 갈래마다 채운다 — 갈래를
+           HTML에 미리 박아 두면 못 찾은 경우와 못 물어본 경우가 같은 자리표시자를 쓴다. -->
+      <section id="search-view" class="view" hidden>
+        <header class="page-heading"><div><p class="eyebrow">SEARCH</p><h1>통합 검색</h1><p>정본 문서·태스크·원장을 한 질의로 찾습니다. 무엇을 대상에 넣고 어떤 순서로 세우는지는 검색 엔진이 정하며, 이 화면은 그 답을 옮겨 그립니다.</p></div></header>
+        <label class="search search-page-field"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M10.75 3.5a7.25 7.25 0 1 0 4.32 13.07l3.86 3.86a1.15 1.15 0 0 0 1.63-1.63l-3.86-3.86A7.25 7.25 0 0 0 10.75 3.5zm0 2.3a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9z"/></svg></span><input id="search-page-input" type="search" placeholder="문서·태스크·원장 검색" autocomplete="off" aria-label="검색어"></label>
+        <div id="search-summary" class="search-summary"></div>
+        <div class="segmented" id="search-source-filter" aria-label="출처" hidden></div>
+        <div id="search-notes"></div>
+        <div id="search-results" class="search-results"></div>
       </section>
 
       <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1><p>project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="person-list"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="person-list"></div></section></div></section>

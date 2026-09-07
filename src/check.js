@@ -80,7 +80,7 @@ const {
   GOVERNANCE_HEADINGS, GOVERNANCE_BLOCK_FIELDS,
   headingKey, wikiTarget, lineOf, diagnostic, resolveArtifact, uniqueDocuments, ID_PATTERN, REQUIRED_FIELDS,
   checkDocumentMetadata, checkCharterMetadata, checkContractViolations, checkTaskEntries,
-  governanceBlocks, checkProjectGovernance, checkReference, referenceFromTask,
+  governanceBlocks, checkProjectGovernance, checkReference, checkFunctionParents, referenceFromTask,
   isAssetPath, maskCode, checkAssetReference, checkAssetInventory,
   DEFAULT_TASK_GATES, upstreamTrustIssues,
 } = require('./check-rules');
@@ -368,6 +368,9 @@ function checkLegacyWorkspace(start, options, scope) {
   for (const doc of canonicalDocuments) {
     const meta = doc.frontmatter.data;
     for (const value of Array.isArray(meta.related) ? meta.related : []) checkReference(diagnostics, fileRegistry, registry, doc, value, { category: 'link', artifactId: doc.id });
+    // 기능 ID도 참조다. related 옆에서 같은 물음을 받는다 — 가리킨 것이 실재하는가.
+    // 부모는 문서 식별자로 조인하므로 파일 이름 대장이 아니라 산출물 대장을 본다.
+    checkFunctionParents(diagnostics, registry, doc, { category: 'link', artifactId: doc.id });
     for (const field of ['owner', 'reviewers', 'stakeholders']) {
       const values = Array.isArray(meta[field]) ? meta[field] : meta[field] ? [meta[field]] : [];
       for (const value of values) {
@@ -635,7 +638,12 @@ function checkUpstreamApproval(diagnostics, layout, project, approvals) {
   for (const issue of evaluated.issues) diagnostic(diagnostics, {
     code: issue.code, category: 'approval', severity: issue.severity, project: project.key,
     file: issue.file ? relative(layout.root, path.join(project.root, issue.file)) : null,
-    artifactId: issue.artifactId, target: issue.target, message: issue.message
+    artifactId: issue.artifactId, target: issue.target,
+    // 하류 목록을 함께 싣는다. 줄이 상류를 지목하게 된 뒤로 이 값이 없으면
+    // rdl check <하류-ID>가 자기 위에 선 미승인 상류를 한 건도 못 찾는다 —
+    // 지목 갈래는 같은 진단 목록을 사후에 거르는 것이라 거를 칸이 있어야 한다.
+    dependents: issue.dependents,
+    message: issue.message
   });
 }
 

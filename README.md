@@ -101,6 +101,12 @@ rdl task acceptance TASK-... AC-001 --project memo --done
 rdl action resolve document.edit --json
 rdl action record document.edit --actual-executor hybrid --artifact-id REQ-001
 
+# 문서 승인 원장 — 제출은 활성 Client면 되고 승인·반려는 사람 Client만 한다
+rdl doc status --project memo
+rdl doc submit REQ-001 --project memo --client-id <id>
+rdl doc approve REQ-001 --project memo --member MEMBER-001 --basis read --client-id <human-client-id>
+rdl doc diff REQ-001 --project memo --since-approval
+
 # 로컬 검증·저장·원격 동기화
 rdl check --project memo --strict
 rdl save --project memo
@@ -121,6 +127,7 @@ rdl doctor --json
 | Workspace 연결·생성 | `rdl attach`, `rdl detach`, `rdl init`, `rdl project add` |
 | 브랜치 연결·저장 | `rdl git init`, `rdl refresh`, `rdl save` |
 | 문서·태스크 | `rdl doc create`, `rdl doc migrate`, `rdl project profile`, `rdl task add`, `rdl task set`, `rdl task acceptance`, `rdl task migrate` |
+| 문서 승인과 검토 | `rdl doc status`, `rdl doc submit`, `rdl doc approve`, `rdl doc reject`, `rdl doc history`, `rdl doc diff`, `rdl doc review`, `rdl doc pipeline` |
 | 논의·협업 | `rdl task comment`, `rdl task comments`, `rdl member add`, `rdl member list`, `rdl client register` |
 | 런과 사람 게이트 | `rdl run pending`, `rdl run start`, `rdl run step`, `rdl run approve`, `rdl run drive`, `rdl run driver` |
 | 세션 작업 공간 | `rdl session start`, `rdl session list`, `rdl session end` |

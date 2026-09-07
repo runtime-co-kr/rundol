@@ -186,4 +186,105 @@ try {
   }
 }
 
+// ── 기능 ID 축은 계약 상태를 보지 않는다 ────────────────────────────────────
+//
+// 값이 문서가 선언한 기능 ID에서만 나오므로 계약을 아직 세우지 않은 프로젝트에서도
+// 그대로 계산된다. 예전에는 valid 경로에서만 실었고, 그래서 rdl contract trace가
+// 그런 프로젝트에 {root, project} 둘만 답했다 — 읽는 쪽은 "기능 0건"과 "축을 계산하지
+// 않았다"를 가를 수 없었고, summary를 읽는 코드는 조용히 undefined를 받았다.
+{
+  const legacy = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-legacy-trace-'));
+  try {
+    git(['init', '-b', 'main'], legacy);
+    git(['config', 'user.name', 'Rundol Test'], legacy);
+    git(['config', 'user.email', 'rundol@example.test'], legacy);
+    fs.writeFileSync(path.join(legacy, 'README.md'), '# test\n');
+    git(['add', 'README.md'], legacy); git(['commit', '-m', 'initial'], legacy);
+    run(['init', 'demo', '--name', 'Demo', '--profile', 'lean', '--root', legacy, '--json'], legacy);
+    const requirement = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--scope', '사용자가 항목을 등록하는 동작',
+      '--exclude', '항목 조회와 삭제', '--function-id', 'FN-001', '--related', 'project:demo', '--project', 'demo', '--root', legacy, '--json'], legacy);
+    run(['doc', 'create', 'TST', '요구 검증', '--owner', 'MEMBER-001', '--scope', '등록 동작 하나를 덮는 검증 범위',
+      '--exclude', '조회와 삭제 검증', '--function-id', `${requirement.id}#FN-001`, '--related', requirement.id, '--project', 'demo', '--root', legacy, '--json'], legacy);
+    const configured = run(['contract', 'trace', '--project', 'demo', '--root', legacy, '--json'], legacy);
+    assert.deepStrictEqual(configured.summary, { functions: 1, ready: 1, incomplete: 0 });
+
+    // 계약 선언만 걷어 낸다. 문서는 그대로이므로 기능 ID 축도 그대로여야 한다.
+    const charter = path.join(legacy, 'projects', 'demo', 'project.md');
+    const lines = fs.readFileSync(charter, 'utf8').split(/\r?\n/u);
+    const start = lines.findIndex((line) => /^documentProfile:\s*$/u.test(line));
+    assert(start >= 0, '계약 선언을 찾지 못했습니다.');
+    let end = start + 1;
+    while (end < lines.length && /^ {2}\S/u.test(lines[end])) end += 1;
+    fs.writeFileSync(charter, lines.slice(0, start).concat(lines.slice(end)).join('\n'), 'utf8');
+    assert.strictEqual(run(['contract', 'show', '--project', 'demo', '--root', legacy, '--json'], legacy).status, 'legacy-unconfigured');
+
+    const unconfigured = run(['contract', 'trace', '--project', 'demo', '--root', legacy, '--json'], legacy);
+    assert.deepStrictEqual(unconfigured.summary, { functions: 1, ready: 1, incomplete: 0 },
+      '계약을 세우지 않은 프로젝트에서도 기능 ID 축은 그대로 답해야 합니다.');
+    assert.strictEqual(unconfigured.entries.length, 1);
+  } finally {
+    fs.rmSync(legacy, { recursive: true, force: true });
+  }
+}
+
+// ── 기능 ID의 부모도 실재를 확인받는다 ──────────────────────────────────────
+//
+// related는 오래전부터 없는 대상을 가리키면 거절당했다. 기능 ID에는 그 대칭이 없어서
+// 없는 REQ를 가리켜도(REQ-999#FN-001) 있는 REQ이지만 그 REQ가 선언한 적 없는 기능을
+// 가리켜도(REQ-001#FN-099) 문서가 만들어졌고, rdl check --strict --implementation이
+// 진단 0건을 냈다. 만드는 자리와 검사하는 자리 둘 다에서 본다.
+{
+  const parents = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-function-parent-'));
+  try {
+    git(['init', '-b', 'main'], parents);
+    git(['config', 'user.name', 'Rundol Test'], parents);
+    git(['config', 'user.email', 'rundol@example.test'], parents);
+    fs.writeFileSync(path.join(parents, 'README.md'), '# test\n');
+    git(['add', 'README.md'], parents); git(['commit', '-m', 'initial'], parents);
+    run(['init', 'demo', '--name', 'Demo', '--profile', 'lean', '--root', parents, '--json'], parents);
+    const requirement = run(['doc', 'create', 'REQ', '요구사항', '--owner', 'MEMBER-001', '--scope', '사용자가 항목을 등록하는 동작',
+      '--exclude', '항목 조회와 삭제', '--function-id', 'FN-001', '--related', 'project:demo', '--project', 'demo', '--root', parents, '--json'], parents);
+    const verificationArgs = (title, functionId) => ['doc', 'create', 'TST', title, '--owner', 'MEMBER-001',
+      '--scope', '등록 동작 하나를 덮는 검증 범위', '--exclude', '조회와 삭제 검증', '--function-id', functionId,
+      '--related', requirement.id, '--project', 'demo', '--root', parents, '--json'];
+    const rejected = (title, functionId) => {
+      const result = spawnSync(node, [cli].concat(verificationArgs(title, functionId)), { cwd: repository, encoding: 'utf8' });
+      assert.notStrictEqual(result.status, 0, `만들어지면 안 되는 문서가 만들어졌습니다: ${functionId}`);
+      return `${result.stdout}${result.stderr}`;
+    };
+
+    const noParent = rejected('없는 원천 검증', 'REQ-999#FN-001');
+    assert(noParent.includes('REQ-999'), `없는 원천을 이름으로 말해야 합니다: ${noParent}`);
+    const noFunction = rejected('없는 기능 검증', `${requirement.id}#FN-099`);
+    assert(noFunction.includes(`${requirement.id}#FN-001`), `무엇으로 고칠지 함께 말해야 합니다: ${noFunction}`);
+
+    // 거절이 채번을 태우지 않는다. 실패 뒤에 만들어지는 문서가 TST-001이어야 한다 —
+    // 판정이 채번 뒤에 서면 시도마다 번호가 하나씩 사라지고, 그 구멍은 되돌릴 수 없다.
+    const created = run(verificationArgs('등록 검증', `${requirement.id}#FN-001`), parents);
+    assert.strictEqual(created.id, 'TST-001', '거절된 시도가 문서 번호를 예약해서는 안 됩니다.');
+
+    // 검사하는 자리. 만들어진 뒤에 값이 어긋나는 길은 파일 편집이므로, 그 길로 넣는다.
+    // 나가는 값이 진단 목록이므로 종료 코드는 묻지 않는다 — 이 뼈대에는 이 규칙과
+    // 무관한 경고가 이미 여럿 있고, 그 수가 바뀌면 종료 코드도 바뀐다.
+    const linkDiagnostics = () => {
+      const result = spawnSync(node, [cli, 'check', '--project', 'demo', '--root', parents, '--json'], { cwd: repository, encoding: 'utf8' });
+      return JSON.parse(result.stdout).diagnostics.filter((item) => ['RDL-LINK-002', 'RDL-LINK-003'].includes(item.code));
+    };
+    const file = path.join(parents, 'projects', 'demo', created.relativeFile.replace(/^projects\/demo\//u, ''));
+    const original = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, original.replaceAll(`${requirement.id}#FN-001`, `${requirement.id}#FN-099`), 'utf8');
+    assert.deepStrictEqual(linkDiagnostics().map((item) => [item.code, item.target]),
+      [['RDL-LINK-003', `${requirement.id}#FN-099`]], '부모가 선언하지 않은 기능은 해결되지 않는 참조입니다.');
+
+    fs.writeFileSync(file, original.replaceAll(`${requirement.id}#FN-001`, 'REQ-999#FN-001'), 'utf8');
+    assert(linkDiagnostics().some((item) => item.code === 'RDL-LINK-002' && item.target === 'REQ-999'),
+      '부모 문서가 없으면 related와 같은 코드로 웁니다.');
+
+    fs.writeFileSync(file, original, 'utf8');
+    assert.deepStrictEqual(linkDiagnostics(), [], '되돌리면 그친다 — 정상 문서에 소음을 내지 않습니다.');
+  } finally {
+    fs.rmSync(parents, { recursive: true, force: true });
+  }
+}
+
 process.stdout.write('document contract tests passed' + String.fromCharCode(10));

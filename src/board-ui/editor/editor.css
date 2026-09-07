@@ -103,6 +103,68 @@
 .ProseMirror .wiki-link { color: var(--accent-TextColor, #9cc7ff); }
 .ProseMirror .wiki-embed { color: var(--info-Color, #c7a0ff); }
 
+/* 자산 embed 미리보기 -------------------------------------------------
+ *
+ * 붙여넣은 사람이 저장하기 전에 무엇을 넣었는지 보는 자리다. 글자만 보이면 여러 장을
+ * 넣거나 잘못 넣었을 때 그 자리에서 알 방법이 없고, 확인이 읽기 화면으로 밀린다.
+ *
+ * 세 상태를 각각 다르게 그린다. 기다리는 중과 못 받음이 같은 모양이면 사람은 기다려야
+ * 할지 고쳐야 할지 고를 수 없다. */
+.ProseMirror .wiki-embed.rdl-embed {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--divider-BorderColor, #2a2a33);
+  border-bottom: 1px solid var(--divider-BorderColor, #2a2a33);
+  border-radius: 6px;
+  vertical-align: bottom;
+  background: var(--surface-02-BackgroundColor, transparent);
+  line-height: 1.3;
+}
+
+.rdl-embed-image {
+  display: none;
+  max-width: min(100%, 360px);
+  max-height: 220px;
+  border-radius: 4px;
+  /* 바둑판을 깔아 투명한 PNG가 배경에 녹아 사라지지 않게 한다. */
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, #e6e6e6 25%, transparent 25%, transparent 75%, #e6e6e6 75%),
+    linear-gradient(45deg, #e6e6e6 25%, transparent 25%, transparent 75%, #e6e6e6 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+}
+.ProseMirror .wiki-embed.rdl-embed.is-ready .rdl-embed-image { display: block; }
+
+.rdl-embed-caption {
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--info-Color, #c7a0ff);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rdl-embed-note {
+  color: var(--tertiary-TextColor, #7a7a88);
+  font-size: 10.5px;
+}
+.ProseMirror .wiki-embed.rdl-embed.is-ready .rdl-embed-note { display: none; }
+
+/* 못 받은 그림. 빈 자리로 두면 "그림이 없다"와 "아직 안 왔다"가 같은 모양이 된다. */
+.ProseMirror .wiki-embed.rdl-embed.is-missing {
+  border-color: var(--danger-Color, #ff9c9c);
+  border-style: dashed;
+}
+.ProseMirror .wiki-embed.rdl-embed.is-missing .rdl-embed-caption,
+.ProseMirror .wiki-embed.rdl-embed.is-missing .rdl-embed-note {
+  color: var(--danger-Color, #ff9c9c);
+}
+
 /* 메뉴 묶음 머리 ------------------------------------------------------ */
 
 .rdl-block-menu-group {
