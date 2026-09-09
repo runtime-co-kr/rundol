@@ -4196,8 +4196,8 @@ function renderWorkflowSettings(force) {
   // 못 하는 것을 말하지 않는 화면은 사람이 되는 줄 알고 시도한다.
   el('workflow-scope').innerHTML = '<h3 class="approval-heading">이 화면이 하는 것과 안 하는 것</h3>'
     + '<p class="approval-note">이 판은 <b>이 프로젝트의 기본 배정</b> 하나를 그립니다. 유형마다 흐름이 갈리는 프로젝트에서 "이 태스크는 어느 흐름인가"는 태스크마다 판정 엔드포인트가 답하며, 그 답을 여기서 미리 그리면 같은 물음에 두 답이 생깁니다.</p>'
-    + '<div class="split-note"><div class="note-block"><h4>여기서 바꿉니다</h4><ul><li>노드 추가·삭제와 이름(라벨)·스텝·완료 유효성·담당자 필요</li><li>전환 추가·삭제와 출발·도착·제목</li><li>사람 승인 게이트를 걸고 푸는 일</li><li>검증·입력·수행 슬롯에 실행 단위를 걸고 푸는 배선</li><li>Client·명령·어댑터 실행 단위의 선언과 삭제</li><li>고친 것을 계약 변경 결정을 지나 저장</li></ul></div>'
-    + '<div class="note-block absent"><h4>여기서 바꾸지 않습니다</h4><ul><li>노드 식별자 변경 — 태스크가 그 값 위에 앉아 있습니다</li><li>게이트(검증) 단위의 소스×방법 선언 — <code>workflows.json</code>이 갖습니다</li><li>유형별 흐름 배정</li></ul></div></div>';
+    + '<div class="split-note"><div class="note-block"><h4>여기서 바꿉니다</h4><ul><li>노드 추가·삭제와 이름(라벨)·스텝·완료 유효성·담당자 필요</li><li>전환 추가·삭제와 출발·도착·제목</li><li>사람 승인 게이트를 걸고 푸는 일</li><li>검증·입력·수행 슬롯에 실행 단위를 걸고 푸는 배선</li><li>실행 단위의 선언과 삭제 — 게이트는 소스×방법으로 적습니다</li><li>고친 것을 계약 변경 결정을 지나 저장</li></ul></div>'
+    + '<div class="note-block absent"><h4>여기서 바꾸지 않습니다</h4><ul><li>노드 식별자 변경 — 태스크가 그 값 위에 앉아 있습니다</li><li>이미 선언된 단위의 정의 수정 — 지우고 다시 선언하거나 <code>workflows.json</code>을 고칩니다</li><li>유형별 흐름 배정</li></ul></div></div>';
 }
 
 function renderWorkflowToolbar() {
@@ -4324,13 +4324,54 @@ function renderWorkflowUnits(view) {
     }).join('')
     : '<div class="presentation-row"><div class="presentation-row-main"><small>선언된 실행 단위가 없습니다. 전환 슬롯은 여기 선언한 이름을 가리킵니다.</small></div></div>';
   host.innerHTML = '<h3 class="approval-heading">실행 단위</h3>'
-    + '<p class="approval-note">전환이 이름으로 가리키는 검사·입력·수행의 정의입니다. 한 단위를 여러 전환이 부르므로 한 줄을 고치면 그것을 가리키는 전환이 전부 따라갑니다. <b>게이트</b>(검증) 단위는 소스×방법 선언이라 아직 여기서 만들지 못합니다 — <code>workflows.json</code>의 <code>executionUnits</code>에 선언하면 이 목록과 배선에 바로 섭니다.</p>'
+    + '<p class="approval-note">전환이 이름으로 가리키는 검사·입력·수행의 정의입니다. 한 단위를 여러 전환이 부르므로 한 줄을 고치면 그것을 가리키는 전환이 전부 따라갑니다. <b>게이트</b>(검증)는 <b>무엇을 보는가(소스) × 어떻게 보는가(방법)</b>의 조합으로 적습니다 — 소스의 성질이 쓸 수 있는 방법을 정합니다.</p>'
     + `<div class="presentation-rows">${rows}</div>`
     + '<div class="workflow-form workflow-unit-add">'
     + '<label>식별자<input id="workflow-new-unit-id" placeholder="예: deploy"></label>'
     + '<label>이름<input id="workflow-new-unit-label" placeholder="예: 배포 실행"></label>'
-    + '<label>종류<select id="workflow-new-unit-kind"><option value="client">Client — 입력 슬롯</option><option value="cli">명령 — 수행 슬롯</option><option value="adapter">어댑터 — 수행 슬롯</option></select></label>'
+    + '<label>종류<select id="workflow-new-unit-kind"><option value="client">Client — 입력 슬롯</option><option value="cli">명령 — 수행 슬롯</option><option value="adapter">어댑터 — 수행 슬롯</option><option value="gate">게이트 — 검증 슬롯</option></select></label>'
+    + '<div id="workflow-new-gate"></div>'
     + '<div class="decision-actions"><button type="button" id="workflow-new-unit-confirm">단위 추가</button></div></div>';
+  renderWorkflowGateParams();
+}
+
+// 게이트 폼의 라벨. 값 목록은 스냅숏의 카탈로그가 정본이고 여기는 보이는 말만 갖는다 —
+// 카탈로그에 없는 값은 라벨이 없어도 식별자 그대로 보인다.
+const GATE_SOURCE_LABELS = { field: '필드', link: '링크', 'link-field': '링크된 항목의 필드', 'acceptance-criteria': '수용조건', dependency: '선행 태스크', 'bundle-item': '묶음 항목' };
+const GATE_METHOD_LABELS = { present: '채워짐', equals: '값 일치', type: '타입', range: '범위', count: '개수', every: '전부 만족', some: '하나라도 만족' };
+
+function renderWorkflowGateParams() {
+  const host = el('workflow-new-gate');
+  if (!host) return;
+  const kindSelect = el('workflow-new-unit-kind');
+  if (!kindSelect || kindSelect.value !== 'gate') { host.innerHTML = ''; return; }
+  const catalog = state.snapshot && state.snapshot.workflow && state.snapshot.workflow.validationCatalog;
+  if (!catalog) {
+    host.innerHTML = '<p class="approval-note">이 Board 서버는 검증 카탈로그를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
+    return;
+  }
+  const sourceSelect = el('workflow-new-gate-source');
+  const source = sourceSelect && catalog.sources.includes(sourceSelect.value) ? sourceSelect.value : catalog.sources[0];
+  const methods = catalog.methodsByNature[catalog.natures[source]] || [];
+  const methodSelect = el('workflow-new-gate-method');
+  const method = methodSelect && methods.includes(methodSelect.value) ? methodSelect.value : methods[0];
+  const params = (catalog.sourceParams[source] || []).concat(catalog.methodParams[method] || []);
+  const fields = [];
+  if (params.includes('linkType')) fields.push('<label>링크 유형<input id="workflow-new-gate-linktype" placeholder="예: TST"></label>');
+  if (params.includes('field')) fields.push(`<label>${source === 'link-field' ? '링크된 항목의 필드' : '필드 이름'}<input id="workflow-new-gate-field" placeholder="예: ${source === 'link-field' ? 'result' : 'blocker'}"></label>`);
+  if (params.includes('values')) fields.push('<label>허용값 (쉼표로 구분)<input id="workflow-new-gate-values" placeholder="예: pass"></label>');
+  if (params.includes('type')) fields.push(`<label>타입<select id="workflow-new-gate-type">${catalog.fieldTypes.map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}</select></label>`);
+  if (params.includes('min')) fields.push('<label>최소<input id="workflow-new-gate-min" inputmode="numeric" placeholder="비우면 제한 없음"></label>');
+  if (params.includes('max')) fields.push('<label>최대<input id="workflow-new-gate-max" inputmode="numeric" placeholder="비우면 제한 없음"></label>');
+  if (params.includes('element')) {
+    fields.push('<label>원소의 필드 (선택)<input id="workflow-new-gate-element-field" placeholder="예: done"></label>');
+    fields.push('<label>원소의 허용값 (쉼표, 선택)<input id="workflow-new-gate-element-values" placeholder="예: true"></label>');
+  }
+  host.innerHTML = '<div class="workflow-form">'
+    + `<label>소스 — 무엇을 보는가<select id="workflow-new-gate-source">${catalog.sources.map((kind) => `<option value="${escapeHtml(kind)}"${kind === source ? ' selected' : ''}>${escapeHtml(GATE_SOURCE_LABELS[kind] || kind)} (${escapeHtml(kind)})</option>`).join('')}</select></label>`
+    + `<label>방법 — 어떻게 보는가<select id="workflow-new-gate-method">${methods.map((name) => `<option value="${escapeHtml(name)}"${name === method ? ' selected' : ''}>${escapeHtml(GATE_METHOD_LABELS[name] || name)} (${escapeHtml(name)})</option>`).join('')}</select></label>`
+    + fields.join('')
+    + '</div>';
 }
 
 function confirmWorkflowUnit() {
@@ -4342,10 +4383,60 @@ function confirmWorkflowUnit() {
   if (!id) return message('식별자를 적으세요. 전환 슬롯이 이 이름을 가리킵니다.', true);
   if (/\s/u.test(id)) return message('식별자에는 공백을 쓸 수 없습니다.', true);
   if (draft.executionUnits && draft.executionUnits[id]) return message(`이미 있는 실행 단위입니다: ${id}`, true);
+  let unit = Object.assign({ kind }, label ? { label } : {});
+  if (kind === 'gate') {
+    // 게이트 이름은 규칙 식별자의 뒷자리가 된다. 저장에서 거절될 이름을 여기서 먼저
+    // 막고, 선언의 나머지 판정은 카탈로그가 한다 — 화면이 판정을 다시 적지 않는다.
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id)) return message('게이트 이름은 소문자·숫자·하이픈(kebab-case)이어야 합니다.', true);
+    const declaration = workflowGateDeclaration();
+    if (!declaration.ok) return message(declaration.reason, true);
+    unit = Object.assign(unit, declaration.value);
+  }
   if (!draft.executionUnits) draft.executionUnits = {};
-  draft.executionUnits[id] = Object.assign({ kind }, label ? { label } : {});
+  draft.executionUnits[id] = unit;
   workflowEdit.dirty = true;
   renderWorkflowSettings(true);
+}
+
+// 게이트 폼의 값을 선언으로. 어느 칸을 읽을지는 카탈로그의 파라미터 표가 정한다.
+function workflowGateDeclaration() {
+  const catalog = state.snapshot && state.snapshot.workflow && state.snapshot.workflow.validationCatalog;
+  if (!catalog) return { ok: false, reason: '이 Board 서버는 검증 카탈로그를 아직 싣지 않습니다. 서버를 다시 시작하세요.' };
+  const source = el('workflow-new-gate-source').value;
+  const method = el('workflow-new-gate-method').value;
+  const value = { source, method };
+  const params = (catalog.sourceParams[source] || []).concat(catalog.methodParams[method] || []);
+  const text = (name) => { const input = el(name); return input ? input.value.trim() : ''; };
+  const list = (name) => text(name).split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (params.includes('linkType')) {
+    if (!text('workflow-new-gate-linktype')) return { ok: false, reason: '링크 유형을 적으세요. 예: TST' };
+    value.linkType = text('workflow-new-gate-linktype');
+  }
+  if (params.includes('field')) {
+    if (!text('workflow-new-gate-field')) return { ok: false, reason: '필드 이름을 적으세요. 예: blocker' };
+    value.field = text('workflow-new-gate-field');
+  }
+  if (params.includes('values')) {
+    const values = list('workflow-new-gate-values');
+    if (!values.length) return { ok: false, reason: '허용값을 하나 이상 적으세요. 쉼표로 구분합니다.' };
+    value.values = values;
+  }
+  if (params.includes('type')) value.type = el('workflow-new-gate-type').value;
+  if (params.includes('min') || params.includes('max')) {
+    const bound = (name) => { const raw = text(name); if (!raw) return undefined; const parsed = Number(raw); return Number.isInteger(parsed) ? parsed : NaN; };
+    const min = bound('workflow-new-gate-min');
+    const max = bound('workflow-new-gate-max');
+    if (Number.isNaN(min) || Number.isNaN(max)) return { ok: false, reason: '최소와 최대는 정수여야 합니다.' };
+    if (min === undefined && max === undefined) return { ok: false, reason: `${method}는 최소나 최대 중 하나 이상이 필요합니다.` };
+    if (min !== undefined) value.min = min;
+    if (max !== undefined) value.max = max;
+  }
+  if (params.includes('element')) {
+    const field = text('workflow-new-gate-element-field');
+    const values = list('workflow-new-gate-element-values');
+    if (field || values.length) value.element = Object.assign({}, field ? { field } : {}, values.length ? { values } : {});
+  }
+  return { ok: true, value };
 }
 
 function deleteWorkflowUnit(name) {
@@ -4395,6 +4486,8 @@ function bindWorkflowEditor() {
   });
   section.addEventListener('change', (event) => {
     if (event.target.id === 'workflow-edit-scope') { workflowEdit.scope = event.target.value; renderWorkflowSettings(true); return; }
+    // 게이트 폼은 판을 갈지 않고 자기 칸만 다시 그린다. 판을 갈면 적던 식별자가 사라진다.
+    if (['workflow-new-unit-kind', 'workflow-new-gate-source', 'workflow-new-gate-method'].includes(event.target.id)) { renderWorkflowGateParams(); return; }
     if (!event.target.closest('[data-workflow-node-field]') && !event.target.closest('[data-workflow-transition-field]')
       && !event.target.closest('[data-workflow-slot]')) return;
     applyWorkflowField(event.target);
