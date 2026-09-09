@@ -3571,6 +3571,17 @@ function describeConstraint(kind, value) {
   return [JSON.stringify(value)];
 }
 
+// 목록에서 고른 유형. 상세는 이 하나를 그린다 — 전 유형의 제약을 한꺼번에 펼치면
+// 목록이 아니라 문서가 된다.
+const itemTypeState = { selected: null };
+
+document.addEventListener('click', (event) => {
+  const row = event.target.closest('[data-item-type]');
+  if (!row || event.target.closest('[data-workflow-open]')) return;
+  itemTypeState.selected = itemTypeState.selected === row.dataset.itemType ? null : row.dataset.itemType;
+  renderItemTypeSettings();
+});
+
 function renderItemTypeSettings() {
   if (!el('item-type-settings')) {
     el('settings-panels').insertAdjacentHTML('beforeend', '<section id="item-type-settings" class="settings-panel"><header><h2>업무 유형</h2><p>유형이 필드·규칙·화면을 함께 정의합니다.</p><details class="panel-help"><summary>도움말</summary><p>규칙은 코드가 가진 다섯 가지 제약 종류에 값을 채우는 방식이라, 새 유형을 만드는 데 코드 변경이 필요하지 않습니다. 유형 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 이 화면에는 아직 유형을 고치는 자리가 없어, 지금은 <code>board.json</code>의 <code>itemTypes</code>를 고치고 <code>rdl save</code>로 남깁니다.</p></details></header><div class="settings-body"><div id="item-type-list"></div><div id="item-type-derived"></div></div></section>');
@@ -3584,26 +3595,39 @@ function renderItemTypeSettings() {
     return;
   }
   const origins = snapshot.presentation.origins || {};
+  const taskBindings = (snapshot.workflow && snapshot.workflow.bindings) || {};
+  const typeIds = Object.keys(types).sort();
+  if (itemTypeState.selected && !types[itemTypeState.selected]) itemTypeState.selected = null;
 
-  el('item-type-list').innerHTML = Object.keys(types).sort().map((id) => {
+  // 지라의 업무 유형 목록처럼: 목록이 먼저 서고, 줄을 고르면 그 유형의 상세가 열린다.
+  const listRows = typeIds.map((id) => {
     const entry = types[id] || {};
     const constraints = entry.constraints || {};
     const kinds = catalog.kinds.filter((kind) => constraints[kind] !== undefined);
+    const bound = taskBindings[id] || taskBindings['*'] || null;
+    // 유형이 타는 흐름을 링크로 잇는다. 지라가 유형 행에서 구성표로 건너가듯, 배정을
+    // 보러 워크플로 화면으로 오간다.
+    const boundCell = bound
+      ? `타는 흐름: <button type="button" class="link-button" data-workflow-open="${escapeHtml(bound)}">${escapeHtml(bound)}</button>${taskBindings[id] ? '' : ' (기본 배정)'}`
+      : '타는 흐름: 내장';
     const origin = presentationOrigin(origins, 'itemTypes', id);
+    return `<div class="presentation-row workflow-selectable${itemTypeState.selected === id ? ' is-selected' : ''}" data-item-type="${escapeHtml(id)}"><div class="presentation-row-main"><strong>${escapeHtml(entry.label || id)}</strong><small><code>${escapeHtml(id)}</code> · 제약 ${kinds.length}종${entry.disabled ? ' · 사용 안 함' : ''} · ${boundCell}</small></div>${originIndicator(origin)}</div>`;
+  }).join('');
+
+  let detail = '';
+  if (itemTypeState.selected) {
+    const id = itemTypeState.selected;
+    const entry = types[id] || {};
+    const constraints = entry.constraints || {};
+    const kinds = catalog.kinds.filter((kind) => constraints[kind] !== undefined);
     const rows = kinds.length
       ? kinds.map((kind) => `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(CONSTRAINT_LABELS[kind] || kind)}</strong><small><code>${escapeHtml(kind)}</code> · ${describeConstraint(kind, constraints[kind]).map(escapeHtml).join(' / ')}</small></div></div>`).join('')
       : '<div class="presentation-row"><div class="presentation-row-main"><small>제약 없음 — 기본 유형입니다.</small></div></div>';
-    // 유형이 타는 흐름을 링크로 잇는다. 지라가 유형 행에서 구성표로 건너가듯, 배정을
-    // 보러 워크플로 화면으로 오간다.
-    const taskBindings = (snapshot.workflow && snapshot.workflow.bindings) || {};
-    const bound = taskBindings[id] || taskBindings['*'] || null;
-    const boundNote = bound
-      ? `타는 흐름: <button type="button" class="link-button" data-workflow-open="${escapeHtml(bound)}">${escapeHtml(bound)}</button>${taskBindings[id] ? '' : ' <small>(기본 배정)</small>'}`
-      : '타는 흐름: 내장';
-    return `<section class="presentation-group"><h3>${escapeHtml(entry.label || id)}<span class="group-count"><code>${escapeHtml(id)}</code> · 제약 ${kinds.length}종${entry.disabled ? ' · 사용 안 함' : ''} · ${boundNote}</span></h3>`
-      + `<div class="presentation-rows">${rows}</div>`
-      + `<div class="item-type-origin">${originIndicator(origin)}</div></section>`;
-  }).join('');
+    detail = `<section class="presentation-group item-type-detail"><h3>${escapeHtml(entry.label || id)}<span class="group-count"><code>${escapeHtml(id)}</code>의 제약</span></h3>`
+      + `<div class="presentation-rows">${rows}</div></section>`;
+  }
+
+  el('item-type-list').innerHTML = `<div class="presentation-rows">${listRows}</div>` + detail;
 
   // 유형 추가로 무엇이 따라오고 무엇이 안 따라오는지 함께 적는다. 이 선을 긋지 않으면
   // "유형만 추가하면 다 된다"는 기대가 생기고, 기대가 깨지는 지점이 매번 다르게 나타난다.
@@ -4049,6 +4073,7 @@ async function answerDecision(decisionId, selectedOption) {
     // 워크플로 저장이 이 결정에 막혀 있었으면 답한 자리에서 다시 민다. 사람이 같은
     // 저장 단추를 다시 찾아 누르게 하면 그 왕복이 정책 변경을 미루는 자리가 된다.
     if (workflowEdit.decisionId === decisionId && workflowEdit.dirty) await saveWorkflowEdits();
+    if (approvalEdit.decisionId === decisionId && approvalEdit.mode) await saveApprovalMode();
   } catch (error) {
     message(`답하지 못했습니다: ${error.message}`, true);
   } finally {
@@ -4120,14 +4145,14 @@ function renderDecisionSettings() {
 
 function renderWorkflowSettings(force) {
   if (!el('workflow-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header class="section-heading"><div><h2>워크플로</h2><p>상태와 전환이 무엇을 허용하는지 정의하고 저장합니다.</p><details class="panel-help"><summary>도움말</summary><p>상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 그림이나 목록에서 골라 곁에서 고치면 초안에 쌓이고, <b>워크플로 업데이트</b>가 그 초안을 고른 층의 <code>workflows.json</code>에 씁니다. 흐름 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 커밋은 <code>rdl save</code>가 맡습니다.</p></details></div><div class="page-actions" id="workflow-toolbar"></div></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-diagram"></div><div id="workflow-inspector" class="workflow-inspector"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-units"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header class="section-heading"><div><h2>워크플로</h2><p>상태와 전환이 무엇을 허용하는지 정의하고 저장합니다.</p><details class="panel-help"><summary>도움말</summary><p>상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 그림이나 목록에서 골라 곁에서 고치면 초안에 쌓이고, <b>워크플로 업데이트</b>가 그 초안을 고른 층의 <code>workflows.json</code>에 씁니다. 흐름 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 커밋은 <code>rdl save</code>가 맡습니다.</p></details></div><div class="page-actions" id="workflow-toolbar"></div></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-diagram"></div><div id="workflow-inspector" class="workflow-inspector"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-units"></div><div id="workflow-approval"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
     bindWorkflowEditor();
   }
   const base = state.snapshot && state.snapshot.workflow;
   if (!base || !base.nodes) {
     // 빈 화면 대신 무엇이 없는지 말한다. 빈 화면은 흐름이 없다는 뜻으로 읽힌다.
     el('workflow-current').innerHTML = '<p class="empty-state">이 Board 서버는 워크플로를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
-    for (const host of ['workflow-toolbar', 'workflow-diagram', 'workflow-inspector', 'workflow-nodes', 'workflow-transitions', 'workflow-units', 'workflow-layers', 'workflow-scope']) el(host).innerHTML = '';
+    for (const host of ['workflow-toolbar', 'workflow-diagram', 'workflow-inspector', 'workflow-nodes', 'workflow-transitions', 'workflow-units', 'workflow-approval', 'workflow-layers', 'workflow-scope']) el(host).innerHTML = '';
     return;
   }
   if (!workflowEdit.loaded && !workflowEdit.loading) loadWorkflowEditor();
@@ -4208,6 +4233,7 @@ function renderWorkflowSettings(force) {
   }
 
   renderWorkflowUnits(view);
+  renderApprovalSettings();
 
   const workflowSources = (view.sources && view.sources.workflows) || {};
   const bindingSources = ((view.sources && view.sources.bindings) || {})[view.targetKind] || null;
@@ -4534,6 +4560,15 @@ function bindWorkflowEditor() {
     if (event.target.closest('#workflow-new-node-confirm')) { confirmWorkflowNode(); return; }
     if (event.target.closest('#workflow-add-transition')) { addWorkflowTransition(); return; }
     if (event.target.closest('#workflow-discard')) { seedWorkflowDraft(); workflowEdit.selection = null; renderWorkflowSettings(true); message('초안을 버리고 저장된 정의로 되돌렸습니다.'); return; }
+    const modeCard = event.target.closest('[data-approval-mode]');
+    if (modeCard) {
+      if (modeCard.dataset.approvalLocked) { message('Workspace 바닥보다 푼 모드는 고를 수 없습니다.', true); return; }
+      approvalEdit.mode = modeCard.dataset.approvalMode;
+      renderApprovalSettings();
+      return;
+    }
+    if (event.target.closest('#approval-mode-save')) { saveApprovalMode(); return; }
+    if (event.target.closest('#approval-mode-discard')) { approvalEdit.mode = null; renderApprovalSettings(); return; }
     if (event.target.closest('#workflow-zoom-in')) { if (workflowGraphApi && workflowGraphApi.zoomIn) workflowGraphApi.zoomIn(); return; }
     if (event.target.closest('#workflow-zoom-out')) { if (workflowGraphApi && workflowGraphApi.zoomOut) workflowGraphApi.zoomOut(); return; }
     if (event.target.closest('#workflow-zoom-fit')) { if (workflowGraphApi && workflowGraphApi.fit) workflowGraphApi.fit(); return; }
@@ -4667,38 +4702,45 @@ function deleteWorkflowTransition(index) {
   renderWorkflowSettings(true);
 }
 
+// 승인 정책은 워크플로 원페이지의 한 섹션이다. 전환의 사람 게이트가 "어느 이동"에
+// 사람이 답하는가라면, 모드는 "어느 관문"(문서 승인 · 정책 변경 · 런의 사람 스텝)에
+// 사람이 서는가다 — 두 축이 다른 화면에 흩어지면 승인이 어디서 서는지 한 눈에 읽히지
+// 않아 한 페이지에 함께 세운다. 지라가 워크플로 편집기 안에서 규칙까지 다루는 결이다.
+const approvalEdit = { mode: null, busy: false, decisionId: null };
+
 function renderApprovalSettings() {
-  if (!el('approval-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>사람 승인이 서는 자리를 모드로 고릅니다.</p><details class="panel-help"><summary>도움말</summary><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 승인 모드도 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 지금은 <code>board.json</code>의 <code>approval</code>을 고치고 <code>rdl save</code>로 남깁니다.</p></details></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
-  }
+  const host = el('workflow-approval');
+  if (!host) return;
   const snapshot = state.snapshot;
   const catalog = snapshot.approvalCatalog;
+  const heading = '<h3 class="approval-heading">승인 정책</h3>'
+    + '<p class="approval-note">위 전환의 <b>사람 승인 게이트</b>는 어느 이동에 사람이 답하는가이고, 이 <b>모드</b>는 문서 승인·정책 변경 같은 관문에 사람이 서는 자리의 배분표입니다. 카드를 골라 <b>승인 모드 저장</b>을 누르면 이 프로젝트의 <code>board.json</code>에 적히며, 정책이라 계약 변경 결정을 지납니다.</p>';
   // 모드 표가 없으면 옛 서버다. 빈 화면 대신 무엇이 없는지 말한다.
   if (!catalog) {
-    el('approval-current').innerHTML = '<p class="empty-state">이 Board 서버는 승인 모드를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
-    el('approval-modes').innerHTML = '';
-    el('approval-pipes').innerHTML = '';
+    host.innerHTML = heading + '<p class="empty-state">이 Board 서버는 승인 모드를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
     return;
   }
   const approval = (snapshot.presentation && snapshot.presentation.approval) || {};
   const modes = catalog.modes;
   const order = Object.keys(modes).sort((left, right) => modes[left].rank - modes[right].rank);
-  const chosen = approval.mode || catalog.defaultMode;
+  const saved = approval.mode || catalog.defaultMode;
+  const chosen = approvalEdit.mode || saved;
+  const dirty = Boolean(approvalEdit.mode) && approvalEdit.mode !== saved;
   const floor = approval.floor || catalog.defaultFloor;
 
-  el('approval-current').innerHTML = [
-    ['이 프로젝트', chosen, approval.mode ? '이 프로젝트가 골랐습니다.' : '선언하지 않아 기본값을 씁니다.'],
+  const current = [
+    ['이 프로젝트', saved, approval.mode ? '이 프로젝트가 골랐습니다.' : '선언하지 않아 기본값을 씁니다.'],
     ['Workspace 바닥', floor, approval.floor ? '이보다 푼 모드는 고를 수 없습니다.' : '선언하지 않아 제약하지 않습니다.']
   ].map(([label, name, note]) => `<div class="property"><dt>${escapeHtml(label)}</dt><dd><strong>${escapeHtml(name ? (APPROVAL_MODE_LABELS[name] || name) : '없음')}</strong><small>${escapeHtml(note)}</small></dd></div>`).join('');
 
-  el('approval-modes').innerHTML = order.map((name) => {
+  const cards = order.map((name) => {
     const mode = modes[name];
     // 바닥보다 푼 모드는 고를 수 없다. 잠긴 이유를 곁에 적지 않으면 사용자는 결함으로 읽는다.
     const locked = floor && mode.rank > modes[floor].rank;
-    const state = locked ? '잠김 · 바닥보다 푼 쪽' : (name === chosen ? '현재' : '고를 수 있음');
+    const stateLabel = locked ? '잠김 · 바닥보다 푼 쪽' : (name === chosen ? (dirty && name === approvalEdit.mode ? '고름 · 저장 전' : '현재') : '고를 수 있음');
     const basis = (mode.basis || []).map((kind) => APPROVAL_BASIS_LABELS[kind] || kind).join(' · ');
-    return `<article class="approval-mode${name === chosen ? ' current' : ''}${locked ? ' locked' : ''}">`
-      + `<span class="mode-state">${escapeHtml(state)}</span>`
+    return `<article class="approval-mode workflow-selectable${name === chosen ? ' current' : ''}${locked ? ' locked' : ''}" data-approval-mode="${escapeHtml(name)}"${locked ? ' data-approval-locked="1"' : ''}>`
+      + `<span class="mode-state">${escapeHtml(stateLabel)}</span>`
       + `<strong>${escapeHtml(APPROVAL_MODE_LABELS[name] || name)}</strong>`
       + `<dl><div><dt>사람 게이트</dt><dd>${mode.humanGate === 'required' ? '필수' : '없음'}</dd></div>`
       + `<div><dt>검증자</dt><dd>${mode.policy.validators}</dd></div>`
@@ -4707,6 +4749,10 @@ function renderApprovalSettings() {
       + `<div><dt>승인 근거</dt><dd>${escapeHtml(basis)}</dd></div>`
       + `<div><dt>위임</dt><dd>${mode.requiresDelegation ? '사전 위임 필수' : '불필요'}</dd></div></dl></article>`;
   }).join('');
+
+  const saveRow = `<div class="decision-actions"><button type="button" id="approval-mode-save" class="primary"${dirty && !approvalEdit.busy ? '' : ' disabled'}>${approvalEdit.busy ? '저장 중…' : '승인 모드 저장'}</button>`
+    + `<button type="button" id="approval-mode-discard"${dirty && !approvalEdit.busy ? '' : ' disabled'}>선택 취소</button></div>`
+    + (approvalEdit.decisionId ? `<p class="approval-note">계약 변경 결정 <code>${escapeHtml(approvalEdit.decisionId)}</code>이 답을 기다립니다. 답하면 이 저장을 다시 밉니다. <button type="button" data-settings-section="decision-settings">사람 결정 열기</button></p>` : '');
 
   // 바닥은 올리는 것이지 벽이 아니다. 이 사실을 화면이 말하지 않으면 사용자는 절차가
   // 선언한 값과 실제 값이 다른 것을 결함으로 읽는다.
@@ -4718,11 +4764,58 @@ function renderApprovalSettings() {
     effective.quorum = Math.max(effective.quorum, policy.quorum);
     effective.diversity = effective.diversity || policy.requireAdapterDiversity;
   }
-  el('approval-pipes').innerHTML = '<h3 class="approval-heading">파이프에 적용되는 실효 바닥</h3>'
+  const pipes = '<h4 class="approval-heading">파이프에 적용되는 실효 바닥</h4>'
     + `<p class="approval-note">모드와 바닥 중 <b>더 조인 쪽</b>이 이깁니다. 절차의 스텝이 이보다 낮은 값을 선언하고 있으면 거부하지 않고 여기까지 <b>끌어올립니다</b> — 거부하면 바닥을 까는 순간 기존 절차가 열리지 않고, 그러면 사람들은 바닥을 꺼 버립니다. 끌어올린 값은 해석 결과에만 있고 파일에는 쓰지 않으므로, 모드를 되돌리면 원래 값으로 돌아갑니다.</p>`
     + `<div class="presentation-rows"><div class="presentation-row"><div class="presentation-row-main"><strong>최소 검증자</strong><small>스텝이 더 올릴 수 있고 내릴 수 없습니다</small></div><span class="origin-label">${effective.validators}명</span></div>`
     + `<div class="presentation-row"><div class="presentation-row-main"><strong>정족수</strong><small>검증자를 넘지 않도록 함께 맞춥니다</small></div><span class="origin-label">${effective.quorum}명</span></div>`
     + `<div class="presentation-row"><div class="presentation-row-main"><strong>어댑터 다양성</strong><small>켠 것은 스텝이 끌 수 없습니다</small></div><span class="origin-label">${effective.diversity ? '요구' : '요구 안 함'}</span></div></div>`;
+
+  host.innerHTML = heading
+    + `<div class="presentation-source">${current}</div>`
+    + `<div class="approval-modes">${cards}</div>`
+    + saveRow
+    + pipes;
+}
+
+async function saveApprovalMode() {
+  if (!approvalEdit.mode || approvalEdit.busy) return;
+  approvalEdit.busy = true;
+  renderApprovalSettings();
+  try {
+    // 이 층이 이미 적어 둔 approval 위에 모드만 덮는다. floor를 함께 지우면 층을
+    // 옮겨 적은 흔한 파일이 저장 한 번에 바닥을 잃는다.
+    const own = (state.snapshot.presentation.sources && state.snapshot.presentation.sources.project) || {};
+    const body = {
+      scope: 'project',
+      baseRevision: state.snapshot.revision.presentation,
+      approval: Object.assign({}, own.approval, { mode: approvalEdit.mode })
+    };
+    if (approvalEdit.decisionId) body.decisionId = approvalEdit.decisionId;
+    await api(projectPath('/presentation'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rundol-Token': token },
+      body: JSON.stringify(body)
+    });
+    approvalEdit.mode = null;
+    approvalEdit.decisionId = null;
+    message('승인 모드를 저장했습니다. 커밋은 rdl save가 맡습니다.');
+    await loadSnapshot(true);
+  } catch (error) {
+    const payload = error.payload || {};
+    if (payload.reason === 'decision-required') {
+      approvalEdit.decisionId = payload.decisionId;
+      decisionState.open = true;
+      loadDecisions();
+      message('승인 모드는 정책이라 계약 변경 결정이 필요합니다. 사람 결정에서 답하면 이 저장을 다시 밉니다.');
+    } else if (payload.reason === 'stale-revision') {
+      message('표시 설정이 밖에서 바뀌었습니다. 최신 값을 다시 읽었으니 확인 후 다시 저장하세요.', true);
+      await loadSnapshot(true);
+    } else {
+      message(error.message, true);
+    }
+  } finally {
+    approvalEdit.busy = false;
+    renderApprovalSettings();
+  }
 }
 
 // 표시 규칙 편집. 칸에 적는 값은 "고른 범위가 덮은 것"이고 상위에서 내려온 값은
@@ -5031,7 +5124,8 @@ function renderSettings() {
   el('settings-member').replaceChildren(new Option('선택 안 함', ''), ...members.map((item) => new Option(item.name, item.id)));
   el('settings-member').value = state.currentMember || '';
   renderClientRegistration();
-  renderPresentationSettings(); renderApprovalSettings(); renderDecisionSettings(); loadDecisions(); renderItemTypeSettings(); renderWorkflowSettings(); renderContractSettings(); renderContractCompliance();
+  // 승인 정책은 워크플로 원페이지의 섹션이라 renderWorkflowSettings가 함께 그린다.
+  renderPresentationSettings(); renderDecisionSettings(); loadDecisions(); renderItemTypeSettings(); renderWorkflowSettings(); renderContractSettings(); renderContractCompliance();
   const current = document.querySelector('[data-settings-section].active');
   showSettingsSection(current ? current.dataset.settingsSection : 'settings-appearance');
 }
