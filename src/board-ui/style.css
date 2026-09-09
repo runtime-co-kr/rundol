@@ -4244,6 +4244,47 @@ dialog label textarea {
   min-height: 280px;
 }
 
+/* 편집 인스펙터. 결정 카드의 폼과 같은 격자를 쓴다 — 다른 폼이 되면 같은 화면에서
+   입력 칸의 결이 두 벌이 된다. */
+.workflow-inspector {
+  border: 1px solid var(--divider-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  padding: var(--spacing-2);
+  margin: var(--spacing-2) 0;
+  background: var(--surface-02-BackgroundColor);
+}
+
+.workflow-inspector:empty { display: none; }
+
+.workflow-form {
+  display: grid;
+  gap: var(--spacing-1);
+  max-width: 480px;
+}
+
+.workflow-form label {
+  display: grid;
+  gap: var(--spacing-0_5);
+  font-size: var(--small-FontSize);
+}
+
+.workflow-form .workflow-check {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.workflow-danger { color: var(--danger-Color); }
+
+/* 고를 수 있는 줄. 고른 줄은 인스펙터가 여는 값과 같은 것임을 색으로 잇는다. */
+.workflow-selectable { cursor: pointer; }
+
+.workflow-selectable.is-selected {
+  outline: 2px solid var(--accent-BorderColor);
+  outline-offset: -2px;
+  border-radius: var(--inner-BorderRadius);
+}
+
 /* ── 검토 인박스 ─────────────────────────────────────────
    행은 문서 목록의 행과 같은 띠다. 다른 것은 열 구성뿐이라 .document-row를 그대로 쓰고
    격자만 갈아 끼운다 — 따로 만들면 여백·모서리·hover 규칙이 두 벌이 되고, 한쪽만

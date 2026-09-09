@@ -311,6 +311,10 @@ assert.deepStrictEqual(view.terminalSteps, vocabulary.TERMINAL_WORKFLOW_STEPS.sl
 assert.deepStrictEqual(view.nodes.waiting.requires, ['blocker']);
 assert.deepStrictEqual(view.nodes.cancelled.requires, ['cancellation']);
 assert.deepStrictEqual(view.nodes.todo.requires, []);
+// 편집 초안이 내장 흐름을 설정으로 옮겨 적을 때 이 값을 되쓴다. 빠지면 그 첫 저장이
+// 담당자 요구를 조용히 푼다 — 완화는 결정으로 해야지 누락으로 하면 안 된다.
+assert.strictEqual(view.nodes.doing.requiresOwner, true);
+assert.strictEqual(view.nodes.todo.requiresOwner, false);
 // 실어 보내는 값이 JSON을 지나도 그대로여야 한다. 스냅숏은 직렬화되어 간다.
 assert.deepStrictEqual(JSON.parse(JSON.stringify(view)), view, '워크플로가 직렬화를 지나며 달라집니다.');
 

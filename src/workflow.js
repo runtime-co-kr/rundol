@@ -547,6 +547,9 @@ function taskWorkflowView() {
     nodes[node] = {
       step: target.step,
       validity: target.validity,
+      // 화면의 편집 초안이 이 값을 되쓴다. 안 실으면 내장 흐름을 설정으로 옮겨 적는
+      // 첫 저장이 담당자 요구를 조용히 푼다 — 완화는 결정으로 해야지 누락으로 하면 안 된다.
+      requiresOwner: target.requiresOwner === true,
       requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
     };
   }
@@ -1154,6 +1157,8 @@ function createWorkflow(definition) {
         step: target.step,
         validity: target.validity,
         label: target.label || null,
+        // 모듈 최상위 뷰와 같은 이유로 싣는다. 초안이 되쓰는 값이라 빠지면 저장이 정책을 푼다.
+        requiresOwner: target.requiresOwner === true,
         requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
       };
     }
