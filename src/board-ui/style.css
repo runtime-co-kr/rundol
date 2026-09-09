@@ -4318,6 +4318,62 @@ dialog label textarea {
   border-top: 1px solid var(--hairline-BorderColor);
 }
 
+/* 긴 설명은 접힌 도움말로 산다. 페이지의 본문은 설명이 아니라 값이다 — 지라 관리
+   화면이 한 문장 캡션 아래 바로 표를 세우는 그 결이다. */
+.panel-help {
+  margin-top: var(--spacing-0_5);
+  font-size: var(--small-FontSize);
+  color: var(--secondary-TextColor);
+}
+
+.panel-help summary {
+  cursor: pointer;
+  color: var(--accent-TextColor);
+  width: fit-content;
+}
+
+.panel-help[open] {
+  border-left: 2px solid var(--hairline-BorderColor);
+  padding-left: var(--spacing-1_5);
+}
+
+.panel-help p { margin: var(--spacing-1) 0 0; }
+
+/* 개체 사이를 오가는 링크. 지라의 파란 링크와 같은 자리다. */
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  height: auto;
+  color: var(--accent-TextColor);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.workflow-graph-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-1);
+  margin-bottom: var(--spacing-1);
+}
+
+.workflow-zoom { display: inline-flex; gap: 2px; }
+
+.workflow-zoom button { min-width: 40px; }
+
+/* 상태 행의 스텝 배지. 그림의 노드 색과 같은 토큰을 쓴다 — 표와 그림이 같은 값을
+   다른 색으로 말하면 둘 중 하나는 거짓말이 된다. */
+.workflow-step-chip { border: 1px solid transparent; }
+.workflow-step-chip.step-unclaimed { background: var(--step-unclaimed-BackgroundColor); border-color: var(--step-unclaimed-BorderColor); }
+.workflow-step-chip.step-in-progress { background: var(--step-in-progress-BackgroundColor); border-color: var(--step-in-progress-BorderColor); }
+.workflow-step-chip.step-in-approval { background: var(--step-in-approval-BackgroundColor); border-color: var(--step-in-approval-BorderColor); }
+.workflow-step-chip.step-completed { background: var(--step-completed-BackgroundColor); border-color: var(--step-completed-BorderColor); }
+.workflow-step-chip.step-dropped { background: var(--step-dropped-BackgroundColor); border-color: var(--step-dropped-BorderColor); }
+.workflow-step-chip.step-none { border-color: var(--danger-Color); color: var(--danger-Color); }
+
 /* 고를 수 있는 줄. 고른 줄은 인스펙터가 여는 값과 같은 것임을 색으로 잇는다. */
 .workflow-selectable { cursor: pointer; }
 

@@ -3573,7 +3573,7 @@ function describeConstraint(kind, value) {
 
 function renderItemTypeSettings() {
   if (!el('item-type-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="item-type-settings" class="settings-panel"><header><h2>업무 유형</h2><p>유형 하나가 필드와 규칙과 화면을 함께 끌고 옵니다. 규칙은 코드가 가진 다섯 가지 제약 종류에 값을 채우는 방식이라, 새 유형을 만드는 데 코드 변경이 필요하지 않습니다. 유형 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구합니다. 그 결정은 이제 아래 <b>사람 결정</b>에서 답할 수 있습니다. 다만 이 화면에는 아직 유형을 고치는 자리가 없어, 지금은 <code>board.json</code>의 <code>itemTypes</code>를 고치고 <code>rdl save</code>로 남깁니다.</p></header><div class="settings-body"><div id="item-type-list"></div><div id="item-type-derived"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="item-type-settings" class="settings-panel"><header><h2>업무 유형</h2><p>유형이 필드·규칙·화면을 함께 정의합니다.</p><details class="panel-help"><summary>도움말</summary><p>규칙은 코드가 가진 다섯 가지 제약 종류에 값을 채우는 방식이라, 새 유형을 만드는 데 코드 변경이 필요하지 않습니다. 유형 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 이 화면에는 아직 유형을 고치는 자리가 없어, 지금은 <code>board.json</code>의 <code>itemTypes</code>를 고치고 <code>rdl save</code>로 남깁니다.</p></details></header><div class="settings-body"><div id="item-type-list"></div><div id="item-type-derived"></div></div></section>');
   }
   const snapshot = state.snapshot;
   const types = (snapshot.presentation && snapshot.presentation.itemTypes) || null;
@@ -3593,7 +3593,14 @@ function renderItemTypeSettings() {
     const rows = kinds.length
       ? kinds.map((kind) => `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(CONSTRAINT_LABELS[kind] || kind)}</strong><small><code>${escapeHtml(kind)}</code> · ${describeConstraint(kind, constraints[kind]).map(escapeHtml).join(' / ')}</small></div></div>`).join('')
       : '<div class="presentation-row"><div class="presentation-row-main"><small>제약 없음 — 기본 유형입니다.</small></div></div>';
-    return `<section class="presentation-group"><h3>${escapeHtml(entry.label || id)}<span class="group-count"><code>${escapeHtml(id)}</code> · 제약 ${kinds.length}종${entry.disabled ? ' · 사용 안 함' : ''}</span></h3>`
+    // 유형이 타는 흐름을 링크로 잇는다. 지라가 유형 행에서 구성표로 건너가듯, 배정을
+    // 보러 워크플로 화면으로 오간다.
+    const taskBindings = (snapshot.workflow && snapshot.workflow.bindings) || {};
+    const bound = taskBindings[id] || taskBindings['*'] || null;
+    const boundNote = bound
+      ? `타는 흐름: <button type="button" class="link-button" data-workflow-open="${escapeHtml(bound)}">${escapeHtml(bound)}</button>${taskBindings[id] ? '' : ' <small>(기본 배정)</small>'}`
+      : '타는 흐름: 내장';
+    return `<section class="presentation-group"><h3>${escapeHtml(entry.label || id)}<span class="group-count"><code>${escapeHtml(id)}</code> · 제약 ${kinds.length}종${entry.disabled ? ' · 사용 안 함' : ''} · ${boundNote}</span></h3>`
       + `<div class="presentation-rows">${rows}</div>`
       + `<div class="item-type-origin">${originIndicator(origin)}</div></section>`;
   }).join('');
@@ -3639,7 +3646,10 @@ const workflowEdit = {
   loaded: null, loading: false, error: null,
   workflowId: null, isNew: false, draft: null,
   scope: 'project', dirty: false, busy: false,
-  decisionId: null, selection: null, addingNode: false
+  decisionId: null, selection: null, addingNode: false,
+  // targetId는 기본 배정이 아닌 흐름을 편집할 때만 값이 있다. showLabels는 그림 취향이라
+  // 초안과 무관하고 저장에도 실리지 않는다.
+  targetId: null, showLabels: true
 };
 
 function workflowCopy(value) { return value === undefined || value === null ? value : JSON.parse(JSON.stringify(value)); }
@@ -3676,18 +3686,25 @@ function availableWorkflowId(loaded) {
   return id;
 }
 
-function seedWorkflowDraft() {
+function seedWorkflowDraft(targetId) {
   const view = state.snapshot && state.snapshot.workflow;
   const loaded = workflowEdit.loaded;
   if (!view || !view.nodes || !loaded) return;
+  // 기본 배정이 아닌 흐름도 목록에서 골라 편집한다. 층에 없는 이름을 요청받으면 기본
+  // 배정으로 물러난다 — 없는 흐름의 빈 초안을 세우면 저장이 그 이름을 새로 만든다.
+  const layerHas = (id) => (loaded.layers || []).some((layer) => layer.content && layer.content.workflows
+    && layer.content.workflows[id] && layer.content.workflows[id].disabled !== true);
+  let requested = targetId !== undefined ? targetId : workflowEdit.targetId;
+  if (requested && !layerHas(requested)) requested = null;
+  const editId = requested || view.id;
   const draft = { targetKind: 'task', label: null, description: null, nodes: {}, executionUnits: {}, transitions: null };
   let declared = false;
-  if (view.id) {
+  if (editId) {
     // 내장 → Workspace → 프로젝트. 노드는 항목 단위로 겹치고 전환은 층 단위로 갈아탄다 —
     // 병합기의 규칙을 초안도 그대로 따라야 화면이 판정과 같은 흐름을 든다.
     for (const scope of ['workspace', 'project']) {
       const layer = (loaded.layers || []).find((item) => item.scope === scope);
-      const entry = layer && layer.content && layer.content.workflows && layer.content.workflows[view.id];
+      const entry = layer && layer.content && layer.content.workflows && layer.content.workflows[editId];
       if (!entry || entry.disabled === true) continue;
       declared = true;
       if (entry.targetKind !== undefined) draft.targetKind = entry.targetKind;
@@ -3716,12 +3733,27 @@ function seedWorkflowDraft() {
     }
     draft.transitions = null;
   }
-  workflowEdit.workflowId = view.id || availableWorkflowId(loaded);
+  workflowEdit.targetId = requested && requested !== view.id ? requested : null;
+  workflowEdit.workflowId = editId || availableWorkflowId(loaded);
   workflowEdit.isNew = !declared;
   workflowEdit.draft = draft;
   workflowEdit.dirty = false;
   workflowEdit.decisionId = null;
   workflowEdit.addingNode = false;
+}
+
+// 목록에서 고른 흐름을 편집기로 연다. 초안이 살아 있으면 갈아엎지 않는다 — 고치던
+// 사람의 것을 화면 이동이 지우면 안 된다.
+function openWorkflowForEdit(id) {
+  if (workflowEdit.dirty && workflowEdit.workflowId !== id) {
+    showSettingsSection('workflow-settings');
+    message('저장되지 않은 초안이 있습니다. 워크플로 업데이트로 저장하거나 변경 취소로 되돌린 뒤 다른 흐름을 여세요.', true);
+    return;
+  }
+  seedWorkflowDraft(id || null);
+  workflowEdit.selection = null;
+  showSettingsSection('workflow-settings');
+  renderWorkflowSettings(true);
 }
 
 // 초안을 화면이 그리는 뷰 모양으로. 그림·목록·인스펙터가 전부 이 투영 하나를 읽어야
@@ -3923,14 +3955,21 @@ function workflowStepNote(view, step) {
   return '스냅숏이 이 스텝을 어느 갈래로도 세지 않았습니다';
 }
 
-// 앞서 세운 종이를 걷는 함수. 다시 그릴 때 안 걷으면 같은 자리에 한 장씩 쌓인다.
-let workflowGraphTeardown = null;
+// 앞서 세운 종이를 걷는 함수와, 걷기 전까지 확대·맞춤을 받는 손잡이.
+let workflowGraphApi = null;
+
+function teardownWorkflowGraph() {
+  if (!workflowGraphApi) return;
+  if (typeof workflowGraphApi === 'function') workflowGraphApi();
+  else if (workflowGraphApi.destroy) workflowGraphApi.destroy();
+  workflowGraphApi = null;
+}
 
 function renderWorkflowDiagram(view) {
   const host = el('workflow-diagram');
   if (!host) return;
   const note = '<h3 class="approval-heading">흐름도</h3>'
-    + '<p class="approval-note">노드나 화살표를 고르면 곁의 인스펙터가 그 값을 엽니다. 화살표 끝을 다른 노드에 붙이면 전환의 출발·도착이 초안에서 바뀌고, 고친 것은 위의 <b>워크플로 업데이트</b>로 저장합니다. 노드의 자리는 스텝 열로 매번 계산하므로 저장되지 않습니다 — 같은 정의는 언제나 같은 그림이 됩니다.</p>';
+    + '<p class="approval-note">노드나 화살표를 고르면 곁의 인스펙터가 그 값을 엽니다. 화살표 끝을 다른 노드에 붙이면 전환의 출발·도착이 초안에서 바뀌고, 고친 것은 위의 <b>워크플로 업데이트</b>로 저장합니다.</p>';
   if (!view.transitions) {
     host.innerHTML = note + '<p class="empty-state">이 흐름은 전환을 선언하지 않았습니다. 그릴 화살표가 없으므로 그림 대신 노드 목록이 답합니다 — 선언하지 않은 흐름은 어느 노드에서 어느 노드로든 가며, 닫으려면 <b>전환 추가</b>로 첫 전환을 선언하세요.</p>';
     return;
@@ -3939,9 +3978,14 @@ function renderWorkflowDiagram(view) {
     host.innerHTML = note + '<p class="empty-state">전환 목록이 비어 있습니다. 빈 목록도 선언이라 같은 노드에 머무는 것 말고는 전부 막히며, 막힌 흐름은 그릴 화살표가 없습니다.</p>';
     return;
   }
-  host.innerHTML = note + '<div id="workflow-graph" class="workflow-graph"></div>';
+  host.innerHTML = note
+    + '<div class="workflow-graph-toolbar">'
+    + `<label class="workflow-check"><input type="checkbox" id="workflow-labels-toggle"${workflowEdit.showLabels !== false ? ' checked' : ''}>전환 레이블 표시</label>`
+    + '<span class="workflow-zoom"><button type="button" id="workflow-zoom-out" aria-label="축소">−</button><button type="button" id="workflow-zoom-fit">맞춤</button><button type="button" id="workflow-zoom-in" aria-label="확대">＋</button></span>'
+    + '</div>'
+    + '<div id="workflow-graph" class="workflow-graph"></div>';
   // 앞의 종이를 걷는다. 안 걷으면 다시 그릴 때마다 같은 자리에 한 장씩 쌓인다.
-  if (workflowGraphTeardown) { workflowGraphTeardown(); workflowGraphTeardown = null; }
+  teardownWorkflowGraph();
   if (!window.RundolWorkflowGraph) {
     el('workflow-graph').innerHTML = '<p class="empty-state">흐름도 번들이 없습니다. <code>npm install</code> 뒤 다시 시작하세요.</p>';
     return;
@@ -3951,8 +3995,9 @@ function renderWorkflowDiagram(view) {
   // 때 이 자리가 16×16으로 접혀 있었고 열어 보기 전에는 드러나지 않았다.
   if (host.getBoundingClientRect().width === 0) return;
   try {
-    workflowGraphTeardown = window.RundolWorkflowGraph.mount(el('workflow-graph'), view, {
+    workflowGraphApi = window.RundolWorkflowGraph.mount(el('workflow-graph'), view, {
       selection: workflowEdit.selection,
+      showLabels: workflowEdit.showLabels !== false,
       onSelect: (selection) => { workflowEdit.selection = selection; renderWorkflowSettings(); },
       onRewire: (index, ends) => rewireWorkflowTransition(index, ends)
     });
@@ -4014,7 +4059,7 @@ async function answerDecision(decisionId, selectedOption) {
 
 function renderDecisionSettings() {
   if (!el('decision-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="decision-settings" class="settings-panel"><header><h2>사람 결정</h2><p>정책 층을 바꾸는 저장은 계약 변경 결정을 함께 남겨야 통과합니다. 여는 것은 막힌 표면이 하고 <b>답하는 것은 사람만</b> 할 수 있습니다 — 에이전트 자격은 여기서 계약상 거절되며, 그것은 결함이 아니라 이 관문의 전부입니다. 답한 뒤 같은 저장을 다시 하면 통과합니다. 같은 결정이 다른 저장을 열지는 못합니다.</p></header><div class="settings-body"><div id="decision-controls" class="chip-row"></div><div id="decision-list"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="decision-settings" class="settings-panel"><header><h2>사람 결정</h2><p>정책 저장이 연 계약 변경 결정에 사람이 답합니다.</p><details class="panel-help"><summary>도움말</summary><p>여는 것은 막힌 표면이 하고 <b>답하는 것은 사람만</b> 할 수 있습니다 — 에이전트 자격은 여기서 계약상 거절되며, 그것은 결함이 아니라 이 관문의 전부입니다. 답한 뒤 같은 저장을 다시 하면 통과합니다. 같은 결정이 다른 저장을 열지는 못합니다.</p></details></header><div class="settings-body"><div id="decision-controls" class="chip-row"></div><div id="decision-list"></div></div></section>');
     el('decision-settings').addEventListener('click', (event) => {
       const toggle = event.target.closest('[data-decision-scope]');
       if (toggle) { decisionState.open = toggle.dataset.decisionScope === 'open'; loadDecisions(); return; }
@@ -4075,7 +4120,7 @@ function renderDecisionSettings() {
 
 function renderWorkflowSettings(force) {
   if (!el('workflow-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header class="section-heading"><div><h2>워크플로</h2><p>노드와 전환이 <b>무엇이 허용되는지</b>를 정합니다. 상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 그림이나 목록에서 골라 곁에서 고치면 초안에 쌓이고, <b>워크플로 업데이트</b>가 그 초안을 고른 층의 <code>workflows.json</code>에 씁니다. 흐름 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 아래 <b>사람 결정</b>에서 답합니다. 커밋은 <code>rdl save</code>가 맡습니다.</p></div><div class="page-actions" id="workflow-toolbar"></div></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-diagram"></div><div id="workflow-inspector" class="workflow-inspector"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-units"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header class="section-heading"><div><h2>워크플로</h2><p>상태와 전환이 무엇을 허용하는지 정의하고 저장합니다.</p><details class="panel-help"><summary>도움말</summary><p>상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 그림이나 목록에서 골라 곁에서 고치면 초안에 쌓이고, <b>워크플로 업데이트</b>가 그 초안을 고른 층의 <code>workflows.json</code>에 씁니다. 흐름 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 커밋은 <code>rdl save</code>가 맡습니다.</p></details></div><div class="page-actions" id="workflow-toolbar"></div></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-diagram"></div><div id="workflow-inspector" class="workflow-inspector"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-units"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
     bindWorkflowEditor();
   }
   const base = state.snapshot && state.snapshot.workflow;
@@ -4097,7 +4142,11 @@ function renderWorkflowSettings(force) {
 
   const targetLayer = ((workflowEdit.loaded && workflowEdit.loaded.layers) || []).find((item) => item.scope === workflowEdit.scope);
   const current = [
-    `<div class="property"><dt>흐름</dt><dd><strong>${escapeHtml(view.label || workflowEdit.workflowId || view.id || '내장 흐름')}</strong><small>${workflowEdit.isNew ? `<code>${escapeHtml(workflowEdit.workflowId || '')}</code> · 설정이 이 대상 종류를 잡지 않아 내장 흐름이 섭니다. 저장하면 이 이름으로 옮겨 적고 기본 배정까지 함께 적습니다.` : `<code>${escapeHtml(view.id || workflowEdit.workflowId || '')}</code> · 이 프로젝트의 기본 배정입니다.`}</small></dd></div>`,
+    `<div class="property"><dt>편집 대상</dt><dd><strong>${escapeHtml(view.label || workflowEdit.workflowId || view.id || '내장 흐름')}</strong><small>${workflowEdit.isNew
+      ? `<code>${escapeHtml(workflowEdit.workflowId || '')}</code> · 설정이 이 대상 종류를 잡지 않아 내장 흐름이 섭니다. 저장하면 이 이름으로 옮겨 적고 기본 배정까지 함께 적습니다.`
+      : (workflowEdit.targetId
+        ? `<code>${escapeHtml(workflowEdit.workflowId || '')}</code> · 기본 배정이 아닌 흐름입니다. <button type="button" class="link-button" data-workflow-open="">기본 배정으로 돌아가기</button>`
+        : `<code>${escapeHtml(view.id || workflowEdit.workflowId || '')}</code> · 이 프로젝트의 기본 배정입니다.`)}</small></dd></div>`,
     `<div class="property"><dt>정의한 층</dt><dd>${originIndicator(view.origin || 'builtin')}<small>흐름을 마지막으로 적은 층입니다.</small></dd></div>`,
     `<div class="property"><dt>대상 종류</dt><dd><strong>${escapeHtml(view.targetKind || '알 수 없음')}</strong><small>이 흐름이 붙는 마스터입니다. 보드가 그리는 판은 태스크입니다.</small></dd></div>`
   ];
@@ -4112,34 +4161,27 @@ function renderWorkflowSettings(force) {
   renderWorkflowDiagram(view);
   renderWorkflowInspector(view);
 
+  // 지라의 상태 페이지처럼 한 장의 표로 선다: 이름 | 저장값 | 성질 | 드나드는 전환 |
+  // 스텝 배지. 스텝 순서로 줄을 세워 그룹 없이도 흐름의 결이 읽히게 한다.
   const nodeEntries = Object.entries(view.nodes);
-  const placed = new Set();
-  const groups = (view.steps || []).map((step) => {
-    const nodes = nodeEntries.filter((entry) => entry[1].step === step);
-    for (const entry of nodes) placed.add(entry[0]);
-    return { key: step, label: STEP_LABELS[step] || step, note: workflowStepNote(view, step), nodes };
-  });
-  // 어느 스텝에도 안 걸린 노드는 따로 세운다. 안 보이면 그 노드에 앉은 태스크가 어느
-  // 칸에도 서지 않는데 화면은 아무 신호도 내지 않는다.
-  const stray = nodeEntries.filter((entry) => !placed.has(entry[0]));
-  if (stray.length) groups.push({ key: null, label: '스텝이 없는 노드', note: '코드가 이 노드를 어느 칸으로도 세지 못합니다', nodes: stray });
-
+  const stepAt = (step) => { const at = (view.steps || []).indexOf(step); return at < 0 ? 99 : at; };
+  nodeEntries.sort((left, right) => stepAt(left[1].step) - stepAt(right[1].step) || String(left[0]).localeCompare(String(right[0])));
+  const flowList = Array.isArray(view.transitions) ? view.transitions : null;
+  const wildcardIn = flowList === null ? 0 : flowList.filter((item) => item.from === '(ALL)').length;
   const selectedNode = workflowEdit.selection && workflowEdit.selection.kind === 'node' ? workflowEdit.selection.id : null;
-  el('workflow-nodes').innerHTML = '<h3 class="approval-heading">노드와 그 노드가 선 스텝</h3>'
-    + '<p class="approval-note">이름은 이 프로젝트의 것이고 스텝은 코드의 것입니다. 스텝은 닫힌 어휘라 프로젝트가 늘리지 못하며, 늘리는 것은 이름 쪽입니다 — 이름 하나하나가 이 다섯 중 하나에 매핑되고 코드는 매핑된 스텝만 봅니다. 줄을 고르면 곁에서 고칩니다.</p>'
-    + groups.map((group) => {
-      const rows = group.nodes.length
-        ? group.nodes.map((entry) => {
-          const node = entry[1];
-          const parts = [`<code>${escapeHtml(entry[0])}</code>`];
-          if (node.validity) parts.push(`완료 유효성 ${escapeHtml(COMPLETION_VALIDITY_LABELS[node.validity] || node.validity)}`);
-          if (node.requiresOwner) parts.push('담당자 필요');
-          if ((node.requires || []).length) parts.push(`${node.requires.map((field) => escapeHtml(NODE_FIELD_LABELS[field] || field)).join(' · ')} 필요`);
-          return `<div class="presentation-row workflow-selectable${entry[0] === selectedNode ? ' is-selected' : ''}" data-workflow-node="${escapeHtml(entry[0])}"><div class="presentation-row-main"><strong>${escapeHtml(node.label || taskStatusLabel(entry[0]))}</strong><small>${parts.join(' · ')}</small></div></div>`;
-        }).join('')
-        : '<div class="presentation-row"><div class="presentation-row-main"><small>이 스텝에 선 노드가 이 흐름에 없습니다.</small></div></div>';
-      return `<section class="presentation-group"><h3>${escapeHtml(group.label)}<span class="group-count">${group.key ? `<code>${escapeHtml(group.key)}</code> · ` : ''}${escapeHtml(group.note)}</span></h3><div class="presentation-rows">${rows}</div></section>`;
-    }).join('');
+  el('workflow-nodes').innerHTML = '<h3 class="approval-heading">상태</h3>'
+    + '<p class="approval-note">이름은 이 프로젝트의 것이고 스텝은 코드가 보는 닫힌 어휘입니다. 줄을 고르면 곁에서 고칩니다.</p>'
+    + `<div class="presentation-rows">${nodeEntries.map(([id, node]) => {
+      const parts = [`<code>${escapeHtml(id)}</code>`];
+      if (node.validity) parts.push(`완료 유효성 ${escapeHtml(COMPLETION_VALIDITY_LABELS[node.validity] || node.validity)}`);
+      if (node.requiresOwner) parts.push('담당자 필요');
+      if ((node.requires || []).length) parts.push(`${node.requires.map((field) => escapeHtml(NODE_FIELD_LABELS[field] || field)).join(' · ')} 필요`);
+      const inbound = flowList === null ? null : flowList.filter((item) => String(item.to) === id).length + wildcardIn;
+      const outbound = flowList === null ? null : flowList.filter((item) => item.from !== '(ALL)' && String(item.from) === id).length;
+      parts.push(flowList === null ? '전환 선언 없음 — 어디로든 갑니다' : `수신 ${inbound} · 발신 ${outbound}${wildcardIn ? ' (모든 노드 전환 포함)' : ''}`);
+      const step = node.step || null;
+      return `<div class="presentation-row workflow-selectable${id === selectedNode ? ' is-selected' : ''}" data-workflow-node="${escapeHtml(id)}"><div class="presentation-row-main"><strong>${escapeHtml(node.label || taskStatusLabel(id))}</strong><small>${parts.join(' · ')}</small></div><span class="chip workflow-step-chip step-${escapeHtml(step || 'none')}">${escapeHtml(step ? (STEP_LABELS[step] || step) : '스텝 없음')}</span></div>`;
+    }).join('')}</div>`;
 
   const selectedTransition = workflowEdit.selection && workflowEdit.selection.kind === 'transition' ? workflowEdit.selection.index : null;
   const transitionNote = '<h3 class="approval-heading">전환과 그 전환이 부르는 것</h3>'
@@ -4172,26 +4214,38 @@ function renderWorkflowSettings(force) {
   const bindings = view.bindings || {};
   const itemTypes = (state.snapshot.presentation && state.snapshot.presentation.itemTypes) || {};
 
+  // 지라의 워크플로 목록처럼 선다: 이름 | 배정된 유형(링크) | 층 | 편집. 배정 표는
+  // 구성표에 해당하며, 유형과 흐름이 서로를 링크로 가리켜 화면 사이를 오간다.
+  const flowLabel = (id) => {
+    for (const scope of ['project', 'workspace']) {
+      const layer = ((workflowEdit.loaded && workflowEdit.loaded.layers) || []).find((item) => item.scope === scope);
+      const entry = layer && layer.content && layer.content.workflows && layer.content.workflows[id];
+      if (entry && entry.disabled !== true && entry.label) return entry.label;
+    }
+    return null;
+  };
+  const boundTypes = (id) => Object.keys(bindings).filter((typeId) => bindings[typeId] === id);
   const workflowRows = Object.keys(workflowSources).sort().map((id) => {
     const entry = workflowSources[id] || {};
-    const fields = Object.keys(entry.fields || {});
-    const detail = fields.length
-      ? fields.map((field) => `${field} ← ${ORIGIN_LABELS[entry.fields[field]] || entry.fields[field]}`).join(' · ')
-      : '적은 칸이 없습니다';
-    return `<div class="presentation-row"><div class="presentation-row-main"><strong><code>${escapeHtml(id)}</code>${id === view.id ? ' — 이 판이 쓰는 흐름' : ''}</strong><small>${escapeHtml(detail)}</small></div>${originIndicator(entry.entry || 'builtin')}</div>`;
+    const marks = [];
+    if (id === view.id) marks.push('<span class="chip">기본 배정</span>');
+    if (id === workflowEdit.workflowId) marks.push('<span class="chip workflow-gate">편집 중</span>');
+    const types = boundTypes(id).map((typeId) => `<button type="button" class="link-button" data-settings-section="item-type-settings">${escapeHtml((itemTypes[typeId] && itemTypes[typeId].label) || typeId)}</button>`).join(' · ');
+    return `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(flowLabel(id) || id)} <code>${escapeHtml(id)}</code></strong> ${marks.join(' ')}<small>배정된 유형: ${types || '없음'}</small></div>${originIndicator(entry.entry || 'builtin')}<button type="button" data-workflow-open="${escapeHtml(id)}"${id === workflowEdit.workflowId ? ' disabled' : ''}>편집</button></div>`;
   }).join('');
 
   const bindingRows = Object.keys(bindings).sort().map((typeId) => {
     const origin = (bindingSources && bindingSources.fields && bindingSources.fields[typeId]) || 'builtin';
     const known = itemTypes[typeId];
-    const note = known ? `업무 유형 ${known.label || typeId}` : '이 프로젝트의 업무 유형 목록에 없는 키입니다';
-    return `<div class="presentation-row"><div class="presentation-row-main"><strong><code>${escapeHtml(typeId)}</code> → <code>${escapeHtml(bindings[typeId])}</code></strong><small>${escapeHtml(note)}</small></div>${originIndicator(origin)}</div>`;
+    const typeCell = known
+      ? `<button type="button" class="link-button" data-settings-section="item-type-settings">${escapeHtml(known.label || typeId)}</button> <code>${escapeHtml(typeId)}</code>`
+      : `<code>${escapeHtml(typeId)}</code> <small>목록에 없는 키</small>`;
+    return `<div class="presentation-row"><div class="presentation-row-main"><strong>${typeCell} → <button type="button" class="link-button" data-workflow-open="${escapeHtml(bindings[typeId])}">${escapeHtml(flowLabel(bindings[typeId]) || bindings[typeId])}</button></strong><small>${typeId === '*' ? '어느 유형에도 안 맞는 항목이 타는 기본입니다.' : ''}</small></div>${originIndicator(origin)}</div>`;
   }).join('');
 
-  el('workflow-layers').innerHTML = '<h3 class="approval-heading">정의한 층</h3>'
-    + '<p class="approval-note">흐름은 <b>내장 → Workspace → 이 프로젝트</b> 순으로 겹칩니다. 노드는 항목 단위로 합쳐지고 전환은 층 단위로 갈아탑니다 — 하위가 전환 하나만 지우려 해도 목록 전체를 다시 적어야 한다는 뜻입니다. 아래 표시는 서버가 층별 원본을 따로 읽어 계산한 것이라, 상위와 같은 값을 명시한 경우도 상속이 아니라 명시로 보입니다.</p>'
-    + `<section class="presentation-group"><h3>흐름 정의<span class="group-count">설정이 적은 흐름 ${Object.keys(workflowSources).length}개</span></h3><div class="presentation-rows">${workflowRows || '<div class="presentation-row"><div class="presentation-row-main"><small>설정 파일이 흐름을 적지 않았습니다. 내장 흐름이 그대로 답합니다.</small></div></div>'}</div></section>`
-    + `<section class="presentation-group"><h3>유형별 배정<span class="group-count">${Object.keys(bindings).length}줄</span></h3><p class="approval-note">배정 키는 업무 유형의 id입니다. 어느 유형에도 안 맞는 항목이 탈 기본을 적는 키가 따로 있고, 그 키가 무엇인지는 이 화면이 정하지 않습니다 — 스냅숏이 배정 표를 그대로 실어 줍니다.</p><div class="presentation-rows">${bindingRows || '<div class="presentation-row"><div class="presentation-row-main"><small>배정이 없습니다. 모든 태스크가 내장 흐름을 탑니다.</small></div></div>'}</div></section>`;
+  el('workflow-layers').innerHTML = `<section class="presentation-group"><h3>흐름 목록<span class="group-count">설정이 적은 흐름 ${Object.keys(workflowSources).length}개</span></h3><div class="presentation-rows">${workflowRows || '<div class="presentation-row"><div class="presentation-row-main"><small>설정 파일이 흐름을 적지 않았습니다. 내장 흐름이 그대로 답합니다.</small></div></div>'}</div></section>`
+    + `<section class="presentation-group"><h3>유형별 배정<span class="group-count">${Object.keys(bindings).length}줄</span></h3><div class="presentation-rows">${bindingRows || '<div class="presentation-row"><div class="presentation-row-main"><small>배정이 없습니다. 모든 태스크가 내장 흐름을 탑니다.</small></div></div>'}</div></section>`
+    + '<details class="panel-help"><summary>층과 병합 규칙</summary><p>흐름은 <b>내장 → Workspace → 이 프로젝트</b> 순으로 겹칩니다. 노드는 항목 단위로 합쳐지고 전환은 층 단위로 갈아탑니다 — 하위가 전환 하나만 지우려 해도 목록 전체를 다시 적어야 한다는 뜻입니다. 층 표시는 서버가 층별 원본을 따로 읽어 계산한 것이라, 상위와 같은 값을 명시한 경우도 상속이 아니라 명시로 보입니다.</p></details>';
 
   // 못 하는 것을 말하지 않는 화면은 사람이 되는 줄 알고 시도한다.
   el('workflow-scope').innerHTML = '<h3 class="approval-heading">이 화면이 하는 것과 안 하는 것</h3>'
@@ -4452,6 +4506,14 @@ function deleteWorkflowUnit(name) {
   renderWorkflowSettings(true);
 }
 
+// 어느 화면에서든 흐름 이름을 누르면 그 흐름이 편집기로 열린다. 업무 유형 패널의
+// 배정 링크가 이 길을 쓴다 — 지라가 개체 사이를 링크로 오가게 하는 그 결이다.
+document.addEventListener('click', (event) => {
+  const open = event.target.closest('[data-workflow-open]');
+  if (!open || open.disabled) return;
+  openWorkflowForEdit(open.dataset.workflowOpen);
+});
+
 // 편집 손. 판이 다시 그려져도 살아남게 섹션 뿌리에 한 번만 건다.
 function bindWorkflowEditor() {
   const section = el('workflow-settings');
@@ -4472,6 +4534,9 @@ function bindWorkflowEditor() {
     if (event.target.closest('#workflow-new-node-confirm')) { confirmWorkflowNode(); return; }
     if (event.target.closest('#workflow-add-transition')) { addWorkflowTransition(); return; }
     if (event.target.closest('#workflow-discard')) { seedWorkflowDraft(); workflowEdit.selection = null; renderWorkflowSettings(true); message('초안을 버리고 저장된 정의로 되돌렸습니다.'); return; }
+    if (event.target.closest('#workflow-zoom-in')) { if (workflowGraphApi && workflowGraphApi.zoomIn) workflowGraphApi.zoomIn(); return; }
+    if (event.target.closest('#workflow-zoom-out')) { if (workflowGraphApi && workflowGraphApi.zoomOut) workflowGraphApi.zoomOut(); return; }
+    if (event.target.closest('#workflow-zoom-fit')) { if (workflowGraphApi && workflowGraphApi.fit) workflowGraphApi.fit(); return; }
     if (event.target.closest('#workflow-save')) saveWorkflowEdits();
   });
   // 타자마다 판을 갈면 손끝에서 포커스가 달아난다. input은 초안과 저장 단추만 고치고,
@@ -4486,6 +4551,7 @@ function bindWorkflowEditor() {
   });
   section.addEventListener('change', (event) => {
     if (event.target.id === 'workflow-edit-scope') { workflowEdit.scope = event.target.value; renderWorkflowSettings(true); return; }
+    if (event.target.id === 'workflow-labels-toggle') { workflowEdit.showLabels = event.target.checked; renderWorkflowSettings(true); return; }
     // 게이트 폼은 판을 갈지 않고 자기 칸만 다시 그린다. 판을 갈면 적던 식별자가 사라진다.
     if (['workflow-new-unit-kind', 'workflow-new-gate-source', 'workflow-new-gate-method'].includes(event.target.id)) { renderWorkflowGateParams(); return; }
     if (!event.target.closest('[data-workflow-node-field]') && !event.target.closest('[data-workflow-transition-field]')
@@ -4603,7 +4669,7 @@ function deleteWorkflowTransition(index) {
 
 function renderApprovalSettings() {
   if (!el('approval-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 승인 모드도 정책이라 저장이 계약 변경 결정을 요구합니다. 그 결정은 아래 <b>사람 결정</b>에서 답할 수 있습니다. 지금은 <code>board.json</code>의 <code>approval</code>을 고치고 <code>rdl save</code>로 남깁니다.</p></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="approval-settings" class="settings-panel"><header><h2>승인과 파이프</h2><p>사람 승인이 서는 자리를 모드로 고릅니다.</p><details class="panel-help"><summary>도움말</summary><p>모드는 AI를 얼마나 믿느냐의 눈금이 아니라 <b>사람의 주의를 어디에 쓸지의 배분표</b>입니다. 되돌릴 수 있는 구간을 흘려보내야 남은 게이트가 실제로 읽힙니다. 승인 모드도 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 <b>사람 결정</b>에서 답합니다. 지금은 <code>board.json</code>의 <code>approval</code>을 고치고 <code>rdl save</code>로 남깁니다.</p></details></header><div class="settings-body"><div id="approval-current" class="presentation-source"></div><div id="approval-modes" class="approval-modes"></div><div id="approval-pipes"></div></div></section>');
   }
   const snapshot = state.snapshot;
   const catalog = snapshot.approvalCatalog;
@@ -4779,7 +4845,7 @@ async function savePresentationEdits() {
 function renderPresentationSettings() {
   let section = el('presentation-settings');
   if (!section) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header class="section-heading"><div><h2>표시 규칙</h2><p>화면에 보이는 말과 순서입니다. 저장값이 아니라 표시이므로 판정에 영향이 없고, 그래서 여기서 바로 고칩니다. 칸에 적은 값만 고른 범위의 <code>board.json</code>에 덮이고 비운 칸은 상위에서 내려온 값(옅은 글씨)을 그대로 씁니다. 항목을 없애거나 되살리는 것은 표시가 아니라 정책이라 여기 없습니다.</p></div><div class="page-actions"><label class="presentation-scope">저장 범위<select id="presentation-scope"><option value="project">이 프로젝트</option><option value="workspace">Workspace</option></select></label><button id="save-presentation" class="primary">표시 규칙 저장</button></div></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><p id="presentation-scope-hint" class="control-hint"></p><div id="presentation-groups" class="presentation-groups"></div><div id="presentation-boundary" class="boundary-block"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="presentation-settings" class="settings-panel"><header class="section-heading"><div><h2>표시 규칙</h2><p>화면에 보이는 말과 순서를 고칩니다.</p><details class="panel-help"><summary>도움말</summary><p>저장값이 아니라 표시이므로 판정에 영향이 없고, 그래서 여기서 바로 고칩니다. 칸에 적은 값만 고른 범위의 <code>board.json</code>에 덮이고 비운 칸은 상위에서 내려온 값(옅은 글씨)을 그대로 씁니다. 항목을 없애거나 되살리는 것은 표시가 아니라 정책이라 여기 없습니다.</p></details></div><div class="page-actions"><label class="presentation-scope">저장 범위<select id="presentation-scope"><option value="project">이 프로젝트</option><option value="workspace">Workspace</option></select></label><button id="save-presentation" class="primary">표시 규칙 저장</button></div></header><div class="settings-body"><div id="presentation-inheritance" class="inheritance-chain"></div><div id="presentation-source" class="presentation-source"></div><p id="presentation-scope-hint" class="control-hint"></p><div id="presentation-groups" class="presentation-groups"></div><div id="presentation-boundary" class="boundary-block"></div></div></section>');
     section = el('presentation-settings');
   }
   const presentation = state.snapshot.presentation;
