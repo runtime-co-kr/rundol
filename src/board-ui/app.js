@@ -3601,6 +3601,9 @@ async function saveItemTypes(next) {
     itemTypeEdit.pending = null;
     itemTypeEdit.dirty = false;
     itemTypeEdit.decisionId = null;
+    // 저장이 성공했으니 초안을 걷고 새 스냅숏에서 다시 세운다.
+    itemTypeEdit.constraintsFor = null;
+    itemTypeEdit.constraintsDirty = false;
     message('업무 유형을 저장했습니다. 커밋은 rdl save가 맡습니다.');
     await loadSnapshot(true);
   } catch (error) {
@@ -3633,6 +3636,8 @@ document.addEventListener('click', (event) => {
     if (label) entry.label = label; else delete entry.label;
     if (description) entry.description = description; else delete entry.description;
     if (el('item-type-edit-disabled').checked) entry.disabled = true; else delete entry.disabled;
+    // 제약은 손댔을 때만 싣는다. 안 고친 종류까지 이 층에 다시 적으면 상속이 명시로 바뀐다.
+    if (itemTypeEdit.constraintsDirty) entry.constraints = workflowCopy(itemTypeEdit.constraints);
     saveItemTypes(Object.assign(own, { [id]: entry }));
     return;
   }
@@ -3653,6 +3658,170 @@ document.addEventListener('click', (event) => {
   if (!row || event.target.closest('[data-workflow-open]')) return;
   itemTypeState.selected = row.dataset.itemType;
   renderItemTypeSettings(true);
+});
+
+// 제약 다섯 종의 설정 폼. 종류마다 행 목록 + 추가 폼이고, 종류의 모양은 item-type.js의
+// 카탈로그가 정본이다 — 여기서는 그 모양대로 칸을 세울 뿐 판정을 다시 적지 않는다.
+function renderConstraintForms(draft, catalog) {
+  const section = (kind, rows, addForm, note) => `<h4 class="approval-heading">${escapeHtml(CONSTRAINT_LABELS[kind] || kind)} <code>${escapeHtml(kind)}</code></h4>`
+    + (note ? `<p class="approval-note">${note}</p>` : '')
+    + `<div class="presentation-rows">${rows || '<div class="presentation-row"><div class="presentation-row-main"><small>선언 없음</small></div></div>'}</div>`
+    + (addForm || '');
+  const removeButton = (kind, key) => `<button type="button" class="workflow-danger" data-con-remove="${escapeHtml(kind)}" data-con-key="${escapeHtml(key)}">빼기</button>`;
+  const row = (kind, key, title, summary) => `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(summary)}</small></div>${removeButton(kind, key)}</div>`;
+
+  const fieldRows = Object.entries(draft.fields || {}).map(([name, spec]) => {
+    const parts = [];
+    if (spec.required) parts.push('필수');
+    if (spec.values) parts.push(`허용값 ${spec.values.join(' · ')}`);
+    if (spec.type) parts.push(`형식 ${spec.type}`);
+    if (spec.min !== undefined || spec.max !== undefined) parts.push(`범위 ${spec.min === undefined ? '' : spec.min}~${spec.max === undefined ? '' : spec.max}`);
+    return row('fields', name, name, parts.join(' · '));
+  }).join('');
+  const fieldAdd = '<div class="workflow-form constraint-add">'
+    + '<label>필드 이름<input id="con-field-name" placeholder="예: severity"></label>'
+    + '<label>허용값 (쉼표, 선택)<input id="con-field-values" placeholder="예: high, mid, low"></label>'
+    + '<label>형식 (선택)<select id="con-field-type"><option value="">없음</option>' + catalogFieldTypes().map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('') + '</select></label>'
+    + '<label>최소 (선택)<input id="con-field-min" inputmode="numeric"></label>'
+    + '<label>최대 (선택)<input id="con-field-max" inputmode="numeric"></label>'
+    + '<label class="workflow-check"><input type="checkbox" id="con-field-required">필수 — 만들 때부터 채워야 합니다</label>'
+    + '<div class="decision-actions"><button type="button" id="con-add-field">필드 규칙 추가</button></div></div>';
+
+  const linkRows = Object.entries(draft.requiresLink || {}).map(([type, spec]) =>
+    row('requiresLink', type, type, `최소 ${spec.min}${spec.max === undefined ? ' · 위 열림' : ` · 최대 ${spec.max}`}`)).join('');
+  const linkAdd = '<div class="workflow-form constraint-add">'
+    + '<label>문서 유형<input id="con-link-type" placeholder="예: TST"></label>'
+    + '<label>최소<input id="con-link-min" inputmode="numeric" value="1"></label>'
+    + '<label>최대 (비우면 위가 열림)<input id="con-link-max" inputmode="numeric"></label>'
+    + '<div class="decision-actions"><button type="button" id="con-add-link">연결 요구 추가</button></div></div>';
+
+  const whenRows = Object.entries(draft.requiredWhen || {}).map(([name, spec]) =>
+    row('requiredWhen', name, name, `${spec.field}이(가) ${spec.is.join(' · ')}이면 필요`)).join('');
+  const whenAdd = '<div class="workflow-form constraint-add">'
+    + '<label>요구 필드<input id="con-when-name" placeholder="예: result"></label>'
+    + '<label>조건 필드<input id="con-when-field" placeholder="예: status"></label>'
+    + '<label>조건 값 (쉼표)<input id="con-when-is" placeholder="예: done"></label>'
+    + '<div class="decision-actions"><button type="button" id="con-add-when">조건부 필수 추가</button></div></div>';
+
+  const uniqueRows = Object.entries(draft.unique || {}).map(([name, spec]) => {
+    const parts = [];
+    if (spec.fields) parts.push(`필드 ${spec.fields.join('+')}`);
+    if (spec.links) parts.push(`링크 ${spec.links.join('+')}`);
+    if (spec.releasedBy) parts.push(`놓아줌 ${spec.releasedBy.join(' · ')}`);
+    return row('unique', name, name, parts.join(' · '));
+  }).join('');
+  const uniqueAdd = '<div class="workflow-form constraint-add">'
+    + '<label>제약 이름<input id="con-unique-name" placeholder="예: round-per-tst"></label>'
+    + '<label>필드 조합 (쉼표, 선택)<input id="con-unique-fields" placeholder="예: round"></label>'
+    + '<label>링크 조합 (쉼표, 선택)<input id="con-unique-links" placeholder="예: TST"></label>'
+    + '<label>놓아주는 상태 (쉼표, 선택)<input id="con-unique-released" placeholder="예: cancelled"></label>'
+    + '<div class="decision-actions"><button type="button" id="con-add-unique">유일성 추가</button></div></div>';
+
+  const exemptChecks = (catalog.exemptable || []).map((gate) =>
+    `<label class="workflow-check"><input type="checkbox" data-con-exempt="${escapeHtml(gate)}"${(draft.exempt || []).includes(gate) ? ' checked' : ''}>${escapeHtml(gate)}</label>`).join('');
+
+  return '<h4 class="approval-heading">제약</h4>'
+    + '<p class="approval-note">다섯 종류의 제약이 이 유형의 규칙입니다. 행을 더하고 뺀 것은 초안에 쌓이고, <b>유형 저장</b>이 계약 변경 결정을 지나 이 프로젝트 층에 적습니다.</p>'
+    + section('fields', fieldRows, fieldAdd)
+    + section('requiresLink', linkRows, linkAdd)
+    + section('requiredWhen', whenRows, whenAdd)
+    + section('unique', uniqueRows, uniqueAdd)
+    + section('exempt', `<div class="presentation-row"><div class="presentation-row-main">${exemptChecks || '<small>면제할 수 있는 게이트가 없습니다.</small>'}</div></div>`, '',
+      '면제는 허용 목록 안에서만 선언되며, 되돌릴 수 없는 관문은 그 목록에 없습니다.');
+}
+
+// FIELD_TYPES는 어휘의 정본이고 스냅숏의 검증 카탈로그가 실어 온다. 없으면 옛 서버라
+// 목록 없이 세운다 — 값을 화면에 박으면 어휘가 늘어나는 날 화면만 옛 답을 든다.
+function catalogFieldTypes() {
+  const workflowCatalog = state.snapshot && state.snapshot.workflow && state.snapshot.workflow.validationCatalog;
+  return (workflowCatalog && workflowCatalog.fieldTypes) || [];
+}
+
+function markConstraintsDirty() {
+  itemTypeEdit.constraintsDirty = true;
+  renderItemTypeSettings(true);
+}
+
+document.addEventListener('click', (event) => {
+  const remove = event.target.closest('[data-con-remove]');
+  if (remove) {
+    const kind = remove.dataset.conRemove;
+    const draft = itemTypeEdit.constraints || {};
+    if (draft[kind]) {
+      delete draft[kind][remove.dataset.conKey];
+      if (!Object.keys(draft[kind]).length) delete draft[kind];
+    }
+    markConstraintsDirty();
+    return;
+  }
+  const draft = itemTypeEdit.constraints;
+  if (!draft) return;
+  const text = (name) => { const input = el(name); return input ? input.value.trim() : ''; };
+  const list = (name) => text(name).split(',').map((entry) => entry.trim()).filter(Boolean);
+  const bound = (name) => { const raw = text(name); if (!raw) return undefined; const parsed = Number(raw); return Number.isInteger(parsed) ? parsed : NaN; };
+  if (event.target.closest('#con-add-field')) {
+    const name = text('con-field-name');
+    if (!name) return message('필드 이름을 적으세요.', true);
+    const spec = {};
+    const values = list('con-field-values');
+    if (values.length) spec.values = values;
+    if (el('con-field-type').value) spec.type = el('con-field-type').value;
+    const min = bound('con-field-min');
+    const max = bound('con-field-max');
+    if (Number.isNaN(min) || Number.isNaN(max)) return message('최소와 최대는 정수여야 합니다.', true);
+    if (min !== undefined) spec.min = min;
+    if (max !== undefined) spec.max = max;
+    if (el('con-field-required').checked) spec.required = true;
+    if (!Object.keys(spec).length) return message('아무것도 정하지 않는 필드 규칙은 규칙이 아닙니다. 허용값·형식·범위·필수 중 하나는 정하세요.', true);
+    draft.fields = Object.assign({}, draft.fields, { [name]: spec });
+    markConstraintsDirty();
+    return;
+  }
+  if (event.target.closest('#con-add-link')) {
+    const type = text('con-link-type').toUpperCase();
+    if (!type) return message('문서 유형을 적으세요. 예: TST', true);
+    const min = bound('con-link-min');
+    const max = bound('con-link-max');
+    if (min === undefined || Number.isNaN(min) || min < 0) return message('최소는 0 이상의 정수여야 합니다.', true);
+    if (Number.isNaN(max)) return message('최대는 정수여야 합니다.', true);
+    draft.requiresLink = Object.assign({}, draft.requiresLink, { [type]: max === undefined ? { min } : { min, max } });
+    markConstraintsDirty();
+    return;
+  }
+  if (event.target.closest('#con-add-when')) {
+    const name = text('con-when-name');
+    const field = text('con-when-field');
+    const values = list('con-when-is');
+    if (!name || !field || !values.length) return message('요구 필드·조건 필드·조건 값을 전부 적으세요.', true);
+    draft.requiredWhen = Object.assign({}, draft.requiredWhen, { [name]: { field, is: values } });
+    markConstraintsDirty();
+    return;
+  }
+  if (event.target.closest('#con-add-unique')) {
+    const name = text('con-unique-name');
+    if (!name) return message('제약 이름을 적으세요.', true);
+    const fields = list('con-unique-fields');
+    const links = list('con-unique-links').map((type) => type.toUpperCase());
+    if (!fields.length && !links.length) return message('유일성 조합이 비어 있습니다. 필드나 링크 중 하나는 있어야 합니다.', true);
+    const spec = {};
+    if (fields.length) spec.fields = fields;
+    if (links.length) spec.links = links;
+    const released = list('con-unique-released');
+    if (released.length) spec.releasedBy = released;
+    draft.unique = Object.assign({}, draft.unique, { [name]: spec });
+    markConstraintsDirty();
+    return;
+  }
+});
+
+document.addEventListener('change', (event) => {
+  const gate = event.target.closest('[data-con-exempt]');
+  if (!gate || !itemTypeEdit.constraints) return;
+  const current = new Set(itemTypeEdit.constraints.exempt || []);
+  if (gate.checked) current.add(gate.dataset.conExempt); else current.delete(gate.dataset.conExempt);
+  itemTypeEdit.constraints.exempt = Array.from(current);
+  if (!itemTypeEdit.constraints.exempt.length) delete itemTypeEdit.constraints.exempt;
+  markConstraintsDirty();
 });
 
 function renderItemTypeSettings(force) {
@@ -3695,27 +3864,28 @@ function renderItemTypeSettings(force) {
   if (itemTypeState.selected) {
     const id = itemTypeState.selected;
     const entry = types[id] || {};
-    const constraints = entry.constraints || {};
-    const kinds = catalog.kinds.filter((kind) => constraints[kind] !== undefined);
-    const rows = kinds.length
-      ? kinds.map((kind) => `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(CONSTRAINT_LABELS[kind] || kind)}</strong><small><code>${escapeHtml(kind)}</code> · ${describeConstraint(kind, constraints[kind]).map(escapeHtml).join(' / ')}</small></div></div>`).join('')
-      : '<div class="presentation-row"><div class="presentation-row-main"><small>제약 없음 — 기본 유형입니다.</small></div></div>';
-    // 상세는 곧 편집이다. 표시 필드는 여기서 고치고, 제약 다섯 종의 폼은 후속 갈래로
-    // 남긴다 — 그때까지 제약은 읽기로 보이고 board.json의 constraints가 정본이다.
-    const ownEntry = ownItemTypesLayer()[id] || {};
+    // 제약 초안. 상세에 들어올 때 병합 결과에서 세우고, 행을 더하고 뺀 것이 여기
+    // 쌓였다가 유형 저장이 이 프로젝트 층에 적는다. 손대지 않았으면 싣지 않는다 —
+    // 안 고친 종류까지 이 층에 다시 적으면 상속이 명시로 바뀐다.
+    if (!itemTypeEdit.constraintsFor || itemTypeEdit.constraintsFor !== id) {
+      itemTypeEdit.constraintsFor = id;
+      itemTypeEdit.constraints = workflowCopy(entry.constraints) || {};
+      itemTypeEdit.constraintsDirty = false;
+    }
+    const draft = itemTypeEdit.constraints;
     detail = '<div class="page-actions"><button type="button" id="item-type-back">← 유형 목록</button></div>'
       + `<section class="presentation-group item-type-detail"><h3>${escapeHtml(entry.label || id)}<span class="group-count"><code>${escapeHtml(id)}</code></span></h3>`
       + '<div class="workflow-form">'
       + `<label>이름<input id="item-type-edit-label" value="${escapeHtml(entry.label || '')}" placeholder="${escapeHtml(id)}"></label>`
       + `<label>설명<input id="item-type-edit-description" value="${escapeHtml(entry.description || '')}" placeholder="이 유형이 언제 쓰이는지"></label>`
       + `<label class="workflow-check"><input type="checkbox" id="item-type-edit-disabled"${entry.disabled ? ' checked' : ''}>사용 안 함 — 새 항목이 이 유형을 고를 수 없게 합니다</label>`
+      + '</div>'
+      + renderConstraintForms(draft, catalog)
       + `<div class="decision-actions"><button type="button" id="item-type-save" class="primary"${itemTypeEdit.busy ? ' disabled' : ''}>${itemTypeEdit.busy ? '저장 중…' : '유형 저장'}</button></div>`
       + (itemTypeEdit.decisionId ? `<p class="approval-note">계약 변경 결정 <code>${escapeHtml(itemTypeEdit.decisionId)}</code>이 답을 기다립니다. 답하면 이 저장을 다시 밉니다. <button type="button" data-settings-section="decision-settings">사람 결정 열기</button></p>` : '')
-      + (ownEntry.constraints || Object.keys(ownEntry).length ? '' : '<p class="approval-note">이 층은 아직 이 유형에 아무것도 적지 않았습니다. 저장하면 고친 칸만 이 프로젝트 층에 적힙니다.</p>')
-      + '</div>'
-      + `<h4 class="approval-heading">제약</h4><div class="presentation-rows">${rows}</div>`
-      + '<p class="approval-note">제약 다섯 종의 편집 폼은 아직 없습니다 — <code>board.json</code>의 <code>constraints</code>를 고치면 여기 바로 섭니다.</p>'
       + '</section>';
+  } else {
+    itemTypeEdit.constraintsFor = null;
   }
 
   const addForm = '<div class="workflow-form workflow-unit-add">'
