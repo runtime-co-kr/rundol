@@ -3700,6 +3700,9 @@ function seedWorkflowDraft() {
     for (const [id, node] of Object.entries(draft.nodes)) {
       if (node && node.disabled === true) delete draft.nodes[id];
     }
+    for (const [name, unit] of Object.entries(draft.executionUnits)) {
+      if (unit && unit.disabled === true) delete draft.executionUnits[name];
+    }
   }
   if (!declared) {
     // 내장 흐름이 서 있는 프로젝트다. 첫 저장은 내장을 설정으로 옮겨 적는 일이므로
@@ -3791,7 +3794,14 @@ function serializeWorkflowDraft() {
     if (!nodes[id]) nodes[id] = { disabled: true };
   }
   entry.nodes = nodes;
-  if (draft.executionUnits && Object.keys(draft.executionUnits).length) entry.executionUnits = workflowCopy(draft.executionUnits);
+  // 노드와 같은 규칙이다. 이 층 아래가 선언한 단위를 초안이 없앴으면 disabled로 적는다 —
+  // 그냥 빼면 아래 층의 선언이 그대로 살아 지운 것이 지워지지 않는다.
+  const units = {};
+  for (const [name, unit] of Object.entries(draft.executionUnits || {})) units[name] = workflowCopy(unit);
+  for (const name of Object.keys((underEntry && underEntry.executionUnits) || {})) {
+    if (!units[name]) units[name] = { disabled: true };
+  }
+  if (Object.keys(units).length) entry.executionUnits = units;
   if (draft.transitions !== null && draft.transitions !== undefined) {
     entry.transitions = draft.transitions.map((item) => {
       const out = {};
@@ -4065,14 +4075,14 @@ function renderDecisionSettings() {
 
 function renderWorkflowSettings(force) {
   if (!el('workflow-settings')) {
-    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header class="section-heading"><div><h2>워크플로</h2><p>노드와 전환이 <b>무엇이 허용되는지</b>를 정합니다. 상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 그림이나 목록에서 골라 곁에서 고치면 초안에 쌓이고, <b>워크플로 업데이트</b>가 그 초안을 고른 층의 <code>workflows.json</code>에 씁니다. 흐름 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 아래 <b>사람 결정</b>에서 답합니다. 커밋은 <code>rdl save</code>가 맡습니다.</p></div><div class="page-actions" id="workflow-toolbar"></div></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-diagram"></div><div id="workflow-inspector" class="workflow-inspector"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
+    el('settings-panels').insertAdjacentHTML('beforeend', '<section id="workflow-settings" class="settings-panel"><header class="section-heading"><div><h2>워크플로</h2><p>노드와 전환이 <b>무엇이 허용되는지</b>를 정합니다. 상태 이름은 이 프로젝트가 정의하는 값이고, 코드가 보는 것은 그 이름이 매핑된 스텝뿐입니다. 그림이나 목록에서 골라 곁에서 고치면 초안에 쌓이고, <b>워크플로 업데이트</b>가 그 초안을 고른 층의 <code>workflows.json</code>에 씁니다. 흐름 정의는 표시가 아니라 정책이라 저장이 계약 변경 결정을 요구하며, 그 결정은 아래 <b>사람 결정</b>에서 답합니다. 커밋은 <code>rdl save</code>가 맡습니다.</p></div><div class="page-actions" id="workflow-toolbar"></div></header><div class="settings-body"><div id="workflow-current" class="presentation-source"></div><div id="workflow-diagram"></div><div id="workflow-inspector" class="workflow-inspector"></div><div id="workflow-nodes"></div><div id="workflow-transitions"></div><div id="workflow-units"></div><div id="workflow-layers"></div><div id="workflow-scope"></div></div></section>');
     bindWorkflowEditor();
   }
   const base = state.snapshot && state.snapshot.workflow;
   if (!base || !base.nodes) {
     // 빈 화면 대신 무엇이 없는지 말한다. 빈 화면은 흐름이 없다는 뜻으로 읽힌다.
     el('workflow-current').innerHTML = '<p class="empty-state">이 Board 서버는 워크플로를 아직 싣지 않습니다. 서버를 다시 시작하세요.</p>';
-    for (const host of ['workflow-toolbar', 'workflow-diagram', 'workflow-inspector', 'workflow-nodes', 'workflow-transitions', 'workflow-layers', 'workflow-scope']) el(host).innerHTML = '';
+    for (const host of ['workflow-toolbar', 'workflow-diagram', 'workflow-inspector', 'workflow-nodes', 'workflow-transitions', 'workflow-units', 'workflow-layers', 'workflow-scope']) el(host).innerHTML = '';
     return;
   }
   if (!workflowEdit.loaded && !workflowEdit.loading) loadWorkflowEditor();
@@ -4155,6 +4165,8 @@ function renderWorkflowSettings(force) {
     }).join('')}</div>`;
   }
 
+  renderWorkflowUnits(view);
+
   const workflowSources = (view.sources && view.sources.workflows) || {};
   const bindingSources = ((view.sources && view.sources.bindings) || {})[view.targetKind] || null;
   const bindings = view.bindings || {};
@@ -4184,8 +4196,8 @@ function renderWorkflowSettings(force) {
   // 못 하는 것을 말하지 않는 화면은 사람이 되는 줄 알고 시도한다.
   el('workflow-scope').innerHTML = '<h3 class="approval-heading">이 화면이 하는 것과 안 하는 것</h3>'
     + '<p class="approval-note">이 판은 <b>이 프로젝트의 기본 배정</b> 하나를 그립니다. 유형마다 흐름이 갈리는 프로젝트에서 "이 태스크는 어느 흐름인가"는 태스크마다 판정 엔드포인트가 답하며, 그 답을 여기서 미리 그리면 같은 물음에 두 답이 생깁니다.</p>'
-    + '<div class="split-note"><div class="note-block"><h4>여기서 바꿉니다</h4><ul><li>노드 추가·삭제와 이름(라벨)·스텝·완료 유효성·담당자 필요</li><li>전환 추가·삭제와 출발·도착·제목</li><li>사람 승인 게이트를 걸고 푸는 일</li><li>고친 것을 계약 변경 결정을 지나 저장</li></ul></div>'
-    + '<div class="note-block absent"><h4>여기서 바꾸지 않습니다</h4><ul><li>노드 식별자 변경 — 태스크가 그 값 위에 앉아 있습니다</li><li>검증·입력·수행 슬롯 배선과 실행 단위 정의</li><li>유형별 흐름 배정</li></ul></div></div>';
+    + '<div class="split-note"><div class="note-block"><h4>여기서 바꿉니다</h4><ul><li>노드 추가·삭제와 이름(라벨)·스텝·완료 유효성·담당자 필요</li><li>전환 추가·삭제와 출발·도착·제목</li><li>사람 승인 게이트를 걸고 푸는 일</li><li>검증·입력·수행 슬롯에 실행 단위를 걸고 푸는 배선</li><li>Client·명령·어댑터 실행 단위의 선언과 삭제</li><li>고친 것을 계약 변경 결정을 지나 저장</li></ul></div>'
+    + '<div class="note-block absent"><h4>여기서 바꾸지 않습니다</h4><ul><li>노드 식별자 변경 — 태스크가 그 값 위에 앉아 있습니다</li><li>게이트(검증) 단위의 소스×방법 선언 — <code>workflows.json</code>이 갖습니다</li><li>유형별 흐름 배정</li></ul></div></div>';
 }
 
 function renderWorkflowToolbar() {
@@ -4245,8 +4257,28 @@ function renderWorkflowInspector(view) {
   const nodeOptions = (chosen, withAll) => (withAll ? [`<option value="(ALL)"${chosen === '(ALL)' ? ' selected' : ''}>모든 노드</option>`] : [])
     .concat(Object.keys(draft.nodes).map((id) => `<option value="${escapeHtml(id)}"${chosen === id ? ' selected' : ''}>${escapeHtml((draft.nodes[id] && draft.nodes[id].label) || taskStatusLabel(id))} (${escapeHtml(id)})</option>`)).join('');
   const approval = Boolean(item.approval && item.approval.human);
-  const slotChips = ['validation', 'input', 'execution'].map((slot) => (Array.isArray(item[slot]) ? item[slot] : [])
-    .map((name) => `<span class="chip"><b>${escapeHtml(TRANSITION_SLOT_LABELS[slot] || slot)}</b> ${escapeHtml(name)}</span>`).join('')).join('');
+  // 슬롯 배선. 어느 슬롯이 어느 종류를 무는지는 스냅숏의 표가 답한다 — 화면에 다시
+  // 적으면 어휘가 표를 바꾸는 날 화면만 옛 답을 들고 남는다.
+  const slotTable = view.slotUnitKinds || null;
+  let slotsHtml;
+  if (!slotTable) {
+    slotsHtml = '<p class="approval-note">이 Board 서버는 슬롯 표를 아직 싣지 않습니다. 서버를 다시 시작하면 배선을 편집할 수 있습니다.</p>';
+  } else {
+    slotsHtml = '<h4 class="approval-heading">부르는 것</h4>'
+      + '<p class="approval-note">검증은 항목만 보고 그 자리에서 끝나고, 입력·수행·승인은 런을 엽니다. 빈 슬롯은 저장에서 생략됩니다.</p>'
+      + Object.entries(slotTable).map(([slot, kinds]) => {
+        const eligible = Object.entries(draft.executionUnits || {})
+          .filter((entry) => entry[1] && entry[1].disabled !== true && kinds.includes(entry[1].kind));
+        const wired = Array.isArray(item[slot]) ? item[slot] : [];
+        const rows = eligible.length
+          ? eligible.map(([name, unit]) => `<label class="workflow-check"><input type="checkbox" data-workflow-slot="${escapeHtml(slot)}" data-workflow-slot-unit="${escapeHtml(name)}"${wired.includes(name) ? ' checked' : ''}>${escapeHtml(unit.label || name)} <code>${escapeHtml(name)}</code> · ${escapeHtml(UNIT_KIND_LABELS[unit.kind] || unit.kind)}</label>`).join('')
+          : `<p class="guidance-empty">걸 수 있는 단위(${kinds.map((kind) => escapeHtml(UNIT_KIND_LABELS[kind] || kind)).join(' · ')})가 이 흐름에 없습니다. 아래 실행 단위에서 먼저 선언하세요.</p>`;
+        // 선언에서 사라진 이름을 조용히 걷지 않는다. 걷는 것은 데이터를 고치는 일이라
+        // 사람이 하고, 화면은 어긋났다는 사실만 보인다.
+        const stray = wired.filter((name) => !eligible.some((entry) => entry[0] === name));
+        return `<fieldset class="workflow-slot"><legend>${escapeHtml(TRANSITION_SLOT_LABELS[slot] || slot)}</legend>${rows}${stray.length ? `<p class="guidance-empty">선언되지 않은 단위를 가리킵니다: ${stray.map((name) => escapeHtml(name)).join(' · ')}</p>` : ''}</fieldset>`;
+      }).join('');
+  }
   host.innerHTML = '<h3 class="approval-heading">전환</h3>'
     + '<div class="workflow-form">'
     + `<label>제목<input data-workflow-transition-field="title" value="${escapeHtml(item.title || '')}" placeholder="예: 작업 착수"></label>`
@@ -4254,9 +4286,79 @@ function renderWorkflowInspector(view) {
     + `<label>도착<select data-workflow-transition-field="to">${nodeOptions(String(item.to || ''), false)}</select></label>`
     + `<label class="workflow-check"><input type="checkbox" data-workflow-transition-field="approval"${approval ? ' checked' : ''}>사람 승인 게이트</label>`
     + (approval ? `<label>승인 사유<input data-workflow-transition-field="reason" value="${escapeHtml((item.approval && item.approval.reason) || '')}" placeholder="왜 사람이 답해야 하는지"></label>` : '')
-    + (slotChips ? `<div class="chip-row">${slotChips}</div><p class="approval-note">슬롯 배선은 여기서 바꾸지 않습니다 — <code>workflows.json</code>의 executionUnits와 함께 고칩니다. 저장은 걸린 슬롯을 그대로 보존합니다.</p>` : '')
+    + slotsHtml
     + `<div class="decision-actions"><button type="button" class="workflow-danger" data-workflow-delete-transition="${selection.index}">이 전환 삭제</button></div>`
     + '</div>';
+}
+
+// 실행 단위 목록과 선언. 전환이 이름으로 가리키므로 배선보다 먼저 이 목록이 서야 한다.
+function workflowUnitUses(name) {
+  const draft = workflowEdit.draft;
+  const uses = [];
+  if (!draft || !Array.isArray(draft.transitions)) return uses;
+  for (const item of draft.transitions) {
+    for (const slot of ['validation', 'input', 'execution']) {
+      if (Array.isArray(item[slot]) && item[slot].includes(name)) {
+        uses.push(`${item.from === undefined || item.from === null ? '모든 노드' : item.from} → ${item.to}`);
+        break;
+      }
+    }
+  }
+  return uses;
+}
+
+function renderWorkflowUnits(view) {
+  const host = el('workflow-units');
+  if (!host) return;
+  const draft = workflowEdit.draft;
+  if (!draft) { host.innerHTML = ''; return; }
+  const entries = Object.entries(draft.executionUnits || {}).filter((entry) => entry[1] && entry[1].disabled !== true);
+  const rows = entries.length
+    ? entries.map(([name, unit]) => {
+      const uses = workflowUnitUses(name);
+      const detail = [UNIT_KIND_LABELS[unit.kind] || unit.kind];
+      // gate의 몸통은 소스 × 방법 선언이다. 요약만 보이고 정의는 파일이 갖는다.
+      if (unit.kind === 'gate') detail.push(`${unit.source || '?'} × ${unit.method || '?'}`);
+      detail.push(uses.length ? `전환 ${uses.length}곳에서 부름` : '아직 어느 전환도 부르지 않음');
+      return `<div class="presentation-row"><div class="presentation-row-main"><strong>${escapeHtml(unit.label || name)}</strong> <code>${escapeHtml(name)}</code><small>${detail.map((text) => escapeHtml(text)).join(' · ')}</small></div><button type="button" class="workflow-danger" data-workflow-delete-unit="${escapeHtml(name)}">삭제</button></div>`;
+    }).join('')
+    : '<div class="presentation-row"><div class="presentation-row-main"><small>선언된 실행 단위가 없습니다. 전환 슬롯은 여기 선언한 이름을 가리킵니다.</small></div></div>';
+  host.innerHTML = '<h3 class="approval-heading">실행 단위</h3>'
+    + '<p class="approval-note">전환이 이름으로 가리키는 검사·입력·수행의 정의입니다. 한 단위를 여러 전환이 부르므로 한 줄을 고치면 그것을 가리키는 전환이 전부 따라갑니다. <b>게이트</b>(검증) 단위는 소스×방법 선언이라 아직 여기서 만들지 못합니다 — <code>workflows.json</code>의 <code>executionUnits</code>에 선언하면 이 목록과 배선에 바로 섭니다.</p>'
+    + `<div class="presentation-rows">${rows}</div>`
+    + '<div class="workflow-form workflow-unit-add">'
+    + '<label>식별자<input id="workflow-new-unit-id" placeholder="예: deploy"></label>'
+    + '<label>이름<input id="workflow-new-unit-label" placeholder="예: 배포 실행"></label>'
+    + '<label>종류<select id="workflow-new-unit-kind"><option value="client">Client — 입력 슬롯</option><option value="cli">명령 — 수행 슬롯</option><option value="adapter">어댑터 — 수행 슬롯</option></select></label>'
+    + '<div class="decision-actions"><button type="button" id="workflow-new-unit-confirm">단위 추가</button></div></div>';
+}
+
+function confirmWorkflowUnit() {
+  const draft = workflowEdit.draft;
+  if (!draft) return;
+  const id = (el('workflow-new-unit-id').value || '').trim();
+  const label = (el('workflow-new-unit-label').value || '').trim();
+  const kind = el('workflow-new-unit-kind').value;
+  if (!id) return message('식별자를 적으세요. 전환 슬롯이 이 이름을 가리킵니다.', true);
+  if (/\s/u.test(id)) return message('식별자에는 공백을 쓸 수 없습니다.', true);
+  if (draft.executionUnits && draft.executionUnits[id]) return message(`이미 있는 실행 단위입니다: ${id}`, true);
+  if (!draft.executionUnits) draft.executionUnits = {};
+  draft.executionUnits[id] = Object.assign({ kind }, label ? { label } : {});
+  workflowEdit.dirty = true;
+  renderWorkflowSettings(true);
+}
+
+function deleteWorkflowUnit(name) {
+  const draft = workflowEdit.draft;
+  if (!draft || !draft.executionUnits || !draft.executionUnits[name]) return;
+  // 가리키는 전환이 남아 있으면 지우지 않는다. 검사 하나를 잃은 전환은 여전히 갈 곳이
+  // 있어 조용히 살고, 빠졌다는 사실은 아무 신호도 내지 않는다 — 병합기가 거부하는
+  // 것과 같은 선을 화면이 먼저 긋고, 어느 전환이 막는지를 말한다.
+  const uses = workflowUnitUses(name);
+  if (uses.length) return message(`이 단위를 가리키는 전환이 있습니다: ${uses.join(' · ')}. 배선을 먼저 푸세요.`, true);
+  delete draft.executionUnits[name];
+  workflowEdit.dirty = true;
+  renderWorkflowSettings(true);
 }
 
 // 편집 손. 판이 다시 그려져도 살아남게 섹션 뿌리에 한 번만 건다.
@@ -4271,6 +4373,9 @@ function bindWorkflowEditor() {
     if (deleteNode) { deleteWorkflowNode(deleteNode.dataset.workflowDeleteNode); return; }
     const deleteTransition = event.target.closest('[data-workflow-delete-transition]');
     if (deleteTransition) { deleteWorkflowTransition(Number(deleteTransition.dataset.workflowDeleteTransition)); return; }
+    const deleteUnit = event.target.closest('[data-workflow-delete-unit]');
+    if (deleteUnit) { deleteWorkflowUnit(deleteUnit.dataset.workflowDeleteUnit); return; }
+    if (event.target.closest('#workflow-new-unit-confirm')) { confirmWorkflowUnit(); return; }
     if (event.target.closest('#workflow-add-node')) { workflowEdit.addingNode = true; workflowEdit.selection = null; renderWorkflowSettings(true); return; }
     if (event.target.closest('#workflow-new-node-cancel')) { workflowEdit.addingNode = false; renderWorkflowSettings(true); return; }
     if (event.target.closest('#workflow-new-node-confirm')) { confirmWorkflowNode(); return; }
@@ -4290,7 +4395,8 @@ function bindWorkflowEditor() {
   });
   section.addEventListener('change', (event) => {
     if (event.target.id === 'workflow-edit-scope') { workflowEdit.scope = event.target.value; renderWorkflowSettings(true); return; }
-    if (!event.target.closest('[data-workflow-node-field]') && !event.target.closest('[data-workflow-transition-field]')) return;
+    if (!event.target.closest('[data-workflow-node-field]') && !event.target.closest('[data-workflow-transition-field]')
+      && !event.target.closest('[data-workflow-slot]')) return;
     applyWorkflowField(event.target);
     renderWorkflowSettings(true);
   });
@@ -4302,6 +4408,19 @@ function applyWorkflowField(field) {
   if (!draft || !selection) return;
   const nodeField = field.dataset.workflowNodeField;
   const transitionField = field.dataset.workflowTransitionField;
+  // 슬롯 배선. 빈 목록은 저장이 거절하므로("비어 있지 않은 이름 배열") 칸째로 걷는다.
+  if (field.dataset.workflowSlot && selection.kind === 'transition' && Array.isArray(draft.transitions)) {
+    const item = draft.transitions[selection.index];
+    if (!item) return;
+    const slot = field.dataset.workflowSlot;
+    const name = field.dataset.workflowSlotUnit;
+    const list = Array.isArray(item[slot]) ? item[slot].slice() : [];
+    if (field.checked) { if (!list.includes(name)) list.push(name); }
+    else { const at = list.indexOf(name); if (at >= 0) list.splice(at, 1); }
+    if (list.length) item[slot] = list; else delete item[slot];
+    workflowEdit.dirty = true;
+    return;
+  }
   if (nodeField && selection.kind === 'node') {
     const node = draft.nodes[selection.id];
     if (!node) return;

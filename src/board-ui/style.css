@@ -4296,6 +4296,28 @@ dialog label textarea {
 
 .workflow-danger { color: var(--danger-Color); }
 
+/* 슬롯 하나가 한 울타리다. 체크박스가 슬롯 사이로 섞이면 어느 칸에 걸었는지 읽히지 않는다. */
+.workflow-slot {
+  border: 1px solid var(--hairline-BorderColor);
+  border-radius: var(--inner-BorderRadius);
+  padding: var(--spacing-1) var(--spacing-1_5);
+  display: grid;
+  gap: var(--spacing-0_5);
+}
+
+.workflow-slot legend {
+  padding: 0 var(--spacing-0_5);
+  font-size: var(--caption-FontSize);
+  font-weight: 700;
+  color: var(--secondary-TextColor);
+}
+
+.workflow-unit-add {
+  margin-top: var(--spacing-1_5);
+  padding-top: var(--spacing-1_5);
+  border-top: 1px solid var(--hairline-BorderColor);
+}
+
 /* 고를 수 있는 줄. 고른 줄은 인스펙터가 여는 값과 같은 것임을 색으로 잇는다. */
 .workflow-selectable { cursor: pointer; }
 

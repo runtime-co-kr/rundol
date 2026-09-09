@@ -556,6 +556,9 @@ function taskWorkflowView() {
   return {
     targetKind: 'task',
     nodes,
+    // 인스턴스 뷰와 같은 이유로 싣는다. 이 뷰는 설정이 깨졌을 때의 대체라 칸이 다르면
+    // 화면이 "안 실렸다"와 "내장으로 물러섰다"를 가르지 못한다.
+    slotUnitKinds: NAMED_SLOT_KEYS.reduce((table, slot) => Object.assign(table, { [slot]: TRANSITION_SLOT_UNIT_KINDS[slot].slice() }), {}),
     steps: WORKFLOW_STEPS.slice(),
     terminalSteps: TERMINAL_WORKFLOW_STEPS.slice(),
     openSteps: OPEN_WORKFLOW_STEPS.slice(),
@@ -1170,6 +1173,9 @@ function createWorkflow(definition) {
       // 실행 단위도 실린다. 전환이 이름으로 가리키므로 이름만 실어 보내면 화면이 그
       // 이름이 무엇인지 물을 자리가 없다.
       executionUnits: namedUnits,
+      // 어느 슬롯이 어느 종류를 무는가. 화면이 배선을 편집하려면 이 표가 필요하고,
+      // 화면에 다시 적으면 어휘가 표를 바꾸는 날 화면만 옛 답을 들고 남는다.
+      slotUnitKinds: NAMED_SLOT_KEYS.reduce((table, slot) => Object.assign(table, { [slot]: TRANSITION_SLOT_UNIT_KINDS[slot].slice() }), {}),
       transitions: transitions
         ? transitions.map((item) => Object.assign(
           { from: item.from, to: item.to, title: item.title, approval: Boolean(item.approval && item.approval.human) },
