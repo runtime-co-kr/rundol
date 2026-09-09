@@ -2602,6 +2602,21 @@ body.view-settings .page-heading {
   font-weight: 600;
 }
 
+/* 지라 관리자 설정의 정보 구조를 따른다: 도메인 그룹 제목 아래 하위 항목이
+   들여서 선다. 그룹 제목은 링크가 아니라 이름표라 손이 닿지 않는다. */
+.settings-nav-group {
+  margin: var(--spacing-1) 0 0;
+  padding: 0 var(--spacing-1_5);
+  color: var(--secondary-TextColor);
+  font-size: var(--caption-FontSize);
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.settings-nav button.grouped {
+  padding-left: calc(var(--spacing-1_5) * 2);
+}
+
 /* 다섯 묶음을 한 열로 쌓으면 3500px 스크롤이 된다. 목차가 한 번에 하나만 연다.
    열린 패널이 스크롤 상자다. 앞서 이 세 규칙을 아래에서 다시 선언해 두었다가
    같은 속성을 두 번 쓰는 바람에 어느 쪽이 이기는지 읽기 어려웠다. 한곳에 모은다. */
@@ -3355,6 +3370,11 @@ dialog label textarea {
     grid-auto-columns: max-content;
     overflow-x: auto;
   }
+
+  /* 가로로 눕힌 목차에서는 그룹 이름표가 항목 사이에 끼어 열을 깨뜨린다.
+     좁은 화면은 항목 이름만으로 서고, 들여쓰기도 세로 목차의 것이라 되돌린다. */
+  .settings-nav-group { display: none; }
+  .settings-nav button.grouped { padding-left: var(--spacing-1_5); }
 
   .setting-row,
   .contract-row,
