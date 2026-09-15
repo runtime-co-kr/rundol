@@ -23,7 +23,7 @@ const PARALLEL = Object.freeze([
   'board-ui', 'document-roundtrip', 'worker-contract', 'worker-contract-purity',
   'vocabulary', 'surface-leak', 'human-intervention', 'task-link', 'asset',
   'comment', 'assignment', 'approval-mode', 'item-type', 'item-type-migration',
-  'diagnostic-rules', 'run-driver', 'manifest-coverage', 'commit-boundary', 'rule-telemetry',
+  'diagnostic-rules', 'run-driver', 'run-dispatch', 'dispatch-end-to-end', 'manifest-coverage', 'commit-boundary', 'rule-telemetry',
   'migration-map',
   'workflow',
   'workflow-config',

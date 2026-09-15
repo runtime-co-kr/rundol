@@ -1,0 +1,428 @@
+'use strict';
+
+// 자동 전환 큐의 시험. 세 층을 각각 잰다 — 선언(auto가 무엇을 거부하는가),
+// 절차(auto가 무엇을 약속하게 하는가), 큐(누가 후보이고 회전이 무엇을 하는가).
+//
+// 세 층을 한 시험에 섞지 않는 이유는 실패가 어디를 고치라는 말이어야 하기
+// 때문이다. 설정이 틀렸는지, 절차가 약속을 어겼는지, 큐가 잘못 세었는지는
+// 각각 다른 파일의 결함이다.
+
+const assert = require('assert');
+const workflow = require('../src/workflow');
+const config = require('../src/workflow-config');
+const { procedureFromTransition, transitionProcedureName } = require('../src/procedure');
+const { autoCandidates } = require('../src/run-dispatch');
+
+const { normalizeWorkflows, mergeWorkflows } = workflow;
+
+function build(raw) {
+  return mergeWorkflows([normalizeWorkflows(raw, { file: 'workflows.json' })]);
+}
+
+function flowDefinition(overrides) {
+  return Object.assign({
+    targetKind: 'task',
+    nodes: {
+      todo: { step: 'unclaimed' },
+      doing: { step: 'in-progress', requiresOwner: true },
+      done: { step: 'completed', validity: 'valid', requiresOwner: true }
+    },
+    executionUnits: {
+      build: { kind: 'cli', label: '수행' },
+      notify: { kind: 'adapter', label: '알림' },
+      author: { kind: 'client', label: '저작' },
+      'tst-link': { kind: 'gate', source: 'link', method: 'count', linkType: 'TST', min: 1 }
+    },
+    transitions: [
+      { from: 'todo', to: 'doing', execution: ['build'], auto: true },
+      { from: 'doing', to: 'done', execution: ['build'], approval: { human: true } }
+    ]
+  }, overrides || {});
+}
+
+// ── 1. 선언 — auto는 기계 전용 전환에만 선다 ────────────────────────────────
+
+// 성립하는 선언. auto를 적지 않은 전환은 false로 읽힌다 — 없는 것과 끈 것이
+// 같은 값이어야 큐가 "선언되지 않은 전환"을 세지 않는다.
+{
+  const flows = build({ f: flowDefinition() });
+  const auto = flows.f.transitions.find((item) => item.from === 'todo');
+  const manual = flows.f.transitions.find((item) => item.from === 'doing');
+  assert.strictEqual(auto.auto, true, 'auto: true가 전환에 실려야 한다.');
+  assert.strictEqual(manual.auto, false, '적지 않은 전환은 자동이 아니다.');
+}
+
+// 사람 승인이 걸린 전환. 자동으로 열면 열리자마자 사람 앞에 멈춘 런이 쌓인다 —
+// 그것은 큐가 아니라 소음이다.
+assert.throws(
+  () => build({ f: flowDefinition({ transitions: [{ from: 'todo', to: 'doing', execution: ['build'], approval: { human: true }, auto: true }] }) }),
+  /사람 승인이 걸린 전환은 자동으로 열 수 없습니다/u,
+  '승인과 자동은 같은 전환에 설 수 없다.'
+);
+
+// 입력 슬롯이 걸린 전환. 새로 댈 값이 있는 일은 사람이나 에이전트 세션의 것이고,
+// 무인 드라이버는 값을 지어내지 못한다.
+assert.throws(
+  () => build({ f: flowDefinition({ transitions: [{ from: 'todo', to: 'doing', input: ['author'], execution: ['build'], auto: true }] }) }),
+  /입력 슬롯이 걸린 전환은 자동으로 열 수 없습니다/u,
+  '입력과 자동은 같은 전환에 설 수 없다.'
+);
+
+// 수행 슬롯이 없는 전환. 검증만 걸린 전환은 판정이 곧 답이라 열 런이 없다.
+assert.throws(
+  () => build({ f: flowDefinition({ transitions: [{ from: 'todo', to: 'doing', validation: ['tst-link'], auto: true }] }) }),
+  /수행 슬롯이 없는 전환은 자동으로 열 것이 없습니다/u,
+  '열 것이 없는 자동 선언은 적재에서 거부된다.'
+);
+
+// auto: false는 받지 않는다. 승인 칸의 human: true와 같은 규율이다 — 끄는 값을
+// 받으면 "적었는데 꺼져 있다"와 "안 적었다"가 화면에서 갈리지 않는다.
+assert.throws(
+  () => build({ f: flowDefinition({ transitions: [{ from: 'todo', to: 'doing', execution: ['build'], auto: false }] }) }),
+  /auto는 true만 쓸 수 있습니다/u,
+  '자동을 끄는 방법은 칸을 지우는 것이다.'
+);
+
+// ── 2. 절차 — auto는 idempotent 약속이 된다 ────────────────────────────────
+//
+// 실행 단위의 몸통은 procedure.js가 이미 받는 스텝 모양으로 준다. 설정층의 단위
+// 정의(kind만 있는)에 몸통을 실어 주는 일은 전환 슬롯 배선 갈래의 것이고, 이
+// 시험은 몸통이 온 뒤의 약속만 잰다 — auto 전환의 절차는 idempotent로 고정되어
+// 손으로 적은 idempotent 절차와 같은 drive 안전성 검증을 탄다.
+
+const BODY_UNITS = {
+  build: { executor: 'cli', command: 'save', args: ['--project', '{project}', '--run', '{runId}'], retrySafety: { mode: 'converging' } }
+};
+
+function normalizedTransition(overrides) {
+  return Object.assign({
+    from: 'todo', to: 'doing', title: null, approval: null,
+    validation: null, input: null, execution: ['build'], auto: true
+  }, overrides || {});
+}
+
+// auto 전환의 절차는 idempotent: true로 고정된다. 이 고정이 없으면 드라이버가 연
+// 런을 runDrive의 preflight가 거절해, 큐는 아무도 실행할 수 없는 런으로 찬다.
+{
+  const definition = procedureFromTransition(normalizedTransition(), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task', units: BODY_UNITS, floor: null
+  });
+  assert.strictEqual(definition.idempotent, true, 'auto 전환의 절차는 무인 약속을 든다.');
+  assert.strictEqual(definition.targetKind, 'task');
+  assert.deepStrictEqual(definition.steps.map((step) => step.id), ['build', 'apply-transition'], '수행 슬롯의 단위 뒤에 적용 스텝이 선다.');
+  // 적용 스텝의 모양. 런이 완주하면 태스크가 to 노드로 움직인다 — 이것이 없으면
+  // 완주한 런의 태스크가 제자리에 남고, 큐는 그것을 재큐잉하지 않는 정지로 남긴다.
+  const apply = definition.steps[definition.steps.length - 1];
+  assert.strictEqual(apply.executor, 'cli');
+  assert.deepStrictEqual(apply.args, ['set', '{task}', '--project', '{project}', '--status', 'doing'], '적용은 전환의 to 노드로 옮긴다.');
+  assert.deepStrictEqual(apply.retrySafety, { mode: 'converging' }, '같은 상태로 두 번 옮겨도 같은 곳이다.');
+}
+
+// 설정층의 단위(kind로 말하는)가 스텝 모양으로 옮겨진다. 두 어휘가 만나는 자리는
+// 컴파일 하나다 — 설정이 몸통을 실으면 절차가 그것을 실행 모양으로 읽는다.
+{
+  const configUnits = {
+    build: { kind: 'cli', label: '수행', command: 'save', args: ['--project', '{project}'], retrySafety: { mode: 'converging' } }
+  };
+  const definition = procedureFromTransition(normalizedTransition(), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task', units: configUnits, floor: null
+  });
+  const built = definition.steps.find((step) => step.id === 'build');
+  assert.strictEqual(built.executor, 'cli', '종류가 모양으로 옮겨진다.');
+  assert.strictEqual(built.command, 'save');
+  assert.strictEqual(built.label, undefined, '표시는 스텝에 실리지 않는다.');
+  assert.strictEqual(definition.idempotent, true);
+}
+
+// 몸통 없는 cli 단위는 컴파일에서 거부된다. 선언은 몸통 없이도 성립하지만 실행은
+// 실행할 것이 있어야 하고, 그 요구를 판정 시점까지 끌면 치환 오류라는 엉뚱한
+// 이름으로 보고된다.
+assert.throws(
+  () => procedureFromTransition(normalizedTransition(), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: { build: { kind: 'cli', label: '수행' } }, floor: null
+  }),
+  /실행 몸통이 없습니다/u,
+  '몸통 없는 단위는 이름으로 거부된다.'
+);
+
+// 검증 슬롯의 선언형 게이트는 스텝이 되지 않는다. 그 판정은 큐의 후보 판정과 적용
+// 스텝의 저장 게이트가 이미 두 번 묻는다.
+{
+  const definition = procedureFromTransition(normalizedTransition({ validation: ['tst-link'] }), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: Object.assign({ 'tst-link': { kind: 'gate', rule: { source: 'link', method: 'count' } } }, BODY_UNITS), floor: null
+  });
+  assert.deepStrictEqual(definition.steps.map((step) => step.id), ['build', 'apply-transition'], '선언형 게이트는 스텝 목록에 없다.');
+}
+
+// apply-transition은 예약된 이름이다. 같은 이름의 단위가 걸리면 어느 것이 적용인지
+// 갈리므로 컴파일이 거부한다.
+assert.throws(
+  () => procedureFromTransition(normalizedTransition({ execution: ['apply-transition'] }), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: { 'apply-transition': { kind: 'cli', command: 'save', args: [], retrySafety: { mode: 'converging' } } }, floor: null
+  }),
+  /예약된 스텝 이름/u,
+  '예약 이름과 충돌하는 단위는 거부된다.'
+);
+
+// auto가 아니면 약속도 없다. idempotent를 절차 성질로 지어내면 사람이 밟는 전환의
+// 절차까지 무인 검증을 요구하게 된다.
+{
+  const definition = procedureFromTransition(normalizedTransition({ auto: false }), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task', units: BODY_UNITS, floor: null
+  });
+  assert.strictEqual(definition.idempotent, undefined, '자동이 아닌 전환은 약속을 들지 않는다.');
+}
+
+// 약속은 검증을 데려온다. retrySafety 없는 cli 스텝은 손으로 적은 idempotent
+// 절차가 거부되는 그 자리에서 같은 말로 거부된다 — 약속만 하고 검증을 건너뛴
+// 절차는 규율 밖에 남고, 남았다는 사실은 아무 신호도 내지 않는다.
+assert.throws(
+  () => procedureFromTransition(normalizedTransition(), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: { build: { executor: 'cli', command: 'save', args: [] } }, floor: null
+  }),
+  /retrySafety가 필요합니다/u,
+  'auto 절차도 drive 안전성 검증을 탄다.'
+);
+
+// ── 3. 큐 — 누가 후보인가 ──────────────────────────────────────────────────
+
+function candidateConfig(overrides) {
+  const workflows = build({ f: flowDefinition(overrides) });
+  const bindings = config.normalizeBindings({ task: { '*': 'f' } }, workflows, 'workflows.json');
+  return { workflows, bindings };
+}
+
+const AUTO_NAME = transitionProcedureName({ workflow: 'f', from: 'todo', to: 'doing' });
+
+// 자동 전환의 출발 노드에 선 태스크가 후보다. 다른 노드에 선 태스크와 끝난
+// 태스크는 어느 전환 앞에도 서 있지 않다.
+{
+  const candidates = autoCandidates({
+    projectKey: 'memo',
+    config: candidateConfig(),
+    tasks: {
+      'TASK-A': { status: 'todo', kind: 'normal', owner: 'MEMBER-001' },
+      'TASK-B': { status: 'doing', kind: 'normal', owner: 'MEMBER-001' },
+      'TASK-C': { status: 'done', kind: 'normal', owner: 'MEMBER-001' }
+    },
+    existing: []
+  });
+  assert.strictEqual(candidates.length, 1, 'todo에 선 태스크 하나만 후보다.');
+  assert.strictEqual(candidates[0].taskId, 'TASK-A');
+  assert.strictEqual(candidates[0].procedureName, AUTO_NAME, '후보는 자기 절차 이름을 안다 — dedup의 축이다.');
+  assert.strictEqual(candidates[0].workflow, 'f', '출처 워크플로가 실린다.');
+}
+
+// 같은 (태스크, 절차)의 런이 원장에 있으면 다시 열지 않는다. 상태를 묻지 않는
+// 이유가 이 장치의 중심이다 — 열린 런은 이미 큐에 있고, 끝났는데 태스크가 그
+// 자리라면 사람이 봐야 할 정지이지 다시 열 일이 아니다. 원장이 격리 저장소를
+// 겸하므로 프로세스가 죽어도 재큐잉이 없다.
+{
+  const candidates = autoCandidates({
+    projectKey: 'memo',
+    config: candidateConfig(),
+    tasks: { 'TASK-A': { status: 'todo', kind: 'normal', owner: 'MEMBER-001' } },
+    existing: [{ taskId: 'TASK-A', procedureName: AUTO_NAME }]
+  });
+  assert.deepStrictEqual(candidates, [], '원장에 있는 (태스크, 절차)는 다시 열지 않는다.');
+}
+
+// 담당자 규칙도 큐를 거른다. requiresOwner 노드로 가는 자동 전환은 담당자가
+// 실린 태스크에서만 선다 — 큐가 판정을 새로 짓지 않고 judgeTransition을 그대로
+// 쓰기 때문에, 규칙 카탈로그가 늘어도 큐는 저절로 따라간다.
+{
+  const unowned = autoCandidates({
+    projectKey: 'memo', config: candidateConfig(),
+    tasks: { 'TASK-A': { status: 'todo', kind: 'normal' } }, existing: []
+  });
+  assert.deepStrictEqual(unowned, [], '담당자 없는 태스크는 requiresOwner 노드로 자동 전환되지 않는다.');
+}
+
+// 검증 슬롯이 막는 태스크는 후보가 아니다. 판정하지 못한 규칙도 막힘이다 — 못 본
+// 규칙을 통과로 세지 않는 규율이 큐에도 그대로 선다.
+{
+  const gated = candidateConfig({
+    transitions: [{ from: 'todo', to: 'doing', validation: ['tst-link'], execution: ['build'], auto: true }]
+  });
+  const blocked = autoCandidates({
+    projectKey: 'memo', config: gated,
+    tasks: { 'TASK-A': { status: 'todo', kind: 'normal', owner: 'MEMBER-001', links: [] } }, existing: []
+  });
+  assert.deepStrictEqual(blocked, [], 'TST 링크가 없는 태스크는 링크 게이트에 막힌다.');
+  const passing = autoCandidates({
+    projectKey: 'memo', config: gated,
+    tasks: { 'TASK-A': { status: 'todo', kind: 'normal', owner: 'MEMBER-001', links: ['TST-001'] } }, existing: []
+  });
+  assert.strictEqual(passing.length, 1, '게이트를 지난 태스크는 후보다.');
+}
+
+// 내장으로 떨어지는 태스크는 후보가 아니다. 내장에는 전환 목록이 없으므로 자동
+// 선언이 있을 자리도 없다 — 배정 없는 유형이 조용히 큐에 들면 안 된다.
+{
+  const workflows = build({ f: flowDefinition() });
+  const bindings = config.normalizeBindings({ task: { special: 'f' } }, workflows, 'workflows.json');
+  const candidates = autoCandidates({
+    projectKey: 'memo', config: { workflows, bindings },
+    tasks: { 'TASK-A': { status: 'todo', kind: 'normal', owner: 'MEMBER-001' } }, existing: []
+  });
+  assert.deepStrictEqual(candidates, [], '배정되지 않은 유형은 내장을 타고, 내장은 자동이 없다.');
+}
+
+// 순서는 태스크 ID 정렬이다. 회전이 후보 하나를 고르므로 순서가 값이고, 값이면
+// 재현되어야 한다.
+{
+  const candidates = autoCandidates({
+    projectKey: 'memo', config: candidateConfig(),
+    tasks: {
+      'TASK-B': { status: 'todo', kind: 'normal', owner: 'MEMBER-001' },
+      'TASK-A': { status: 'todo', kind: 'normal', owner: 'MEMBER-001' }
+    },
+    existing: []
+  });
+  assert.deepStrictEqual(candidates.map((item) => item.taskId), ['TASK-A', 'TASK-B'], '후보는 태스크 ID 순이다.');
+}
+
+// ── 4. 개시 — 모드의 다섯째 손잡이 ─────────────────────────────────────────
+
+const { MODES } = require('../src/approval-mode');
+const { INITIATION_KINDS } = require('../src/vocabulary');
+const { initiationOf } = require('../src/run-dispatch');
+
+// 모드마다 개시가 하나씩 서고 값은 어휘 안이다. human-only가 none인 것이 이
+// 손잡이의 안전핀이다 — 기본 모드가 human-only이므로, 아무것도 정하지 않은
+// 프로젝트에서 큐는 서지 않는다.
+assert.strictEqual(MODES['human-only'].initiation, 'none', '사람만 모드는 큐가 서지 않는다.');
+assert.strictEqual(MODES['ai-assisted'].initiation, 'proposed', '혼합 모드는 제안이 서고 사람이 수락한다.');
+assert.strictEqual(MODES['ai-first'].initiation, 'auto', '우선 모드는 묻지 않고 연다.');
+assert.strictEqual(MODES['ai-only'].initiation, 'auto', 'AI만 모드도 묻지 않고 연다.');
+for (const definition of Object.values(MODES)) {
+  assert.ok(INITIATION_KINDS.includes(definition.initiation), '개시 값은 어휘 안이어야 한다.');
+}
+
+// 유효 모드의 해석. mode와 floor 중 더 조인 쪽이 이기고, 애매하면 — 없거나
+// 어휘 밖이면 — 조인 쪽(none)으로 읽는다. 오타 하나가 가장 푼 개시로 떨어지는
+// 길을 두지 않는다.
+assert.strictEqual(initiationOf(null), 'none', '모드를 정하지 않은 프로젝트는 기본(human-only)을 탄다.');
+assert.strictEqual(initiationOf({ mode: 'ai-first' }), 'auto');
+assert.strictEqual(initiationOf({ mode: 'ai-assisted' }), 'proposed');
+assert.strictEqual(initiationOf({ mode: 'ai-first', floor: 'ai-assisted' }), 'proposed', '바닥이 더 조이면 바닥이 이긴다.');
+assert.strictEqual(initiationOf({ mode: 'human-only', floor: 'ai-only' }), 'none', '모드가 더 조이면 모드가 이긴다.');
+assert.strictEqual(initiationOf({ mode: '오타' }), 'none', '어휘 밖 모드는 조인 쪽으로 떨어진다.');
+
+// 수락 자격. proposed의 수락은 활성 human 클라이언트만 — run approve와 같은
+// 계약이다. auto는 묻지 않는 개시라 수락 자격도 묻지 않는다.
+{
+  const { assertAcceptAllowed } = require('../src/run-dispatch');
+  const proposed = { initiation: 'proposed' };
+  assert.throws(() => assertAcceptAllowed(proposed, { id: 'a', type: 'agent', status: 'active' }), /human 클라이언트만/u, '에이전트 자격은 거절된다.');
+  assert.throws(() => assertAcceptAllowed(proposed, { id: 'h', type: 'human', status: 'disabled' }), /human 클라이언트만/u, '비활성 클라이언트도 거절된다.');
+  assert.throws(() => assertAcceptAllowed(proposed, undefined), /human 클라이언트만/u, '모르는 클라이언트도 거절된다.');
+  assert.doesNotThrow(() => assertAcceptAllowed(proposed, { id: 'h', type: 'human', status: 'active' }), '활성 human은 수락한다.');
+  assert.doesNotThrow(() => assertAcceptAllowed({ initiation: 'auto' }, { id: 'a', type: 'agent', status: 'active' }), 'auto 후보는 자격을 묻지 않는다.');
+}
+
+// ── 5. 회전 — 몰 것이 없을 때만 열고, 하나만 연다 ──────────────────────────
+
+const { driveRotation } = require('../src/run-driver');
+
+function drivableFold() {
+  return {
+    status: 'running', cursor: 'author', completedSteps: [], attempts: {},
+    cursorStep: { id: 'author', human: false }, owner: 'driver-a'
+  };
+}
+
+function entry(fold) {
+  return { project: { key: 'memo' }, runId: 'RUN-0123456789ABCDEF0123', fold, liveness: { lease: false, lock: false } };
+}
+
+function reader(runs) {
+  return () => ({ workspace: '/ws', layout: null, runs, unreadable: [] });
+}
+
+function candidate(taskId, initiation) {
+  return {
+    project: 'memo', taskId, node: 'todo', workflow: 'f', targetKind: 'task',
+    units: {}, transition: normalizedTransition(), procedureName: AUTO_NAME,
+    initiation: initiation || 'auto'
+  };
+}
+
+(async () => {
+  // 몰 런이 없으면 후보 하나로 런을 연다. 여는 것도 회전 하나에 하나다 — 열기와
+  // 몰기가 섞이지 않아야 회전의 결과가 셋 중 하나로 읽힌다.
+  {
+    const opened = [];
+    const result = await driveRotation('/ws', { clientId: 'driver-a', quarantine: new Map() }, {
+      drive: () => { throw new Error('몰 것이 없어야 한다'); },
+      readRunFolds: reader([]),
+      projectConsents: () => true,
+      dispatchCandidates: () => ({ candidates: [candidate('TASK-P', 'proposed'), candidate('TASK-A'), candidate('TASK-B')] }),
+      openCandidate: (start, item) => { opened.push(item.taskId); return { runId: 'RUN-NEW' }; }
+    });
+    assert.strictEqual(result.drove, false);
+    assert.deepStrictEqual(opened, ['TASK-A'], 'proposed 후보는 건너뛰고 auto 후보 중 첫 하나만 연다 — 제안의 수락은 사람의 것이다.');
+    assert.strictEqual(result.queued.taskId, 'TASK-A');
+    assert.strictEqual(result.queued.runId, 'RUN-NEW');
+  }
+
+  // 동의 없는 프로젝트의 후보는 열지 않는다. auto 선언은 계약층의 것이고 이
+  // 작업공간에서 무인으로 열어도 되는가는 drive.schedulerClientId의 것이다 —
+  // 드라이브와 같은 관문을 지나야 두 행위의 동의가 갈리지 않는다.
+  {
+    const opened = [];
+    const result = await driveRotation('/ws', { clientId: 'driver-a', quarantine: new Map() }, {
+      drive: () => Promise.resolve({ status: 'completed' }),
+      readRunFolds: reader([]),
+      projectConsents: () => false,
+      dispatchCandidates: () => ({ candidates: [candidate('TASK-A')] }),
+      openCandidate: (start, item) => { opened.push(item.taskId); return { runId: 'RUN-NEW' }; }
+    });
+    assert.deepStrictEqual(opened, [], '동의 없는 프로젝트는 열지 않는다.');
+    assert.strictEqual(result.queued, null);
+  }
+
+  // 몰 런이 있으면 큐를 보지 않는다. 열기는 몰기의 준비이므로 이미 준비된 것이
+  // 있으면 그쪽이 먼저다.
+  {
+    let asked = 0;
+    await driveRotation('/ws', { clientId: 'driver-a', quarantine: new Map() }, {
+      drive: () => Promise.resolve({ status: 'completed' }),
+      readRunFolds: reader([entry(drivableFold())]),
+      projectConsents: () => true,
+      dispatchCandidates: () => { asked += 1; return { candidates: [candidate('TASK-A')] }; },
+      openCandidate: () => { throw new Error('열면 안 된다'); }
+    });
+    assert.strictEqual(asked, 0, '몰 런이 있는 회전은 큐를 묻지 않는다.');
+  }
+
+  // 열기가 실패한 후보는 프로세스가 사는 동안 다시 집지 않는다. 원장에 아무것도
+  // 남지 않은 실패라 dedup이 잡지 못하고, 잡지 못하면 회전마다 같은 실패를
+  // 반복한다. 격리와 같은 규율이다 — 저장하지 않고, 재기동이 한 번 더 시도한다.
+  {
+    const quarantine = new Map();
+    let attempts = 0;
+    const deps = {
+      drive: () => Promise.resolve({ status: 'completed' }),
+      readRunFolds: reader([]),
+      projectConsents: () => true,
+      dispatchCandidates: () => ({ candidates: [candidate('TASK-A')] }),
+      openCandidate: () => { attempts += 1; throw new Error('units에 몸통이 없습니다'); }
+    };
+    const first = await driveRotation('/ws', { clientId: 'driver-a', quarantine }, deps);
+    assert.strictEqual(attempts, 1, '1회전은 연다.');
+    assert.match(first.queued.error, /몸통/u, '실패는 회전 결과에 남는다.');
+    await driveRotation('/ws', { clientId: 'driver-a', quarantine }, deps);
+    await driveRotation('/ws', { clientId: 'driver-a', quarantine }, deps);
+    assert.strictEqual(attempts, 1, '2·3회전은 다시 열지 않는다 — 뜨거운 순환이 없다.');
+  }
+
+  console.log('run-dispatch: ok');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

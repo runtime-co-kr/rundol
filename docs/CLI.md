@@ -123,6 +123,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
   rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
+  rdl run dispatch [--project <key>] [--task <TASK-ID> --client-id <id>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -234,6 +235,12 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 **한 번의 진행이 끝나면 원장을 다시 읽어 움직였는지 잽니다.** `run drive`가 돌아왔는데 원장에 아무것도 남지 않는 경로가 여럿 있고, 그런 런은 여전히 `drivable`이라 다음 회전에 다시 뽑힙니다. 대표가 `termination-unsafe`인데 그 사유는 정지 사유 목록에 없어 기록될 수조차 없고, Windows에서 `RUNDOL_ALLOW_WINDOWS_ADAPTER`를 켜지 않으면 그것이 예외가 아니라 기본 경로입니다. 그래서 움직이지 않은 런은 격리하고, 격리된 런은 증거가 달라질 때까지 고르지 않습니다. 사람이 `rdl run resume`을 치거나 설정 표류를 고치면 원장이 움직이고 격리가 스스로 풀립니다 — 백오프도 재시도 상한도 시계도 쓰지 않습니다. 격리는 프로세스 기억이며 저장하지 않습니다.
 
 정지한 런은 건드리지 않고 되살리지도 않습니다. 드라이버는 성공하는 런을 완주시키고 실패한 런을 구조하지 않습니다.
+
+**몰 런이 없는 회전은 자동 전환 큐를 봅니다.** `workflows.json`의 전환에 `auto: true`를 선언하면 그 전환은 기계 전용임을 적재 시점에 검증받고 — 승인 칸이나 입력 슬롯이 걸려 있으면 거부되고, 수행 슬롯이 없어도 거부됩니다 — 그 전환에서 만들어지는 절차는 `idempotent: true`로 고정되어 손으로 적은 idempotent 절차와 같은 drive 안전성 검증을 탑니다. 드라이버는 동의된 프로젝트에서 자동 전환의 출발 노드에 선 항목을 찾아 회전 하나에 런 하나를 엽니다. 전환 판정(`judgeTransition`)이 막는 항목은 후보가 아니고, 같은 (태스크, 절차)의 런이 원장에 하나라도 있으면 다시 열지 않습니다 — 끝난 런이 있는데 항목이 그 노드에 그대로라면 그것은 사람이 봐야 할 정지이지 다시 열 일이 아닙니다. 열기가 실패한 후보는 원장에 아무것도 남지 않으므로 프로세스가 사는 동안 다시 집지 않습니다 — 격리와 같은 규율이며, 재기동이 한 번 더 시도합니다.
+
+**수행 슬롯의 실행 단위는 실행 몸통을 가질 수 있습니다.** cli 단위는 `command`·`args`·`retrySafety`를, adapter 단위는 `instruction`·`retrySafety`를 `workflows.json`에 적습니다. 몸통 없이도 선언은 성립하지만 — 화면과 판정은 종류만으로 답합니다 — 그 단위가 절차로 컴파일되는 순간 몸통이 요구되고, 없으면 단위 이름을 지목하며 거부됩니다. 검증 슬롯의 선언형 게이트는 절차 스텝이 되지 않습니다: 그 판정은 큐의 후보 판정과 적용 스텝의 저장 게이트가 이미 두 번 묻습니다. **대상이 태스크인 전환 절차의 마지막 스텝은 언제나 `apply-transition`입니다** — 런이 완주하면 이 스텝이 항목을 `to` 노드로 옮기고(`task set`, converging), 옮김도 원장의 스텝으로 남습니다. 저장 게이트가 같은 전환 판정을 다시 지나므로 큐잉과 적용 사이에 상태가 바뀌었다면 조용한 덮어쓰기 대신 보이는 정지가 됩니다. `apply-transition`은 예약된 이름이라 같은 이름의 실행 단위는 거부됩니다.
+
+**큐가 어떻게 시작하는가는 승인 모드의 다섯째 손잡이(개시)가 정합니다.** REQ-064의 조합표가 완료 쪽 손잡이 넷에 개시를 더해 다섯이 되며, `human-only`는 `none`(큐가 서지 않고 제안조차 만들지 않음), `ai-assisted`는 `proposed`(후보가 제안으로 서고 사람의 수락이 곧 큐잉), `ai-first`와 `ai-only`는 `auto`(묻지 않고 엶)입니다. 프로젝트의 유효 모드는 `board.json`의 `approval.mode`와 `approval.floor` 중 더 조인 쪽이고, 모드가 없거나 읽을 수 없으면 조인 쪽(`none`)으로 읽습니다. 드라이버는 `auto` 후보만 열고, `proposed` 후보는 `rdl run dispatch`가 목록으로 보이며 `--task <TASK-ID> --client-id <human-id>`의 수락으로 열립니다 — 수락은 활성 human 클라이언트만 받습니다. 수락으로 열리는 런의 소유자는 사람이 아니라 `drive.schedulerClientId`의 기계입니다: human 클라이언트는 실행 명령을 수행할 수 없고 소유자만 런을 몰 수 있으므로, 사람 명의로 열면 아무도 몰지 못하는 런이 됩니다. 사람은 수락하고 기계가 소유하며, 누가 수락했는지는 런의 목표에 남습니다. 그래서 동의는 세 층입니다: 이 전환이 기계 전용인가(`auto` — 계약층), 이 프로젝트가 AI에게 얼마나 맡기나(승인 모드 — 조직), 이 기계가 무인 운행해도 되나(`drive.schedulerClientId` — 머신). 새 설정 키는 없습니다.
 
 몰 것이 없는 회전은 아무것도 출력하지 않습니다. 상주 프로세스가 유휴 회전마다 한 줄씩 쓰면 로그는 곧 읽히지 않습니다. 종료 코드는 인자·기동 실패만 2이고 그 밖에는 0입니다 — 몰 것이 없는 것도, 격리가 생긴 것도, 런이 정지한 것도 드라이버의 실패가 아니며, 드라이버가 아닌 값을 내면 OS 유닛의 재시작 정책이 정상 상태를 고장으로 읽습니다.
 

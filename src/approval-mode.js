@@ -18,36 +18,56 @@
 // rank는 강약 순서다. 사람 게이트 요구를 먼저 보고 그다음 승인 근거의 자율성을 본다.
 // 검증자 수는 순위에 넣지 않는다 — 검증자를 늘리는 것은 조이는 일이고, 모드를 푸는
 // 것과 방향이 반대다.
+// 다섯째 손잡이 — 개시. 완료 쪽 손잡이 넷이 "일이 어떻게 끝나는가"라면 이것은
+// "일이 어떻게 시작되는가"다. 자동 전환 큐(run-dispatch.js)가 이 값으로 분기한다:
+// none은 큐가 서지 않고, proposed는 제안이 서서 사람의 수락이 곧 큐잉이며, auto는
+// 묻지 않고 연다. 값의 목록은 어휘가 갖고 여기는 모드마다 하나를 고를 뿐이다.
 const MODES = Object.freeze({
   'human-only': Object.freeze({
     rank: 0,
     humanGate: 'required',
     policy: Object.freeze({ validators: 0, quorum: 0, requireAdapterDiversity: false }),
     basis: Object.freeze(['read', 'check']),
-    requiresDelegation: false
+    requiresDelegation: false,
+    initiation: 'none'
   }),
   'ai-assisted': Object.freeze({
     rank: 1,
     humanGate: 'required',
     policy: Object.freeze({ validators: 1, quorum: 1, requireAdapterDiversity: false }),
     basis: Object.freeze(['read', 'check', 'verdict']),
-    requiresDelegation: false
+    requiresDelegation: false,
+    initiation: 'proposed'
   }),
   'ai-first': Object.freeze({
     rank: 2,
     humanGate: 'required',
     policy: Object.freeze({ validators: 2, quorum: 2, requireAdapterDiversity: true }),
     basis: Object.freeze(['read', 'check', 'verdict']),
-    requiresDelegation: false
+    requiresDelegation: false,
+    initiation: 'auto'
   }),
   'ai-only': Object.freeze({
     rank: 3,
     humanGate: 'none',
     policy: Object.freeze({ validators: 3, quorum: 2, requireAdapterDiversity: true }),
     basis: Object.freeze(['delegated']),
-    requiresDelegation: true
+    requiresDelegation: true,
+    initiation: 'auto'
   })
 });
+
+// 모드가 어휘를 벗어나지 않는다는 것을 적재 시점에 못박는다. 돌지 않은 시험은
+// 통과한 시험과 구분되지 않으므로 모듈 자신이 지킨다 — workflow.js의 내장 노드
+// 검사와 같은 수법이다.
+{
+  const { INITIATION_KINDS } = require('./vocabulary');
+  for (const [name, definition] of Object.entries(MODES)) {
+    if (!INITIATION_KINDS.includes(definition.initiation)) {
+      throw new Error(`승인 모드가 어휘 밖 개시를 가리킵니다: ${name} → ${definition.initiation}`);
+    }
+  }
+}
 
 const MODE_NAMES = Object.freeze(Object.keys(MODES));
 

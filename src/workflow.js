@@ -135,7 +135,7 @@ const SLOT_KEYS = Object.freeze(TRANSITION_SLOTS.filter((slot) => TRANSITION_SLO
 // 저장소에 `{ human: true }`로 서 있고, 이름 목록으로 수렴시키는 것은 그 저장소를
 // 건드리는 일이라 계약이 "빠진 것이 아니라 뒤처져 있다"고 적어 두고 멈췄다.
 const NAMED_SLOT_KEYS = Object.freeze(SLOT_KEYS.filter((slot) => slot !== 'approval'));
-const TRANSITION_KEYS = Object.freeze(['from', 'to', 'title', 'description'].concat(SLOT_KEYS));
+const TRANSITION_KEYS = Object.freeze(['from', 'to', 'title', 'description', 'auto'].concat(SLOT_KEYS));
 const APPROVAL_KEYS = Object.freeze(['human', 'reason']);
 // 어느 슬롯이 이 종류를 무는가. 어휘의 표를 뒤집은 것이고, 뒤집어 두면 종류가 슬롯에
 // 안 맞을 때 "이 종류는 어느 칸에 적어야 하는가"를 거부 메시지가 말할 수 있다.
@@ -234,7 +234,12 @@ function normalizeUnits(raw, context, at) {
   // 실행 단위가 공통으로 갖는 칸. 나머지 칸은 종류가 정한다 — gate의 몸통은 소스 × 방법
   // 선언이고 그 키 목록은 validation-catalog.js가 든다.
   const commonKeys = ['kind', 'label', 'description', 'disabled'];
-  const extraKeys = { human: ['reason'] };
+  // cli와 adapter는 실행 몸통을 가질 수 있다. 몸통이 없어도 선언은 성립한다 —
+  // 화면과 판정은 종류만으로 답하므로, 몸통은 그 단위가 절차로 컴파일되는 날
+  // 요구되고 그 요구는 컴파일이 말한다. 여기서는 모양만 문다: command는 문자열,
+  // args는 문자열 배열, retrySafety는 객체다. 깊은 검증(재시도 계약의 성립)은
+  // 절차 판정이 이미 갖고 있으므로 다시 적지 않는다.
+  const extraKeys = { human: ['reason'], cli: ['command', 'args', 'retrySafety'], adapter: ['instruction', 'retrySafety'] };
   const units = {};
   const gates = {};
   for (const [name, entry] of Object.entries(raw)) {
@@ -253,6 +258,24 @@ function normalizeUnits(raw, context, at) {
     const unit = { kind: entry.kind, label: entry.label === undefined ? null : String(entry.label) };
     if (entry.kind !== 'gate') {
       unknownKeys(entry, commonKeys.concat(extraKeys[entry.kind] || []), context, where);
+      if (entry.command !== undefined) {
+        if (typeof entry.command !== 'string' || !entry.command.trim()) throw rejectAt(context, `${where}.command`, 'command는 비어 있지 않은 문자열이어야 합니다.');
+        unit.command = entry.command;
+      }
+      if (entry.args !== undefined) {
+        if (!Array.isArray(entry.args) || entry.args.some((value) => typeof value !== 'string')) {
+          throw rejectAt(context, `${where}.args`, 'args는 문자열 배열이어야 합니다.');
+        }
+        unit.args = entry.args.slice();
+      }
+      if (entry.instruction !== undefined) {
+        if (typeof entry.instruction !== 'string' || !entry.instruction.trim()) throw rejectAt(context, `${where}.instruction`, 'instruction은 비어 있지 않은 문자열이어야 합니다.');
+        unit.instruction = entry.instruction;
+      }
+      if (entry.retrySafety !== undefined) {
+        if (!plainObject(entry.retrySafety)) throw rejectAt(context, `${where}.retrySafety`, 'retrySafety는 객체여야 합니다.');
+        unit.retrySafety = entry.retrySafety;
+      }
       units[name] = unit;
       continue;
     }
@@ -328,6 +351,24 @@ function normalizeTransition(raw, nodeIds, units, context, at) {
   }
   const transition = { from, to, title: raw.title === undefined ? null : String(raw.title), approval };
   for (const slot of NAMED_SLOT_KEYS) transition[slot] = normalizeSlot(raw[slot], slot, units, context, at);
+  // 자동 전환. "이 전환은 사람 없이 밟아도 된다"는 계약층의 선언이며, 드라이버가
+  // 이 값을 보고 그 앞에 선 항목의 런을 연다. 선언은 기계 전용일 때만 성립한다 —
+  // 승인은 다른 행위자를 기다리는 일이고 입력은 사람이나 에이전트 세션이 새 값을
+  // 대는 일이므로, 어느 쪽이든 걸린 전환을 자동으로 열면 큐는 열리자마자 멈춘
+  // 런으로 찬다. 그 거부를 적재 시점에 하는 이유는, 판정 시점까지 끌고 가면 설정을
+  // 쓴 사람이 자기가 건 자동이 도는 줄 알기 때문이다.
+  transition.auto = false;
+  if (raw.auto !== undefined) {
+    if (raw.auto !== true) throw rejectAt(context, `${at}.auto`, 'auto는 true만 쓸 수 있습니다. 자동으로 열지 않으려면 칸을 지우세요.');
+    if (approval) throw rejectAt(context, `${at}.auto`, '사람 승인이 걸린 전환은 자동으로 열 수 없습니다. approval이나 auto 중 하나를 지우세요.');
+    if (transition.input && transition.input.length) {
+      throw rejectAt(context, `${at}.auto`, '입력 슬롯이 걸린 전환은 자동으로 열 수 없습니다. 새로 댈 값이 있는 전환은 사람이나 에이전트 세션이 밟습니다.');
+    }
+    if (!transition.execution || !transition.execution.length) {
+      throw rejectAt(context, `${at}.auto`, '수행 슬롯이 없는 전환은 자동으로 열 것이 없습니다. 검증만 걸린 전환은 판정이 곧 답입니다.');
+    }
+    transition.auto = true;
+  }
   return transition;
 }
 
@@ -1173,7 +1214,7 @@ function createWorkflow(definition) {
           NAMED_SLOT_KEYS.reduce((slots, slot) => Object.assign(slots, { [slot]: item[slot] ? item[slot].slice() : null }), {}),
           // 이 전환을 밟으면 런이 열리는가. 목록으로 적지 않고 어휘의 경계에서 계산한다 —
           // 다시 적으면 슬롯이 무는 종류를 바꾸는 날 이 값만 옛 답을 들고 남는다.
-          { opensRun: transitionOpensRun(item) }
+          { opensRun: transitionOpensRun(item), auto: item.auto === true }
         ))
         : null,
       steps: WORKFLOW_STEPS.slice(),

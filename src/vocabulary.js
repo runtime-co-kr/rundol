@@ -174,6 +174,18 @@ const TRAITS = Object.freeze(['ui', 'data', 'api', 'component', 'operations', 's
 /** 승인 모드. approval-mode.js의 MODES 키와 같아야 하며 시험이 그것을 본다. */
 const APPROVAL_MODES = Object.freeze(['human-only', 'ai-assisted', 'ai-first', 'ai-only']);
 
+/**
+ * 개시의 종류. 승인 모드의 다섯째 손잡이가 이 중 하나로 선다 — 완료 쪽 손잡이
+ * 넷이 "일이 어떻게 끝나는가"를 정한다면 이것은 "일이 어떻게 시작되는가"다.
+ *
+ *   none      큐가 서지 않는다. 자동 전환이 선언되어 있어도 이 프로젝트에서는
+ *             제안조차 만들지 않는다.
+ *   proposed  후보가 제안으로 선다. 사람의 수락이 곧 큐잉이며, 수락 전에는 런이
+ *             없다.
+ *   auto      묻지 않고 런을 연다.
+ */
+const INITIATION_KINDS = Object.freeze(['none', 'proposed', 'auto']);
+
 /** 승인 근거의 종류. */
 const BASIS_KINDS = Object.freeze(['read', 'verdict', 'check', 'delegated']);
 
@@ -806,6 +818,7 @@ module.exports = Object.freeze({
   ENFORCEMENTS,
   TRAITS,
   APPROVAL_MODES,
+  INITIATION_KINDS,
   BASIS_KINDS,
   DOCUMENT_TRUST_STATES,
   SUBMISSION_STATES,

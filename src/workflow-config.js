@@ -125,11 +125,23 @@ function loadWorkflows(start, projectKey) {
  * 하나만 흐름을 갖고 싶은 프로젝트가 나머지 열을 적지 않아도 돌아야 한다.
  */
 function workflowFor(config, targetKind, typeId) {
+  const selection = workflowSelection(config, targetKind, typeId);
+  if (!selection) return createWorkflow({ nodes: TASK_NODES, transitions: null, targetKind: 'task' });
+  return createWorkflow(selection.definition);
+}
+
+/**
+ * 같은 물음의 이름 붙은 답. 인스턴스는 판정에 충분하지만 전환에서 절차를 만들 때는
+ * 출처(어느 워크플로였나)가 절차 이름에 들어가므로, 그 자리는 id와 정의를 함께 받아야
+ * 한다. 내장으로 떨어지는 경우는 null이다 — 내장에는 전환 목록이 없으므로 자동으로
+ * 열 것도 없고, 이름을 지어내면 어느 설정에도 없는 출처가 원장에 남는다.
+ */
+function workflowSelection(config, targetKind, typeId) {
   const table = (config && config.bindings && config.bindings[targetKind]) || {};
   const id = table[typeId === undefined || typeId === null ? '' : String(typeId)] || table[BINDING_FALLBACK] || null;
   const definition = id && config.workflows ? config.workflows[id] : null;
-  if (!definition) return createWorkflow({ nodes: TASK_NODES, transitions: null, targetKind: 'task' });
-  return createWorkflow(definition);
+  if (!definition || definition.disabled === true) return null;
+  return { id, definition };
 }
 
 // ── 쓰기 ────────────────────────────────────────────────────────────────
@@ -207,6 +219,6 @@ function saveWorkflows(start, projectKey, scope, input, options) {
 }
 
 module.exports = {
-  FILE_NAME, SURFACE, BINDING_FALLBACK, readJson, normalizeBindings, loadWorkflows, workflowFor,
+  FILE_NAME, SURFACE, BINDING_FALLBACK, readJson, normalizeBindings, loadWorkflows, workflowFor, workflowSelection,
   workflowsFile, workflowsSavePlan, saveWorkflows
 };

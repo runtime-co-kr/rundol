@@ -14,6 +14,7 @@
 
 const { readRunFolds, classifyRun, progressWitness } = require('./run-pending');
 const { loadHarnessSettings } = require('./harness-settings');
+const runDispatch = require('./run-dispatch');
 
 /**
  * 1관문 — 프로젝트 동의. 이것은 fold 판정이 **아니다**.
@@ -93,7 +94,39 @@ async function driveRotation(start, options, dependencies) {
   }
 
   if (!chosen) {
-    return { workspace: read.workspace, drove: false, skipped, unreadable: read.unreadable, quarantineSize: quarantine.size };
+    // 몰 런이 없으면 큐를 본다. 자동 전환(workflows.json의 auto) 앞에 선 태스크의
+    // 런을 열되, 회전 하나가 후보 하나만 연다 — 여는 것도 순차다. 다음 회전이 그
+    // 런을 drivable로 집으므로 열기와 몰기가 한 회전에 섞이지 않고, 섞이지 않아야
+    // 회전의 결과가 "몰았다 · 열었다 · 아무것도 없었다" 셋 중 하나로 읽힌다.
+    //
+    // 동의는 드라이브와 같은 관문이다. auto 선언은 계약층이 갖지만 이 작업공간에서
+    // 무인으로 열어도 되는가는 drive.schedulerClientId가 답하고, 열기는 몰기의
+    // 준비이므로 두 행위의 동의가 갈릴 이유가 없다.
+    const dispatch = deps.dispatchCandidates || runDispatch.dispatchCandidates;
+    const open = deps.openCandidate || runDispatch.openCandidate;
+    const found = dispatch(start, settings.project ? { project: settings.project } : {});
+    let queued = null;
+    for (const candidate of found.candidates) {
+      // 개시가 auto인 후보만 연다. proposed는 사람의 수락이 곧 큐잉이라 드라이버의
+      // 것이 아니고, 그 표면은 rdl run dispatch가 갖는다. 개시를 모르는 후보를
+      // 여는 쪽으로 떨어뜨리지 않는다 — 애매하면 조인 쪽이다.
+      if (candidate.initiation !== 'auto') continue;
+      if (!consents(start, candidate.project, clientId)) continue;
+      // 열기가 실패한 후보는 프로세스가 사는 동안 다시 집지 않는다. 원장에 아무것도
+      // 남지 않은 실패라 dedup이 잡지 못하고, 잡지 못하면 회전마다 같은 실패를
+      // 반복한다. 격리와 같은 규율이다 — 저장하지 않고, 재기동이 한 번 더 시도한다.
+      const key = `dispatch:${candidate.project}/${candidate.taskId}/${candidate.procedureName}`;
+      if (quarantine.has(key)) continue;
+      try {
+        const created = open(start, candidate, { clientId });
+        queued = { project: candidate.project, taskId: candidate.taskId, runId: created && created.runId || null, procedure: candidate.procedureName };
+      } catch (error) {
+        quarantine.set(key, 'open-failed');
+        queued = { project: candidate.project, taskId: candidate.taskId, runId: null, procedure: candidate.procedureName, error: error.message };
+      }
+      break;
+    }
+    return { workspace: read.workspace, drove: false, queued, skipped, unreadable: read.unreadable, quarantineSize: quarantine.size };
   }
 
   const { entry, witness } = chosen;
