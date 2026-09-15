@@ -1435,7 +1435,14 @@ async function main() {
       if (!candidate) throw new Error(`지금 후보가 아닙니다: ${options.task}. rdl run dispatch로 후보를 확인하세요 — 판정에 막혔거나, 이미 런이 있거나, 자동 전환 앞에 서 있지 않습니다.`);
       // proposed의 수락 자격은 판정 모듈이 갖는다. 에이전트 자격은 여기서 거절된다.
       dispatchModule.assertAcceptAllowed(candidate, listClients(options.root).clients.find((entry) => entry.id === options.clientId));
-      printOperation(dispatchModule.openCandidate(options.root, candidate, { clientId: options.clientId, requestId: options.requestId }), options.json);
+      // 런은 기계 명의로 열린다. human 클라이언트는 실행 명령을 수행할 수 없고
+      // 소유자만 런을 몰 수 있으므로(LAW-1), 사람 명의로 열면 그 런은 아무도 몰지
+      // 못한다 — 사람은 수락하고, 무인 운행에 동의된 기계가 소유한다. 그 기계가
+      // 누구인지는 이미 답이 있다: drive.schedulerClientId.
+      const { loadHarnessSettings } = require('../src/harness-settings');
+      const runner = loadHarnessSettings(options.root, { project: candidate.project }).runtimeResolved.drive.schedulerClientId;
+      if (!runner) throw new Error('drive.schedulerClientId가 설정되지 않았습니다. 수락된 제안을 몰 기계가 없으므로 열지 않습니다.');
+      printOperation(dispatchModule.openCandidate(options.root, candidate, { clientId: runner, acceptedBy: options.clientId, requestId: options.requestId }), options.json);
     }
     else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);

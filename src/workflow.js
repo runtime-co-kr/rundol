@@ -234,7 +234,12 @@ function normalizeUnits(raw, context, at) {
   // 실행 단위가 공통으로 갖는 칸. 나머지 칸은 종류가 정한다 — gate의 몸통은 소스 × 방법
   // 선언이고 그 키 목록은 validation-catalog.js가 든다.
   const commonKeys = ['kind', 'label', 'description', 'disabled'];
-  const extraKeys = { human: ['reason'] };
+  // cli와 adapter는 실행 몸통을 가질 수 있다. 몸통이 없어도 선언은 성립한다 —
+  // 화면과 판정은 종류만으로 답하므로, 몸통은 그 단위가 절차로 컴파일되는 날
+  // 요구되고 그 요구는 컴파일이 말한다. 여기서는 모양만 문다: command는 문자열,
+  // args는 문자열 배열, retrySafety는 객체다. 깊은 검증(재시도 계약의 성립)은
+  // 절차 판정이 이미 갖고 있으므로 다시 적지 않는다.
+  const extraKeys = { human: ['reason'], cli: ['command', 'args', 'retrySafety'], adapter: ['instruction', 'retrySafety'] };
   const units = {};
   const gates = {};
   for (const [name, entry] of Object.entries(raw)) {
@@ -253,6 +258,24 @@ function normalizeUnits(raw, context, at) {
     const unit = { kind: entry.kind, label: entry.label === undefined ? null : String(entry.label) };
     if (entry.kind !== 'gate') {
       unknownKeys(entry, commonKeys.concat(extraKeys[entry.kind] || []), context, where);
+      if (entry.command !== undefined) {
+        if (typeof entry.command !== 'string' || !entry.command.trim()) throw rejectAt(context, `${where}.command`, 'command는 비어 있지 않은 문자열이어야 합니다.');
+        unit.command = entry.command;
+      }
+      if (entry.args !== undefined) {
+        if (!Array.isArray(entry.args) || entry.args.some((value) => typeof value !== 'string')) {
+          throw rejectAt(context, `${where}.args`, 'args는 문자열 배열이어야 합니다.');
+        }
+        unit.args = entry.args.slice();
+      }
+      if (entry.instruction !== undefined) {
+        if (typeof entry.instruction !== 'string' || !entry.instruction.trim()) throw rejectAt(context, `${where}.instruction`, 'instruction은 비어 있지 않은 문자열이어야 합니다.');
+        unit.instruction = entry.instruction;
+      }
+      if (entry.retrySafety !== undefined) {
+        if (!plainObject(entry.retrySafety)) throw rejectAt(context, `${where}.retrySafety`, 'retrySafety는 객체여야 합니다.');
+        unit.retrySafety = entry.retrySafety;
+      }
       units[name] = unit;
       continue;
     }

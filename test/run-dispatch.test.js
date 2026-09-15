@@ -109,8 +109,63 @@ function normalizedTransition(overrides) {
   });
   assert.strictEqual(definition.idempotent, true, 'auto 전환의 절차는 무인 약속을 든다.');
   assert.strictEqual(definition.targetKind, 'task');
-  assert.deepStrictEqual(definition.steps.map((step) => step.id), ['build'], '수행 슬롯의 단위가 스텝이 된다.');
+  assert.deepStrictEqual(definition.steps.map((step) => step.id), ['build', 'apply-transition'], '수행 슬롯의 단위 뒤에 적용 스텝이 선다.');
+  // 적용 스텝의 모양. 런이 완주하면 태스크가 to 노드로 움직인다 — 이것이 없으면
+  // 완주한 런의 태스크가 제자리에 남고, 큐는 그것을 재큐잉하지 않는 정지로 남긴다.
+  const apply = definition.steps[definition.steps.length - 1];
+  assert.strictEqual(apply.executor, 'cli');
+  assert.deepStrictEqual(apply.args, ['set', '{task}', '--project', '{project}', '--status', 'doing'], '적용은 전환의 to 노드로 옮긴다.');
+  assert.deepStrictEqual(apply.retrySafety, { mode: 'converging' }, '같은 상태로 두 번 옮겨도 같은 곳이다.');
 }
+
+// 설정층의 단위(kind로 말하는)가 스텝 모양으로 옮겨진다. 두 어휘가 만나는 자리는
+// 컴파일 하나다 — 설정이 몸통을 실으면 절차가 그것을 실행 모양으로 읽는다.
+{
+  const configUnits = {
+    build: { kind: 'cli', label: '수행', command: 'save', args: ['--project', '{project}'], retrySafety: { mode: 'converging' } }
+  };
+  const definition = procedureFromTransition(normalizedTransition(), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task', units: configUnits, floor: null
+  });
+  const built = definition.steps.find((step) => step.id === 'build');
+  assert.strictEqual(built.executor, 'cli', '종류가 모양으로 옮겨진다.');
+  assert.strictEqual(built.command, 'save');
+  assert.strictEqual(built.label, undefined, '표시는 스텝에 실리지 않는다.');
+  assert.strictEqual(definition.idempotent, true);
+}
+
+// 몸통 없는 cli 단위는 컴파일에서 거부된다. 선언은 몸통 없이도 성립하지만 실행은
+// 실행할 것이 있어야 하고, 그 요구를 판정 시점까지 끌면 치환 오류라는 엉뚱한
+// 이름으로 보고된다.
+assert.throws(
+  () => procedureFromTransition(normalizedTransition(), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: { build: { kind: 'cli', label: '수행' } }, floor: null
+  }),
+  /실행 몸통이 없습니다/u,
+  '몸통 없는 단위는 이름으로 거부된다.'
+);
+
+// 검증 슬롯의 선언형 게이트는 스텝이 되지 않는다. 그 판정은 큐의 후보 판정과 적용
+// 스텝의 저장 게이트가 이미 두 번 묻는다.
+{
+  const definition = procedureFromTransition(normalizedTransition({ validation: ['tst-link'] }), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: Object.assign({ 'tst-link': { kind: 'gate', rule: { source: 'link', method: 'count' } } }, BODY_UNITS), floor: null
+  });
+  assert.deepStrictEqual(definition.steps.map((step) => step.id), ['build', 'apply-transition'], '선언형 게이트는 스텝 목록에 없다.');
+}
+
+// apply-transition은 예약된 이름이다. 같은 이름의 단위가 걸리면 어느 것이 적용인지
+// 갈리므로 컴파일이 거부한다.
+assert.throws(
+  () => procedureFromTransition(normalizedTransition({ execution: ['apply-transition'] }), {
+    source: 'workflows.json', workflow: 'f', targetKind: 'task',
+    units: { 'apply-transition': { kind: 'cli', command: 'save', args: [], retrySafety: { mode: 'converging' } } }, floor: null
+  }),
+  /예약된 스텝 이름/u,
+  '예약 이름과 충돌하는 단위는 거부된다.'
+);
 
 // auto가 아니면 약속도 없다. idempotent를 절차 성질로 지어내면 사람이 밟는 전환의
 // 절차까지 무인 검증을 요구하게 된다.

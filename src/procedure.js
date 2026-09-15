@@ -387,6 +387,16 @@ function validateClosedDriveGate(step, origin) {
 // 되풀이해도 같은 곳에 도착하는 명령의 닫힌 목록. 여기 없는 명령에 converging을
 // 선언하면 거부한다 — 검사할 수 없는 안전 주장을 받지 않는다.
 const CONVERGING_COMMANDS = new Set(['save']);
+// task set은 같은 상태로 두 번 옮겨도 같은 곳에 도착한다 — 전환 적용 스텝이 이것에
+// 기댄다. set 밖의 task 하위 명령(add·comment)은 되풀이가 쌓이므로 들지 않고, 그래서
+// 명령 이름이 아니라 명령 × 첫 인수로 좁힌다.
+function convergingTaskSet(step) {
+  return step.command === 'task' && Array.isArray(step.args) && step.args[0] === 'set';
+}
+
+// 전환 절차의 예약 스텝. 이름이 값이므로 여기서 한 번 선언한다 — 컴파일과 충돌
+// 검사와 시험이 같은 철자를 읽는다.
+const APPLY_STEP_ID = 'apply-transition';
 
 // 커밋을 만들고 그 커밋을 --json으로 답하는 명령의 닫힌 목록. step-output-commit은
 // 이 목록의 스텝만 지목할 수 있다 — 커밋을 만들지 않는 스텝을 가리키면 검증은
@@ -427,7 +437,7 @@ function validateDriveSafety(procedure, source) {
       } else if (step.retrySafety.mode === 'converging') {
         if (canonicalJson(keys) !== canonicalJson(['mode'])) throw new Error(`${origin}: ${step.id}.retrySafety converging에는 mode만 허용됩니다.`);
         if (step.executor !== 'cli') throw new Error(`${origin}: ${step.id} converging은 cli 스텝에만 쓸 수 있습니다.`);
-        if (!CONVERGING_COMMANDS.has(step.command)) throw new Error(`${origin}: ${step.id} converging 허용 목록에 없는 명령입니다: ${step.command || '(없음)'}`);
+        if (!CONVERGING_COMMANDS.has(step.command) && !convergingTaskSet(step)) throw new Error(`${origin}: ${step.id} converging 허용 목록에 없는 명령입니다: ${step.command || '(없음)'}`);
         if (operationPlaceholderCount(step) !== 0) throw new Error(`${origin}: ${step.id} converging 스텝은 {operationId}를 쓰지 않습니다.`);
       } else throw new Error(`${origin}: ${step.id}.retrySafety.mode은 operation-id, gate-recheck 또는 converging이어야 합니다.`);
     }
@@ -795,6 +805,44 @@ function transitionOpensRun(transition, source) {
  * 스텝 ID는 실행 단위의 이름이다. 따로 지으면 워크플로가 부르는 이름과 원장이 남기는
  * 이름이 갈리고, 갈리면 "이 스텝이 무엇이었나"를 사람이 외운 대응표로 답하게 된다.
  */
+// 스텝 모양을 이미 갖춘 정의인가. 갖췄으면 그대로 절차에 들고, 아니면 설정층의
+// 종류 어휘를 스텝 모양으로 옮긴다.
+function stepShaped(definition) {
+  return definition.human === true || Boolean(definition.gate) || definition.executor !== undefined || Boolean(definition.adapter);
+}
+
+/**
+ * 설정층의 단위는 종류(kind)로 말하고 절차는 모양(executor)으로 읽는다. 두 어휘가
+ * 만나는 자리는 여기 하나다 — 두 곳에 두면 설정에 적은 종류와 절차가 아는 종류가
+ * 갈릴 자리가 하나 더 생긴다. label은 표시이므로 스텝에 싣지 않는다.
+ *
+ * 몸통 없는 cli 단위는 여기서 거부된다. 선언은 몸통 없이도 성립하지만(화면과
+ * 판정은 종류만으로 답한다) 컴파일은 실행할 것이 있어야 하고, 그 요구를 판정
+ * 시점까지 끌고 가면 실패가 치환 오류 같은 엉뚱한 이름으로 보고된다.
+ */
+function unitStepBody(definition, name, origin) {
+  if (stepShaped(definition)) return definition;
+  if (definition.kind === 'cli') {
+    if (typeof definition.command !== 'string' || !definition.command.trim()) {
+      throw new Error(`${origin}: ${name} 단위에 실행 몸통이 없습니다. cli 단위가 절차로 컴파일되려면 command가 필요합니다.`);
+    }
+    const body = { executor: 'cli', command: definition.command, args: (definition.args || []).slice() };
+    if (definition.retrySafety !== undefined) body.retrySafety = definition.retrySafety;
+    return body;
+  }
+  if (definition.kind === 'adapter') {
+    const body = { executor: 'adapter' };
+    if (definition.instruction !== undefined) body.instruction = definition.instruction;
+    if (definition.retrySafety !== undefined) body.retrySafety = definition.retrySafety;
+    return body;
+  }
+  if (definition.kind === 'client') return { executor: 'client' };
+  // 선언형 게이트는 스텝이 되지 않는다. 전환 컴파일이 검증 슬롯을 걸러내므로 여기
+  // 닿는 것은 부르는 쪽의 결함이고, 조용히 client로 떨어뜨리면 그 결함이 슬롯
+  // 종류 오류라는 다른 이름으로 보고된다.
+  throw new Error(`${origin}: ${name} 단위(${definition.kind || '(종류 없음)'})는 절차 스텝으로 컴파일되지 않습니다.`);
+}
+
 function stepFromUnit(slot, unitName, units, source) {
   const origin = source || 'workflows.json';
   const name = String(unitName === undefined || unitName === null ? '' : unitName);
@@ -805,7 +853,7 @@ function stepFromUnit(slot, unitName, units, source) {
   // 이름이 곧 ID다. 정의가 자기 ID를 들면 워크플로가 부르는 이름과 원장에 남는 이름이
   // 갈리고, 갈린 뒤에는 이름으로 단위를 되짚는 일이 성립하지 않는다.
   if (definition.id !== undefined) throw new Error(`${origin}: 실행 단위는 자기 스텝 ID를 갖지 않습니다. 이름이 곧 ID입니다: ${name}`);
-  const step = Object.assign({ id: name }, definition);
+  const step = Object.assign({ id: name }, unitStepBody(definition, name, origin));
   const kind = stepClass(step);
   const allowed = TRANSITION_SLOT_UNIT_KINDS[slot];
   if (!allowed.includes(kind)) throw new Error(`${origin}: ${slot} 슬롯에는 ${allowed.join(' 또는 ')} 실행 단위만 들 수 있습니다: ${name}는 ${kind}입니다.`);
@@ -855,7 +903,31 @@ function procedureFromTransition(transition, options) {
   const steps = [];
   for (const [slot, value] of slots) {
     if (slot === 'approval') { steps.push(approvalStep(slot, value, source)); continue; }
-    for (const unitName of value) steps.push(stepFromUnit(slot, unitName, context.units, source));
+    for (const unitName of value) {
+      // 검증 슬롯의 선언형 게이트는 스텝이 되지 않는다. 그 판정은 전환을 밟는
+      // 표면(큐의 후보 판정)과 마지막 적용 스텝의 저장 게이트가 이미 두 번 묻고,
+      // 소스 × 방법 선언을 닫힌 read-only 게이트 명령으로 내리는 일은 검증
+      // 판정기 갈래의 것이다 — 그 갈래가 서면 이 조건이 좁아진다.
+      if (slot === 'validation' && !stepShaped((context.units || {})[unitName] || {})) continue;
+      steps.push(stepFromUnit(slot, unitName, context.units, source));
+    }
+  }
+  // 전환의 목적은 항목을 움직이는 것이다. 런이 완주했는데 항목이 제자리면 큐는 그
+  // 태스크를 사람이 봐야 할 정지로 남기므로, 적용이 절차의 마지막 스텝으로 들어간다.
+  // 스텝이므로 원장에 남고, 사람이 몰든 드라이버가 몰든 같은 문을 지난다. task set은
+  // 저장 게이트에서 같은 전환 판정을 다시 지나므로, 큐잉과 적용 사이에 상태가
+  // 바뀌었다면 여기서 멈춘다 — 조용한 덮어쓰기가 아니라 보이는 정지다.
+  if (targetKind === 'task') {
+    if (steps.some((step) => step.id === APPLY_STEP_ID)) {
+      throw new Error(`${source}: ${APPLY_STEP_ID}은 예약된 스텝 이름입니다. 실행 단위의 이름을 바꾸세요.`);
+    }
+    steps.push({
+      id: APPLY_STEP_ID,
+      executor: 'cli',
+      command: 'task',
+      args: ['set', '{task}', '--project', '{project}', '--status', provenance.to],
+      retrySafety: { mode: 'converging' }
+    });
   }
   const definition = {
     name,
@@ -925,4 +997,4 @@ function substituteArgs(args, context) {
   }));
 }
 
-module.exports = { BUILTIN, ALLOW_DIRECTION, stepClass, opensRun, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS, TRANSITION_PROCEDURE_PREFIX, transitionProcedureName, transitionSlotValues, transitionOpensRun, procedureFromTransition, resolveTransitionProcedures };
+module.exports = { BUILTIN, ALLOW_DIRECTION, APPLY_STEP_ID, stepClass, opensRun, liftToFloor, resolveApprovalFloor, validateAllowOverride, assertAllowWithinFloor, loadProcedures, substituteArgs, validateOverride, validateDriveSafety, validateClosedDriveGate, pinProcedureInstructions, pinProcedureVerificationRevision, COMMIT_PRODUCING_COMMANDS, TRANSITION_PROCEDURE_PREFIX, transitionProcedureName, transitionSlotValues, transitionOpensRun, procedureFromTransition, resolveTransitionProcedures };

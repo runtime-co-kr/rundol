@@ -284,9 +284,10 @@ assert.throws(() => validateOverride(
       { from: 'todo', to: 'doing', validation: ['has-owner'], execution: ['claim'] },
       { workflow: 'task-default', targetKind: 'task', units: taskUnits }
     );
-    // 스텝 순서는 정본의 슬롯 순서다 — 판정이 실행보다 앞선다.
-    assert.deepStrictEqual(definition.steps.map((step) => step.id), ['has-owner', 'claim']);
-    assert.deepStrictEqual(definition.steps.map(stepClass), ['gate', 'cli']);
+    // 스텝 순서는 정본의 슬롯 순서다 — 판정이 실행보다 앞선다. 대상이 태스크인
+    // 전환 절차는 마지막에 적용 스텝을 얻는다: 완주가 곧 노드 이동이다.
+    assert.deepStrictEqual(definition.steps.map((step) => step.id), ['has-owner', 'claim', 'apply-transition']);
+    assert.deepStrictEqual(definition.steps.map(stepClass), ['gate', 'cli', 'cli']);
     // 대상 종류는 워크플로가 준다. 이 자리가 문서만 다루면 태스크 흐름의 전환은 절차를
     // 갖지 못하고, 갖지 못한 전환은 런도 원장도 없이 지나간다.
     assert.strictEqual(definition.targetKind, 'task');
@@ -364,7 +365,7 @@ assert.throws(() => validateOverride(
     assert.strictEqual(resolvedGate.source, '작업공간');
     assert.deepStrictEqual(
       resolvedGate.resolved.steps.map((step) => [step.id, step.human === true, step.reason === undefined ? null : step.reason]),
-      [['claim', false, null], ['approval', true, '릴리스는 되돌릴 수 없다']]
+      [['claim', false, null], ['approval', true, '릴리스는 되돌릴 수 없다'], ['apply-transition', false, null]]
     );
     // 한 층에 같은 전환이 둘이면 어느 것이 절차인지 갈린다. 이긴 쪽이 승인 칸을 안 든
     // 쪽일 수 있으므로 조용히 첫 번째를 쓰지 않는다.
@@ -643,7 +644,7 @@ try {
     assert.deepStrictEqual(transitionStarted.procedure.resolved.transition, { workflow: 'task-default', from: 'doing', to: 'review' });
     assert.deepStrictEqual(
       transitionStarted.procedure.resolved.steps.map((step) => [step.id, step.reason === undefined ? null : step.reason]),
-      [['decide', null], ['approval', '검토는 다른 사람이 연다']]
+      [['decide', null], ['approval', '검토는 다른 사람이 연다'], ['apply-transition', null]]
     );
     // 검증만 걸린 전환으로는 런을 열 수 없다. 열면 그 런은 판정 함수가 이미 답한 것을
     // 다시 묻고, 원장에 남길 것이 없다.
