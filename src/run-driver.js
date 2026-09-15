@@ -107,6 +107,10 @@ async function driveRotation(start, options, dependencies) {
     const found = dispatch(start, settings.project ? { project: settings.project } : {});
     let queued = null;
     for (const candidate of found.candidates) {
+      // 개시가 auto인 후보만 연다. proposed는 사람의 수락이 곧 큐잉이라 드라이버의
+      // 것이 아니고, 그 표면은 rdl run dispatch가 갖는다. 개시를 모르는 후보를
+      // 여는 쪽으로 떨어뜨리지 않는다 — 애매하면 조인 쪽이다.
+      if (candidate.initiation !== 'auto') continue;
       if (!consents(start, candidate.project, clientId)) continue;
       // 열기가 실패한 후보는 프로세스가 사는 동안 다시 집지 않는다. 원장에 아무것도
       // 남지 않은 실패라 dedup이 잡지 못하고, 잡지 못하면 회전마다 같은 실패를

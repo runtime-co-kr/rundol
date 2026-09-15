@@ -231,7 +231,46 @@ const AUTO_NAME = transitionProcedureName({ workflow: 'f', from: 'todo', to: 'do
   assert.deepStrictEqual(candidates.map((item) => item.taskId), ['TASK-A', 'TASK-B'], '후보는 태스크 ID 순이다.');
 }
 
-// ── 4. 회전 — 몰 것이 없을 때만 열고, 하나만 연다 ──────────────────────────
+// ── 4. 개시 — 모드의 다섯째 손잡이 ─────────────────────────────────────────
+
+const { MODES } = require('../src/approval-mode');
+const { INITIATION_KINDS } = require('../src/vocabulary');
+const { initiationOf } = require('../src/run-dispatch');
+
+// 모드마다 개시가 하나씩 서고 값은 어휘 안이다. human-only가 none인 것이 이
+// 손잡이의 안전핀이다 — 기본 모드가 human-only이므로, 아무것도 정하지 않은
+// 프로젝트에서 큐는 서지 않는다.
+assert.strictEqual(MODES['human-only'].initiation, 'none', '사람만 모드는 큐가 서지 않는다.');
+assert.strictEqual(MODES['ai-assisted'].initiation, 'proposed', '혼합 모드는 제안이 서고 사람이 수락한다.');
+assert.strictEqual(MODES['ai-first'].initiation, 'auto', '우선 모드는 묻지 않고 연다.');
+assert.strictEqual(MODES['ai-only'].initiation, 'auto', 'AI만 모드도 묻지 않고 연다.');
+for (const definition of Object.values(MODES)) {
+  assert.ok(INITIATION_KINDS.includes(definition.initiation), '개시 값은 어휘 안이어야 한다.');
+}
+
+// 유효 모드의 해석. mode와 floor 중 더 조인 쪽이 이기고, 애매하면 — 없거나
+// 어휘 밖이면 — 조인 쪽(none)으로 읽는다. 오타 하나가 가장 푼 개시로 떨어지는
+// 길을 두지 않는다.
+assert.strictEqual(initiationOf(null), 'none', '모드를 정하지 않은 프로젝트는 기본(human-only)을 탄다.');
+assert.strictEqual(initiationOf({ mode: 'ai-first' }), 'auto');
+assert.strictEqual(initiationOf({ mode: 'ai-assisted' }), 'proposed');
+assert.strictEqual(initiationOf({ mode: 'ai-first', floor: 'ai-assisted' }), 'proposed', '바닥이 더 조이면 바닥이 이긴다.');
+assert.strictEqual(initiationOf({ mode: 'human-only', floor: 'ai-only' }), 'none', '모드가 더 조이면 모드가 이긴다.');
+assert.strictEqual(initiationOf({ mode: '오타' }), 'none', '어휘 밖 모드는 조인 쪽으로 떨어진다.');
+
+// 수락 자격. proposed의 수락은 활성 human 클라이언트만 — run approve와 같은
+// 계약이다. auto는 묻지 않는 개시라 수락 자격도 묻지 않는다.
+{
+  const { assertAcceptAllowed } = require('../src/run-dispatch');
+  const proposed = { initiation: 'proposed' };
+  assert.throws(() => assertAcceptAllowed(proposed, { id: 'a', type: 'agent', status: 'active' }), /human 클라이언트만/u, '에이전트 자격은 거절된다.');
+  assert.throws(() => assertAcceptAllowed(proposed, { id: 'h', type: 'human', status: 'disabled' }), /human 클라이언트만/u, '비활성 클라이언트도 거절된다.');
+  assert.throws(() => assertAcceptAllowed(proposed, undefined), /human 클라이언트만/u, '모르는 클라이언트도 거절된다.');
+  assert.doesNotThrow(() => assertAcceptAllowed(proposed, { id: 'h', type: 'human', status: 'active' }), '활성 human은 수락한다.');
+  assert.doesNotThrow(() => assertAcceptAllowed({ initiation: 'auto' }, { id: 'a', type: 'agent', status: 'active' }), 'auto 후보는 자격을 묻지 않는다.');
+}
+
+// ── 5. 회전 — 몰 것이 없을 때만 열고, 하나만 연다 ──────────────────────────
 
 const { driveRotation } = require('../src/run-driver');
 
@@ -250,10 +289,11 @@ function reader(runs) {
   return () => ({ workspace: '/ws', layout: null, runs, unreadable: [] });
 }
 
-function candidate(taskId) {
+function candidate(taskId, initiation) {
   return {
     project: 'memo', taskId, node: 'todo', workflow: 'f', targetKind: 'task',
-    units: {}, transition: normalizedTransition(), procedureName: AUTO_NAME
+    units: {}, transition: normalizedTransition(), procedureName: AUTO_NAME,
+    initiation: initiation || 'auto'
   };
 }
 
@@ -266,11 +306,11 @@ function candidate(taskId) {
       drive: () => { throw new Error('몰 것이 없어야 한다'); },
       readRunFolds: reader([]),
       projectConsents: () => true,
-      dispatchCandidates: () => ({ candidates: [candidate('TASK-A'), candidate('TASK-B')] }),
+      dispatchCandidates: () => ({ candidates: [candidate('TASK-P', 'proposed'), candidate('TASK-A'), candidate('TASK-B')] }),
       openCandidate: (start, item) => { opened.push(item.taskId); return { runId: 'RUN-NEW' }; }
     });
     assert.strictEqual(result.drove, false);
-    assert.deepStrictEqual(opened, ['TASK-A'], '후보 둘 중 첫 하나만 연다.');
+    assert.deepStrictEqual(opened, ['TASK-A'], 'proposed 후보는 건너뛰고 auto 후보 중 첫 하나만 연다 — 제안의 수락은 사람의 것이다.');
     assert.strictEqual(result.queued.taskId, 'TASK-A');
     assert.strictEqual(result.queued.runId, 'RUN-NEW');
   }

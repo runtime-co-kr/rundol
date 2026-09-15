@@ -123,6 +123,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
   rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
+  rdl run dispatch [--project <key>] [--task <TASK-ID> --client-id <id>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -235,7 +236,9 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 
 정지한 런은 건드리지 않고 되살리지도 않습니다. 드라이버는 성공하는 런을 완주시키고 실패한 런을 구조하지 않습니다.
 
-**몰 런이 없는 회전은 자동 전환 큐를 봅니다.** `workflows.json`의 전환에 `auto: true`를 선언하면 그 전환은 기계 전용임을 적재 시점에 검증받고 — 승인 칸이나 입력 슬롯이 걸려 있으면 거부되고, 수행 슬롯이 없어도 거부됩니다 — 그 전환에서 만들어지는 절차는 `idempotent: true`로 고정되어 손으로 적은 idempotent 절차와 같은 drive 안전성 검증을 탑니다. 드라이버는 동의된 프로젝트에서 자동 전환의 출발 노드에 선 항목을 찾아 회전 하나에 런 하나를 엽니다. 전환 판정(`judgeTransition`)이 막는 항목은 후보가 아니고, 같은 (태스크, 절차)의 런이 원장에 하나라도 있으면 다시 열지 않습니다 — 끝난 런이 있는데 항목이 그 노드에 그대로라면 그것은 사람이 봐야 할 정지이지 다시 열 일이 아닙니다. "무엇이 자동인가"는 계약층(`workflows.json` — 저장이 결정 게이트를 지납니다)이 답하고 "이 작업공간에서 무인으로 열어도 되는가"는 `drive.schedulerClientId`가 답하므로, 새 설정 키는 여기에도 없습니다. 열기가 실패한 후보는 원장에 아무것도 남지 않으므로 프로세스가 사는 동안 다시 집지 않습니다 — 격리와 같은 규율이며, 재기동이 한 번 더 시도합니다.
+**몰 런이 없는 회전은 자동 전환 큐를 봅니다.** `workflows.json`의 전환에 `auto: true`를 선언하면 그 전환은 기계 전용임을 적재 시점에 검증받고 — 승인 칸이나 입력 슬롯이 걸려 있으면 거부되고, 수행 슬롯이 없어도 거부됩니다 — 그 전환에서 만들어지는 절차는 `idempotent: true`로 고정되어 손으로 적은 idempotent 절차와 같은 drive 안전성 검증을 탑니다. 드라이버는 동의된 프로젝트에서 자동 전환의 출발 노드에 선 항목을 찾아 회전 하나에 런 하나를 엽니다. 전환 판정(`judgeTransition`)이 막는 항목은 후보가 아니고, 같은 (태스크, 절차)의 런이 원장에 하나라도 있으면 다시 열지 않습니다 — 끝난 런이 있는데 항목이 그 노드에 그대로라면 그것은 사람이 봐야 할 정지이지 다시 열 일이 아닙니다. 열기가 실패한 후보는 원장에 아무것도 남지 않으므로 프로세스가 사는 동안 다시 집지 않습니다 — 격리와 같은 규율이며, 재기동이 한 번 더 시도합니다.
+
+**큐가 어떻게 시작하는가는 승인 모드의 다섯째 손잡이(개시)가 정합니다.** REQ-064의 조합표가 완료 쪽 손잡이 넷에 개시를 더해 다섯이 되며, `human-only`는 `none`(큐가 서지 않고 제안조차 만들지 않음), `ai-assisted`는 `proposed`(후보가 제안으로 서고 사람의 수락이 곧 큐잉), `ai-first`와 `ai-only`는 `auto`(묻지 않고 엶)입니다. 프로젝트의 유효 모드는 `board.json`의 `approval.mode`와 `approval.floor` 중 더 조인 쪽이고, 모드가 없거나 읽을 수 없으면 조인 쪽(`none`)으로 읽습니다. 드라이버는 `auto` 후보만 열고, `proposed` 후보는 `rdl run dispatch`가 목록으로 보이며 `--task <TASK-ID> --client-id <human-id>`의 수락으로 열립니다 — 수락은 활성 human 클라이언트만 받습니다. 그래서 동의는 세 층입니다: 이 전환이 기계 전용인가(`auto` — 계약층), 이 프로젝트가 AI에게 얼마나 맡기나(승인 모드 — 조직), 이 기계가 무인 운행해도 되나(`drive.schedulerClientId` — 머신). 새 설정 키는 없습니다.
 
 몰 것이 없는 회전은 아무것도 출력하지 않습니다. 상주 프로세스가 유휴 회전마다 한 줄씩 쓰면 로그는 곧 읽히지 않습니다. 종료 코드는 인자·기동 실패만 2이고 그 밖에는 0입니다 — 몰 것이 없는 것도, 격리가 생긴 것도, 런이 정지한 것도 드라이버의 실패가 아니며, 드라이버가 아닌 값을 내면 OS 유닛의 재시작 정책이 정상 상태를 고장으로 읽습니다.
 

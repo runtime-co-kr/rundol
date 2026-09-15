@@ -215,6 +215,7 @@ Usage:
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
   rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
+  rdl run dispatch [--project <key>] [--task <TASK-ID> --client-id <id>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
   rdl adapter run <name> --project <key> --run <RUN-ID> --step <id> --mode <author|verify> --client-id <id> [--json]
@@ -1422,9 +1423,23 @@ async function main() {
       printDriverRotation(result, options.json);
       return 0;
     }
+    else if (subcommand === 'dispatch') {
+      if (options.positional.length) throw new Error('rdl run dispatch는 위치 인수를 사용하지 않습니다.');
+      const dispatchModule = require('../src/run-dispatch');
+      const found = dispatchModule.dispatchCandidates(options.root, options);
+      // --task가 없으면 목록이다. "지금 누가 후보인가"에 답하는 표면이며, proposed
+      // 개시의 제안이 사람에게 보이는 자리가 바로 이 목록이다.
+      if (!options.task) { printOperation(found, options.json); return 0; }
+      if (!options.clientId) throw new Error('rdl run dispatch --task에는 --client-id <id>가 필요합니다.');
+      const candidate = found.candidates.find((item) => item.taskId === options.task);
+      if (!candidate) throw new Error(`지금 후보가 아닙니다: ${options.task}. rdl run dispatch로 후보를 확인하세요 — 판정에 막혔거나, 이미 런이 있거나, 자동 전환 앞에 서 있지 않습니다.`);
+      // proposed의 수락 자격은 판정 모듈이 갖는다. 에이전트 자격은 여기서 거절된다.
+      dispatchModule.assertAcceptAllowed(candidate, listClients(options.root).clients.find((entry) => entry.id === options.clientId));
+      printOperation(dispatchModule.openCandidate(options.root, candidate, { clientId: options.clientId, requestId: options.requestId }), options.json);
+    }
     else if (subcommand === 'log') printOperation(run.runLog(options.root, requireRun()), options.json);
     else if (subcommand === 'procedures') printOperation(run.listProceduresCommand(options.root, options), options.json);
-    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, pending, driver, log, procedures입니다.');
+    else throw new Error('지원하는 run 하위 명령은 start, next, step, gate, approve, halt, resume, complete, takeover, ownership resolve, requests, request resume, list, pending, driver, dispatch, log, procedures입니다.');
     return 0;
   }
   if (command === 'assignment') {
