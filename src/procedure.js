@@ -868,6 +868,12 @@ function procedureFromTransition(transition, options) {
     transition: provenance,
     steps
   };
+  // auto는 "기계가 무인으로 몰아도 된다"는 저자의 약속이고, 그 약속의 절차 쪽 이름이
+  // idempotent다. 여기서 고정해야 아래 validateDriveSafety가 손으로 적은 idempotent
+  // 절차에 요구하는 것(드라이브 가능한 스텝 종류, retrySafety)을 자동 전환에도 그대로
+  // 요구한다 — 약속만 하고 검증을 건너뛴 절차는 드라이버가 여는 첫날 밤에 preflight에서
+  // 무더기로 거절된다.
+  if (transition.auto === true) definition.idempotent = true;
   const candidate = validateDriveSafety(validateProcedure(pinProcedureInstructions(definition, source)), source);
   for (const step of candidate.steps) assertAllowWithinFloor(name, step, context.floor, source);
   return liftToFloor(candidate, context.floor);

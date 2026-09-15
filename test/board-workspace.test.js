@@ -191,7 +191,7 @@ async function testWorkspaceBoard() {
       // 전환이 무엇을 여는지를 그리는 데 필요한 값이라, 빠지면 화면이 다시 추측한다.
       assert.deepStrictEqual(configured.json.workflow.transitions[0], {
         from: 'todo', to: 'doing', title: '착수', approval: false,
-        validation: null, input: null, execution: null, opensRun: false
+        validation: null, input: null, execution: null, opensRun: false, auto: false
       });
       assert.strictEqual(configured.json.workflow.transitions[2].approval, true, '사람 게이트는 전환에 붙어 와야 합니다.');
       assert.strictEqual(configured.json.workflow.sources.workflows['task-strict'].entry, 'workspace', '위층이 정의한 흐름은 위층의 것으로 표시되어야 합니다.');
