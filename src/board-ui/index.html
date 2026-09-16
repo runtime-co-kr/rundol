@@ -249,6 +249,11 @@
       <div class="dialog-actions"><button type="button" data-dialog-cancel="task-dialog">취소</button><button id="save-task" class="primary" value="default">저장</button></div>
     </form>
   </dialog>
+  <dialog id="shortcut-dialog" aria-labelledby="shortcut-heading">
+    <div class="dialog-heading"><div><p class="eyebrow">KEYBOARD</p><h2 id="shortcut-heading">키보드 단축키</h2></div><button type="button" data-dialog-cancel="shortcut-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>
+    <p class="dialog-hint">입력 칸에 커서가 있는 동안 전역 키는 동작하지 않습니다. 그 동안 사는 것은 Esc와 Cmd/Ctrl+Enter뿐입니다.</p>
+    <table class="shortcut-table"><tbody id="shortcut-rows"></tbody></table>
+  </dialog>
   <dialog id="blocker-dialog" aria-labelledby="blocker-form-heading">
     <form id="blocker-form" method="dialog">
       <div class="dialog-heading"><div><p class="eyebrow">WAITING</p><h2 id="blocker-form-heading">대기 사유</h2></div><button type="button" data-dialog-cancel="blocker-dialog" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25"/></svg></button></div>

@@ -775,9 +775,18 @@ function toggleApproval(id, tab) {
 function selectPanelTab(id, tab) {
   const panel = documentPanel(id);
   panel.tab = PANEL_TABS[tab] ? tab : 'approve';
-  if (panel.tab === 'history') loadDocumentHistory(id);
-  else if (!panel.diffTicket) return void loadApprovalDiff(id, panel.axis);
-  redrawApproval();
+  if (panel.tab === 'history') { loadDocumentHistory(id); redrawApproval(); return; }
+  if (!panel.diffTicket) loadApprovalDiff(id, panel.axis);
+  else redrawApproval();
+  // 검토하러 들어온 사람이 다음에 할 일은 사유를 적는 것이다. 커서를 거기 세워야
+  // 마우스 없이 읽고 · 적고 · Cmd+Enter로 승인하는 한 흐름이 성립한다. 축을 바꾸는
+  // 재그리기에서는 세우지 않는다 — 차분을 훑는 중에 커서를 뺏으면 안 된다.
+  // rAF가 아니라 setTimeout 0인 것은 시험 환경(jsdom) 때문이다 — 재그리기 뒤에
+  // 실행되기만 하면 되는 일이라 프레임에 결박할 이유도 없다.
+  setTimeout(() => {
+    const field = document.querySelector(`form[data-approve-form="${CSS.escape(id)}"] [data-approve-field="reason"]`);
+    if (field) field.focus();
+  }, 0);
 }
 
 // 차분은 스냅숏에 없다. 문서마다 git 이력을 도는 계산이라 폴링에 실으면 보드가 서므로,
@@ -2911,6 +2920,95 @@ document.addEventListener('keydown', (event) => {
   state.docApproval = null;
   redrawApproval();
 });
+// ── 키보드 ────────────────────────────────────────────────────────────────
+//
+// 규칙은 셋이다. 입력 칸에 커서가 있는 동안 전역 키는 죽는다 — 타이핑이
+// 내비게이션으로 새면 안 된다. 그 동안 사는 것은 Esc(위의 두 핸들러)와
+// Cmd/Ctrl+Enter(폼 제출)뿐이다. 대화상자가 열려 있으면 전역 키도 죽는다 —
+// 대화상자의 키는 브라우저와 대화상자 자신의 것이다.
+//
+// 승인 폼의 Cmd/Ctrl+Enter는 승인 제출과 같다. 반려는 단축키를 갖지 않는다 —
+// 기본 단추를 반려로 두지 않은 것과 같은 이유로, 되돌릴 수 없는 "아니오"는
+// 눌러서만 나간다.
+const NAV_SHORTCUTS = { h: 'home', d: 'documents', i: 'review-inbox', t: 'tasks', r: 'runs', s: 'settings' };
+// 줄로 다루는 것들. 전부 button이라 j/k로 포커스만 옮기면 Enter는 브라우저의
+// 것이다 — 선택 상태를 따로 만들면 포커스와 선택이 갈리는 날이 온다.
+const ROW_SELECTOR = '.task-row, .task-card, .document-card, .document-row, .task-next-pick';
+const SHORTCUT_ROWS = [
+  ['Cmd/Ctrl + Enter', '승인 폼·대화상자 폼 제출'],
+  ['j · k', '목록에서 다음·이전 줄로 (Enter로 열기)'],
+  ['c', '새 태스크 (태스크 화면에서)'],
+  ['1 · 2 · 3', '태스크 화면에서 목록 · Board · 의존'],
+  ['[', '왼쪽 탐색 접기·펴기'],
+  [']', '오른쪽 패널 접기·펴기'],
+  ['/', '검색으로 이동'],
+  ['Esc', '열린 판·검색·대화상자 닫기'],
+  ['g 뒤 h·d·i·t·r·s', '홈 · 문서 · 검토 인박스 · 태스크 · 런 · 설정'],
+  ['?', '이 도움말']
+];
+let navChordAt = 0;
+
+function typingIn(target) {
+  return Boolean(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
+function openShortcutHelp() {
+  const dialog = el('shortcut-dialog');
+  el('shortcut-rows').innerHTML = SHORTCUT_ROWS.map(([keys, what]) =>
+    `<tr><td><kbd>${escapeHtml(keys)}</kbd></td><td>${escapeHtml(what)}</td></tr>`).join('');
+  dialog.showModal();
+}
+
+document.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    // 승인 폼과 대화상자 폼만 받는다. 아무 폼이나 받으면 설정처럼 저장이 계약
+    // 변경인 표면까지 단축키 하나로 나가고, 그 표면의 제출은 눌러서 나가야 한다.
+    const form = event.target.closest && event.target.closest('form');
+    if (form && (form.dataset.approveForm !== undefined || form.closest('dialog[open]'))) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+    return;
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (typingIn(event.target)) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (navChordAt && Date.now() - navChordAt < 1500) {
+    navChordAt = 0;
+    if (NAV_SHORTCUTS[event.key]) { event.preventDefault(); setView(NAV_SHORTCUTS[event.key]); }
+    return;
+  }
+  if (event.key === 'g') { navChordAt = Date.now(); return; }
+  if (event.key === 'j' || event.key === 'k') {
+    const rows = Array.from(document.querySelectorAll(ROW_SELECTOR)).filter((row) => row.offsetParent !== null);
+    if (!rows.length) return;
+    event.preventDefault();
+    const held = rows.indexOf(document.activeElement);
+    const next = held === -1
+      ? (event.key === 'j' ? 0 : rows.length - 1)
+      : Math.min(Math.max(held + (event.key === 'j' ? 1 : -1), 0), rows.length - 1);
+    rows[next].focus();
+    rows[next].scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (event.key === 'c') {
+    const create = el('new-task');
+    if (create && create.offsetParent !== null) { event.preventDefault(); create.click(); }
+    return;
+  }
+  // 여닫기는 단추를 대신 누른다. 접기 단추에는 peek 먼저 닫기 같은 규칙이 이미
+  // 있고, 키가 그 규칙을 다시 적으면 단추와 키가 다른 일을 하는 날이 온다.
+  if (event.key === '[') { event.preventDefault(); el('collapse-nav').click(); return; }
+  if (event.key === ']') { event.preventDefault(); el('collapse-context').click(); return; }
+  if (state.view === 'tasks' && (event.key === '1' || event.key === '2' || event.key === '3')) {
+    event.preventDefault();
+    el({ 1: 'task-list-mode', 2: 'task-board-mode', 3: 'task-graph-mode' }[event.key]).click();
+    return;
+  }
+  if (event.key === '/') { event.preventDefault(); el('global-search').focus(); return; }
+  if (event.key === '?') { event.preventDefault(); openShortcutHelp(); }
+});
+
 document.addEventListener('pointerdown', (event) => {
   if (!document.body.classList.contains('peek-open')) return;
   if (event.target.closest('.context-panel') || event.target.closest('[data-task]') || event.target.closest('[data-person]')) return;
@@ -5709,6 +5807,8 @@ function openRunApproval(runId) {
   renderRunApprovers((state.runs && state.runs.approvers) || []);
   renderRunReview();
   el('run-approve-dialog').showModal();
+  // 문서 검토 판과 같은 규칙 — 다음에 할 일이 사유 적기이므로 커서가 거기 선다.
+  el('run-approve-reason').focus();
   loadRunReview(runId);
 }
 
