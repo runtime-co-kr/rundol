@@ -543,6 +543,9 @@ try {
     }, overrides || {});
   }
   assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).rejectedBy, 'MEMBER-001');
+  // 반려도 헌장을 받는다 — 세 이벤트의 신원이 한 규격을 읽으므로 승인만 받고
+  // 반려만 거절하는 갈림이 생길 수 없고, 이 단언이 그 사실을 고정한다.
+  assert.strictEqual(normalizeApprovalEvent(rejectionEvent({ targetId: 'project:crm' })).targetId, 'project:crm');
   assert.strictEqual(approvalEnvelope(rejectionEvent({ recordedAt: frozenAt })).canonicalDigest,
     '37197162a2afcadaffd14800c8bb08638eddd6899b236790a80cbf5c6a8662d0');
   assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).reason, '3장의 범위가 헌장과 어긋납니다.');
