@@ -2952,12 +2952,17 @@ function typingIn(target) {
   return Boolean(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
+// 도움말의 진입점은 둘이다. ?는 아는 사람의 길이고, 배너의 키보드 단추는 모르는
+// 사람이 처음 발견하는 길이다 — 단축키 목록이 단축키 뒤에만 숨어 있으면 그 목록은
+// 이미 아는 사람만 본다.
 function openShortcutHelp() {
   const dialog = el('shortcut-dialog');
   el('shortcut-rows').innerHTML = SHORTCUT_ROWS.map(([keys, what]) =>
     `<tr><td><kbd>${escapeHtml(keys)}</kbd></td><td>${escapeHtml(what)}</td></tr>`).join('');
   dialog.showModal();
 }
+
+el('shortcut-help-button').addEventListener('click', openShortcutHelp);
 
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
