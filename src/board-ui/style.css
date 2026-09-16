@@ -2578,6 +2578,22 @@ body.view-settings .page-heading {
   display: grid;
   align-self: start;
   gap: 2px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding-right: var(--spacing-2);
+  border-right: 1px solid var(--divider-BorderColor);
+}
+
+.settings-nav h2 {
+  margin: var(--spacing-3) 0 var(--spacing-1);
+  padding: 0 var(--spacing-1_5);
+  color: var(--primary-TextColor);
+  font-size: var(--small-FontSize);
+  font-weight: 650;
+}
+
+.settings-nav h2:first-child {
+  margin-top: 0;
 }
 
 .settings-nav button {
@@ -2638,6 +2654,7 @@ body.view-settings .page-heading {
 }
 
 .settings-panel {
+  container-type: inline-size;
   border: 1px solid var(--surface-01-BorderColor);
   border-radius: var(--large-BorderRadius);
   background: var(--surface-01-BackgroundColor);
@@ -3362,6 +3379,7 @@ dialog label textarea {
 @media (max-width: 900px) {
   .settings-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .settings-nav {
@@ -3369,7 +3387,12 @@ dialog label textarea {
     grid-auto-flow: column;
     grid-auto-columns: max-content;
     overflow-x: auto;
+    padding: 0 0 var(--spacing-1);
+    border-right: 0;
+    border-bottom: 1px solid var(--divider-BorderColor);
   }
+
+  .settings-nav h2 { display: none; }
 
   /* 가로로 눕힌 목차에서는 그룹 이름표가 항목 사이에 끼어 열을 깨뜨린다.
      좁은 화면은 항목 이름만으로 서고, 들여쓰기도 세로 목차의 것이라 되돌린다. */
@@ -4256,6 +4279,62 @@ dialog label textarea {
 }
 
 /* 흐름도의 종이. 높이를 주지 않으면 JointJS가 0으로 재고 그림이 접힌다. */
+#workflow-diagram,
+#workflow-inspector {
+  min-width: 0;
+}
+
+#workflow-settings > header {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+#workflow-toolbar {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+#workflow-current code {
+  overflow-wrap: anywhere;
+}
+
+@container (min-width: 650px) {
+  #workflow-current:not(:empty) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-1) var(--spacing-3);
+  }
+
+  #workflow-current .property {
+    min-width: 0;
+    padding: var(--spacing-1) 0;
+  }
+}
+
+/* 화면 폭이 아니라 실제 설정 패널의 폭을 기준으로 편집 공간을 나눈다. */
+@container (min-width: 850px) {
+  #workflow-settings > .settings-body:has(> #workflow-diagram:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: var(--spacing-2);
+    align-items: start;
+  }
+
+  #workflow-settings > .settings-body > * {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  #workflow-settings #workflow-diagram {
+    grid-column: 1;
+  }
+
+  #workflow-settings #workflow-inspector {
+    grid-column: 2;
+    margin: 0;
+  }
+}
+
 .workflow-graph {
   border: 1px solid var(--divider-BorderColor);
   border-radius: var(--medium-BorderRadius);
