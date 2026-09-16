@@ -182,18 +182,22 @@
 
       <section id="people-view" class="view" hidden><header class="page-heading"><div><p class="eyebrow">PEOPLE</p><h1>사람과 책임</h1><p>project.md가 정본입니다. 추가와 수정은 <code>rdl member</code> 명령이 담당합니다.</p></div></header><div class="people-columns"><section><h2>멤버</h2><div id="members" class="card-grid"></div></section><section><h2>역할</h2><div id="roles" class="person-list"></div></section><section><h2>이해관계자</h2><div id="stakeholders" class="person-list"></div></section></div></section>
       <section id="settings-view" class="view" hidden>
-        <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Workspace 설정</h1><p>화면 표시, Client와 동기화 정책을 관리합니다.</p></div></header>
+        <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>환경설정</h1><p>브라우저 표시, 프로젝트 업무 규칙과 Workspace 연결을 관리합니다.</p></div></header>
         <div class="settings-layout">
           <nav class="settings-nav" aria-label="설정 항목">
             <h2>내 브라우저</h2>
             <button data-settings-section="settings-appearance" class="active">모양과 보기 기준</button>
             <h2>이 프로젝트</h2>
-            <button data-settings-section="contract-settings">문서 계약</button>
-            <button data-settings-section="contract-compliance">계약 준수</button>
-            <button data-settings-section="presentation-settings">표시 규칙</button>
-            <button data-settings-section="approval-settings">승인과 파이프</button>
-            <button data-settings-section="item-type-settings">업무 유형</button>
-            <button data-settings-section="workflow-settings">워크플로</button>
+            <p class="settings-nav-group">업무 항목</p>
+            <button class="grouped" data-settings-section="item-type-settings">업무 유형</button>
+            <button class="grouped" data-settings-section="workflow-settings">워크플로</button>
+            <p class="settings-nav-group">문서</p>
+            <button class="grouped" data-settings-section="contract-settings">문서 계약</button>
+            <button class="grouped" data-settings-section="contract-compliance">계약 준수</button>
+            <p class="settings-nav-group">결정과 승인</p>
+            <button class="grouped" data-settings-section="decision-settings">사람 결정</button>
+            <p class="settings-nav-group">표시</p>
+            <button class="grouped" data-settings-section="presentation-settings">표시 규칙</button>
             <h2>Workspace</h2>
             <button data-settings-section="settings-clients">Clients</button>
           </nav>

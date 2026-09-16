@@ -39,10 +39,12 @@ const {
   WORKFLOW_STEPS, TERMINAL_WORKFLOW_STEPS, OPEN_WORKFLOW_STEPS, ACTIVE_WORKFLOW_STEPS,
   COMPLETION_VALIDITIES, RULE_ORIGINS, TASK_STATES, EXEMPTABLE_GATES, TARGET_KINDS,
   TRANSITION_SLOTS, TRANSITION_SLOT_UNIT_KINDS, RUN_OPENING_SLOTS,
-  EXECUTION_UNIT_KINDS, BASIS_KINDS, VERDICTS
+  EXECUTION_UNIT_KINDS, BASIS_KINDS, VERDICTS,
+  VALIDATION_SOURCE_NATURE, VALIDATION_METHODS_BY_NATURE, FIELD_TYPES
 } = require('./vocabulary');
 const {
-  VALIDATION_DIAGNOSTICS, normalizeValidations, evaluateValidations
+  VALIDATION_DIAGNOSTICS, VALIDATION_SOURCE_KINDS, SOURCE_PARAMS, METHOD_PARAMS,
+  normalizeValidations, evaluateValidations
 } = require('./validation-catalog');
 
 // ── 내장 태스크 워크플로 ────────────────────────────────────────────────
@@ -118,6 +120,26 @@ for (const state of TASK_STATES) {
 // 깔끔하지만, 그러면 노드에 이름만 붙이려던 프로젝트가 자기 태스크를 하나도 못 옮기게
 // 된다. 닫는 것은 선언으로 하고, 선언하지 않은 것은 지금 동작을 유지한다.
 const TRANSITION_WILDCARD = '(ALL)';
+
+/**
+ * 게이트 선언 폼이 읽는 카탈로그. 소스가 무엇을 받고 방법이 무엇을 받는지는 카탈로그가
+ * 정본이고, 화면에 다시 적으면 파라미터를 늘리는 날 화면만 옛 칸을 들고 남는다.
+ *
+ * composite는 싣지 않는다. 유일성은 항목 하나만 보고 답할 수 없어 전환 게이트로 걸 수
+ * 없고(normalizeUnits가 거부한다), 걸 수 없는 소스를 폼에 두면 만들 수 없는 선언을
+ * 만들게 하는 자리가 된다.
+ */
+function validationFormCatalog() {
+  const sources = VALIDATION_SOURCE_KINDS.filter((kind) => kind !== 'composite');
+  return {
+    sources,
+    natures: sources.reduce((table, source) => Object.assign(table, { [source]: VALIDATION_SOURCE_NATURE[source] }), {}),
+    methodsByNature: VALIDATION_METHODS_BY_NATURE,
+    sourceParams: sources.reduce((table, source) => Object.assign(table, { [source]: SOURCE_PARAMS[source].slice() }), {}),
+    methodParams: METHOD_PARAMS,
+    fieldTypes: FIELD_TYPES.slice()
+  };
+}
 const WORKFLOW_ENTRY_KEYS = Object.freeze(['targetKind', 'nodes', 'executionUnits', 'transitions', 'label', 'description', 'disabled']);
 const NODE_ENTRY_KEYS = Object.freeze(['step', 'validity', 'requiresOwner', 'label', 'description', 'order', 'disabled']);
 
@@ -588,12 +610,20 @@ function taskWorkflowView() {
     nodes[node] = {
       step: target.step,
       validity: target.validity,
+      // 화면의 편집 초안이 이 값을 되쓴다. 안 실으면 내장 흐름을 설정으로 옮겨 적는
+      // 첫 저장이 담당자 요구를 조용히 푼다 — 완화는 결정으로 해야지 누락으로 하면 안 된다.
+      requiresOwner: target.requiresOwner === true,
       requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
     };
   }
   return {
     targetKind: 'task',
     nodes,
+    // 인스턴스 뷰와 같은 이유로 싣는다. 이 뷰는 설정이 깨졌을 때의 대체라 칸이 다르면
+    // 화면이 "안 실렸다"와 "내장으로 물러섰다"를 가르지 못한다.
+    slotUnitKinds: NAMED_SLOT_KEYS.reduce((table, slot) => Object.assign(table, { [slot]: TRANSITION_SLOT_UNIT_KINDS[slot].slice() }), {}),
+    // 게이트 선언 폼의 정본. 슬롯 표와 같은 이유로 실어 보낸다.
+    validationCatalog: validationFormCatalog(),
     steps: WORKFLOW_STEPS.slice(),
     terminalSteps: TERMINAL_WORKFLOW_STEPS.slice(),
     openSteps: OPEN_WORKFLOW_STEPS.slice(),
@@ -1195,6 +1225,8 @@ function createWorkflow(definition) {
         step: target.step,
         validity: target.validity,
         label: target.label || null,
+        // 모듈 최상위 뷰와 같은 이유로 싣는다. 초안이 되쓰는 값이라 빠지면 저장이 정책을 푼다.
+        requiresOwner: target.requiresOwner === true,
         requires: Object.keys(NODE_EXCLUSIVE_FIELDS).filter((field) => NODE_EXCLUSIVE_FIELDS[field].node === node)
       };
     }
@@ -1206,6 +1238,11 @@ function createWorkflow(definition) {
       // 실행 단위도 실린다. 전환이 이름으로 가리키므로 이름만 실어 보내면 화면이 그
       // 이름이 무엇인지 물을 자리가 없다.
       executionUnits: namedUnits,
+      // 어느 슬롯이 어느 종류를 무는가. 화면이 배선을 편집하려면 이 표가 필요하고,
+      // 화면에 다시 적으면 어휘가 표를 바꾸는 날 화면만 옛 답을 들고 남는다.
+      slotUnitKinds: NAMED_SLOT_KEYS.reduce((table, slot) => Object.assign(table, { [slot]: TRANSITION_SLOT_UNIT_KINDS[slot].slice() }), {}),
+      // 게이트 선언 폼의 정본. 슬롯 표와 같은 이유로 실어 보낸다.
+      validationCatalog: validationFormCatalog(),
       transitions: transitions
         ? transitions.map((item) => Object.assign(
           { from: item.from, to: item.to, title: item.title, approval: Boolean(item.approval && item.approval.human) },
