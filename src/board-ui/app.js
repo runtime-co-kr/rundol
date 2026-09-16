@@ -2935,7 +2935,7 @@ const NAV_SHORTCUTS = { h: 'home', d: 'documents', i: 'review-inbox', t: 'tasks'
 // 것이다 — 선택 상태를 따로 만들면 포커스와 선택이 갈리는 날이 온다.
 const ROW_SELECTOR = '.task-row, .task-card, .document-card, .document-row, .task-next-pick';
 const SHORTCUT_ROWS = [
-  ['Cmd/Ctrl + Enter', '승인 폼·대화상자 폼 제출'],
+  ['Cmd/Ctrl + Enter', '문서에서 검토하고 승인 열기(커서는 사유로) · 폼에서는 제출'],
   ['j · k', '목록에서 다음·이전 줄로 (Enter로 열기)'],
   ['c', '새 태스크 (태스크 화면에서)'],
   ['1 · 2 · 3', '태스크 화면에서 목록 · Board · 의존'],
@@ -2966,12 +2966,35 @@ el('shortcut-help-button').addEventListener('click', openShortcutHelp);
 
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-    // 승인 폼과 대화상자 폼만 받는다. 아무 폼이나 받으면 설정처럼 저장이 계약
-    // 변경인 표면까지 단축키 하나로 나가고, 그 표면의 제출은 눌러서 나가야 한다.
+    // Cmd+Enter는 검토로 가는 한 키다. 폼 안이면 제출이고, 폼 밖이면 검토하고
+    // 승인을 연다 — 열릴 때 커서가 사유에 서므로 같은 키를 다시 누르면 제출이
+    // 된다. 읽고 · 열고 · 적고 · 보내는 네 동작이 한 키의 왕복이다.
+    //
+    // 제출은 승인 폼과 대화상자 폼만 받는다. 아무 폼이나 받으면 설정처럼 저장이
+    // 계약 변경인 표면까지 단축키 하나로 나가고, 그 제출은 눌러서 나가야 한다.
     const form = event.target.closest && event.target.closest('form');
     if (form && (form.dataset.approveForm !== undefined || form.closest('dialog[open]'))) {
       event.preventDefault();
       form.requestSubmit();
+      return;
+    }
+    // 목록에서 포커스한 문서 줄이면 그 문서를 열면서 검토 판까지 편다.
+    const row = event.target.closest && event.target.closest('[data-document]');
+    if (row && row.dataset.document) {
+      event.preventDefault();
+      const id = row.dataset.document;
+      row.click();
+      setTimeout(() => toggleApproval(id, 'approve'), 0);
+      return;
+    }
+    // 문서 상세면 검토 판을 연다. 이미 열려 있는데 커서가 폼 밖이면 사유로만
+    // 보낸다 — 적히지 않은 사유로 제출을 쏘면 거절 메시지가 답이 되는데, 그
+    // 답은 사람이 아직 아무것도 안 한 시점의 것이라 소음이다.
+    if (state.view === 'document' && state.selected) {
+      event.preventDefault();
+      const reason = document.querySelector('form[data-approve-form] [data-approve-field="reason"]');
+      if (reason) reason.focus();
+      else toggleApproval(state.selected, 'approve');
     }
     return;
   }
