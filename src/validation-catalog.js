@@ -601,6 +601,10 @@ module.exports = {
   VALIDATION_METHODS,
   VALIDATION_DIAGNOSTICS,
   METHOD_BY_DIAGNOSTIC,
+  // 화면이 게이트 선언 폼을 세우는 데 쓴다. 소스와 방법이 받는 키를 화면에 다시
+  // 적으면 카탈로그가 파라미터를 늘리는 날 화면만 옛 칸을 들고 남는다.
+  SOURCE_PARAMS,
+  METHOD_PARAMS,
   validationRuleId,
   normalizeValidations,
   evaluateValidations

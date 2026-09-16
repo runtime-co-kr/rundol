@@ -2578,6 +2578,22 @@ body.view-settings .page-heading {
   display: grid;
   align-self: start;
   gap: 2px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding-right: var(--spacing-2);
+  border-right: 1px solid var(--divider-BorderColor);
+}
+
+.settings-nav h2 {
+  margin: var(--spacing-3) 0 var(--spacing-1);
+  padding: 0 var(--spacing-1_5);
+  color: var(--primary-TextColor);
+  font-size: var(--small-FontSize);
+  font-weight: 650;
+}
+
+.settings-nav h2:first-child {
+  margin-top: 0;
 }
 
 .settings-nav button {
@@ -2602,6 +2618,21 @@ body.view-settings .page-heading {
   font-weight: 600;
 }
 
+/* 지라 관리자 설정의 정보 구조를 따른다: 도메인 그룹 제목 아래 하위 항목이
+   들여서 선다. 그룹 제목은 링크가 아니라 이름표라 손이 닿지 않는다. */
+.settings-nav-group {
+  margin: var(--spacing-1) 0 0;
+  padding: 0 var(--spacing-1_5);
+  color: var(--secondary-TextColor);
+  font-size: var(--caption-FontSize);
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.settings-nav button.grouped {
+  padding-left: calc(var(--spacing-1_5) * 2);
+}
+
 /* 다섯 묶음을 한 열로 쌓으면 3500px 스크롤이 된다. 목차가 한 번에 하나만 연다.
    열린 패널이 스크롤 상자다. 앞서 이 세 규칙을 아래에서 다시 선언해 두었다가
    같은 속성을 두 번 쓰는 바람에 어느 쪽이 이기는지 읽기 어려웠다. 한곳에 모은다. */
@@ -2623,6 +2654,7 @@ body.view-settings .page-heading {
 }
 
 .settings-panel {
+  container-type: inline-size;
   border: 1px solid var(--surface-01-BorderColor);
   border-radius: var(--large-BorderRadius);
   background: var(--surface-01-BackgroundColor);
@@ -3347,6 +3379,7 @@ dialog label textarea {
 @media (max-width: 900px) {
   .settings-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .settings-nav {
@@ -3354,7 +3387,17 @@ dialog label textarea {
     grid-auto-flow: column;
     grid-auto-columns: max-content;
     overflow-x: auto;
+    padding: 0 0 var(--spacing-1);
+    border-right: 0;
+    border-bottom: 1px solid var(--divider-BorderColor);
   }
+
+  .settings-nav h2 { display: none; }
+
+  /* 가로로 눕힌 목차에서는 그룹 이름표가 항목 사이에 끼어 열을 깨뜨린다.
+     좁은 화면은 항목 이름만으로 서고, 들여쓰기도 세로 목차의 것이라 되돌린다. */
+  .settings-nav-group { display: none; }
+  .settings-nav button.grouped { padding-left: var(--spacing-1_5); }
 
   .setting-row,
   .contract-row,
@@ -4236,12 +4279,187 @@ dialog label textarea {
 }
 
 /* 흐름도의 종이. 높이를 주지 않으면 JointJS가 0으로 재고 그림이 접힌다. */
+#workflow-diagram,
+#workflow-inspector {
+  min-width: 0;
+}
+
+#workflow-settings > header {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+#workflow-toolbar {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+#workflow-current code {
+  overflow-wrap: anywhere;
+}
+
+@container (min-width: 650px) {
+  #workflow-current:not(:empty) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-1) var(--spacing-3);
+  }
+
+  #workflow-current .property {
+    min-width: 0;
+    padding: var(--spacing-1) 0;
+  }
+}
+
+/* 화면 폭이 아니라 실제 설정 패널의 폭을 기준으로 편집 공간을 나눈다. */
+@container (min-width: 850px) {
+  #workflow-settings > .settings-body:has(> #workflow-diagram:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: var(--spacing-2);
+    align-items: start;
+  }
+
+  #workflow-settings > .settings-body > * {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  #workflow-settings #workflow-diagram {
+    grid-column: 1;
+  }
+
+  #workflow-settings #workflow-inspector {
+    grid-column: 2;
+    margin: 0;
+  }
+}
+
 .workflow-graph {
   border: 1px solid var(--divider-BorderColor);
   border-radius: var(--medium-BorderRadius);
   background: var(--surface-01-BackgroundColor);
   overflow: auto;
   min-height: 280px;
+}
+
+/* 편집 인스펙터. 결정 카드의 폼과 같은 격자를 쓴다 — 다른 폼이 되면 같은 화면에서
+   입력 칸의 결이 두 벌이 된다. */
+.workflow-inspector {
+  border: 1px solid var(--divider-BorderColor);
+  border-radius: var(--medium-BorderRadius);
+  padding: var(--spacing-2);
+  margin: var(--spacing-2) 0;
+  background: var(--surface-02-BackgroundColor);
+}
+
+.workflow-inspector:empty { display: none; }
+
+.workflow-form {
+  display: grid;
+  gap: var(--spacing-1);
+  max-width: 480px;
+}
+
+.workflow-form label {
+  display: grid;
+  gap: var(--spacing-0_5);
+  font-size: var(--small-FontSize);
+}
+
+.workflow-form .workflow-check {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.workflow-danger { color: var(--danger-Color); }
+
+/* 슬롯 하나가 한 울타리다. 체크박스가 슬롯 사이로 섞이면 어느 칸에 걸었는지 읽히지 않는다. */
+.workflow-slot {
+  border: 1px solid var(--hairline-BorderColor);
+  border-radius: var(--inner-BorderRadius);
+  padding: var(--spacing-1) var(--spacing-1_5);
+  display: grid;
+  gap: var(--spacing-0_5);
+}
+
+.workflow-slot legend {
+  padding: 0 var(--spacing-0_5);
+  font-size: var(--caption-FontSize);
+  font-weight: 700;
+  color: var(--secondary-TextColor);
+}
+
+.workflow-unit-add {
+  margin-top: var(--spacing-1_5);
+  padding-top: var(--spacing-1_5);
+  border-top: 1px solid var(--hairline-BorderColor);
+}
+
+/* 긴 설명은 접힌 도움말로 산다. 페이지의 본문은 설명이 아니라 값이다 — 지라 관리
+   화면이 한 문장 캡션 아래 바로 표를 세우는 그 결이다. */
+.panel-help {
+  margin-top: var(--spacing-0_5);
+  font-size: var(--small-FontSize);
+  color: var(--secondary-TextColor);
+}
+
+.panel-help summary {
+  cursor: pointer;
+  color: var(--accent-TextColor);
+  width: fit-content;
+}
+
+.panel-help[open] {
+  border-left: 2px solid var(--hairline-BorderColor);
+  padding-left: var(--spacing-1_5);
+}
+
+.panel-help p { margin: var(--spacing-1) 0 0; }
+
+/* 개체 사이를 오가는 링크. 지라의 파란 링크와 같은 자리다. */
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  height: auto;
+  color: var(--accent-TextColor);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.workflow-graph-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-1);
+  margin-bottom: var(--spacing-1);
+}
+
+.workflow-zoom { display: inline-flex; gap: 2px; }
+
+.workflow-zoom button { min-width: 40px; }
+
+/* 상태 행의 스텝 배지. 그림의 노드 색과 같은 토큰을 쓴다 — 표와 그림이 같은 값을
+   다른 색으로 말하면 둘 중 하나는 거짓말이 된다. */
+.workflow-step-chip { border: 1px solid transparent; }
+.workflow-step-chip.step-unclaimed { background: var(--step-unclaimed-BackgroundColor); border-color: var(--step-unclaimed-BorderColor); }
+.workflow-step-chip.step-in-progress { background: var(--step-in-progress-BackgroundColor); border-color: var(--step-in-progress-BorderColor); }
+.workflow-step-chip.step-in-approval { background: var(--step-in-approval-BackgroundColor); border-color: var(--step-in-approval-BorderColor); }
+.workflow-step-chip.step-completed { background: var(--step-completed-BackgroundColor); border-color: var(--step-completed-BorderColor); }
+.workflow-step-chip.step-dropped { background: var(--step-dropped-BackgroundColor); border-color: var(--step-dropped-BorderColor); }
+.workflow-step-chip.step-none { border-color: var(--danger-Color); color: var(--danger-Color); }
+
+/* 고를 수 있는 줄. 고른 줄은 인스펙터가 여는 값과 같은 것임을 색으로 잇는다. */
+.workflow-selectable { cursor: pointer; }
+
+.workflow-selectable.is-selected {
+  outline: 2px solid var(--accent-BorderColor);
+  outline-offset: -2px;
+  border-radius: var(--inner-BorderRadius);
 }
 
 /* ── 검토 인박스 ─────────────────────────────────────────
