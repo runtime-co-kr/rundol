@@ -74,6 +74,15 @@ try {
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ basis: [{ kind: '지어낸근거' }] })), /지원하지 않는 승인 근거/u);
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ approvedBy: 'agent-a' })), /MEMBER-ID/u);
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ transcript: '금지' })), /알 수 없는 필드/u);
+
+  // 헌장도 승인 원장의 대상이다. 식별자는 project:<key>이고, doc status와 보드가
+  // 오래 승인 대상으로 다뤄 온 문서라 신원 규격이 그것을 거절하면 "표면은 열고
+  // 원장은 거절"이 된다 — free-loan 헌장 승인 시도에서 실측한 결함이다.
+  assert.strictEqual(normalizeApprovalEvent(approvalEvent({ targetId: 'project:crm' })).targetId, 'project:crm');
+  assert.strictEqual(normalizeApprovalEvent(approvalEvent({ targetId: 'project:free-loan' })).targetId, 'project:free-loan');
+  assert.throws(() => normalizeApprovalEvent(approvalEvent({ targetId: 'project:CRM' })), /신원이 유효하지/u, '헌장 키는 프로젝트 키의 어휘(소문자)다.');
+  assert.throws(() => normalizeApprovalEvent(approvalEvent({ targetId: 'req-001' })), /신원이 유효하지/u, '정본 ID의 소문자 표기는 여전히 거절된다.');
+  assert.throws(() => normalizeApprovalEvent(approvalEvent({ targetId: 'project:' })), /신원이 유효하지/u, '키 없는 헌장 식별자는 성립하지 않는다.');
   // 행위자와 승인자가 다르면 위임이 그 차이를 정당화해야 한다. 위임 없이 다른
   // 멤버 명의로 남은 기록은 형태만으로도 거부된다 — 병합으로 흘러들어와도.
   assert.throws(() => normalizeApprovalEvent(approvalEvent({ approvedBy: 'MEMBER-002' })), /근거가 된 위임이 필요/u);
@@ -473,6 +482,20 @@ try {
   const submissionHistory = documentHistory(temporary, { project: 'crm', targetId: created.id });
   assert.strictEqual(submissionHistory.submissions.length, 2);
   assert.strictEqual(submissionHistory.submissions[0].reason, '결정 반영분 검토 요청');
+
+  // ── 헌장의 제출과 승인 — 표면이 여는 것을 원장도 받는다 ──
+  const charterId = 'project:crm';
+  const charterRow = rdl(['doc', 'status', '--project', 'crm']).documents.find((document) => document.id === charterId);
+  assert(charterRow, '헌장이 승인 원장의 문서 목록에 서야 한다.');
+  const charterSubmitted = rdl(['doc', 'submit', charterId, '--client-id', 'agent-a', '--project', 'crm', '--reason', '헌장 검토 요청']);
+  assert.strictEqual(charterSubmitted.created, true, '헌장 제출이 성립해야 한다.');
+  const charterApproved = approveDocument(temporary, { project: 'crm', clientId: 'desk-h', targetId: charterId, approvedBy: 'MEMBER-001', basis: [{ kind: 'read' }], reason: '헌장을 읽고 승인' });
+  assert.strictEqual(charterApproved.document.status, 'approved', '헌장 승인이 원장에 서야 한다.');
+  assert.strictEqual(
+    rdl(['doc', 'status', '--project', 'crm']).documents.find((document) => document.id === charterId).status,
+    'approved',
+    '헌장의 신뢰 상태가 원장에서 나와야 한다.'
+  );
   assert.strictEqual(submissionHistory.submissions[0].submittedBy, 'MEMBER-001');
 
   // 읽기 헬퍼는 접힌 원장만 낸다. 이것이 없어서 다른 갈래가 원장 경로와 인가 조립을
@@ -520,6 +543,9 @@ try {
     }, overrides || {});
   }
   assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).rejectedBy, 'MEMBER-001');
+  // 반려도 헌장을 받는다 — 세 이벤트의 신원이 한 규격을 읽으므로 승인만 받고
+  // 반려만 거절하는 갈림이 생길 수 없고, 이 단언이 그 사실을 고정한다.
+  assert.strictEqual(normalizeApprovalEvent(rejectionEvent({ targetId: 'project:crm' })).targetId, 'project:crm');
   assert.strictEqual(approvalEnvelope(rejectionEvent({ recordedAt: frozenAt })).canonicalDigest,
     '37197162a2afcadaffd14800c8bb08638eddd6899b236790a80cbf5c6a8662d0');
   assert.strictEqual(normalizeApprovalEvent(rejectionEvent()).reason, '3장의 범위가 헌장과 어긋납니다.');
@@ -748,6 +774,17 @@ async function boardApprovalSurface(documentId, documentFile, renamed) {
     body: JSON.stringify(payload)
   });
   const approvePath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/approve`;
+
+  // 헌장도 보드 승인 경로를 지난다. 식별자의 콜론이 URL에서 %3A로 실려 오므로
+  // 경로가 해독하지 못하면 여기서 404가 나고, 신원 규격이 거절하면 400이 난다 —
+  // 이미 승인된 판이라 원장은 새 사건 없이 created:false로 답하는 것이 정답이다.
+  {
+    const charterViaBoard = await post(`/api/projects/crm/documents/${encodeURIComponent('project:crm')}/approve`,
+      { clientId: 'desk-h', basis: [{ kind: 'read' }], reason: '헌장 재확인' });
+    assert.strictEqual(charterViaBoard.status, 200, `보드 경로가 헌장 승인에 답해야 합니다: ${JSON.stringify(charterViaBoard.body)}`);
+    assert.strictEqual(charterViaBoard.body.created, false, '이미 승인된 헌장에 새 사건을 만들면 안 됩니다.');
+    assert.strictEqual(charterViaBoard.body.document.status, 'approved', '보드 경로의 답도 원장에서 나와야 합니다.');
+  }
   const diffPath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/diff`;
   try {
     // 승인된 문서를 한 글자 고쳐 낡음으로 만든다. 화면이 승인하는 자리는 늘 이 상태다.

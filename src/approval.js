@@ -40,7 +40,11 @@ const EVENT_ID = /^EVT-[A-F0-9]{20}$/u;
 const REQUEST_ID = /^REQ-[A-F0-9]{20}$/u;
 const SIMPLE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const MEMBER_ID = /^MEMBER-\d{3}$/u;
-const ARTIFACT_ID = /^[A-Z]{3}-\d{3,}$/u;
+// 승인 원장이 받는 대상. 정본 문서와 프로젝트 헌장이다 — 헌장의 식별자는
+// project:<key>이고, doc status와 보드는 오래 헌장을 승인 대상으로 다뤄 왔는데
+// 이 규격만 정본 문서 ID를 고집해 "표면은 열고 원장은 거절"이 됐다. 헌장 키는
+// 프로젝트 키와 같은 어휘(SIMPLE_ID)라 그 모양을 그대로 잇는다.
+const APPROVAL_TARGET_ID = /^(?:[A-Z]{3}-\d{3,}|project:[a-z0-9]+(?:-[a-z0-9]+)*)$/u;
 const REVISION = /^[a-f0-9]{64}$/u;
 const DELEGATION_ID = /^DLG-[A-F0-9]{20}$/u;
 
@@ -153,7 +157,7 @@ function normalizeSubmissionEvent(input) {
   if (extra.length) throw new Error(`제출 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['submittedBy'])) if (input[field] === undefined) throw new Error(`${SUBMISSION_TYPE}.${field}이(가) 필요합니다.`);
   if (input.schemaVersion !== 1 || !EVENT_ID.test(input.eventId || '') || !REQUEST_ID.test(input.rootRequestId || '') || !REQUEST_ID.test(input.requestId || '')
-    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !ARTIFACT_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
+    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !APPROVAL_TARGET_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
     throw new Error('제출 이벤트의 신원이 유효하지 않습니다.');
   }
   if (!MEMBER_ID.test(input.submittedBy || '')) throw new Error('제출자는 MEMBER-ID여야 합니다.');
@@ -194,7 +198,7 @@ function normalizeRejectionEvent(input) {
   if (extra.length) throw new Error(`반려 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['rejectedBy', 'reason'])) if (input[field] === undefined) throw new Error(`${REJECTION_TYPE}.${field}이(가) 필요합니다.`);
   if (input.schemaVersion !== 1 || !EVENT_ID.test(input.eventId || '') || !REQUEST_ID.test(input.rootRequestId || '') || !REQUEST_ID.test(input.requestId || '')
-    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !ARTIFACT_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
+    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !APPROVAL_TARGET_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
     throw new Error('반려 이벤트의 신원이 유효하지 않습니다.');
   }
   if (!MEMBER_ID.test(input.rejectedBy || '')) throw new Error('반려자는 MEMBER-ID여야 합니다.');
@@ -227,7 +231,7 @@ function normalizeApprovalEvent(input) {
   if (extra.length) throw new Error(`승인 이벤트에 알 수 없는 필드가 있습니다: ${extra.sort().join(', ')}`);
   for (const field of BASE_FIELDS.concat(['approvedBy', 'actorMemberId', 'basis'])) if (input[field] === undefined) throw new Error(`approval.granted.${field}이(가) 필요합니다.`);
   if (input.schemaVersion !== 1 || !EVENT_ID.test(input.eventId || '') || !REQUEST_ID.test(input.rootRequestId || '') || !REQUEST_ID.test(input.requestId || '')
-    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !ARTIFACT_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
+    || !SIMPLE_ID.test(input.clientId || '') || !SIMPLE_ID.test(input.projectId || '') || !APPROVAL_TARGET_ID.test(input.targetId || '') || !REVISION.test(input.reviewedRevision || '')) {
     throw new Error('승인 이벤트의 신원이 유효하지 않습니다.');
   }
   if (!MEMBER_ID.test(input.approvedBy || '')) throw new Error('승인자는 MEMBER-ID여야 합니다.');

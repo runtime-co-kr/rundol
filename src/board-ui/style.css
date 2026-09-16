@@ -5624,3 +5624,9 @@ body.approval-open .context-panel {
   outline: none;
   box-shadow: var(--focus-Ring);
 }
+
+/* ── 키보드 도움말 ─────────────────────────────────────────────────────── */
+.shortcut-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.shortcut-table td { padding: 7px 10px; border-top: 1px solid var(--line, rgba(120, 120, 140, 0.25)); font-size: 13px; }
+.shortcut-table td:first-child { white-space: nowrap; width: 1%; }
+.shortcut-table kbd { display: inline-block; padding: 2px 7px; border: 1px solid var(--line, rgba(120, 120, 140, 0.35)); border-bottom-width: 2px; border-radius: 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
