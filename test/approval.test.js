@@ -771,6 +771,17 @@ async function boardApprovalSurface(documentId, documentFile, renamed) {
     body: JSON.stringify(payload)
   });
   const approvePath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/approve`;
+
+  // 헌장도 보드 승인 경로를 지난다. 식별자의 콜론이 URL에서 %3A로 실려 오므로
+  // 경로가 해독하지 못하면 여기서 404가 나고, 신원 규격이 거절하면 400이 난다 —
+  // 이미 승인된 판이라 원장은 새 사건 없이 created:false로 답하는 것이 정답이다.
+  {
+    const charterViaBoard = await post(`/api/projects/crm/documents/${encodeURIComponent('project:crm')}/approve`,
+      { clientId: 'desk-h', basis: [{ kind: 'read' }], reason: '헌장 재확인' });
+    assert.strictEqual(charterViaBoard.status, 200, `보드 경로가 헌장 승인에 답해야 합니다: ${JSON.stringify(charterViaBoard.body)}`);
+    assert.strictEqual(charterViaBoard.body.created, false, '이미 승인된 헌장에 새 사건을 만들면 안 됩니다.');
+    assert.strictEqual(charterViaBoard.body.document.status, 'approved', '보드 경로의 답도 원장에서 나와야 합니다.');
+  }
   const diffPath = `/api/projects/crm/documents/${encodeURIComponent(documentId)}/diff`;
   try {
     // 승인된 문서를 한 글자 고쳐 낡음으로 만든다. 화면이 승인하는 자리는 늘 이 상태다.
