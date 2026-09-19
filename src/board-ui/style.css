@@ -5630,3 +5630,34 @@ body.approval-open .context-panel {
 .shortcut-table td { padding: 7px 10px; border-top: 1px solid var(--line, rgba(120, 120, 140, 0.25)); font-size: 13px; }
 .shortcut-table td:first-child { white-space: nowrap; width: 1%; }
 .shortcut-table kbd { display: inline-block; padding: 2px 7px; border: 1px solid var(--line, rgba(120, 120, 140, 0.35)); border-bottom-width: 2px; border-radius: 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+/* ── 응축된 문서 머리 ──────────────────────────────────────────────────────
+   스크롤이 내려간 동안 머리는 제목 한 줄과 판단 손잡이만 남긴다. 설명·배지·
+   경로는 맨 위로 돌아오면 다시 펴진다 — 붙어 있는 이유(그 자리에서 승인)는
+   지키고, 붙어 있는 비용(본문을 먹는 높이)만 줄인다. */
+body.doc-heading-condensed .reader-heading { display: flex; align-items: center; gap: var(--spacing-1_5); padding: var(--spacing-0_5) 0; }
+body.doc-heading-condensed .reader-heading .breadcrumb,
+body.doc-heading-condensed #document-description,
+body.doc-heading-condensed #document-badges,
+body.doc-heading-condensed #document-approval h2,
+body.doc-heading-condensed #document-approval p,
+body.doc-heading-condensed #document-approval .ledger-note { display: none; }
+body.doc-heading-condensed #document-title { flex: 1; min-width: 0; margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.doc-heading-condensed #document-approval { margin: 0; display: flex; align-items: center; gap: var(--spacing-1); }
+
+/* ── 문서 흐름 대시보드 ──────────────────────────────────────────────────── */
+.flow-summary { display: flex; align-items: center; gap: var(--spacing-1_5); margin-bottom: var(--spacing-1_5); flex-wrap: wrap; }
+.flow-rate { flex: 0 0 160px; height: 8px; border-radius: 4px; background: color-mix(in srgb, currentColor 12%, transparent); overflow: hidden; }
+.flow-rate b { display: block; height: 100%; background: var(--accent-BackgroundColor); border-radius: 4px; }
+.flow-chain { display: flex; align-items: stretch; gap: var(--spacing-1); overflow-x: auto; padding-bottom: var(--spacing-0_5); }
+.flow-layer { display: flex; flex-direction: column; gap: var(--spacing-0_5); }
+.flow-arrow { align-self: center; color: var(--secondary-TextColor); }
+.flow-type { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 108px; padding: 8px 10px; border: 1px solid var(--divider-BorderColor); border-radius: 8px; background: var(--surface-01-BackgroundColor, transparent); cursor: pointer; text-align: left; }
+.flow-type strong { font-size: 12.5px; }
+.flow-type span { font-size: 12px; color: var(--secondary-TextColor); }
+.flow-bar { display: block; width: 100%; height: 4px; border-radius: 2px; background: color-mix(in srgb, currentColor 12%, transparent); overflow: hidden; }
+.flow-bar b { display: block; height: 100%; border-radius: 2px; background: var(--accent-BackgroundColor); }
+.flow-done { border-color: color-mix(in srgb, var(--success-Color) 45%, var(--divider-BorderColor)); }
+.flow-done .flow-bar b { background: var(--success-Color); }
+.flow-partial .flow-bar b { background: var(--warning-Color); }
+.flow-missing { border-style: dashed; opacity: .75; }

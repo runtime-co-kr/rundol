@@ -108,6 +108,7 @@ function evaluateDocumentContract(profileInput, artifactInput) {
   return {
     enforcement: profile.enforcement,
     taskEnforcement: profile.taskEnforcement || 'advisory',
+    orderEnforcement: profile.orderEnforcement || 'advisory',
     revision: profile.revision,
     present: Array.from(present).sort((left, right) => REGULAR_TYPES.indexOf(left) - REGULAR_TYPES.indexOf(right)),
     ready,
@@ -170,11 +171,11 @@ function loadDocumentContract(start, projectKey) {
   // 붙일 수 없으므로 — 읽는 쪽은 "기능 0건"과 "축을 계산하지 않았다"를 가를 수 없었다.
   // 축이 없는 것이 아니라 계산해 놓고 버린 것이었고, 버리는 조건이 그 축과 무관했다.
   const traceability = implementationTrace(artifacts);
-  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, taskEnforcement: 'advisory', evaluation: null, traceability, catalog };
-  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, taskEnforcement: (validation.profile && validation.profile.taskEnforcement) || 'advisory', errors: validation.errors, evaluation: null, traceability, catalog };
+  if (!validation.present) return { root: layout.root, project: project.key, status: 'legacy-unconfigured', profile: null, revision: null, enforcement: null, taskEnforcement: 'advisory', orderEnforcement: 'advisory', evaluation: null, traceability, catalog };
+  if (validation.status === 'unsupported-schema' || validation.status === 'invalid') return { root: layout.root, project: project.key, status: validation.status, profile: validation.profile, revision: validation.profile && validation.profile.revision, enforcement: validation.profile && validation.profile.enforcement, taskEnforcement: (validation.profile && validation.profile.taskEnforcement) || 'advisory', orderEnforcement: (validation.profile && validation.profile.orderEnforcement) || 'advisory', errors: validation.errors, evaluation: null, traceability, catalog };
   const profile = validation.status === 'migration-required' ? migrateProfile(validation.profile) : validation.profile;
   const evaluation = evaluateDocumentContract(profile, artifacts);
-  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, taskEnforcement: profile.taskEnforcement || 'advisory', evaluation, traceability, catalog };
+  return { root: layout.root, project: project.key, status: validation.status, profile, revision: profile.revision, enforcement: profile.enforcement, taskEnforcement: profile.taskEnforcement || 'advisory', orderEnforcement: profile.orderEnforcement || 'advisory', evaluation, traceability, catalog };
 }
 
 function assertDocumentCreationAllowed(start, projectKey, type) {

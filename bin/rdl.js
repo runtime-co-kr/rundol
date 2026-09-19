@@ -21,7 +21,7 @@ Usage:
   rdl session start [--session-id <id>] [--path <경로>] [--from <ref>] [--root <path>] [--json]
   rdl session list|end [--session-id <id>] [--force] [--root <path>] [--json]
   rdl project add <project-key> --name <project-name> [--profile <name>] [--root <path>] [--json]
-  rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--json]
+  rdl project profile --project <key> --profile <lean|product|service|platform|assured> [--trait <name>] [--required <TYPE,...>] [--recommended <TYPE,...>] [--on-demand <TYPE,...>] [--disabled <TYPE,...>] [--order-enforcement <advisory|checkpoint>] [--json]
   rdl contract show|next|check|trace --project <key> [--json]
   rdl contract diagram --project <key> [--write] [--json]
   rdl contract plan|set --project <key> --profile <name> [--enforcement <advisory|checkpoint>] [--task-enforcement <advisory|checkpoint>] [--json]
@@ -65,7 +65,7 @@ Usage:
   rdl context [--root <path>] [--project <key>] [--json]
   rdl help [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
-                 [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--project <key>] [--json]
+                 [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--ahead-of-approval <지시-요지>] [--project <key>] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl doc identity [--project <key>] [--apply] [--json]
   rdl doc status [--project <key>] [--status <approved|stale|unapproved>]
@@ -302,7 +302,7 @@ function parseOperationArgs(argv) {
     // 낡을 승인을 알고 바꾼다는 표시. 관문이 아니라 "누르기 전에 말한다"의 명령줄 쪽
     // 모양이다 — 화면은 판에 문장을 그려서 같은 일을 한다.
     else if (value === '--ack-stale') options.ackStale = true;
-    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--title', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
+    else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--title', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--order-enforcement', '--ahead-of-approval', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
       '--session-id', '--path', '--from', '--reply-to', '--rule', '--submission'].includes(value)) {
       i += 1;
@@ -313,6 +313,8 @@ function parseOperationArgs(argv) {
       else if (value === '--profile') options.profile = argv[i];
       else if (value === '--enforcement') options.enforcement = argv[i];
       else if (value === '--task-enforcement') options.taskEnforcement = argv[i];
+      else if (value === '--order-enforcement') options.orderEnforcement = argv[i];
+      else if (value === '--ahead-of-approval') options.aheadOfApproval = argv[i];
       else if (value === '--task') options.task = argv[i];
       else if (value === '--no-task') options.noTask = argv[i];
       else if (value === '--remote') options.remote = argv[i];
@@ -1021,8 +1023,11 @@ async function main() {
       const presets = resolveProfilePresets(loadBoardPresentation(layout.root, profileOptions.project));
       if (!Object.keys(presets).includes(profileOptions.profile)) throw new Error(`--profile <${Object.keys(presets).join('|')}>가 필요합니다.`);
       const selected = selectProject(layout, profileOptions.project, true);
+      if (profileOptions.orderEnforcement && !ENFORCEMENTS.includes(profileOptions.orderEnforcement)) throw new Error('--order-enforcement는 advisory 또는 checkpoint여야 합니다.');
       const updated = reconfigureProject(selected.charter, profileOptions.profile, {
         enforcement: profileOptions.enforcement,
+        taskEnforcement: profileOptions.taskEnforcement,
+        orderEnforcement: profileOptions.orderEnforcement,
         traits: profileOptions.traits.length ? profileOptions.traits : undefined,
         policy: profileOptions.policySpecified ? profileOptions.policy : undefined
       }, presets);
@@ -1090,9 +1095,11 @@ async function main() {
     }
     if (options.enforcement && !ENFORCEMENTS.includes(options.enforcement)) throw new Error('--enforcement는 advisory 또는 checkpoint여야 합니다.');
     if (options.taskEnforcement && !ENFORCEMENTS.includes(options.taskEnforcement)) throw new Error('--task-enforcement는 advisory 또는 checkpoint여야 합니다.');
+    if (options.orderEnforcement && !ENFORCEMENTS.includes(options.orderEnforcement)) throw new Error('--order-enforcement는 advisory 또는 checkpoint여야 합니다.');
     const input = { name: options.profile };
     if (options.enforcement) input.enforcement = options.enforcement;
     if (options.taskEnforcement) input.taskEnforcement = options.taskEnforcement;
+    if (options.orderEnforcement) input.orderEnforcement = options.orderEnforcement;
     if (options.traits.length) input.traits = options.traits;
     if (options.policySpecified) input.policy = options.policy;
     if (subcommand === 'set') input.baseRevision = loadDocumentContract(options.root, options.project).revision;
@@ -1967,7 +1974,7 @@ async function main() {
     // 파싱한 플래그를 호출에 싣지 않으면 그 기능은 표면만 있고 경로가 없다.
     // --grouped와 --reason이 정확히 그랬고, 기능 ID가 둘 이상인 문서를 CLI로는
     // 만들 수 없었다 — supersedes·delegationId에 이은 세 번째 같은 누락이다.
-    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes, functionIds: options.functionIds, grouped: options.grouped, reason: options.reason });
+    const result = createDocument(options.root, { type, title, project: options.project, owner: options.owner, related: options.related, domain: options.domain, feature: options.feature, scope: options.scope, excludes: options.excludes, functionIds: options.functionIds, grouped: options.grouped, reason: options.reason, aheadOfApproval: options.aheadOfApproval });
     printOperation(result, options.json);
     // 문서를 만드는 일도 어느 작업의 일이다. 결박을 비워 두면 계측이 태스크 명령만
     // 세게 되고, 그 수치는 왕복이 아니라 "태스크를 만든 그 한 번"이 된다.

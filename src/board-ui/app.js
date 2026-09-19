@@ -1565,9 +1565,69 @@ function renderHome() {
   // 태스크는 그 태스크로 가고 동기화 항목은 동기화를 실행한다. 예전에는 둘 다 운영 상태
   // 화면으로 보냈는데 그 화면은 헤더와 이 목록의 중복이라 없앴다.
   renderAttention(attention);
+  renderDocumentFlow(data);
   el('home-documents').innerHTML = documents.slice().sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)).slice(0, 6).map(documentCard).join('');
   renderMyQueue(tasks);
   renderRecentChanges(tasks, documents);
+}
+
+// 작성-의존 흐름의 대시보드. 어느 유형이 어느 유형 위에 서는지(스냅숏의 documentOrder,
+// 정본은 어휘)와 각 유형의 승인 완결률을 층 사슬로 그린다 — "지금 어디까지 굳었고
+// 다음에 무엇을 굳혀야 하는가"가 첫 화면에서 읽혀야, 승인 전 하류 작성을 묻는 규칙
+// (orderEnforcement)이 화면 없는 규칙으로 남지 않는다.
+function renderDocumentFlow(data) {
+  const order = data.documentOrder || {};
+  const contract = data.contract || {};
+  const profile = contract.profile || null;
+  const disabled = (profile && profile.policy && profile.policy.disabled) || [];
+  const required = new Set((profile && profile.policy && profile.policy.required) || []);
+  const byType = {};
+  for (const item of data.documents || []) {
+    const match = /^([A-Z]{3})-\d+$/u.exec(item.id);
+    if (!match) continue;
+    const type = match[1];
+    byType[type] = byType[type] || { total: 0, approved: 0 };
+    byType[type].total += 1;
+    if (item.approval && item.approval.status === 'approved') byType[type].approved += 1;
+  }
+  // 층은 표의 순수 계산이다 — 표는 서버가 실어 주고, 여기는 그 표를 접을 뿐이다.
+  const layerOf = {};
+  const depth = (type, seen) => {
+    if (layerOf[type] !== undefined) return layerOf[type];
+    if (seen.has(type)) return 0;
+    seen.add(type);
+    const parents = order[type] || [];
+    const value = parents.length ? Math.max(...parents.map((parent) => depth(parent, seen) + 1)) : 0;
+    seen.delete(type);
+    layerOf[type] = value;
+    return value;
+  };
+  const types = Object.keys(order).filter((type) => !disabled.includes(type));
+  for (const type of types) depth(type, new Set());
+  const layers = [];
+  for (const type of types) {
+    // 있지도 않고 요구되지도 않는 유형은 사슬을 흐린다 — 지금 이 프로젝트의 흐름만 그린다.
+    const counts = byType[type];
+    if (!counts && !required.has(type)) continue;
+    (layers[layerOf[type]] = layers[layerOf[type]] || []).push(type);
+  }
+  const totals = { total: 0, approved: 0 };
+  const columns = layers.map((group) => `<div class="flow-layer">${group.map((type) => {
+    const counts = byType[type] || { total: 0, approved: 0 };
+    totals.total += counts.total; totals.approved += counts.approved;
+    const state = counts.total === 0 ? 'missing' : (counts.approved === counts.total ? 'done' : (counts.approved ? 'partial' : 'open'));
+    const label = documentTypeLabel({ id: `${type}-000` }) || type;
+    return `<button type="button" class="flow-type flow-${state}" data-view="documents" title="${escapeHtml(type)} 승인 ${counts.approved}/${counts.total}">`
+      + `<strong>${escapeHtml(label)}</strong><span>${counts.total === 0 ? '없음' : `${counts.approved}/${counts.total}`}</span>`
+      + (counts.total ? `<i class="flow-bar"><b style="width:${Math.round((counts.approved / counts.total) * 100)}%"></b></i>` : '')
+      + '</button>';
+  }).join('')}</div>`).filter((html) => html.includes('flow-type'));
+  const rate = totals.total ? Math.round((totals.approved / totals.total) * 100) : 0;
+  el('home-flow').innerHTML = columns.length
+    ? `<div class="flow-summary"><div class="flow-rate"><b style="width:${rate}%"></b></div><span>승인 완결률 <strong>${rate}%</strong> — ${totals.approved}/${totals.total}건</span>`
+      + `<span class="chip" title="상류 유형이 승인되기 전의 하류 문서 생성을 어떻게 다루는가">작성-의존 ${escapeHtml(enforcementLabel(contract.orderEnforcement || 'advisory'))}</span></div>`
+      + `<div class="flow-chain">${columns.join('<span class="flow-arrow">→</span>')}</div>`
+    : '<p class="empty-state">아직 그릴 흐름이 없습니다. 문서가 만들어지면 유형 사슬과 승인 완결률이 여기 섭니다.</p>';
 }
 
 // 홈은 프로젝트 전체를 요약할 뿐 "그래서 내가 지금 뭘 하면 되나"에는 답하지 않았다.
@@ -2963,6 +3023,19 @@ function openShortcutHelp() {
 }
 
 el('shortcut-help-button').addEventListener('click', openShortcutHelp);
+
+// 문서 머리는 sticky로 남되, 스크롤하면 한 줄로 응축된다. 통째로 붙는 설계의
+// 근거(다 읽은 자리에서 승인 손잡이를 잃지 않는다)는 지키면서, 큰 머리가 본문을
+// 먹는 비용만 줄인다 — 제목과 손잡이는 남고 설명·배지·경로는 위로 올라간 동안
+// 접힌다. 맨 위로 돌아오면 다시 펴진다.
+let readerCondensed = false;
+window.addEventListener('scroll', () => {
+  if (state.view !== 'document') { if (readerCondensed) { readerCondensed = false; document.body.classList.remove('doc-heading-condensed'); } return; }
+  const next = (document.scrollingElement || document.documentElement).scrollTop > 48;
+  if (next === readerCondensed) return;
+  readerCondensed = next;
+  document.body.classList.toggle('doc-heading-condensed', next);
+}, { passive: true });
 
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
@@ -5536,6 +5609,8 @@ function renderContractCompliance() {
   el('compliance-body').innerHTML = `
     <section class="compliance-group"><h3>계약 상태</h3><dl>
       <div class="property"><dt>강제 수준</dt><dd>${escapeHtml(enforcementLabel(contract.enforcement))}<small>${escapeHtml(presentationHint('enforcementLevels', contract.enforcement) || enforcementNote[contract.enforcement] || '')}</small></dd></div>
+      <div class="property"><dt>태스크 결박</dt><dd>${escapeHtml(enforcementLabel(contract.taskEnforcement || 'advisory'))}<small>커밋이 태스크에 결박되지 않을 때의 처리입니다.</small></dd></div>
+      <div class="property"><dt>작성-의존 순서</dt><dd>${escapeHtml(enforcementLabel(contract.orderEnforcement || 'advisory'))}<small>상류 유형이 승인되기 전의 하류 문서 생성 — advisory는 알리고, checkpoint는 사용자 지시의 기록(--ahead-of-approval) 없이는 거부합니다. 바꾸는 명령: rdl project profile --order-enforcement</small></dd></div>
       <div class="property"><dt>revision</dt><dd>${escapeHtml(String(profile.revision))}<small>계약을 바꿀 때마다 1씩 오릅니다.</small></dd></div>
       <div class="property"><dt>프로필 이력</dt><dd>${escapeHtml((profile.history || []).map((name) => presentationLabel('profiles', name, name)).join(' → '))}</dd></div>${diagrams}
     </dl></section>

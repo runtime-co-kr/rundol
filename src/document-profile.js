@@ -82,11 +82,11 @@ function profileBlock(source) {
 function parseRawProfile(source) {
   const block = profileBlock(source);
   if (!block) return null;
-  const raw = { schemaVersion: null, revision: null, name: null, enforcement: null, taskEnforcement: null, traits: [], history: [], policy: {}, rules: {}, omissions: {} };
+  const raw = { schemaVersion: null, revision: null, name: null, enforcement: null, taskEnforcement: null, orderEnforcement: null, traits: [], history: [], policy: {}, rules: {}, omissions: {} };
   let section = 'profile';
   let currentType = null;
   for (const line of block.split('\n').slice(1)) {
-    const top = /^  (schemaVersion|revision|name|enforcement|taskEnforcement|traits|history):\s*(.*)$/u.exec(line);
+    const top = /^  (schemaVersion|revision|name|enforcement|taskEnforcement|orderEnforcement|traits|history):\s*(.*)$/u.exec(line);
     if (top) {
       raw[top[1]] = ['traits', 'history'].includes(top[1]) ? parseList(top[2]) : scalar(top[2]);
       section = 'profile';
@@ -195,6 +195,12 @@ function normalizeProfile(input, presets) {
   // 계약이 전부 다시 쓰여야 하고, 다시 쓰인 파일은 구버전이 읽지 못한다. 태스크 축은
   // 경고에서 시작한다 — 이 변경만으로 기존 프로젝트의 동작이 달라지면 안 된다.
   result.taskEnforcement = ENFORCEMENTS.includes(value.taskEnforcement) ? value.taskEnforcement : 'advisory';
+  // 셋째 축 — 작성-의존 순서. 상류 유형이 승인되기 전의 하류 문서 생성을 어떻게
+  // 다루는가다. taskEnforcement와 같은 이유로 경고에서 시작한다: 이 축이 생겼다는
+  // 사실만으로 기존 프로젝트의 문서 생성이 막히면 안 되고, 조이는 것은 프로젝트의
+  // 결정이어야 한다. advisory는 생성 결과에 미승인 상류를 알리고, checkpoint는
+  // 사용자 지시의 기록(--ahead-of-approval) 없이는 생성을 거부한다.
+  result.orderEnforcement = ENFORCEMENTS.includes(value.orderEnforcement) ? value.orderEnforcement : 'advisory';
   // rules는 더 이상 프로젝트가 들고 다니는 상태가 아니다. "REQ는 PRD 다음"이라는 지식은
   // 프로젝트마다 다르지 않아 아무도 바꾸지 않았고, 바꿔도 아무것도 막지 않았다.
   // 지식은 DEFAULT_RULES 상수로 남고 contract next가 거기서 계산한다.
@@ -246,6 +252,7 @@ function parseDocumentProfile(source, presets) {
     name: raw.name,
     enforcement: raw.enforcement,
     taskEnforcement: raw.taskEnforcement,
+    orderEnforcement: raw.orderEnforcement,
     traits: raw.traits,
     history: raw.history,
     policy: raw.policy,
@@ -299,6 +306,7 @@ function validateDocumentProfile(source, presets) {
     // 태스크 축은 적혀 있지 않아도 된다. 없으면 경고에서 시작한다 — 축을 하나 더한 것만으로
     // 기존 계약이 무효가 되면 안 된다. 다만 적혀 있으면 아는 값이어야 한다.
     if (raw.taskEnforcement !== null && !ENFORCEMENTS.includes(raw.taskEnforcement)) errors.push(`지원하지 않는 taskEnforcement입니다: ${raw.taskEnforcement}`);
+    if (raw.orderEnforcement !== null && raw.orderEnforcement !== '' && !ENFORCEMENTS.includes(raw.orderEnforcement)) errors.push(`지원하지 않는 orderEnforcement입니다: ${raw.orderEnforcement}`);
     for (const type of REGULAR_TYPES) {
       // 예전 파일에 남아 있는 rules는 읽되 요구하지 않는다. 있으면 그냥 무시되고,
       // 다음 계약 저장에서 블록을 다시 렌더할 때 자연스럽게 사라진다.
@@ -325,6 +333,7 @@ function assertProfileInput(input, presets) {
   if (value.schemaVersion !== undefined && ![1, 2].includes(value.schemaVersion)) throw new Error(`지원하지 않는 documentProfile schemaVersion입니다: ${value.schemaVersion}`);
   if (value.enforcement !== undefined && !ENFORCEMENTS.includes(value.enforcement)) throw new Error(`지원하지 않는 enforcement입니다: ${value.enforcement}`);
   if (value.taskEnforcement !== undefined && !ENFORCEMENTS.includes(value.taskEnforcement)) throw new Error(`지원하지 않는 taskEnforcement입니다: ${value.taskEnforcement}`);
+  if (value.orderEnforcement !== undefined && !ENFORCEMENTS.includes(value.orderEnforcement)) throw new Error(`지원하지 않는 orderEnforcement입니다: ${value.orderEnforcement}`);
   for (const trait of parseList(value.traits)) if (!TRAITS.includes(trait)) throw new Error(`지원하지 않는 project trait입니다: ${trait}`);
   if (value.policy) {
     const seen = new Map();
@@ -350,6 +359,7 @@ function renderDocumentProfileUnchecked(profile) {
   // 기본값일 때는 적지 않는다. 축을 더했다는 이유로 손대지 않은 프로젝트의 계약 파일이
   // 바뀌면, 그 파일을 읽는 구버전이 함께 멈춘다. 사람이 값을 정했을 때만 파일이 바뀐다.
   if (profile.schemaVersion === 2 && profile.taskEnforcement && profile.taskEnforcement !== 'advisory') lines.push(`  taskEnforcement: ${profile.taskEnforcement}`);
+  if (profile.schemaVersion === 2 && profile.orderEnforcement && profile.orderEnforcement !== 'advisory') lines.push(`  orderEnforcement: ${profile.orderEnforcement}`);
   lines.push(`  traits: [${profile.traits.join(', ')}]`, `  history: [${profile.history.join(', ')}]`, '  policy:');
   for (const state of POLICY_STATES) lines.push(`    ${state}: [${profile.policy[state].join(', ')}]`);
   // 사람이 적어 둔 값은 계약을 저장해도 그대로 남는다. 규칙을 없앤 것이 그 기록을 지울
@@ -413,7 +423,7 @@ function profileImpact(before, after) {
   const changes = [];
   if (!before) changes.push({ field: 'contract', from: null, to: 'configured' });
   else {
-    for (const field of ['name', 'enforcement', 'taskEnforcement']) if (before[field] !== after[field]) changes.push({ field, from: before[field], to: after[field] });
+    for (const field of ['name', 'enforcement', 'taskEnforcement', 'orderEnforcement']) if (before[field] !== after[field]) changes.push({ field, from: before[field], to: after[field] });
     for (const type of REGULAR_TYPES) {
       const oldState = before && POLICY_STATES.find((state) => before.policy[state].includes(type));
       const newState = POLICY_STATES.find((state) => after.policy[state].includes(type));
@@ -434,6 +444,7 @@ function reconfigureProject(projectFile, name, overrides, presets) {
     name,
     enforcement: settings.enforcement || (migrated && migrated.enforcement) || 'checkpoint',
     taskEnforcement: settings.taskEnforcement || (migrated && migrated.taskEnforcement) || 'advisory',
+    orderEnforcement: settings.orderEnforcement || (migrated && migrated.orderEnforcement) || 'advisory',
     traits: settings.traits || (migrated && migrated.traits) || [],
     policy: settings.policy || undefined,
     omissions: settings.omissions || (settings.policy ? undefined : migrated && migrated.omissions),
