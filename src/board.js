@@ -38,7 +38,7 @@ function stripSources(presentation) {
   return copy;
 }
 
-const { TASK_STATES: STATUSES, BASIS_KINDS } = require('./vocabulary');
+const { TASK_STATES: STATUSES, BASIS_KINDS, DEFAULT_DOCUMENT_ORDER } = require('./vocabulary');
 const UI_ROOT = path.join(__dirname, 'board-ui');
 
 // 문서에 넣은 그림을 보드가 서빙한다. 지금까지 정적 경로는 UI 자산과 라이브러리뿐
@@ -777,6 +777,10 @@ function workspaceSnapshot(root, projectKey, search) {
     // 제약 카탈로그도 화면이 다시 적지 않는다. 다섯 종류가 무엇인지는 코드가 알고,
     // 화면은 그것을 그린다 — 화면이 목록을 따로 들면 종류가 늘어날 때 한쪽만 는다.
     itemTypeCatalog: { kinds: CONSTRAINT_KINDS, exemptable: EXEMPTABLE_GATES },
+    // 작성-의존 표도 같은 규율이다. 어느 유형이 어느 유형 위에 서는가는 어휘가 갖고,
+    // 화면의 흐름 대시보드는 그 표를 그린다 — 화면이 사슬을 다시 적으면 표가 바뀌는
+    // 날 대시보드만 옛 사슬을 들고 남는다.
+    documentOrder: DEFAULT_DOCUMENT_ORDER,
     runs: [],
     proposals: []
   };
