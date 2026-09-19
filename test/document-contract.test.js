@@ -287,4 +287,54 @@ try {
   }
 }
 
+// ── 작성-의존 순서 게이트 ────────────────────────────────────────────────────
+//
+// 상류가 승인되기 전의 하류 생성을 orderEnforcement가 다룬다. advisory(기본)는
+// 알림만 싣고 막지 않으며 — 이 축이 생겼다는 사실만으로 기존 프로젝트가 멎으면
+// 안 된다 — checkpoint는 사용자 지시의 기록 없이는 거부한다.
+{
+  const ordered = fs.mkdtempSync(path.join(os.tmpdir(), 'rundol-order-gate-'));
+  try {
+    git(['init', '-b', 'main'], ordered);
+    git(['config', 'user.name', 'Rundol Test'], ordered);
+    git(['config', 'user.email', 'rundol@example.test'], ordered);
+    fs.writeFileSync(path.join(ordered, 'README.md'), '# order\n', 'utf8');
+    git(['add', 'README.md'], ordered); git(['commit', '-m', 'initial'], ordered);
+    run(['init', 'flow', '--name', 'Flow', '--profile', 'lean', '--root', ordered, '--json'], ordered);
+    run(['doc', 'create', 'PRD', '흐름 제품', '--owner', 'MEMBER-001', '--scope', '순서 게이트를 확인하는 제품', '--exclude', '그 밖', '--project', 'flow', '--root', ordered, '--json'], ordered);
+    const requirement = run(['doc', 'create', 'REQ', '흐름 요구', '--owner', 'MEMBER-001', '--scope', '사용자가 흐름을 확인하는 동작', '--exclude', '그 밖', '--function-id', 'FN-001', '--related', 'PRD-001', '--project', 'flow', '--root', ordered, '--json'], ordered);
+    // advisory: PRD가 미승인이어도 REQ는 만들어지고, 결과가 그 사실을 알린다.
+    assert(requirement.orderNotice && requirement.orderNotice.includes('PRD'), `advisory는 알림을 실어야 합니다: ${JSON.stringify(requirement.orderNotice)}`);
+
+    // 상류가 없는 유형에 지시 기록을 실으면 거부된다 — 뜻 없는 값은 기록이 아니라 소음이다.
+    const rawRun = (args) => spawnSync(node, [cli].concat(args), { cwd: repository, encoding: 'utf8' });
+    const pointless = rawRun(['doc', 'create', 'PRD', '지시 없는 자리', '--owner', 'MEMBER-001', '--scope', '상류 없는 유형', '--exclude', '그 밖', '--ahead-of-approval', '지시', '--project', 'flow', '--root', ordered, '--json']);
+    assert.notStrictEqual(pointless.status, 0);
+    assert.match(`${pointless.stdout}${pointless.stderr}`, /상류 유형이 없습니다/u);
+
+    // checkpoint로 조이면 같은 생성이 거부되고, 거부가 다음 행동(승인 또는 지시 기록)을 말한다.
+    run(['project', 'profile', '--project', 'flow', '--profile', 'lean', '--order-enforcement', 'checkpoint', '--root', ordered, '--json'], ordered);
+    const refused = rawRun(['doc', 'create', 'ARC', '순서 차단 구조', '--owner', 'MEMBER-001', '--scope', '차단을 확인하는 구조', '--exclude', '그 밖', '--project', 'flow', '--root', ordered, '--json']);
+    assert.notStrictEqual(refused.status, 0);
+    assert.match(`${refused.stdout}${refused.stderr}`, /RDL-ORDER-001/u, '차단은 코드로 말해야 한다.');
+    assert.match(`${refused.stdout}${refused.stderr}`, /ahead-of-approval/u, '거부가 사용자 지시의 길을 말해야 한다.');
+
+    // 사용자 지시의 기록이 있으면 지나가고, 그 지시가 결과에 남는다.
+    const instructed = run(['doc', 'create', 'ARC', '지시로 앞선 구조', '--owner', 'MEMBER-001', '--scope', '지시로 앞선 구조', '--exclude', '그 밖', '--ahead-of-approval', '사용자가 REQ 승인 전 설계 착수를 지시함', '--project', 'flow', '--root', ordered, '--json'], ordered);
+    assert.strictEqual(instructed.aheadOfApproval, '사용자가 REQ 승인 전 설계 착수를 지시함');
+    assert(instructed.orderNotice.includes('사용자 지시'), '알림이 지시를 함께 나른다.');
+
+    // 상류가 승인되면 게이트는 사라진다 — 그리고 필요 없는 지시 기록은 거부된다.
+    run(['client', 'register', 'flow-human', '--name', '검토자', '--type', 'human', '--owner', 'MEMBER-001', '--root', ordered, '--json'], ordered);
+    run(['doc', 'approve', requirement.id, '--client-id', 'flow-human', '--member', 'MEMBER-001', '--basis', 'read', '--reason', '읽고 승인', '--project', 'flow', '--root', ordered, '--json'], ordered);
+    const clear = run(['doc', 'create', 'ARC', '승인 뒤의 구조', '--owner', 'MEMBER-001', '--scope', '승인 뒤에 서는 구조', '--exclude', '그 밖', '--project', 'flow', '--root', ordered, '--json'], ordered);
+    assert.strictEqual(clear.orderNotice, undefined, '승인된 상류 위에는 알림이 없다.');
+    const needless = rawRun(['doc', 'create', 'ARC', '필요 없는 지시', '--owner', 'MEMBER-001', '--scope', '필요 없는 지시의 구조', '--exclude', '그 밖', '--ahead-of-approval', '지시', '--project', 'flow', '--root', ordered, '--json']);
+    assert.notStrictEqual(needless.status, 0);
+    assert.match(`${needless.stdout}${needless.stderr}`, /필요 없는 자리/u);
+  } finally {
+    fs.rmSync(ordered, { recursive: true, force: true });
+  }
+}
+
 process.stdout.write('document contract tests passed' + String.fromCharCode(10));

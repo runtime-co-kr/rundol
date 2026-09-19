@@ -19,7 +19,7 @@ const {
 const { parseFrontmatter } = require('./frontmatter');
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..', 'docs', 'templates');
-const { RELATED_REQUIRED_TYPES, SUB_ID_SEPARATOR, DOCUMENT_LIFECYCLE_KEYS, REVISION_FORMULAS } = require('./vocabulary');
+const { RELATED_REQUIRED_TYPES, SUB_ID_SEPARATOR, DOCUMENT_LIFECYCLE_KEYS, REVISION_FORMULAS, DEFAULT_DOCUMENT_ORDER } = require('./vocabulary');
 const RELATED_REQUIRED = new Set(RELATED_REQUIRED_TYPES);
 
 function markdownFiles(root, output) {
@@ -112,6 +112,27 @@ function createDocument(start, input) {
   const layout = workspaceLayout(start);
   const project = selectProject(layout, input.project, true);
   const contract = assertDocumentCreationAllowed(layout.root, project.key, type);
+  // 작성-의존 순서. 상류 유형이 승인되기 전의 하류 생성은 프로젝트의 orderEnforcement가
+  // 다룬다 — advisory는 결과에 알림으로 실려 에이전트가 사용자에게 물을 근거가 되고,
+  // checkpoint는 사용자 지시의 기록(--ahead-of-approval) 없이는 거부한다. 지시를
+  // 값으로 받는 이유는 "사용자가 시켰다"가 나중에 물을 수 있는 사실이어야 하기
+  // 때문이다 — 말로 받은 지시는 원장 밖의 말이다. 계약이 사용 안 함으로 둔 상류는
+  // 요구하지 않는다: 만들 수 없는 것을 기다리게 하면 그 유형의 하류가 영영 멎는다.
+  const aheadReason = String(input.aheadOfApproval || '').trim();
+  const disabledTypes = (contract.profile && contract.profile.policy && contract.profile.policy.disabled) || [];
+  const requiredUpstream = (DEFAULT_DOCUMENT_ORDER[type] || []).filter((up) => !disabledTypes.includes(up));
+  let orderNotice = null;
+  if (requiredUpstream.length) {
+    const rows = require('./approval').documentStatus(start, { project: project.key }).documents || [];
+    const missing = requiredUpstream.filter((up) => !rows.some((row) => String(row.id).startsWith(`${up}-`) && row.status === 'approved'));
+    if (missing.length) {
+      const orderEnforcement = (contract.profile && contract.profile.orderEnforcement) || 'advisory';
+      if (orderEnforcement === 'checkpoint' && !aheadReason) {
+        throw new Error(`RDL-ORDER-001: ${type}의 상류 유형이 아직 승인되지 않았습니다: ${missing.join(' · ')}. 상류를 먼저 승인받으세요. 사용자의 지시로 앞서 가려면 --ahead-of-approval <지시 요지>로 그 지시를 남기고 지나갑니다.`);
+      }
+      orderNotice = `상류 미승인 위에 섭니다: ${missing.join(' · ')}${aheadReason ? ` — 사용자 지시: ${aheadReason}` : ' — 상류가 승인되기 전에는 이 문서의 근거가 흔들릴 수 있습니다.'}`;
+    } else if (aheadReason) throw new Error('상류가 모두 승인되어 있습니다. --ahead-of-approval은 필요 없는 자리에 쓰지 않습니다.');
+  } else if (aheadReason) throw new Error(`${type}에는 상류 유형이 없습니다. --ahead-of-approval은 필요 없는 자리에 쓰지 않습니다.`);
   const title = safeTitle(input.title);
   const boundary = type === 'NTE' ? null : assertBoundaryInput(type, { scope: input.scope, excludes: input.excludes });
   const functionIds = Array.from(new Set((input.functionIds || []).map((value) => String(value).trim()).filter(Boolean)));
@@ -213,7 +234,7 @@ function createDocument(start, input) {
   source = insertUid(source, uid);
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(file, source, 'utf8');
-  return { root: layout.root, project: project.key, id, uid, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null };
+  return { root: layout.root, project: project.key, id, uid, type, title: title.title, file, relativeFile: path.relative(layout.root, file).replace(/\\/g, '/'), contractStatus: contract.status, boundary: boundary ? { version: boundary.version, scope: boundary.scope, excludes: boundary.excludes } : null, functionIds, implementationContract: functionIds.length ? 'atomic-v1' : null, granularityGuidance: boundary ? boundary.guidance : null, ...(orderNotice ? { orderNotice } : {}), ...(aheadReason ? { aheadOfApproval: aheadReason } : {}) };
 }
 
 // ── 문서 수명(lifecycle) 축 ─────────────────────────────────────────────────
