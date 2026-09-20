@@ -214,7 +214,7 @@ Usage:
   rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
-  rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
+  rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--unit <launchd|systemd|schtasks>] [--json]
   rdl run dispatch [--project <key>] [--task <TASK-ID> --client-id <id>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
@@ -304,7 +304,7 @@ function parseOperationArgs(argv) {
     else if (value === '--ack-stale') options.ackStale = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--title', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--order-enforcement', '--ahead-of-approval', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
-      '--session-id', '--path', '--from', '--reply-to', '--rule', '--submission'].includes(value)) {
+      '--session-id', '--path', '--from', '--reply-to', '--rule', '--submission', '--unit'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -1423,6 +1423,23 @@ async function main() {
       if (!options.clientId) throw new Error('rdl run driver는 --client-id <id>가 필요합니다.');
       const interval = Number.parseInt(options.interval || '60', 10);
       if (!Number.isInteger(interval) || interval < 5) throw new Error('--interval은 5초 이상의 정수여야 합니다.');
+      // 부팅 유닛은 본문을 낼 뿐 놓지 않는다. REQ-066이 유닛 설치를 범위 밖에 두고
+      // "문서로 본문을 싣되 도구가 넣지 않는다"고 적은 자리이며, 여기서 파일을 쓰면
+      // 이 명령이 그 경계를 혼자 넘는다.
+      //
+      // 본문만 stdout으로 내고 놓는 방법은 stderr로 낸다. 그래야 그대로 리다이렉트해
+      // 유닛 파일을 만들 수 있고, 만드는 행위는 사람의 손에 남는다.
+      if (options.unit) {
+        const unit = require('../src/driver-unit').driverUnit({
+          kind: options.unit, clientId: options.clientId, project: options.project,
+          interval, root: options.root, node: process.execPath, cli: __filename
+        });
+        if (options.json) { process.stdout.write(`${JSON.stringify(unit, null, 2)}\n`); return 0; }
+        process.stdout.write(unit.body.endsWith('\n') ? unit.body : `${unit.body}\n`);
+        process.stderr.write(`${unit.path ? `자리: ${unit.path}\n` : ''}Rundol은 이 유닛을 놓지 않습니다. 아래를 직접 실행하세요.\n`);
+        for (const line of unit.install) process.stderr.write(`  ${line}\n`);
+        return 0;
+      }
       const driver = require('../src/run-driver');
       const result = await driver.runDriver(options.root, {
         clientId: options.clientId, project: options.project, interval, once: options.once === true

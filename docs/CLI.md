@@ -122,7 +122,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl run request resume <REQ-ID> --client-id <id> [--json]
   rdl run list --project <key> [--json]
   rdl run pending [--project <key>] [--json]
-  rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--json]
+  rdl run driver --client-id <id> [--project <key>] [--interval <초>] [--once] [--unit <launchd|systemd|schtasks>] [--json]
   rdl run dispatch [--project <key>] [--task <TASK-ID> --client-id <id>] [--json]
   rdl run log --run <RUN-ID> --project <key> [--json]
   rdl run procedures [--project <key>] [--json]
@@ -254,19 +254,20 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 
 강제 종료가 어댑터 호출 도중이었다면 재기동한 drive가 새 `rootRequestId`로 같은 `operationId`를 다시 실행합니다. 결과가 이전과 다르면 `operation-conflict`가 되고 사람이 `rdl run operation resolve`로 고릅니다 — 조용한 손상이 아니라 보이는 충돌입니다.
 
-유닛은 셋 다 **시스템이 아니라 사용자 범위**입니다. 어댑터가 AI 클라이언트의 자격 증명을 사용자 홈에서 읽기 때문입니다.
+**재부팅 복구에 필요한 것은 유닛 하나입니다.** 드라이버가 상주 프로세스이므로 운영체제가 할 일은 부팅 때 한 번 띄우고 죽으면 다시 띄우는 것뿐입니다. 주기 기동 유닛으로 같은 일을 하려면 회전마다 새 프로세스를 띄워야 하는데, `driver-workspace` 잠금이 두 번째부터 전부 거절하므로 스케줄러 이력에는 실패만 쌓입니다. 재부팅 전 드라이버가 놓지 못한 잠금은 `acquireProcessLock`이 죽은 pid를 보고 회수하므로 사람이 치울 것이 없습니다.
 
-```bat
-:: Windows 11 — 작업 스케줄러, ONLOGON
-schtasks /Create /F /TN "Rundol Driver" /SC ONLOGON /RL LIMITED ^
-  /TR "\"<node.exe>\" \"<repo>\bin\rdl.js\" run driver --root \"<repo>\" --client-id <id>"
+유닛 본문은 `rdl run driver --unit <launchd|systemd|schtasks>`가 냅니다. 본문은 **stdout으로만** 나오고 놓는 방법은 stderr로 나오므로, 그대로 리다이렉트해 유닛 파일을 만들 수 있습니다.
+
+```bash
+rdl run driver --root "$PWD" --client-id <id> --unit launchd > ~/Library/LaunchAgents/dev.rundol.driver.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.rundol.driver.plist
 ```
 
-`ONSTART`가 아니라 `ONLOGON`입니다. `ONSTART`는 사용자 프로필 없이 SYSTEM으로 돌고, 그러면 `LOCALAPPDATA`가 다르며 AI 클라이언트의 자격 증명이 없습니다. `/SC MINUTE`은 쓰지 않습니다 — 매 분 새 프로세스를 띄우면 잠금이 전부 거절하고 스케줄러 이력에 실패만 쌓입니다. 재시작은 작업 속성의 "실패 시 다시 시작"으로 둡니다.
+유닛은 셋 다 **시스템이 아니라 사용자 범위**입니다. 어댑터가 AI 클라이언트의 자격 증명을 사용자 홈에서 읽기 때문입니다. macOS는 LaunchAgent `~/Library/LaunchAgents/dev.rundol.driver.plist`(`RunAtLoad`, `KeepAlive`), Linux는 systemd 사용자 유닛 `~/.config/systemd/user/rundol-driver.service`(`Type=simple`, `Restart=always`, `RestartSec=30`, `WantedBy=default.target`)입니다. Linux에서 로그인 없이 부팅 때 뜨게 하려면 `loginctl enable-linger <user>`가 함께 필요합니다 — 이 줄이 없으면 유닛은 만들어졌는데 재부팅 뒤에 뜨지 않고, 그 침묵은 "몰 런이 없다"와 구분되지 않습니다.
 
-Linux는 systemd 사용자 유닛 `~/.config/systemd/user/rundol-driver.service`(`Type=simple`, `Restart=always`, `RestartSec=30`, `WantedBy=default.target`)를 쓰고, 로그인 없이 부팅 때 뜨게 하려면 `loginctl enable-linger <user>`가 필요합니다. macOS는 LaunchAgent `~/Library/LaunchAgents/dev.rundol.driver.plist`에 `RunAtLoad`와 `KeepAlive`를 둡니다.
+Windows는 작업 스케줄러이며 `ONSTART`가 아니라 `ONLOGON`입니다. `ONSTART`는 사용자 프로필 없이 SYSTEM으로 돌고, 그러면 `LOCALAPPDATA`가 다르며 AI 클라이언트의 자격 증명이 없습니다. `/SC MINUTE`은 쓰지 않습니다 — 매 분 새 프로세스를 띄우면 잠금이 전부 거절합니다. 재시작은 작업 속성의 "실패 시 다시 시작"으로 둡니다.
 
-**Rundol은 이 유닛을 설치하지 않습니다.** 스킬 설치가 `postinstall`에 붙지 않는 것과 같은 규율입니다 — OS 유닛은 그보다 강한 개입이므로 명시적인 사람의 행위로만 놓입니다.
+**Rundol은 이 유닛을 설치하지 않습니다.** `--unit`은 본문을 만들 뿐이며, 그 본문을 만드는 모듈(`src/driver-unit.js`)에는 `fs`도 `child_process`도 없습니다 — 규율을 주석으로 적으면 다음 사람이 넘고 넘었다는 것을 아무도 모르므로, 넘을 수 없게 두었습니다. 스킬 설치가 `postinstall`에 붙지 않는 것과 같은 규율입니다. OS 유닛은 그보다 강한 개입이므로 명시적인 사람의 행위로만 놓입니다.
 
 Operation 결과가 서로 다른 digest로 충돌하면 drive는 후보를 임의로 선택하지 않습니다. 현재 owner는 `rdl run operation resolve`로 기존 candidate event를 선택하며, 다른 active project-member agent/service는 `--force`가 있어야 합니다. 이 명령은 이미 기록된 결과를 적용할 뿐 작업을 다시 실행하지 않습니다.
 | `rdl conflict` | pending 충돌 조회·전략 해결·기록 정리 | 해결 커밋 또는 pending | 없음 |
