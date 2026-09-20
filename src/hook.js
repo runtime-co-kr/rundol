@@ -163,11 +163,21 @@ function sessionSummary(root) {
   } catch (_) { return null; }
 }
 
+// 대기 런을 **이름으로** 드러낸다. 건수만 말하면 사람은 세어진 것이 무엇인지 알려고
+// 명령을 한 번 더 쳐야 하고, 그 한 번을 아끼려고 이 훅을 건 것이다.
+//
+// 여기서 몰지 않는다. pendingRuns는 reconcile을 부르지 않고 원장에 아무것도 쓰지
+// 않는다(src/run-pending.js:194). 세션 시작마다 도는 자리가 런을 밀기 시작하면,
+// 무엇이 주의를 요구하는지 묻는 행위가 그 답을 바꾸는 행위가 된다. 미는 것은
+// 드라이버의 일이고 드라이버는 사람이 없을 때 돈다 — 이 훅은 사람이 앉는 순간에 돈다.
+const WAITING_RUN_LINES = 5;
+
 function waitingRuns(root) {
   try {
     const { pendingRuns } = require('./run-pending');
     const pending = pendingRuns(root, {});
-    return { waiting: (pending.waiting || []).length, drivable: (pending.drivable || []).length };
+    const waiting = pending.waiting || [];
+    return { waiting: waiting.length, drivable: (pending.drivable || []).length, items: waiting.slice(0, WAITING_RUN_LINES) };
   } catch (_) { return null; }
 }
 
@@ -228,7 +238,18 @@ function sessionStart(start, payload) {
   }
 
   const runs = waitingRuns(root);
-  if (runs && (runs.waiting || runs.drivable)) context.push(`런: 사람 대기 ${runs.waiting}건 · 진행 가능 ${runs.drivable}건`);
+  if (runs && (runs.waiting || runs.drivable)) {
+    context.push(`런: 사람 대기 ${runs.waiting}건 · 진행 가능 ${runs.drivable}건`);
+    // 사유와 다음 명령을 그대로 나른다. 여기서 사유를 다시 분류하지 않는다 —
+    // 정지 사유의 판정은 원장의 몫이고, 훅이 두 번째 판정자가 되면 같은 런이
+    // 화면과 훅에서 다르게 읽힌다.
+    for (const entry of runs.items || []) {
+      context.push(`  대기 ${entry.project} ${entry.runId}${entry.procedure ? ` (${entry.procedure})` : ''} ${entry.reason} :: ${entry.command}`);
+    }
+    const hidden = runs.waiting - (runs.items || []).length;
+    // 자른 것은 자랐다고 말한다. 말하지 않으면 다섯 줄이 전부인 것으로 읽힌다.
+    if (hidden > 0) context.push(`  대기 ${hidden}건 더 있습니다 :: rdl run pending`);
+  }
 
   // 본 트리에서만 채운다. 세션 worktree에서 고치면 같은 파일이 두 자리에서 갈리고,
   // 어느 쪽이 커밋될지는 그때 누가 저장하느냐에 달리게 된다.

@@ -784,6 +784,16 @@ const HOOK_EVENTS = Object.freeze(['session-start', 'pre-tool-use', 'post-tool-u
 const HOOK_CLIENTS = Object.freeze(['claude', 'codex']);
 
 /**
+ * `rdl run driver --unit`이 본문을 낼 수 있는 부팅 유닛. 사람이 고르는 값이므로 여기 산다.
+ *
+ * 셋 다 사용자 범위다 — 어댑터가 AI 클라이언트의 자격 증명을 사용자 홈에서 읽으므로
+ * 시스템 범위 유닛은 자격 증명 없이 도는 드라이버가 된다. 그리고 셋 다 상주 유닛이다:
+ * 주기 기동 종류를 여기 더하는 것은 값을 하나 더하는 일이 아니라 드라이버가 상주가
+ * 아니게 되는 일이다.
+ */
+const DRIVER_UNIT_KINDS = Object.freeze(['launchd', 'systemd', 'schtasks']);
+
+/**
  * 파일 하나를 file_path로 지목해 쓰는 도구. 훅이 "무엇이 방금 바뀌었나"를 이 이름으로
  * 판정한다.
  *
@@ -869,6 +879,7 @@ module.exports = Object.freeze({
   COMMIT_BOUNDARY_HOOKS,
   HOOK_EVENTS,
   HOOK_CLIENTS,
+  DRIVER_UNIT_KINDS,
   DOCUMENT_WRITE_TOOLS,
   CONVENTIONAL_PRIMARY,
   ASSET_EXTENSIONS,
