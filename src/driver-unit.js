@@ -16,8 +16,9 @@
 // 잠금이 두 번째부터 전부 거절해 스케줄러 이력에 실패만 쌓인다. 부팅 때 한 번
 // 띄우고 죽으면 다시 띄우는 것 — 그것이 유닛이 할 일의 전부다.
 
-/** 만들 수 있는 유닛. 셋 다 사용자 범위다 — 어댑터가 AI 클라이언트의 자격 증명을 사용자 홈에서 읽는다. */
-const UNIT_KINDS = Object.freeze(['launchd', 'systemd', 'schtasks']);
+// 값 어휘는 정본에서 가져온다. 여기 사본을 두면 `--unit`이 받는 값과 도움말이 말하는
+// 값이 갈릴 수 있고, 갈린 뒤에는 어느 쪽이 참인지 물을 자리가 없다.
+const { DRIVER_UNIT_KINDS: UNIT_KINDS } = require('./vocabulary');
 
 /** 상주 루프가 받는 유휴 주기의 하한. bin/rdl.js의 거절과 같은 값이어야 한다. */
 const MINIMUM_INTERVAL = 5;
