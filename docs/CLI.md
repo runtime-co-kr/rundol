@@ -31,7 +31,8 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
   rdl asset add <파일경로> [--project <key>] [--as <이름>] [--max-edge <px>] [--doc <ARTIFACT-ID>] [--json]
   rdl asset list [--project <key>] [--json]
-  rdl skill install [--force] [--json]
+  rdl skill install [--force] [--no-hooks] [--json]
+  rdl skill hooks [--remove] [--json]
   rdl settings migrate [--root <path>] [--json]
   rdl workspace show|check|sync|migrate [--root <path>] [--json]
   rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
@@ -193,7 +194,8 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 | `rdl refresh` | worktree와 태스크 합본을 materialize하고 엄격 검증 | 프로젝트 `.rundol/state` 갱신, 커밋 없음 | 없음 |
 | `rdl save` | 직접 편집한 프로젝트 자료 검증·커밋 | 선택 프로젝트 브랜치 커밋 | 없음 |
 | `rdl obsidian init` | 팀 공통 Obsidian 설정을 개인 Vault 설정으로 복사 | `.obsidian/*.json` | 없음 |
-| `rdl skill install` | 거버넌스 스킬을 AI 클라이언트 개인 skills 폴더에 설치 | 클라이언트 `skills/` 디렉터리 | 없음 |
+| `rdl skill install` | 거버넌스 스킬 설치와 `SessionStart` 훅 구간 병합 | 클라이언트 `skills/` 디렉터리, 클라이언트 훅 설정의 런돌 구간 | 없음 |
+| `rdl skill hooks` | 런돌이 넣은 훅 구간 조회와 그 구간만 제거 | `--remove`일 때 클라이언트 훅 설정의 런돌 구간 | 없음 |
 | `rdl settings migrate` | 기존 schemaVersion 3 등록·Obsidian 설정을 settings 브랜치로 이전 | 기존 Workspace와 settings 브랜치 | 없음 |
 | `rdl task add` | 완료조건이 있는 태스크 생성 | 태스크 샤드, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
 | `rdl task set` | 태스크 상태·담당자·문서 링크 변경, 사유를 남기는 반려 | 태스크 원본, operation 기록, 프로젝트 브랜치 커밋 | 없음 |
@@ -931,11 +933,24 @@ rdl obsidian init --force
 ```bash
 rdl skill install
 rdl skill install --force
+rdl skill install --no-hooks
+rdl skill hooks
+rdl skill hooks --remove
 ```
 
 `rundol-project-governance` 스킬을 Codex, Claude Code와 GitHub Copilot의 개인 skills 폴더에 설치한다. 전역 설치 후 한 번 실행하고, CLI를 갱신한 뒤에도 다시 실행해 스킬을 최신 계약으로 맞춘다.
 
 `.rundol-managed.json` 마커가 없는 기존 디렉터리는 사용자가 관리하는 스킬로 보고 보존하며, 덮어쓰려면 `--force`를 지정한다.
+
+### 세션 시작 훅 구간
+
+같은 명령이 Claude Code(`settings.json`)와 Codex(`hooks.json`)의 `SessionStart`에 런돌 구간 하나를 **병합한다.** 덮어쓰지 않는다. `--no-hooks`로 뺄 수 있다. 스킬 지시문은 모델이 건너뛸 수 있어 결정론적 트리거가 못 되고, 하네스가 직접 실행하는 훅만이 대기 런을 세션 시작 시 컨텍스트에 넣는다.
+
+넣는 항목에는 `"rundolManaged": "rundol/session-start"`가 붙는다. `rdl skill hooks`가 그 구간과 함께 남아 있는 사용자 항목 수를 보이고, `--remove`가 **표가 붙은 항목만** 뺀다. 되돌린 뒤의 내용은 원본과 같아진다 — 다른 이벤트, 같은 이벤트의 다른 항목(순서까지), 최상위의 다른 열쇠가 전부 그대로다. 우리가 만든 파일은 되돌릴 때 치운다: 빈 객체 하나는 설정이 아니라 지나간 자국이다.
+
+설정을 읽지 못하거나 모양이 다르면 **그 파일을 건드리지 않고 종료 상태 2로 끝낸다.** 조용히 덮어쓰지도, 건너뛰고 성공이라 말하지도 않는다. 한 대상이 실패해도 다른 대상은 시도된다. 표 없는 `rdl hook` 호출이 이미 있으면 그 자리는 보존하고 넣지 않는다 — 넣으면 세션마다 훅이 두 번 돈다.
+
+자세한 배치와 나머지 이벤트의 스니펫은 [`docs/HOOKS.md`](HOOKS.md)에 있다. 막는 훅(`Stop`, `PreToolUse`)은 도구가 넣지 않는다.
 
 **이 작업을 npm `postinstall`로 연결하지 않는다.** npm 전역 설치가 git URL을 대상으로 할 때 `postinstall`이 있으면 npm이 패키지를 복사하지 않고 캐시의 임시 클론에 링크한다. 그 임시 클론은 곧 정리되므로 `bin/`과 `src/`가 사라진 채 설치가 끝나고, 이어서 실행된 `postinstall`이 실패하면 npm이 롤백하며 기존에 설치돼 있던 정상 버전까지 지운다.
 

@@ -37,7 +37,8 @@ Usage:
   rdl cleanup [--root <path>] [--project <key>] [--apply] [--json]
   rdl asset add <파일경로> [--project <key>] [--as <이름>] [--max-edge <px>] [--doc <ARTIFACT-ID>] [--json]
   rdl asset list [--project <key>] [--json]
-  rdl skill install [--force] [--json]
+  rdl skill install [--force] [--no-hooks] [--json]
+  rdl skill hooks [--remove] [--json]
   rdl settings migrate [--root <path>] [--json]
   rdl workspace show|check|sync|migrate [--root <path>] [--json]
   rdl member add <이름> --role <ROLE-ID> --organization <소속> --account <업무 계정> --responsibility <책임 영역> [--member <MEMBER-ID>] [--project <key>] [--json]
@@ -275,6 +276,11 @@ function parseOperationArgs(argv) {
     else if (value === '--grouped') options.grouped = true;
     else if (value === '--apply') options.apply = true;
     else if (value === '--once') options.once = true;
+    // 훅 병합을 빼는 갈래. 기본이 병합이므로 끄는 쪽에 이름을 준다 — 켜는 쪽에
+    // 이름을 주면 기본이 무엇인지가 플래그 이름에서 사라진다.
+    else if (value === '--no-hooks') options.hooks = false;
+    // 넣은 구간만 되돌린다. 사용자가 직접 쓴 항목은 하나도 건드리지 않는다.
+    else if (value === '--remove') options.remove = true;
     else if (value === '--scheduled') options.scheduled = true;
     else if (value === '--done') options.done = true;
     else if (value === '--undone') options.undone = true;
@@ -1174,16 +1180,51 @@ async function main() {
   }
   if (command === 'skill') {
     const subcommand = argv.shift();
-    if (subcommand !== 'install') throw new Error('지원하는 스킬 하위 명령은 rdl skill install입니다.');
+    if (!['install', 'hooks'].includes(subcommand)) throw new Error('지원하는 스킬 하위 명령은 install, hooks입니다.');
     const options = parseOperationArgs(argv);
-    if (options.positional.length > 0) throw new Error('rdl skill install에 위치 인수를 사용할 수 없습니다.');
+    if (options.positional.length > 0) throw new Error(`rdl skill ${subcommand}에 위치 인수를 사용할 수 없습니다.`);
+    const hookInstall = require('../src/hook-install');
+
+    // 훅 구간의 조회와 제거. 넣은 것을 보여 줄 수 없으면 그것만 지울 수도 없고,
+    // 지울 수 없는 병합은 되돌릴 수 없는 병합이다.
+    if (subcommand === 'hooks') {
+      const result = options.remove ? hookInstall.removeHooks({}) : hookInstall.hookInstallStatus({});
+      if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      else for (const item of result.targets) {
+        const detail = item.status === 'installed' ? `구간 ${item.regions.join(' · ')} · 사용자 항목 ${item.userEntries}건`
+          : item.status === 'removed' ? `구간 ${item.removed}건 제거` : (item.reason || '');
+        process.stdout.write(`${item.status}: ${item.label} ${item.file}${detail ? ` — ${detail}` : ''}\n`);
+      }
+      // 읽지 못한 대상은 조용히 넘어가지 않는다. 그 자리에 사람의 설정이 있는데
+      // 우리가 이해하지 못한다는 뜻이고, 그것이 정확히 사람이 알아야 할 사실이다.
+      const broken = result.targets.filter((item) => ['failed', 'unreadable'].includes(item.status));
+      if (broken.length) {
+        for (const item of broken) process.stderr.write(`rdl: ${item.label} 훅 설정 — ${item.reason}\n`);
+        return 2;
+      }
+      return 0;
+    }
+
     const result = installSkill({ force: options.force });
-    if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    // 훅은 기본으로 함께 병합한다. 스킬 지시문은 모델이 건너뛸 수 있어 결정론적
+    // 트리거가 못 되고, 그 자리를 채우는 것이 하네스가 직접 실행하는 훅이다.
+    const hooks = options.hooks === false ? null : hookInstall.installHooks({});
+    if (options.json) process.stdout.write(`${JSON.stringify(Object.assign({}, result, { hooks }), null, 2)}\n`);
     else {
       for (const item of result.targets) {
         if (item.status === 'preserved') process.stdout.write(`preserved: ${item.client} ${item.target}\n`);
         else process.stdout.write(`installed: ${item.client} ${item.target}\n`);
       }
+      for (const item of (hooks ? hooks.targets : [])) {
+        process.stdout.write(`hook ${item.status}: ${item.label} ${item.file}${item.reason && item.status !== 'failed' ? ` — ${item.reason}` : ''}\n`);
+      }
+    }
+    // 훅 병합이 실패하면 시끄럽게 끝낸다. 조용히 퇴화하면 사람은 훅이 설치된 줄
+    // 알고, 설치되지 않은 훅은 없는 훅이며, 없는 훅은 꺼진 통제와 구분되지 않는다.
+    const failed = (hooks ? hooks.targets : []).filter((item) => item.status === 'failed');
+    if (failed.length) {
+      for (const item of failed) process.stderr.write(`rdl: ${item.label} 훅 병합 실패 — ${item.reason}\n`);
+      return 2;
     }
     return 0;
   }

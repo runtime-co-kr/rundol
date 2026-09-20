@@ -13,7 +13,7 @@ const PARALLEL = Object.freeze([
   'document-boundary', 'document-diagram', 'test-contract', 'task-kind', 'test-round',
   'document-composite', 'implementation-contract', 'document-contract', 'document-grouping',
   'document-migration', 'note-artifact', 'git', 'workspace', 'task-identity', 'task-binding',
-  'task-exemption', 'hook', 'collaboration', 'collaboration-store', 'skill-install',
+  'task-exemption', 'hook', 'hook-install', 'collaboration', 'collaboration-store', 'skill-install',
   'obsidian', 'features', 'doctor', 'release', 'docs', 'action', 'agent-context',
   'authority', 'setup', 'decision', 'delegation', 'workset', 'approval',
   'document-identity', 'query-index', 'document-analysis', 'run-ledger', 'run-cli',
