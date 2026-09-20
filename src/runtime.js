@@ -49,8 +49,8 @@ function remoteUrl(root, remote) {
 const identityCache = new Map();
 const IDENTITY_CACHE_DISABLED = process.env.RUNDOL_NO_RUNTIME_CACHE === '1';
 
-function workspaceId(root, remote) {
-  const repository = repositoryRoot(root);
+// 저장소 루트가 이미 손에 있을 때 쓰는 자리. 키가 그 루트라 캐시도 같은 칸을 본다.
+function identityOf(repository, remote) {
   const name = remote || 'origin';
   const key = JSON.stringify([repository, name]);
   if (identityCache.has(key)) return identityCache.get(key);
@@ -60,13 +60,20 @@ function workspaceId(root, remote) {
   return id;
 }
 
+function workspaceId(root, remote) {
+  return identityOf(repositoryRoot(root), remote);
+}
+
 function clearRuntimeCache() {
   identityCache.clear();
 }
 
 function runtimeWorkspace(start, remote) {
   const root = repositoryRoot(start);
-  const id = workspaceId(root, remote);
+  // workspaceId(root)로 부르면 방금 구한 루트를 다시 git에게 묻는다. rev-parse 캐시는
+  // cwd 문자열로 걸리므로 start와 root가 다른 순간 빗나가고, 그 한 번이 프로세스 하나다.
+  // 루트의 저장소 루트는 자기 자신이라 다시 묻는 값이 달라질 자리가 없다.
+  const id = identityOf(root, remote);
   const state = path.join(runtimeHome(), 'workspaces', id);
   return {
     id,
