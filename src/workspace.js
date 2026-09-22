@@ -35,11 +35,7 @@ function anyRuntimeManifest() {
   return entries.some((entry) => RUNTIME_WORKSPACE_ID.test(entry) && fs.existsSync(path.join(directory, entry, 'workspace.yaml')));
 }
 
-function manifestPath(root) {
-  const workspace = path.join(root, 'projects', 'workspace', 'workspace.yaml');
-  if (fs.existsSync(workspace)) return workspace;
-  const legacy = path.join(root, '.rundol', 'workspace.yaml');
-  if (fs.existsSync(legacy)) return legacy;
+function runtimeManifestOf(root) {
   if (!anyRuntimeManifest()) return null;
   try {
     const runtime = runtimeWorkspace(root);
@@ -49,16 +45,76 @@ function manifestPath(root) {
   }
 }
 
+// 심볼릭 링크를 푼 뒤에 견준다. git이 답하는 저장소 루트는 이미 실제 경로라
+// (macOS의 /tmp는 /private/tmp다) 푸는 쪽을 맞추지 않으면 같은 저장소 안인데도
+// 매번 밖으로 읽힌다 — 그러면 기억해 둔 답이 한 번도 쓰이지 않는다.
+function realPath(value) {
+  try { return fs.realpathSync.native(value); } catch (_) { return value; }
+}
+
+function within(child, parent) {
+  const resolved = realPath(child);
+  if (resolved === parent) return true;
+  const relative = path.relative(parent, resolved);
+  return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+// 한 번의 탐색 동안만 사는 런타임 manifest 질문기.
+//
+// anyRuntimeManifest()가 거짓이면 층마다 물어도 답이 언제나 null이라 그 갈래는 이미
+// 공짜다. 하지만 런타임 manifest를 하나라도 가진 기기에서는 — rdl attach를 한 번이라도
+// 쓴 기기가 그렇다 — 못 찾은 층마다 runtimeWorkspace가 돌고, 그 한 번이 저장소 루트를
+// 묻는 rev-parse 하나다. gitRoot는 cwd 문자열로 캐시하므로 층이 다르면 전부 빗나간다.
+// 실측으로 이 저장소의 문서 경로에서 rev-parse 5회·get-url 2회가 떴고 탐색이 3.7ms에서
+// 98ms가 됐다 — 루트에서 친 명령과 하위 디렉터리에서 친 명령이 같은 시간에 답하지
+// 못하는 자리가 여기다.
+//
+// 한 저장소 안에서 답은 한 번도 달라지지 않는다. 런타임 manifest는 저장소마다 하나이고,
+// 그 저장소 안의 어느 층에서 물어도 같은 id로 같은 파일을 가리킨다. 그래서 저장소를
+// 하나 알아낼 때마다 한 번만 묻고, 그 저장소 안에 있는 동안은 기억한 답을 쓴다.
+//
+// 위로 올라가다 저장소 밖으로 나가면 다시 묻는다. 바깥은 다른 저장소이거나 저장소가
+// 아니어서 답이 갈릴 수 있고, 여기서 아끼자고 그 답을 물려주면 비용이 아니라 답이
+// 바뀐다 — 이 자리가 고치는 것은 언제나 비용 쪽이다.
+function runtimeManifestProbe() {
+  if (!anyRuntimeManifest()) return () => null;
+  let repository = null;
+  let answer = null;
+  return (current) => {
+    if (repository !== null && within(current, repository)) return answer;
+    try {
+      const runtime = runtimeWorkspace(current);
+      repository = runtime.root;
+      answer = fs.existsSync(runtime.manifest) ? runtime.manifest : null;
+    } catch (_) {
+      repository = null;
+      answer = null;
+    }
+    return answer;
+  };
+}
+
+function manifestPath(root, probeRuntime) {
+  const workspace = path.join(root, 'projects', 'workspace', 'workspace.yaml');
+  if (fs.existsSync(workspace)) return workspace;
+  const legacy = path.join(root, '.rundol', 'workspace.yaml');
+  if (fs.existsSync(legacy)) return legacy;
+  return (probeRuntime || runtimeManifestOf)(root);
+}
+
 function findWorkspaceRoot(start) {
   let current = path.resolve(start || process.cwd());
   if (fs.existsSync(current) && fs.statSync(current).isFile()) current = path.dirname(current);
+  // 탐색 하나가 질문기 하나를 쓴다. 모듈에 두면 캐시를 언제 버려야 하는지가 새 물음이
+  // 되고, 그 물음은 git.js·runtime.js가 이미 각자 답하고 있다 — 세 번째 답을 만들지 않는다.
+  const probeRuntime = runtimeManifestProbe();
   while (true) {
-    if (manifestPath(current)) return current;
+    if (manifestPath(current, probeRuntime)) return current;
     const parent = path.dirname(current);
     if (parent === current) {
       try {
         const repository = path.resolve(gitRoot(start || process.cwd()));
-        if (manifestPath(repository)) return repository;
+        if (manifestPath(repository, probeRuntime)) return repository;
       } catch (_) {}
       throw new Error(`${start}에 연결된 Rundol Workspace를 찾지 못했습니다. 먼저 rdl attach를 실행하세요.`);
     }

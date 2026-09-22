@@ -998,6 +998,29 @@ assert(app.includes('state.reviewFrom = button.dataset.reviewOrigin ? button.dat
     unknown.window.close();
   }
 
+  // 5-1) 그 수를 누르면 그 수를 만든 목록으로 간다. 요약이 답하는 물음은 "얼마나 밀렸나"
+  //      이고, 그 다음 물음은 언제나 "무엇이"다 — 갈 곳이 없으면 요약은 막다른 길이 된다.
+  //      홈의 「검토 요청 태스크」가 목적지와 다른 것을 세던 결함과 같은 축이고, 옆 카드인
+  //      이쪽도 같은 자로 재어 둔다. 여기서 못박는 것은 카드의 수와 도착한 화면이 말하는
+  //      수와 실제로 닿을 수 있는 줄의 수가 셋 다 같다는 것이다. 어느 둘이 갈리는 순간
+  //      사람은 "수는 맞는데 목록이 이상하다"가 아니라 "화면이 틀렸다"로 읽는다.
+  {
+    const items = queueItems(40, 5);
+    const dom = open({ used: true, unknown: null, counts: { approved: 7, stale: 5, unapproved: 35 }, total: 40, rejected: 0, items }, [], 'home');
+    const metric = Array.from(dom.window.document.querySelectorAll('#metrics .metric'))
+      .find((button) => button.textContent.includes('검토 대기 문서'));
+    assert.strictEqual(metric.querySelector('strong').textContent, '40', '카드는 줄에 선 전건을 센다');
+    metric.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(dom.window.document.getElementById('review-inbox-view').hidden, false, '카드는 인박스로 데려가야 합니다');
+    const waiting = Array.from(dom.window.document.querySelectorAll('#review-inbox-summary .review-inbox-stat'))
+      .find((stat) => stat.textContent.includes('검토 대기'));
+    assert.strictEqual(waiting.querySelector('b').textContent, '40', `도착한 화면이 같은 수를 말해야 합니다: ${textOf(dom, 'review-inbox-summary')}`);
+    // 접힌 것은 없어진 것이 아니다. 펴면 카드가 센 만큼이 그대로 손에 잡혀야 한다.
+    dom.window.document.querySelector('[data-review-expand]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(rowsOf(dom).length, 40, '카드가 센 수만큼 줄에 닿을 수 있어야 합니다');
+    dom.window.close();
+  }
+
   // 6) 줄을 누르면 문서 검토 자리로 간다. 오래 이 줄은 그 자리에서 펼쳐 차분과 승인 폼을
   //    냈고 본문은 어디에도 없었다 — 차분은 "무엇이 바뀌었나"에만 답하므로, 그 화면은
   //    승인 근거로 read(읽고 판단했다)를 고르게 하면서 정작 읽을 자리를 주지 않았다.
