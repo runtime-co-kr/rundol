@@ -784,7 +784,12 @@ function selectPanelTab(id, tab) {
   // rAF가 아니라 setTimeout 0인 것은 시험 환경(jsdom) 때문이다 — 재그리기 뒤에
   // 실행되기만 하면 되는 일이라 프레임에 결박할 이유도 없다.
   setTimeout(() => {
-    const field = document.querySelector(`form[data-approve-form="${CSS.escape(id)}"] [data-approve-field="reason"]`);
+    // 선택자를 조립하지 않고 열린 판에서 찾는다. CSS.escape는 jsdom에 없고 —
+    // 보드 시험이 매 회전 ReferenceError를 내던 자리다 — 식별자에 콜론이 든
+    // 헌장(project:<key>)은 이스케이프 없이 선택자에 끼울 수도 없다. 판은 한
+    // 번에 하나만 열리므로 그 안의 사유 칸을 바로 집으면 조립할 것이 없다.
+    const form = document.querySelector('form[data-approve-form]');
+    const field = form && form.dataset.approveForm === id ? form.querySelector('[data-approve-field="reason"]') : null;
     if (field) field.focus();
   }, 0);
 }
