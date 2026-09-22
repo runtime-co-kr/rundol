@@ -60,6 +60,7 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
   rdl help [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--ahead-of-approval <지시-요지>] [--project <key>] [--json]
+  rdl export [--project <key>] [--out <파일.html>] [--no-diagrams] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl doc identity [--project <key>] [--apply] [--json]
   rdl doc status [--project <key>] [--status <approved|stale|unapproved>]
@@ -225,6 +226,23 @@ Rundol CLI의 기본 명령은 `rdl`이며 `rundol`은 같은 실행 파일의 �
 주의를 요구하는 런이 없고 세션도 하나 이하이며 그 세션을 셀 수 있었으면 **아무것도 출력하지 않고** 0으로 끝납니다. 세션 시작 훅처럼 자주 도는 자리에서 쓰이므로 침묵이 계약입니다. Workspace를 찾지 못한 경우에도 사람 출력 없이 0으로 끝납니다 — Rundol 저장소가 아닌 곳에서 도는 것은 정상이고 "런이 없다"가 그 물음의 옳은 답입니다. Workspace는 있는데 읽지 못하면 종료 코드 2입니다. 런 하나가 손상돼도 나머지는 계속 보고하며, 그 런은 `unreadable`로 드러납니다.
 
 `rdl run list`와 다릅니다. `list`는 "이 프로젝트에 런이 무엇이 있는가"를 묻고 fold 전체를 돌려줍니다. `pending`은 판정과 다음 명령만 돌려줍니다.
+
+### 배포판
+
+`rdl export`는 프로젝트의 지금을 자기완결 HTML 한 파일로 굳힌다. git도 Node도 네트워크도 없는 사람에게 업무 현황을 넘기는 자리이며, 받는 사람은 파일을 열기만 하면 된다.
+
+```bash
+rdl export --project <key> --out 현황.html
+rdl export --project <key> --out 현황.html --no-diagrams
+```
+
+담기는 것은 문서 본문·태스크·업무 현황·승인 원장 상태·문서가 가리키는 이미지다. 마크다운은 만들 때 Node에서 렌더링되어 들어가므로 받는 쪽은 마크다운 파서를 싣지 않고, 문서 사이 링크(`[[REQ-001]]`)는 파일 안의 자리로 옮겨져 눌린다. 이미지는 data URI로 박히고 문서가 가리키지 않는 자산은 싣지 않는다 — 폴더를 통째로 삼키면 그 무게는 받는 사람이 치른다.
+
+**읽기 전용이 이 파일의 성질이지 기능의 한계가 아니다.** 배포판에는 쓰기 경로가 한 줄도 들어가지 않는다. 들어가면 받은 사람은 고칠 수 있다고 믿고 고치고, 그 고침은 어느 원장에도 닿지 않은 채 사라진다. 시험이 폼·입력·네트워크 호출의 부재를 잰다.
+
+다이어그램은 실제로 있을 때만 mermaid(3.4MB)를 싣는다. 없는 프로젝트의 배포판이 그 무게를 치를 이유가 없고, 있어도 보지 않을 팀은 `--no-diagrams`로 뺀다. 결과의 `diagrams`는 "있는가"이고 `mermaidIncluded`는 "실었는가"라 둘이 갈릴 수 있다.
+
+배포판은 만든 시각과 도구 판을 화면에 단다. 받는 사람이 "이게 언제 것인가"를 물을 수 없으면 그 파일은 현황이 아니라 출처 불명의 문서 더미가 된다.
 
 `rdl run driver`는 사람이 자리에 없는 동안 몰 수 있는 런을 미는 상주 프로세스입니다. `--scheduled`가 daemon을 띄우지 않는다고 못박아 트리거를 바깥에 뒀고, 이 명령이 그 바깥입니다. tick과 원장은 그대로이며 몰 수 있는 런을 고르는 순회만 얹습니다.
 
