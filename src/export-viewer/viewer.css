@@ -1,0 +1,124 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --panel: #f7f7f8; --ink: #17181c; --muted: #6b6f76;
+  --line: #e2e3e7; --accent: #3b64f5; --ok: #16a34a; --warn: #d97706;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16171a; --panel: #1d1e22; --ink: #e9eaec; --muted: #9ea3ab; --line: #2c2e34; --accent: #7b94ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.72 -apple-system, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+.shell { display: grid; grid-template-columns: 340px 1fr; min-height: 100vh; }
+.nav { border-right: 1px solid var(--line); background: var(--panel); padding: 20px 18px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.brand b { font-size: 18px; letter-spacing: -.02em; }
+.badge-readonly { font-size: 12px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+.stamp { font-size: 13px; color: var(--muted); }
+.search input { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: inherit; font: inherit; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { flex: 1; padding: 8px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+.tabs button.active { color: var(--ink); border-color: var(--accent); }
+.list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; margin: 0 -6px; padding: 0 6px; }
+.row { display: block; width: 100%; text-align: left; padding: 10px 11px; line-height: 1.45; border: 0; border-radius: 7px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.row:hover { background: var(--bg); }
+.row.active { background: var(--bg); box-shadow: inset 2px 0 0 var(--accent); }
+.row small { display: block; color: var(--muted); font-size: 13px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .rtitle { display: block; font-size: 14.5px; }
+.row .rid { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.main { padding: 34px 44px 90px; max-width: 1080px; }
+.main h1 { font-size: 30px; letter-spacing: -.03em; margin: 0 0 6px; }
+.lede { color: var(--muted); margin: 0 0 18px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+.chip { font-size: 13px; padding: 3px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+.chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+.doc { border-top: 1px solid var(--line); padding-top: 20px; }
+.doc img { max-width: 100%; height: auto; }
+.doc pre { background: var(--panel); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+.doc code { font-family: var(--mono); font-size: 14px; }
+.doc table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+.doc th, .doc td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+.doc blockquote { margin: 0; padding-left: 14px; border-left: 3px solid var(--line); color: var(--muted); }
+.doc h2 { margin-top: 32px; font-size: 21px; }
+.doc h3 { margin-top: 26px; font-size: 18px; }
+.flow-chain { display: flex; gap: 10px; align-items: stretch; overflow-x: auto; padding-bottom: 8px; }
+.flow-layer { display: flex; flex-direction: column; gap: 6px; }
+.flow-arrow { align-self: center; color: var(--muted); }
+.flow-type { min-width: 132px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.flow-type b { display: block; font-size: 14px; }
+.flow-type span { font-size: 13px; color: var(--muted); }
+.bar { display: block; height: 4px; margin-top: 5px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar i.done { background: var(--ok); }
+.rate { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.rate .bar { flex: 0 0 200px; height: 8px; margin: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 26px; }
+.stat { padding: 14px 16px; border: 1px solid var(--line); border-radius: 9px; }
+.stat b { display: block; font-size: 26px; letter-spacing: -.02em; }
+.stat span { font-size: 13px; color: var(--muted); }
+table.plain { border-collapse: collapse; width: 100%; }
+table.plain th, table.plain td { border-bottom: 1px solid var(--line); padding: 10px 10px; text-align: left; font-size: 14.5px; vertical-align: top; }
+table.plain th { color: var(--muted); font-weight: 500; font-size: 13px; }
+.empty { color: var(--muted); }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .nav { position: static; height: auto; }
+  .main { padding: 20px; }
+}
+
+/* ── 상태 색 ──────────────────────────────────────────────────────────────
+   낡음은 승인도 미승인도 아니다. 두 색만 두면 "승인했는데 그 뒤에 바뀐 것"이
+   미승인과 한 칸에 서고, 받는 사람은 다시 승인받아야 할 것을 못 고른다. */
+.chip.stale, .dot.stale { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.bar i.stale { background: var(--warn); }
+.status { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.approved { background: var(--ok); }
+.dot.stale { background: var(--warn); }
+.dot.doing { background: var(--accent); }
+.dot.done { background: var(--ok); }
+
+/* ── 태스크 상세 ──────────────────────────────────────────────────────────
+   수만 실으면 진척률 표이고 문장이 실려야 업무 현황이다. 완료조건은 목록으로
+   서고, 대기 사유와 의존은 왜 멈춰 있는지를 말한다. */
+.ac { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 7px; }
+.ac li { display: flex; gap: 9px; align-items: flex-start; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; }
+.ac li.done { border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
+.ac .mark { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ac li.done .mark { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ac .acid { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-right: 6px; }
+.section { margin-top: 30px; }
+.section h2 { font-size: 19px; margin: 0 0 12px; }
+.kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; margin: 0; }
+.kv dt { color: var(--muted); font-size: 14px; }
+.kv dd { margin: 0; }
+.notice { padding: 11px 14px; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; color: var(--muted); }
+
+/* ── 검색 ─────────────────────────────────────────────────────────────────
+   보드 화면과 같은 모양이다. 타자 도중에 답하는 자리라 결과가 갈래별로 서고,
+   갈래 머리글이 실린 수와 전건을 함께 적는다 — 잘린 목록에서 그 둘이 갈리는
+   것이 곧 "목록에서 더 보라"는 이유이고, 하나만 적으면 그 이유가 사라진다. */
+.search-shell { position: relative; }
+.search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+.search-icon { display: inline-flex; color: var(--muted); }
+.search-icon svg { width: 16px; height: 16px; }
+.search input { width: 100%; padding: 9px 0; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+.search input::-webkit-search-cancel-button { cursor: pointer; }
+.search-dropdown {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0;
+  width: max(100%, 420px); max-height: min(60vh, 560px); overflow-y: auto;
+  padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .28);
+}
+.search-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 9px 11px 5px; font-size: 12.5px; color: var(--muted); }
+.search-group-head b { font-weight: 600; color: var(--ink); font-size: 13px; }
+.search-hit { display: block; width: 100%; text-align: left; padding: 9px 11px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.search-hit:hover, .search-hit.active { background: var(--bg); }
+.search-hit .hid { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.search-hit .htitle { display: block; font-size: 14.5px; }
+.search-hit .hmeta { display: block; font-size: 12.5px; color: var(--muted); }
+.search-hit mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+.search-note { padding: 10px 12px; font-size: 13px; color: var(--muted); }
+.search-hint { display: flex; gap: 12px; padding: 8px 12px 4px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 4px; }
+.search-hint kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; }

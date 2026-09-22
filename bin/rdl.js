@@ -67,6 +67,7 @@ Usage:
   rdl help [--json]
   rdl doc create <TYPE> <제목> --owner <MEMBER-ID> --scope <단일-책임> --exclude <제외-범위>
                  [--function-id <기능-ID>] [--grouped --reason <합침-사유>] [--exclude <제외-범위>] [--related <ARTIFACT-ID>] [--ahead-of-approval <지시-요지>] [--project <key>] [--json]
+  rdl export [--project <key>] [--out <파일.html>] [--no-diagrams] [--json]
   rdl doc migrate [--project <key>] [--apply] [--json]
   rdl doc identity [--project <key>] [--apply] [--json]
   rdl doc status [--project <key>] [--status <approved|stale|unapproved>]
@@ -308,9 +309,12 @@ function parseOperationArgs(argv) {
     // 낡을 승인을 알고 바꾼다는 표시. 관문이 아니라 "누르기 전에 말한다"의 명령줄 쪽
     // 모양이다 — 화면은 판에 문장을 그려서 같은 일을 한다.
     else if (value === '--ack-stale') options.ackStale = true;
+    // 다이어그램을 빼는 표시. mermaid는 3.4MB이고 그 값은 다이어그램을 보는 값이라,
+    // 볼 필요가 없는 배포판은 치르지 않아도 된다.
+    else if (value === '--no-diagrams') options.noDiagrams = true;
     else if (['--root', '--project', '--name', '--profile', '--enforcement', '--trait', '--required', '--recommended', '--on-demand', '--disabled', '--type', '--remote', '--status', '--owner', '--summary', '--title', '--scope', '--exclude', '--function-id', '--priority', '--reviewer', '--stakeholder', '--link', '--acceptance', '--related', '--domain', '--feature', '--strategy', '--client-id', '--max-items', '--interval', '--input-tokens', '--output-tokens', '--cached-tokens', '--model', '--provider', '--client', '--git-url', '--planned-executor', '--actual-executor', '--artifact-id', '--task-id', '--fallback-reason', '--role', '--member', '--organization', '--account', '--responsibility', '--reason', '--decided-by', '--run', '--step', '--goal', '--exit', '--conflict', '--select', '--operation', '--request-id', '--adapter', '--lens', '--mode', '--kind', '--subject', '--question', '--option', '--recommend', '--because', '--blast', '--evidence', '--primary-branch', '--delegate', '--days', '--external-ref', '--unlink', '--branch', '--basis', '--delegation', '--supersedes', '--grant-attempts', '--share-unverified', '--expect-head', '--approved-by', '--commit', '--task', '--no-task', '--task-enforcement', '--order-enforcement', '--ahead-of-approval', '--exempt', '--adapters', '--result', '--round', '--max-edge', '--doc', '--as',
       '--allow-path', '--forbid', '--met', '--unmet', '--changed', '--forbidden-touched', '--report-schema', '--procedure-revision', '--assignee-member', '--assignee-client', '--outcome', '--procedure-digest',
-      '--session-id', '--path', '--from', '--reply-to', '--rule', '--submission', '--unit'].includes(value)) {
+      '--session-id', '--path', '--from', '--reply-to', '--rule', '--submission', '--unit', '--out'].includes(value)) {
       i += 1;
       if (!argv[i]) throw new Error(`${value} 값이 필요합니다.`);
       if (value === '--root') options.root = path.resolve(argv[i]);
@@ -318,6 +322,7 @@ function parseOperationArgs(argv) {
       else if (value === '--name') options.name = argv[i];
       else if (value === '--profile') options.profile = argv[i];
       else if (value === '--enforcement') options.enforcement = argv[i];
+      else if (value === '--out') options.out = argv[i];
       else if (value === '--task-enforcement') options.taskEnforcement = argv[i];
       else if (value === '--order-enforcement') options.orderEnforcement = argv[i];
       else if (value === '--ahead-of-approval') options.aheadOfApproval = argv[i];
@@ -1857,6 +1862,17 @@ async function main() {
     const result = taskSet(options.root, options.positional[0], changes, options.project);
     printOperation(result, options.json);
     note(options, 'task.update', { taskId: options.positional[0] });
+    return 0;
+  }
+  // 배포판. git도 Node도 없는 사람에게 업무 현황을 넘기는 자리이고, 나가는 것은
+  // 읽기 전용 파일 하나다 — 쓰기 경로가 없다는 것이 그 파일의 성질이다.
+  if (command === 'export') {
+    const options = parseOperationArgs(argv);
+    if (options.positional.length) throw new Error('rdl export는 위치 인수를 사용하지 않습니다. 파일 이름은 --out으로 줍니다.');
+    const result = require('../src/export').exportProject(options.root, {
+      project: options.project, out: options.out, diagrams: options.noDiagrams ? false : undefined
+    });
+    printOperation(result, options.json);
     return 0;
   }
   if (command === 'doc') {
